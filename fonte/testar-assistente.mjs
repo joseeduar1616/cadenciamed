@@ -187,3 +187,37 @@ servidor.close();
 console.log(passos.join('\n'));
 console.log('\n' + (erros.length ? `${erros.length} PROBLEMA(S):\n` + erros.join('\n') : 'nenhum erro'));
 if (erros.length) process.exitCode = 1;
+
+/* ── 9. o painel de acessos não pode esconder o recado do servidor ────
+   A função responde 404 tanto quando não existe (aí quem responde é o
+   Netlify, sem JSON) quanto quando não achou conta com aquele e-mail (aí
+   vem JSON com o motivo). Confundir os dois escondia a explicação. */
+const painel = async (status, corpo) => {
+  /* reproduz o que o parte11.jsx faz com a resposta */
+  const r = new Response(corpo === null ? '<html>404</html>' : JSON.stringify(corpo),
+    { status, headers: { 'Content-Type': corpo === null ? 'text/html' : 'application/json' } });
+  const j = await r.json().catch(() => null);
+  if (r.status === 404 && !j) return 'A função de acessos ainda não foi publicada neste site.';
+  if (!r.ok || !j) return (j && j.erro) || 'Não deu certo.';
+  return j;
+};
+
+let m = await painel(404, null);
+if (m === 'A função de acessos ainda não foi publicada neste site.') ok('404 sem JSON: avisa que a função não subiu');
+else falha('404 sem JSON: ' + m);
+
+m = await painel(404, { erro: 'Não achei conta com esse e-mail. A pessoa precisa criar a conta no site antes.' });
+if (/Não achei conta com esse e-mail/.test(m)) ok('404 com JSON: mostra o motivo real, não "função não publicada"');
+else falha('404 com JSON: ' + m);
+
+m = await painel(403, { erro: 'Só a conta do dono pode liberar acessos.' });
+if (/conta do dono/.test(m)) ok('403: mostra o recado do servidor');
+else falha('403: ' + m);
+
+m = await painel(200, { lista: [] });
+if (m && Array.isArray(m.lista)) ok('200: a lista chega ao painel');
+else falha('200: ' + JSON.stringify(m));
+
+console.log('\n(reexecutando o resumo com os testes do painel)');
+console.log(passos.slice(-4).join('\n'));
+if (erros.length) process.exitCode = 1;
