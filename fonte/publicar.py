@@ -45,3 +45,11 @@ for f in FUNCOES:
 
 print(f'publicar/ pronta: {len(ARQUIVOS) + len(FUNCOES)} arquivos, '
       f'{round(total / 1048576, 2)} MB')
+
+# O mesmo conteúdo zipado, com o index.html na raiz do arquivo, que é como o
+# Netlify espera quando se solta um zip na área de deploy.
+ZIP = os.path.join(RAIZ, 'cadenciamed-publicar.zip')
+if os.path.exists(ZIP):
+    os.remove(ZIP)
+shutil.make_archive(ZIP[:-4], 'zip', DESTINO)
+print(f'cadenciamed-publicar.zip: {round(os.path.getsize(ZIP) / 1048576, 2)} MB')
