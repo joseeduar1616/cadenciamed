@@ -36,6 +36,8 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar.mjs
   echo "── conferindo o arquivo de produção ────────────────"
   node testar.mjs index.html
+  echo "── função do assistente ────────────────────────────"
+  node testar-assistente.mjs
 fi
 
 echo "── pasta para publicar ─────────────────────────────"

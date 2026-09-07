@@ -1,24 +1,40 @@
-/* Função do Netlify que conversa com a API da Anthropic.
+/* Função do Netlify que conversa com a IA.
  *
- * A chave NUNCA vai para o navegador: ela fica numa variável de ambiente
- * do Netlify, e só este código, que roda no servidor, a enxerga.
+ * A chave NUNCA vai para o navegador: ela fica numa variável de ambiente do
+ * Netlify, e só este código, que roda no servidor, a enxerga.
  *
- * Para ligar:
- *   1. Pegue uma chave em console.anthropic.com (API Keys).
- *   2. No Netlify: Site configuration > Environment variables > Add.
- *      Key:   ANTHROPIC_API_KEY
- *      Value: a chave, começando com sk-ant-
- *   3. Publique de novo o site.
+ * Funciona com dois provedores. Quem manda é a variável de ambiente que
+ * existir; não precisa mexer no código para trocar:
+ *
+ *   GEMINI_API_KEY      → usa o Gemini, do Google
+ *   ANTHROPIC_API_KEY   → usa o Claude, da Anthropic
+ *
+ * Se as duas estiverem cadastradas, o Gemini é o escolhido, por ser o que
+ * tem camada gratuita. Para forçar um deles, cadastre também:
+ *
+ *   IA_PROVEDOR = gemini   (ou anthropic)
+ *
+ * Para pegar as chaves:
+ *   Gemini    → aistudio.google.com/apikey  (tem plano gratuito)
+ *   Anthropic → console.anthropic.com       (pré-pago, sem plano gratuito)
+ *
+ * Depois, no Netlify: Site configuration > Environment variables > Add, e
+ * publique de novo o site.
  */
 
-const MODELO = "claude-sonnet-5";
+/* Dá para trocar o modelo sem mexer no código, pelas variáveis
+   GEMINI_MODELO e ANTHROPIC_MODELO. */
+const GEMINI_MODELO = process.env.GEMINI_MODELO || "gemini-2.5-flash";
+const ANTHROPIC_MODELO = process.env.ANTHROPIC_MODELO || "claude-sonnet-5";
+
 const LIMITE_ENTRADA = 24000;   // caracteres, para conter custo por chamada
+const MAX_SAIDA = 1400;
 const PROJETO = "cadencia-7c1f1";
 /* Contas com acesso liberado sem assinatura. O e-mail vem do token já
    validado pelo Google, então não dá para forjar. */
 const DONOS = ["joseeduardo1616@gmail.com"];
 
-/* Confere quem está pedindo antes de gastar créditos.
+/* Confere quem está pedindo antes de gastar a cota.
    O navegador manda o token do Firebase; aqui ele é validado direto com o
    Google, e só então olhamos se a assinatura está em dia. Sem isso qualquer
    visitante do site gastaria a conta do dono. */
@@ -53,15 +69,127 @@ async function assinanteValido(idToken, apiKey) {
   }
 }
 
+/* Traduz o erro do provedor para uma frase que o estudante entenda, sem
+   esconder o motivo real, que é o que costuma resolver mais rápido. */
+function recado(status, real, provedor) {
+  const ondePagar = provedor === "gemini"
+    ? "Confira a cota da chave em aistudio.google.com."
+    : "Confira o saldo em console.anthropic.com, em Plans & Billing.";
+  if (status === 401 || status === 403) {
+    return provedor === "gemini"
+      ? "A chave do Gemini foi recusada. Confira GEMINI_API_KEY no Netlify e se a API está ativa no projeto."
+      : "A chave da API foi recusada. Confira o valor de ANTHROPIC_API_KEY no Netlify.";
+  }
+  if (status === 429) return `Cota esgotada ou pedidos demais seguidos. Espere um pouco. ${ondePagar}`;
+  if (status === 503 || status === 529) return "O serviço está sobrecarregado. Tente de novo em instantes.";
+  if (real) return `A IA recusou o pedido: ${real}`;
+  return `O serviço respondeu com erro ${status}.`;
+}
+
+/* ── Gemini ─────────────────────────────────────────────────────────────
+   O Gemini chama de "model" o que a Anthropic chama de "assistant", e as
+   instruções do sistema vão num campo separado, não no meio da conversa. */
+async function chamarGemini(chave, { sistema, mensagens }) {
+  const r = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODELO}:generateContent`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": chave },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: sistema }] },
+        contents: mensagens.map((m) => ({
+          role: m.role === "assistant" ? "model" : "user",
+          parts: [{ text: m.content }],
+        })),
+        generationConfig: { maxOutputTokens: MAX_SAIDA },
+      }),
+    });
+
+  if (!r.ok) {
+    const detalhe = await r.text().catch(() => "");
+    let real = "";
+    try { real = (JSON.parse(detalhe).error || {}).message || ""; } catch (e) { /* texto puro */ }
+    console.error("gemini", r.status, detalhe.slice(0, 500));
+    return { erro: recado(r.status, real, "gemini") };
+  }
+
+  const j = await r.json();
+  const c = (j.candidates || [])[0];
+
+  /* O Gemini responde 200 mesmo quando corta por filtro de conteúdo ou por
+     falta de espaço, e aí não vem texto nenhum. Sem tratar isso o estudante
+     veria só "resposta vazia" e não saberia o que fazer. */
+  if (!c) {
+    const bloqueio = ((j.promptFeedback || {}).blockReason) || "";
+    return { erro: bloqueio ? `O Gemini bloqueou o pedido (${bloqueio}).` : "A IA não respondeu nada." };
+  }
+  const texto = ((c.content || {}).parts || [])
+    .map((p) => p.text || "").join("").trim();
+  if (!texto) {
+    if (c.finishReason === "MAX_TOKENS") return { erro: "A resposta ficou longa demais e foi cortada. Pergunte de novo, mais específico." };
+    if (c.finishReason === "SAFETY") return { erro: "O Gemini bloqueou a resposta por política de conteúdo." };
+    return { erro: "A IA devolveu uma resposta vazia." };
+  }
+  return { texto };
+}
+
+/* ── Anthropic ──────────────────────────────────────────────────────── */
+async function chamarAnthropic(chave, { sistema, mensagens }) {
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": chave,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: ANTHROPIC_MODELO,
+      max_tokens: MAX_SAIDA,
+      system: sistema,
+      messages: mensagens,
+    }),
+  });
+
+  if (!r.ok) {
+    const detalhe = await r.text().catch(() => "");
+    let real = "";
+    try { real = (JSON.parse(detalhe).error || {}).message || ""; } catch (e) { /* texto puro */ }
+    console.error("anthropic", r.status, detalhe.slice(0, 500));
+    return { erro: recado(r.status, real, "anthropic") };
+  }
+
+  const j = await r.json();
+  const texto = (j.content || [])
+    .filter((b) => b.type === "text")
+    .map((b) => b.text)
+    .join("\n")
+    .trim();
+  if (!texto) return { erro: "A IA devolveu uma resposta vazia." };
+  return { texto };
+}
+
+/* Qual provedor usar, olhando só o que está cadastrado no Netlify. */
+function escolherProvedor() {
+  const pedido = String(process.env.IA_PROVEDOR || "").toLowerCase();
+  const gem = process.env.GEMINI_API_KEY;
+  const ant = process.env.ANTHROPIC_API_KEY;
+  if (pedido === "gemini") return gem ? { nome: "gemini", chave: gem } : null;
+  if (pedido === "anthropic") return ant ? { nome: "anthropic", chave: ant } : null;
+  /* sem preferência: o Gemini vem primeiro por ter camada gratuita */
+  if (gem) return { nome: "gemini", chave: gem };
+  if (ant) return { nome: "anthropic", chave: ant };
+  return null;
+}
+
 export default async (req) => {
   if (req.method !== "POST") {
     return Response.json({ erro: "Método não permitido." }, { status: 405 });
   }
 
-  const chave = process.env.ANTHROPIC_API_KEY;
-  if (!chave) {
+  const provedor = escolherProvedor();
+  if (!provedor) {
     return Response.json({
-      erro: "A chave da API não está configurada no Netlify. Cadastre ANTHROPIC_API_KEY nas variáveis de ambiente e publique de novo.",
+      erro: "A chave da IA não está configurada no Netlify. Cadastre GEMINI_API_KEY (ou ANTHROPIC_API_KEY) nas variáveis de ambiente e publique de novo.",
     }, { status: 500 });
   }
 
@@ -85,56 +213,29 @@ export default async (req) => {
 
   const contexto = String(corpo.contexto || "").slice(0, LIMITE_ENTRADA);
   const instrucoes = String(corpo.instrucoes || "").slice(0, 6000);
+  const sistema = `${instrucoes}\n\n=== DADOS ATUAIS DO PAINEL ===\n${contexto}`;
 
   const limpas = mensagens
     .filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
     .map((m) => ({ role: m.role, content: m.content.slice(0, 6000) }));
 
+  /* A conversa precisa começar por uma fala do estudante: os dois provedores
+     recusam um histórico que abre com a resposta da IA. */
+  while (limpas.length && limpas[0].role === "assistant") limpas.shift();
+  if (limpas.length === 0) {
+    return Response.json({ erro: "Nenhuma mensagem enviada." }, { status: 400 });
+  }
+
   try {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": chave,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: MODELO,
-        max_tokens: 1400,
-        system: `${instrucoes}\n\n=== DADOS ATUAIS DO PAINEL ===\n${contexto}`,
-        messages: limpas,
-      }),
-    });
+    const r = provedor.nome === "gemini"
+      ? await chamarGemini(provedor.chave, { sistema, mensagens: limpas })
+      : await chamarAnthropic(provedor.chave, { sistema, mensagens: limpas });
 
-    if (!r.ok) {
-      const detalhe = await r.text().catch(() => "");
-      let real = "";
-      try { real = (JSON.parse(detalhe).error || {}).message || ""; } catch (e) { /* texto puro */ }
-
-      /* Mostrar o motivo real ajuda muito mais do que adivinhar. O 400 tanto
-         pode ser modelo inexistente quanto conversa longa demais. */
-      const msg = r.status === 401 || r.status === 403
-        ? "A chave da API foi recusada. Confira o valor de ANTHROPIC_API_KEY no Netlify."
-        : r.status === 429 ? "Muitos pedidos seguidos. Espere alguns segundos."
-        : r.status === 529 ? "O serviço está sobrecarregado. Tente de novo em instantes."
-        : real ? `A API recusou o pedido: ${real}`
-        : `O serviço respondeu com erro ${r.status}.`;
-      console.error("anthropic", r.status, detalhe.slice(0, 500));
-      return Response.json({ erro: msg }, { status: 502 });
-    }
-
-    const j = await r.json();
-    const texto = (j.content || [])
-      .filter((b) => b.type === "text")
-      .map((b) => b.text)
-      .join("\n")
-      .trim();
-
-    if (!texto) return Response.json({ erro: "Resposta vazia." }, { status: 502 });
-    return Response.json({ texto });
+    if (r.erro) return Response.json({ erro: r.erro }, { status: 502 });
+    return Response.json({ texto: r.texto });
   } catch (e) {
-    console.error("falha", e);
-    return Response.json({ erro: "Não consegui alcançar o serviço." }, { status: 502 });
+    console.error("falha", provedor.nome, e);
+    return Response.json({ erro: "Não consegui alcançar o serviço da IA." }, { status: 502 });
   }
 };
 

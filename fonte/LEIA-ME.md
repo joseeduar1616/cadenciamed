@@ -45,6 +45,7 @@ A ordem da concatenação importa: `parte8.jsx` tem o componente raiz e vai por
 python3 montar_teste.py         # gera teste.html, igual ao site mas com o plano liberado
 node testar.mjs                 # abre no Chromium e confere tudo
 node testar.mjs index.html      # confere o arquivo de produção
+node testar-assistente.mjs      # confere a função da IA, sem gastar cota
 ```
 
 O `teste.html` existe só para o teste conseguir abrir as abas pagas. Ele é
@@ -78,6 +79,7 @@ troca de esquema de revisão e de aparência não pegar.
 | `montar_teste.py` | mesma coisa, com o plano liberado, para o teste |
 | `publicar.py` | monta a pasta `publicar/`, que é o que se arrasta no Netlify |
 | `testar.mjs` | teste de fumaça no Chromium |
+| `testar-assistente.mjs` | teste da função da IA, com servidor falso no lugar da API |
 | `montar.sh` | roda tudo na ordem |
 
 ## Trocar a logo
@@ -114,12 +116,30 @@ tela larga.
 
 Em `netlify/functions/`:
 
-- `assistente.mjs` — conversa com a API da Anthropic, confere a assinatura
+- `assistente.mjs` — conversa com a IA, confere a assinatura
 - `compra.mjs` — recebe o aviso de compra da Kiwify ou Hotmart
 - `acessos.mjs` — painel do dono, libera e revoga acessos
 
-Variáveis de ambiente: `ANTHROPIC_API_KEY`, `FIREBASE_API_KEY`,
-`FIREBASE_SERVICE_ACCOUNT`, `WEBHOOK_SEGREDO`.
+Variáveis de ambiente: `FIREBASE_API_KEY`, `FIREBASE_SERVICE_ACCOUNT`,
+`WEBHOOK_SEGREDO`, e a chave da IA.
+
+### Qual IA o assistente usa
+
+O `assistente.mjs` fala com os dois provedores. Quem decide é a variável de
+ambiente que estiver cadastrada no Netlify:
+
+| Variável | Provedor | Custo |
+|---|---|---|
+| `GEMINI_API_KEY` | Gemini, do Google | tem camada gratuita (aistudio.google.com/apikey) |
+| `ANTHROPIC_API_KEY` | Claude, da Anthropic | pré-pago (console.anthropic.com) |
+
+Com as duas cadastradas o Gemini é o escolhido. Para forçar um deles,
+cadastre `IA_PROVEDOR` com `gemini` ou `anthropic`. O modelo também dá para
+trocar sem mexer no código, por `GEMINI_MODELO` e `ANTHROPIC_MODELO`.
+
+A assinatura do Gemini Advanced e a do Claude **não** dão acesso às APIs: são
+cobranças separadas. A camada gratuita do Gemini vem da chave do AI Studio,
+não do plano Pro.
 
 ## Cuidados
 
