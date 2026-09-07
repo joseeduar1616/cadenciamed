@@ -1,0 +1,22 @@
+{
+  "name": "cadencia-med",
+  "private": true,
+  "description": "Painel de estudos para a prova de residência médica.",
+  "scripts": {
+    "build": "fonte/montar.sh",
+    "build:rapido": "fonte/montar.sh --sem-teste",
+    "test": "node fonte/testar.mjs fonte/teste.html"
+  },
+  "dependencies": {
+    "esbuild": "0.28.2",
+    "fflate": "0.8.3",
+    "lucide-react": "0.383.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "recharts": "2.12.7",
+    "sql.js": "1.10.3"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

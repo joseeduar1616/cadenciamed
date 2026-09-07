@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Os dados de estudo: cada pessoa lê e escreve só os seus.
+    match /usuarios/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Vínculo entre e-mail e conta, usado pela função de compra para
+    // descobrir quem pagou. A pessoa só pode gravar o próprio e-mail.
+    match /emails/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if request.auth != null
+                   && request.auth.uid == uid
+                   && request.resource.data.email == request.auth.token.email.lower();
+    }
+
+    // A assinatura é somente leitura para quem está logado.
+    // Quem grava é a função de compra, no servidor, com a conta de
+    // serviço, que passa por cima destas regras. Sem isso qualquer pessoa
+    // se daria acesso pago pelo console do navegador.
+    match /assinaturas/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+  }
+}

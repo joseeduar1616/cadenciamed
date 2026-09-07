@@ -1,0 +1,16 @@
+node_modules/
+package-lock.json
+
+# gerados pelo build, dá para refazer com ./montar.sh
+fonte/app.jsx
+fonte/b-limpa.js
+fonte/utils.css
+fonte/index.html
+fonte/teste.html
+fonte/_teste/
+fonte/_dump.mjs
+fonte/_capturas.mjs
+fonte/captura-*.png
+fonte/tela-*.png
+fonte/icones-embutidos.txt
+__pycache__/
