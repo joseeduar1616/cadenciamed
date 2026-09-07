@@ -155,7 +155,29 @@ await pedir(await carregar(), {
 if (ultimoPedido.corpo.contents[0].role === 'user') ok('histórico que abre com a IA é corrigido');
 else falha('histórico não corrigido: ' + JSON.stringify(ultimoPedido.corpo.contents));
 
-/* ── 7. a assinatura ainda é conferida ───────────────────────────────── */
+/* ── 7. a conferência pelo navegador (GET) ───────────────────────────── */
+const olhar = async (fn) => {
+  const res = await fn(new Request('http://local/.netlify/functions/assistente'));
+  return { status: res.status, corpo: await res.json() };
+};
+process.env.GEMINI_API_KEY = 'chave-de-teste';
+process.env.ANTHROPIC_API_KEY = 'sk-ant-teste';
+r = await olhar(await carregar());
+if (r.corpo.provedor === 'gemini' && r.corpo.modelo === 'gemini-2.5-flash') ok('GET mostra qual IA está ligada');
+else falha('GET provedor: ' + JSON.stringify(r.corpo));
+if (r.corpo.chaves.GEMINI_API_KEY === true && r.corpo.chaves.ANTHROPIC_API_KEY === true) ok('GET diz quais chaves chegaram na função');
+else falha('GET chaves: ' + JSON.stringify(r.corpo.chaves));
+if (!JSON.stringify(r.corpo).includes('chave-de-teste') && !JSON.stringify(r.corpo).includes('sk-ant-teste')) ok('GET não vaza o valor de nenhuma chave');
+else falha('GET VAZOU CHAVE: ' + JSON.stringify(r.corpo));
+
+delete process.env.GEMINI_API_KEY;
+delete process.env.ANTHROPIC_API_KEY;
+r = await olhar(await carregar());
+if (r.corpo.provedor === 'nenhum') ok('GET avisa quando nenhuma chave chegou');
+else falha('GET sem chave: ' + JSON.stringify(r.corpo));
+process.env.GEMINI_API_KEY = 'chave-de-teste';
+
+/* ── 8. a assinatura ainda é conferida ───────────────────────────────── */
 process.env.FIREBASE_API_KEY = 'x';
 r = await pedir(await carregar(), { ...CONVERSA, token: '' });
 if (r.status === 402 && /Entre na sua conta/.test(r.corpo.erro)) ok('sem token, o assistente é recusado antes de gastar cota');

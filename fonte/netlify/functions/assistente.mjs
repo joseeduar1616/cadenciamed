@@ -182,11 +182,30 @@ function escolherProvedor() {
 }
 
 export default async (req) => {
+  const provedor = escolherProvedor();
+
+  /* Abrir o endereço da função no navegador mostra qual IA está ligada.
+     Serve para conferir, depois de publicar, se a chave chegou mesmo até
+     aqui: no Netlify a variável de ambiente só vale depois de publicar de
+     novo, e precisa estar no escopo das funções. Nenhuma chave é mostrada,
+     só o nome do provedor e do modelo. */
+  if (req.method === "GET") {
+    return Response.json({
+      provedor: provedor ? provedor.nome : "nenhum",
+      modelo: !provedor ? null : provedor.nome === "gemini" ? GEMINI_MODELO : ANTHROPIC_MODELO,
+      chaves: {
+        GEMINI_API_KEY: !!process.env.GEMINI_API_KEY,
+        ANTHROPIC_API_KEY: !!process.env.ANTHROPIC_API_KEY,
+        FIREBASE_API_KEY: !!process.env.FIREBASE_API_KEY,
+        IA_PROVEDOR: process.env.IA_PROVEDOR || null,
+      },
+    });
+  }
+
   if (req.method !== "POST") {
     return Response.json({ erro: "Método não permitido." }, { status: 405 });
   }
 
-  const provedor = escolherProvedor();
   if (!provedor) {
     return Response.json({
       erro: "A chave da IA não está configurada no Netlify. Cadastre GEMINI_API_KEY (ou ANTHROPIC_API_KEY) nas variáveis de ambiente e publique de novo.",
