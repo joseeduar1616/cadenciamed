@@ -58,5 +58,13 @@ service cloud.firestore {
     match /publicos/{baralho} {
       allow read, write: if false;
     }
+
+    // A ligação com o Notion de cada pessoa. Guarda o token de leitura do
+    // Notion dela, então é a coleção mais fechada de todas: nem o próprio
+    // dono lê daqui. Quem usa é a rota /api/notion, no servidor, e ela
+    // nunca devolve o token numa resposta.
+    match /notion/{uid} {
+      allow read, write: if false;
+    }
   }
 }

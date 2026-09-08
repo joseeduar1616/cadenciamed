@@ -7,7 +7,8 @@
 # A ordem da concatenação importa: parte8.jsx tem o componente raiz e vai
 # por último, e parte13.jsx (leitor de Anki) precisa vir antes de parte12.jsx
 # (flashcards). parte14.jsx (salas de amigos) vai logo antes do parte8.jsx,
-# que é quem monta a aba e chama o usePerfilPublico.
+# que é quem monta a aba e chama o usePerfilPublico. parte15.jsx (Notion)
+# também vem antes dele, pelo mesmo motivo.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -19,7 +20,7 @@ python3 gerar_icones.py
 echo "── juntando os pedaços ─────────────────────────────"
 cat base.jsx parte2.jsx parte3.jsx parte10.jsx parte11.jsx parte13.jsx \
     parte12.jsx parte4.jsx parte5.jsx parte6.jsx parte7.jsx parte9.jsx \
-    parte14.jsx parte8.jsx > app.jsx
+    parte14.jsx parte15.jsx parte8.jsx > app.jsx
 
 echo "── compilando ──────────────────────────────────────"
 npx esbuild main.jsx --bundle --minify --format=iife --loader:.jsx=jsx \
@@ -44,6 +45,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-acessos.mjs
   node testar-compra.mjs
   node testar-salas.mjs
+  node testar-notion.mjs
   node testar-baralhos.mjs
   node testar-worker.mjs
   node testar-api.mjs

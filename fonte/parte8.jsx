@@ -759,7 +759,14 @@ export default function Cadencia() {
               {tab === "metas" && !pro && <Bloqueado recurso={RECURSOS_PRO.metas} onVerPlanos={() => setTab("planos")} />}
               {tab === "planos" && <Precos usuario={nuvem.usuario} plano={assinatura.plano} />}
               {tab === "temas" && pro && <Temas {...{ subjects, setMark, minutos: minutesBySubject, sessoes: data.sessions, today }} />}
-              {tab === "assistente" && (souDono || pro) && <Assistente {...{ data, setData, subjects, ladder, today, totals, minWeek, qWeek, notify, nuvem }} />}
+              {tab === "assistente" && (souDono || pro) && (
+                <div className="flex flex-col gap-5">
+                  <Assistente {...{ data, setData, subjects, ladder, today, totals, minWeek, qWeek, notify, nuvem }} />
+                  {/* O MEDPlanner fica junto do assistente porque é ele quem
+                      usa o cronograma importado para organizar a rotina. */}
+                  <Notion {...{ nuvem, subjects, data, setData, notify }} />
+                </div>
+              )}
               {tab === "revisoes" && pro && <Revisoes {...{ rows: ladder, toggleStep, resetCycle, data, setData, degraus, notify }} />}
               {tab === "rotina" && pro && <Rotina {...{ data, setData, gcal, today }} />}
               {tab === "amigos" && !pro && <Bloqueado recurso={RECURSOS_PRO.amigos} onVerPlanos={() => setTab("planos")} />}

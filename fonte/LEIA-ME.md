@@ -177,7 +177,39 @@ lugares, e a assinatura sai byte a byte igual à do `node:crypto` — conferido
 em teste.
 
 Variáveis de ambiente: `FIREBASE_API_KEY`, `FIREBASE_SERVICE_ACCOUNT`,
-`WEBHOOK_SEGREDO`, `CUPONS` e a chave da IA.
+`WEBHOOK_SEGREDO`, `CUPONS`, a chave da IA e, para o Notion,
+`NOTION_CLIENT_ID`, `NOTION_CLIENT_SECRET` e `NOTION_REDIRECT`.
+
+### Ligar o Notion (MEDPlanner)
+
+A rota `/api/notion` liga a conta de quem usa o site à conta do Notion dela e
+lê de lá o MEDPlanner. Enquanto as variáveis não existirem, o painel na aba
+Assistente diz isso na tela em vez de mandar a pessoa para uma página de erro
+do Notion — e nada mais acontece.
+
+Uma vez só, no [notion.so/my-integrations](https://www.notion.so/my-integrations):
+
+1. **New integration** → tipo **Public**, para outras pessoas poderem conectar
+   o Notion delas (uma integração *Internal* só enxerga o seu próprio espaço)
+2. em **Redirect URIs**, cadastrar exatamente `https://cadenciamed.com.br/notion`
+3. copiar o **OAuth client ID** e o **OAuth client secret**
+4. no Worker, em **Settings → Variables and Secrets**, cadastrar como *Secret*
+   `NOTION_CLIENT_ID` e `NOTION_CLIENT_SECRET`; `NOTION_REDIRECT` só é preciso
+   se o endereço de volta for outro
+
+O endereço de volta é escolhido pelo servidor e conferido pelo Notion contra
+o que está cadastrado. Aceitar o que a página mandasse deixaria alguém receber
+o código de autorização em outro site.
+
+**O token de leitura de cada pessoa fica em `notion/{uid}`**, coleção fechada
+para o navegador nas duas pontas, e nenhuma resposta da rota o devolve — há
+teste para isso. Quem conectou desliga pelo painel ou pelo próprio Notion, em
+Configurações → Conexões.
+
+O encaixe entre as linhas do planner e as aulas do site é por comparação de
+texto: o que casa com folga entra sozinho, o que ficou parecido vai para uma
+lista de conferência antes de escrever qualquer coisa. A importação só
+acrescenta — o que já está marcado no app continua como está.
 
 A pasta `fonte/netlify/` é a versão antiga, do Netlify, guardada só como
 reserva. Quando o Cloudflare estiver firme, dá para apagar.

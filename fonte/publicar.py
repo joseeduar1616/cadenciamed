@@ -8,7 +8,7 @@ repositório, fora da pasta publicada. Isso também resolve de graça um
 problema antigo, que era o código das funções ficar acessível como arquivo
 de texto por estar dentro do que ia ao ar.
 """
-import os, shutil
+import os, re, shutil
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 RAIZ = os.path.dirname(os.getcwd())
@@ -65,16 +65,39 @@ open(os.path.join(DESTINO, '_headers'), 'w', encoding='utf-8').write(CABECALHOS)
 # verdade para a mesma decisão.
 
 # o código do servidor fica fora da pasta publicada, mas precisa existir
+#
+# A conferência sai do próprio index.js, e não de uma lista escrita aqui:
+# uma lista à mão envelhece calada, e foi o que aconteceu — rotas novas
+# entraram no ar sem nunca passar por esta conferência.
 RAIZ_WORKER = os.path.join(RAIZ, 'worker')
-PECAS = [
-    'index.js',
-    os.path.join('api', 'assistente.js'), os.path.join('api', 'compra.js'),
-    os.path.join('api', 'acessos.js'), os.path.join('api', 'cupom.js'),
-    os.path.join('api', '_comum.js'),
-]
-faltam = [f for f in PECAS if not os.path.exists(os.path.join(RAIZ_WORKER, f))]
-if faltam:
-    raise SystemExit('faltam peças em worker/: ' + ', '.join(faltam))
+if not os.path.exists(os.path.join(RAIZ_WORKER, 'index.js')):
+    raise SystemExit('falta o worker/index.js')
+
+def importados(arquivo):
+    """Os caminhos que este arquivo do worker importa, relativos a worker/."""
+    texto = open(os.path.join(RAIZ_WORKER, arquivo), encoding='utf-8').read()
+    pasta = os.path.dirname(arquivo)
+    return [os.path.normpath(os.path.join(pasta, cam))
+            for cam in re.findall(r'from\s+"\.\/?([^"]+)"', texto)]
+
+
+PECAS = []
+fila = ['index.js']
+while fila:
+    peca = fila.pop()
+    if peca in PECAS:
+        continue
+    if not os.path.exists(os.path.join(RAIZ_WORKER, peca)):
+        raise SystemExit('o worker importa arquivo que não existe: ' + peca)
+    PECAS.append(peca)
+    fila.extend(importados(peca))
+
+# E a tabela de rotas precisa existir: sem ela o Worker sobe servindo só
+# arquivo, e as chamadas /api caem no site em silêncio.
+rotas = re.findall(r'"(/api/[a-z-]+)"\s*:',
+                   open(os.path.join(RAIZ_WORKER, 'index.js'), encoding='utf-8').read())
+if not rotas:
+    raise SystemExit('não achei nenhuma rota na tabela do worker/index.js')
 if not os.path.exists(os.path.join(RAIZ, 'wrangler.jsonc')):
     raise SystemExit('falta o wrangler.jsonc na raiz')
 
