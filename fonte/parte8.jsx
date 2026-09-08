@@ -494,6 +494,15 @@ export default function Cadencia() {
         ::-webkit-scrollbar-thumb{background:var(--card3);border-radius:9px}
         ::-webkit-scrollbar-thumb:hover{background:color-mix(in srgb,var(--neon) 40%,var(--card3))}
         input[type=checkbox]{accent-color:var(--neon);width:16px;height:16px}
+        /* ── alvos de toque ─────────────────────────────────────────────
+           Num aparelho de dedo, um botão de 20 ou 28 pixels é chute. Só no
+           toque, e só em quem pede, a área cresce para 40: no computador o
+           cursor acerta qualquer coisa, e engordar tudo lá só ocuparia
+           espaço à toa. */
+        @media (pointer: coarse){
+          .toque{min-width:40px;min-height:40px}
+          .toque-larg{min-height:38px}
+        }
         @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
         @keyframes breathe{0%,100%{opacity:1}50%{opacity:.4}}
         .breathe{animation:breathe 2.6s ease-in-out infinite}
@@ -729,7 +738,7 @@ export default function Cadencia() {
               {tab === "temas" && !pro && <Bloqueado recurso={RECURSOS_PRO.temas} onVerPlanos={() => setTab("planos")} />}
               {tab === "rotina" && !pro && <Bloqueado recurso={RECURSOS_PRO.rotina} onVerPlanos={() => setTab("planos")} />}
               {tab === "cartoes" && !pro && <Bloqueado recurso={RECURSOS_PRO.cartoes} onVerPlanos={() => setTab("planos")} />}
-              {tab === "cartoes" && pro && <Cartoes {...{ data, setData, subjects, today, notify }} />}
+              {tab === "cartoes" && pro && <Cartoes {...{ data, setData, subjects, today, notify, nuvem, souDono }} />}
               {tab === "revisoes" && !pro && <Bloqueado recurso={RECURSOS_PRO.revisoes} onVerPlanos={() => setTab("planos")} />}
               {tab === "metas" && !pro && <Bloqueado recurso={RECURSOS_PRO.metas} onVerPlanos={() => setTab("planos")} />}
               {tab === "planos" && <Precos usuario={nuvem.usuario} plano={assinatura.plano} />}

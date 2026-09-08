@@ -100,7 +100,7 @@ function Metas({ data, setData, today, qWeek, notify, ladder, gcal }) {
                   <BookMarked size={14} style={{ color: T.faint, flexShrink: 0 }} />
                   <span className="flex-1" style={{ fontSize: 14.5 }}>{x.text}</span>
                   <Mini>{brDate(x.date)}</Mini>
-                  <button type="button" aria-label="Excluir"
+                  <button type="button" aria-label="Excluir" className="toque"
                     onClick={() => setData((p) => ({ ...p, provas: p.provas.filter((y) => y.id !== x.id) }))}
                     style={{ background: "none", border: "none", color: T.ghost, cursor: "pointer" }}><Trash2 size={13} /></button>
                 </div>
@@ -130,7 +130,7 @@ function Metas({ data, setData, today, qWeek, notify, ladder, gcal }) {
               <div key={h.id} className="flex items-center gap-3 rounded-2xl px-4 py-3" style={{ background: T.card2 }}>
                 <Tick on={!!habitsOn[h.id]} size={20} color={T.ok} label={h.text} onClick={() => toggleHabit(h.id)} />
                 <span className="flex-1" style={{ fontSize: 14.5, color: habitsOn[h.id] ? T.dim : T.ink, textDecoration: habitsOn[h.id] ? "line-through" : "none" }}>{h.text}</span>
-                <button type="button" aria-label="Excluir"
+                <button type="button" aria-label="Excluir" className="toque"
                   onClick={() => setData((p) => ({ ...p, habits: p.habits.filter((y) => y.id !== h.id) }))}
                   style={{ background: "none", border: "none", color: T.ghost, cursor: "pointer" }}><Trash2 size={13} /></button>
               </div>
@@ -176,7 +176,7 @@ function Metas({ data, setData, today, qWeek, notify, ladder, gcal }) {
                   <Tick on={x.done} size={19} label="Concluir"
                     onClick={() => setData((p) => ({ ...p, rever: p.rever.map((y) => y.id === x.id ? { ...y, done: !y.done } : y) }))} />
                   <span className="flex-1" style={{ fontSize: 14.5, color: x.done ? T.ghost : T.ink, textDecoration: x.done ? "line-through" : "none" }}>{x.text}</span>
-                  <button type="button" aria-label="Excluir"
+                  <button type="button" aria-label="Excluir" className="toque"
                     onClick={() => setData((p) => ({ ...p, rever: p.rever.filter((y) => y.id !== x.id) }))}
                     style={{ background: "none", border: "none", color: T.ghost, cursor: "pointer" }}><Trash2 size={13} /></button>
                 </div>
@@ -503,7 +503,7 @@ function ContaNuvem({ nuvem, notify }) {
       </Texto>
       <div className="flex gap-2 mt-5 flex-wrap">
         {[["entrar", "Entrar"], ["criar", "Criar conta"], ["senha", "Esqueci a senha"]].map(([id, lb]) => (
-          <button key={id} type="button" onClick={() => { setModo(id); setMsg(""); }} className="rounded-full px-4 py-2"
+          <button key={id} type="button" onClick={() => { setModo(id); setMsg(""); }} className="toque-larg rounded-full px-4 py-2"
             style={{
               background: modo === id ? T.card3 : "transparent",
               border: `1px solid ${modo === id ? "transparent" : T.line}`,

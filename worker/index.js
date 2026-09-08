@@ -12,6 +12,7 @@ import { onRequest as cupom } from "./api/cupom.js";
 import { onRequest as acessos } from "./api/acessos.js";
 import { onRequest as compra } from "./api/compra.js";
 import { onRequest as salas } from "./api/salas.js";
+import { onRequest as baralhos } from "./api/baralhos.js";
 
 const ROTAS = {
   "/api/assistente": assistente,
@@ -19,6 +20,7 @@ const ROTAS = {
   "/api/acessos": acessos,
   "/api/compra": compra,
   "/api/salas": salas,
+  "/api/baralhos": baralhos,
 };
 
 /* ── quem pode chamar de outro endereço ────────────────────────────────

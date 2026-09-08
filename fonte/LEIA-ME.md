@@ -49,6 +49,7 @@ node testar.mjs index.html      # confere o arquivo de produção
 node testar-assistente.mjs      # confere a função da IA, sem gastar cota
 node testar-compra.mjs          # confere o aviso de compra: segredo, plano e estorno
 node testar-salas.mjs           # confere as salas de amigos, com banco de mentira
+node testar-baralhos.mjs        # confere os baralhos publicados: quem publica e quem baixa
 node testar-api.mjs             # confere como o app acha o servidor das rotas /api
 node testar-worker.mjs          # confere o roteamento e os cabeçalhos de CORS
 ```
@@ -91,6 +92,7 @@ some calada quando falta uma linha no `normalize()`.
 | `testar-cupom.mjs` | teste do resgate de cupom, com Firebase falso |
 | `testar-acessos.mjs` | teste do painel de acessos do dono |
 | `testar-salas.mjs` | teste das salas de amigos e dos recortes do ranking |
+| `testar-baralhos.mjs` | teste dos baralhos publicados: quem publica e quem baixa |
 | `testar-api.mjs` | teste de como o app acha o servidor das rotas `/api` |
 | `testar-worker.mjs` | teste do roteamento: o que é API e o que é arquivo |
 | `montar.sh` | roda tudo na ordem |
@@ -139,6 +141,7 @@ problema que existia quando as funções moravam dentro do que ia ao ar.
 | `worker/api/compra.js` | recebe o aviso de compra da Kiwify ou Hotmart |
 | `worker/api/acessos.js` | painel do dono, libera e revoga acessos |
 | `worker/api/salas.js` | salas de amigos: cria, entra, sai e monta o ranking |
+| `worker/api/baralhos.js` | baralhos que o dono publica, e a cópia para quem assina |
 | `worker/api/_comum.js` | JWT, Firestore e identidade |
 
 Acrescentar um endereço é escrever o arquivo em `worker/api/` e citá-lo na
@@ -290,6 +293,44 @@ Os códigos ficam no `worker/api/cupom.js`, no servidor, e nunca no navegador.
 Para trocá-los sem mexer no código, cadastre `CUPONS` no Cloudflare, no formato
 `codigo:plano,codigo:plano` (planos: mensal, anual, vitalicio). Enquanto essa
 variável não existir, valem os dois cupons escritos no arquivo.
+
+## Cartões
+
+O estudo abre em tela cheia, por cima de tudo. Não é capricho: desenhado
+dentro da página, o cartão dividia espaço com o cabeçalho, o menu e o rodapé,
+e no celular sobrava uma faixa. A altura usa `dvh`, e não `vh`, senão a barra
+do navegador do celular cobre os botões justamente na hora de responder.
+
+A resposta aparece **abaixo** da pergunta, não no lugar dela: some a pergunta
+e a pessoa responde sem lembrar o que foi perguntado.
+
+Cada baralho tem ajustes próprios em `data.baralhoCfg`, com a pasta na chave —
+dois baralhos de mesmo nome em pastas diferentes são baralhos diferentes.
+Renomear, mover ou apagar um baralho muda essa chave, então o ajuste vai junto
+(`moverCfg`). Sem isso o embaralhar e os limites voltariam ao padrão calados.
+
+O mínimo por dia adianta os cartões que vencem mais cedo; o máximo corta o
+excesso. Estudando vários baralhos de uma vez, cada um entra com os próprios
+ajustes, um depois do outro: misturar tudo num embaralhamento só desrespeitaria
+quem desligou o embaralhar no baralho dele.
+
+### Baralhos publicados
+
+O dono publica um baralho pela engrenagem da linha dele; quem assina copia
+para a própria conta. É **cópia**, não pasta compartilhada, e de propósito:
+duas pessoas estudando o mesmo cartão têm intervalos de revisão diferentes.
+
+As imagens não viajam — elas moram no IndexedDB de cada aparelho, então o que
+iria junto seria um nome de arquivo que não existe do outro lado. O
+agendamento de quem publicou também fica de fora: quem copia começa do zero.
+
+## Alvos de toque
+
+Botões abaixo de 32px são chute num aparelho de dedo. As classes `.toque` e
+`.toque-larg`, no `<style>` do `parte8.jsx`, crescem a área só sob
+`(pointer: coarse)` — no computador o cursor acerta qualquer coisa, e engordar
+tudo lá só ocuparia espaço à toa. Elas estão na lista `DO_APP` do
+`gerar_css.py`, porque não são utilitárias.
 
 ## Salas de amigos
 

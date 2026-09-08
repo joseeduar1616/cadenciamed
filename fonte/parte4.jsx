@@ -277,7 +277,7 @@ function Rotina({ data, setData, gcal, today }) {
       <div className="mt-4 flex gap-2 flex-wrap">
         {[[true, "Toda semana"], [false, `Só em ${fromISO(dias[Number(nb.day)]).getDate()}/${pad(fromISO(dias[Number(nb.day)]).getMonth() + 1)}`]].map(([v, lb]) => (
           <button key={String(v)} type="button" onClick={() => setNb((p) => ({ ...p, repete: v }))}
-            className="rounded-full px-4 py-2"
+            className="toque-larg rounded-full px-4 py-2"
             style={{
               background: nb.repete === v ? soft("var(--a-PE)", 18) : "transparent",
               border: `1px solid ${nb.repete === v ? "transparent" : T.line}`,
@@ -321,7 +321,7 @@ function Rotina({ data, setData, gcal, today }) {
             <div className="flex rounded-full" style={{ background: T.card2, padding: 3, border: `1px solid ${T.line}` }}>
               {[["dia", "Dia"], ["semana", "Semana"]].map(([id, lb]) => (
                 <button key={id} type="button" onClick={() => setVista(id)}
-                  className="rounded-full px-4 py-1.5"
+                  className="toque-larg rounded-full px-4 py-1.5"
                   style={{
                     background: vista === id ? soft("var(--a-PE)", 20) : "transparent",
                     border: "none", color: vista === id ? "var(--a-PE)" : T.dim,
@@ -681,7 +681,7 @@ function Temas({ subjects, setMark, minutos, sessoes, today }) {
       <div className="flex gap-2 flex-wrap items-center">
         <Label>Ordenar por</Label>
         {[["area", "Área"], ["atraso", "Menos estudadas"], ["tempo", "Mais tempo"]].map(([id, lb]) => (
-          <button key={id} type="button" onClick={() => setOrdem(id)} className="rounded-full px-4 py-2"
+          <button key={id} type="button" onClick={() => setOrdem(id)} className="toque-larg rounded-full px-4 py-2"
             style={{
               background: ordem === id ? T.card3 : T.card, border: `1px solid ${T.line}`,
               color: ordem === id ? T.ink : T.dim, fontSize: 14,

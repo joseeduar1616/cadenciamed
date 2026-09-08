@@ -113,6 +113,112 @@ function agruparEmPastas(cartoes, hoje, avulsas) {
     .sort((a, b) => (a.nome === PASTA_SOLTA ? 1 : b.nome === PASTA_SOLTA ? -1 : b.hoje - a.hoje || a.nome.localeCompare(b.nome)));
 }
 
+/* ── baralhos publicados ──────────────────────────────────────────────
+ *
+ * O dono publica um baralho dele; quem assina copia para a própria conta.
+ * É cópia, não pasta compartilhada, e de propósito: duas pessoas estudando
+ * o mesmo cartão têm intervalos de revisão diferentes.
+ *
+ * A senha do assunto é o servidor: publicar é só do dono, baixar é só de
+ * quem tem plano em dia, e a rota confere as duas coisas. Aqui é só a tela.
+ */
+const ROTA_BARALHOS = "/api/baralhos";
+
+async function falarComBaralhos(nuvem, corpo) {
+  let token = "";
+  try {
+    if (nuvem && nuvem.sdk && nuvem.sdk.auth && nuvem.sdk.auth.currentUser) {
+      token = await nuvem.sdk.auth.currentUser.getIdToken();
+    }
+  } catch (e) { /* segue sem token, o servidor recusa */ }
+  if (!token) return { erro: "Entre na sua conta para ver os baralhos publicados." };
+  const { dados, erro } = await chamarApi(ROTA_BARALHOS, { ...corpo, token }, "Os baralhos publicados");
+  return erro ? { erro } : dados;
+}
+
+function Publicados({ nuvem, souDono, setData, notify, publicados, recarregar }) {
+  const [ocupado, setOcupado] = useState("");
+  const [erro, setErro] = useState("");
+
+  const baixar = async (b) => {
+    setOcupado(b.slug); setErro("");
+    const j = await falarComBaralhos(nuvem, { acao: "baixar", slug: b.slug });
+    setOcupado("");
+    if (j.erro) { setErro(j.erro); return; }
+
+    const pasta = (j.pasta || PASTA_SOLTA).slice(0, 40);
+    const nome = (j.nome || BARALHO_PADRAO).slice(0, 40);
+    const novos = (j.cartoes || []).map((c) => novoCartao(c.frente, c.verso, c.subjectId, nome, pasta));
+    if (!novos.length) { setErro("Esse baralho veio vazio."); return; }
+
+    setData((p) => ({
+      ...p,
+      flash: [...novos, ...(p.flash || [])],
+      pastas: registrarPasta(p.pastas, pasta),
+    }));
+    notify(`${novos.length} cartõe${novos.length === 1 ? "" : "s"} copiado${novos.length === 1 ? "" : "s"} para "${nome}".`);
+  };
+
+  const despublicar = async (b) => {
+    setOcupado(b.slug); setErro("");
+    const j = await falarComBaralhos(nuvem, { acao: "despublicar", slug: b.slug });
+    setOcupado("");
+    if (j.erro) { setErro(j.erro); return; }
+    notify(j.mensagem || "Baralho tirado do ar.");
+    recarregar();
+  };
+
+  if (!publicados) return null;
+  if (publicados.precisaPlano) {
+    return (
+      <Card className="px-6 py-5" flat>
+        <Mini style={{ lineHeight: 1.7 }}>
+          Baralhos prontos, montados por quem cuida do site, fazem parte do
+          plano completo.
+        </Mini>
+      </Card>
+    );
+  }
+  if (!publicados.lista.length) return null;
+
+  return (
+    <Card className="px-6 py-6" brilho="var(--ok)">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <H size={18} color="var(--ok)" icon={<Download size={16} />}>Baralhos prontos</H>
+        <Btn size="sm" tone="outline" onClick={recarregar}><RefreshCw size={13} /> atualizar</Btn>
+      </div>
+      <Texto style={{ marginTop: 10 }}>
+        Copie para a sua conta e eles viram seus: o agendamento das revisões
+        passa a ser o seu, e mexer neles não muda nada para mais ninguém.
+      </Texto>
+
+      <div className="mt-5 flex flex-col gap-2">
+        {publicados.lista.map((b) => (
+          <div key={b.slug} className="flex items-center gap-3 rounded-2xl px-4 py-3 flex-wrap"
+            style={{ background: T.card2 }}>
+            <div className="flex-1 min-w-0">
+              <div style={{ fontSize: 14.5, fontWeight: 600, color: T.ink }}>{b.nome}</div>
+              <Mini style={{ marginTop: 2 }}>
+                {b.pasta && b.pasta !== PASTA_SOLTA ? `${b.pasta} · ` : ""}
+                {b.total} cartõe{b.total === 1 ? "" : "s"}
+              </Mini>
+            </div>
+            <Btn size="sm" tone="primary" disabled={!!ocupado} onClick={() => baixar(b)}>
+              {ocupado === b.slug ? "…" : "copiar"}
+            </Btn>
+            {souDono ? (
+              <Btn size="sm" tone="danger" disabled={!!ocupado} onClick={() => despublicar(b)}>
+                tirar do ar
+              </Btn>
+            ) : null}
+          </div>
+        ))}
+      </div>
+      {erro ? <Label style={{ marginTop: 12, color: T.bad, textTransform: "none", letterSpacing: 0, fontSize: 14 }}>{erro}</Label> : null}
+    </Card>
+  );
+}
+
 /* Enquanto o estudo está aberto, as teclas de 1 a 4 respondem o cartão.
    Sem esta trava elas também trocariam de aba, porque o app usa números
    como atalho de navegação. */
@@ -226,7 +332,7 @@ function registrarPasta(lista, nome) {
   return [...new Set([...(lista || []), nome])].slice(0, 60);
 }
 
-function Cartoes({ data, setData, subjects, today, notify }) {
+function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
   const [modo, setModo] = useState("painel");   // painel | estudo | criar
   const [fila, setFila] = useState([]);
   const [virado, setVirado] = useState(false);
@@ -249,6 +355,31 @@ function Cartoes({ data, setData, subjects, today, notify }) {
   const [lendo, setLendo] = useState("");
 
   const cartoes = data.flash || [];
+
+  /* O que está publicado. null = ainda não perguntou; a lista é carregada
+     uma vez ao abrir a aba, e não a cada digitação na busca. */
+  const [publicados, setPublicados] = useState(null);
+  const [publicando, setPublicando] = useState("");
+
+  const carregarPublicados = useCallback(async () => {
+    if (!nuvem || !nuvem.usuario) { setPublicados(null); return; }
+    const j = await falarComBaralhos(nuvem, { acao: "listar" });
+    if (j.erro) { setPublicados(null); return; }
+    setPublicados({ lista: j.baralhos || [], precisaPlano: !!j.precisaPlano });
+  }, [nuvem]);
+
+  useEffect(() => { carregarPublicados(); }, [carregarPublicados]);
+
+  const publicar = useCallback(async (pasta, baralho) => {
+    setPublicando(chaveBaralho(pasta, baralho));
+    const doDeck = (data.flash || []).filter((c) => (
+      (c.pasta || PASTA_SOLTA) === pasta && (c.baralho || BARALHO_PADRAO) === baralho));
+    const j = await falarComBaralhos(nuvem, { acao: "publicar", pasta, baralho, cartoes: doDeck });
+    setPublicando("");
+    if (j.erro) { notify(j.erro); return; }
+    notify(j.mensagem || "Baralho publicado.");
+    carregarPublicados();
+  }, [data.flash, nuvem, notify, carregarPublicados]);
 
   const baralhos = useMemo(() => {
     const m = new Map();
@@ -522,7 +653,7 @@ function Cartoes({ data, setData, subjects, today, notify }) {
           <Label style={{ marginTop: 10 }}>{feitos} resposta{feitos === 1 ? "" : "s"} nesta rodada</Label>
           <div className="mt-7 flex justify-center gap-2 flex-wrap">
             <Btn tone="primary" onClick={() => setModo("painel")}>Voltar ao painel</Btn>
-            {vencidos.length ? <Btn onClick={comecar}>Estudar de novo</Btn> : null}
+            {vencidos.length ? <Btn onClick={() => comecar()}>Estudar de novo</Btn> : null}
           </div>
         </Card>
       );
@@ -683,7 +814,7 @@ function Cartoes({ data, setData, subjects, today, notify }) {
         </div>
 
         <div className="mt-6 flex gap-2 flex-wrap">
-          <Btn tone="primary" onClick={comecar} disabled={vencidos.length === 0}>
+          <Btn tone="primary" onClick={() => comecar()} disabled={vencidos.length === 0}>
             <Play size={15} /> Estudar {vencidos.length ? `(${vencidos.length})` : ""}
           </Btn>
           <Btn onClick={() => setModo(modo === "criar" ? "painel" : "criar")}>
@@ -881,9 +1012,16 @@ function Cartoes({ data, setData, subjects, today, notify }) {
                                           {nomesDePasta.map((n) => <option key={n} value={n}>{n}</option>)}
                                         </select>
                                       </label>
+                                      {souDono ? (
+                                        <Btn size="sm" tone="outline"
+                                          disabled={publicando === chaveBaralho(p.nome, b.nome)}
+                                          onClick={() => publicar(p.nome, b.nome)}>
+                                          {publicando === chaveBaralho(p.nome, b.nome) ? "publicando…" : "publicar"}
+                                        </Btn>
+                                      ) : null}
                                       <button type="button" aria-label={`Apagar o baralho ${b.nome}`}
                                         onClick={() => setConfirmando(confirmaB ? null : { tipo: "baralho", nome: b.nome, pasta: p.nome })}
-                                        className="rounded-full px-4 py-2"
+                                        className="toque-larg rounded-full px-4 py-2"
                                         style={{
                                           background: soft("var(--bad)", 12), border: `1px solid ${soft("var(--bad)", 34)}`,
                                           color: T.bad, fontSize: 13.5, fontWeight: 600, cursor: "pointer",
@@ -948,6 +1086,9 @@ function Cartoes({ data, setData, subjects, today, notify }) {
           </div>
         ) : null}
       </Card>
+
+      <Publicados nuvem={nuvem} souDono={souDono} setData={setData}
+        notify={notify} publicados={publicados} recarregar={carregarPublicados} />
 
       {modo === "importar" ? (
         <Card className="px-6 py-6" brilho="var(--neon)">

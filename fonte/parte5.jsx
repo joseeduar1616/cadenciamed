@@ -134,7 +134,7 @@ function Foco({ data, setData, today, P, subjectId, setSubjectId }) {
           <div className="flex-1 w-full">
             <div className="flex gap-1.5 mb-5 rounded-full p-1" style={{ background: T.card2, border: `1px solid ${T.line}`, width: "fit-content" }}>
               {[["pomodoro", "Pomodoro"], ["corrido", "Tempo corrido"]].map(([id, lb]) => (
-                <button key={id} type="button" onClick={() => set("modo", id)} className="rounded-full px-4 py-2"
+                <button key={id} type="button" onClick={() => set("modo", id)} className="toque-larg rounded-full px-4 py-2"
                   style={{
                     background: P.modo === id ? T.card3 : "transparent", border: "none",
                     color: P.modo === id ? T.ink : T.dim, fontSize: 14,
@@ -165,7 +165,7 @@ function Foco({ data, setData, today, P, subjectId, setSubjectId }) {
             {!corrido ? (
               <div className="flex gap-1.5 mt-4 flex-wrap">
                 {[["foco", "Foco", data.pomo.corFoco], ["curta", "Pausa curta", data.pomo.corPausa], ["longa", "Pausa longa", data.pomo.corPausa]].map(([id, lb, c]) => (
-                  <button key={id} type="button" onClick={() => P.jumpTo(id)} className="rounded-full px-4 py-2"
+                  <button key={id} type="button" onClick={() => P.jumpTo(id)} className="toque-larg rounded-full px-4 py-2"
                     style={{
                       background: P.phase === id ? soft(c, 18) : "transparent",
                       border: `1px solid ${P.phase === id ? "transparent" : T.line}`,
@@ -473,7 +473,7 @@ function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, do
                   <Tick on={t.done} size={19} label={t.done ? "Reabrir" : "Concluir"}
                     onClick={() => setData((p) => ({ ...p, tasks: p.tasks.map((x) => x.id === t.id ? { ...x, done: !x.done } : x) }))} />
                   <span className="flex-1" style={{ fontSize: 14.5, color: t.done ? T.ghost : T.ink, textDecoration: t.done ? "line-through" : "none" }}>{t.text}</span>
-                  <button type="button" aria-label="Excluir"
+                  <button type="button" aria-label="Excluir" className="toque"
                     onClick={() => setData((p) => ({ ...p, tasks: p.tasks.filter((x) => x.id !== t.id) }))}
                     style={{ background: "none", border: "none", color: T.ghost, cursor: "pointer" }}><Trash2 size={13} /></button>
                 </div>

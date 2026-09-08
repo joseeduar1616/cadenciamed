@@ -42,5 +42,13 @@ service cloud.firestore {
     match /salas/{sala} {
       allow read, write: if false;
     }
+
+    // Baralhos que o dono publica. Também fechados para o navegador: quem
+    // publica é só o dono e quem baixa é só quem tem plano em dia, e as
+    // duas coisas são conferidas na rota /api/baralhos. Liberar a leitura
+    // aqui entregaria o conteúdo pago a qualquer pessoa logada.
+    match /publicos/{baralho} {
+      allow read, write: if false;
+    }
   }
 }

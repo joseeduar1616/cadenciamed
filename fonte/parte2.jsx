@@ -496,16 +496,25 @@ function Track({ pct, color = T.ink, height = 6 }) {
   );
 }
 
+/* A marca de "feito".
+ *
+ * Num aparelho de dedo o quadradinho de 20px é quase impossível de acertar,
+ * então no toque o botão cresce em volta dele: o desenho continua do mesmo
+ * tamanho, e o que aumenta é a área que responde. A classe .toque faz isso,
+ * e está no <style> do app. */
 function Tick({ on, onClick, color, size = 20, label }) {
   return (
     <button type="button" aria-label={label} onClick={onClick}
-      className="flex items-center justify-center rounded-full"
-      style={{
-        width: size, height: size, flexShrink: 0, cursor: "pointer",
-        border: `1.5px solid ${on ? (color || T.ink) : T.line2}`,
-        background: on ? (color || T.ink) : "transparent", transition: "background .15s",
-      }}>
-      {on ? <Check size={size * 0.6} color="var(--bg2)" strokeWidth={3} /> : null}
+      className="toque flex items-center justify-center"
+      style={{ padding: 0, background: "none", border: "none", flexShrink: 0, cursor: "pointer" }}>
+      <span className="flex items-center justify-center rounded-full"
+        style={{
+          width: size, height: size,
+          border: `1.5px solid ${on ? (color || T.ink) : T.line2}`,
+          background: on ? (color || T.ink) : "transparent", transition: "background .15s",
+        }}>
+        {on ? <Check size={size * 0.6} color="var(--bg2)" strokeWidth={3} /> : null}
+      </span>
     </button>
   );
 }

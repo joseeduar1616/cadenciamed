@@ -171,13 +171,13 @@ function Materias({ subjects, setMark, toggleBonus, minutes, done, bonusDone }) 
       </div>
 
       <div className="flex flex-wrap gap-2 items-center">
-        <button type="button" onClick={() => setArea("todas")} className="rounded-full px-4 py-1.5"
+        <button type="button" onClick={() => setArea("todas")} className="toque-larg rounded-full px-4 py-1.5"
           style={{
             background: area === "todas" ? T.card3 : "transparent", border: `1px solid ${area === "todas" ? "transparent" : T.line}`,
             color: area === "todas" ? T.ink : T.dim, fontSize: 14, cursor: "pointer",
           }}>Todas as áreas</button>
         {AREA_IDS.map((a) => (
-          <button key={a} type="button" onClick={() => setArea(a)} className="rounded-full px-4 py-1.5"
+          <button key={a} type="button" onClick={() => setArea(a)} className="toque-larg rounded-full px-4 py-1.5"
             style={{
               background: area === a ? soft(aColor(a), 18) : "transparent",
               border: `1px solid ${area === a ? "transparent" : T.line}`,

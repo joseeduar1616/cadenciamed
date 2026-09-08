@@ -322,7 +322,7 @@ function Amigos({ nuvem, notify }) {
             <div className="flex rounded-full" style={{ background: T.card2, padding: 3, border: `1px solid ${T.line}` }}>
               {PERIODOS.map(([id, lb]) => (
                 <button key={id} type="button" onClick={() => setPeriodo(id)}
-                  className="rounded-full px-4 py-1.5"
+                  className="toque-larg rounded-full px-4 py-1.5"
                   style={{
                     background: periodo === id ? soft("var(--warn)", 20) : "transparent",
                     border: "none", color: periodo === id ? "var(--warn)" : T.dim,

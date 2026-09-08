@@ -22,6 +22,7 @@ for trecho in re.findall(r'className=(?:"([^"]*)"|\{`([^`]*)`\})', fonte):
 DO_APP = {
     'aba', 'aura', 'aura-a', 'aura-b', 'aura-c', 'aura-d', 'brilhar',
     'breathe', 'marca', 'nota', 'pulso', 'rise', 'vidro',
+    'toque', 'toque-larg',
 }
 
 classes = sorted(achadas - DO_APP)
