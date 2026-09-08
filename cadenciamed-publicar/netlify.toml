@@ -1,0 +1,48 @@
+# Cadência Med · configuração do Netlify
+
+[build]
+  publish = "."
+
+# Onde fica a função que conversa com o Claude.
+[functions]
+  directory = "netlify/functions"
+
+# A pasta das funções fica dentro do que é publicado, então o Netlify serve
+# os .mjs como arquivo de texto além de registrá-los como função. O código
+# não guarda segredo nenhum (as chaves ficam em variável de ambiente), mas
+# não há motivo para deixar à mostra. As chamadas de verdade passam por
+# /.netlify/functions/, com ponto, e não são afetadas por esta regra.
+[[redirects]]
+  from = "/netlify/*"
+  to = "/index.html"
+  status = 404
+  force = true
+
+# O HTML nunca fica em cache, então publicar já aparece na hora.
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+[[headers]]
+  for = "/"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Content-Type = "application/manifest+json"
+    Cache-Control = "public, max-age=3600"
+
+# Ícones mudam pouco, podem ficar guardados por uma semana.
+[[headers]]
+  for = "/*.png"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"
+
+# O leitor de banco do Anki quase não muda.
+[[headers]]
+  for = "/sql-asm.js"
+  [headers.values]
+    Cache-Control = "public, max-age=2592000"
