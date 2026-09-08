@@ -1,7 +1,7 @@
 # Cadência Med · código-fonte
 
 Site estático em React, compilado para um único `index.html`, publicado no
-Netlify em `cadenciamed.com.br`.
+Cloudflare Pages em `cadenciamed.com.br`.
 
 ## Montar
 
@@ -76,10 +76,11 @@ troca de esquema de revisão e de aparência não pegar.
 | `gerar_icones.py` | ícones, favicon e marca, a partir de `logo-original.png` |
 | `montar.py` | junta CSS e JS num `index.html` autônomo |
 | `montar_teste.py` | mesma coisa, com o plano liberado, para o teste |
-| `publicar.py` | monta a pasta `publicar/`, que é o que se arrasta no Netlify |
+| `publicar.py` | monta a pasta `publicar/`, que é o que o Cloudflare publica |
 | `testar.mjs` | teste de fumaça no Chromium |
 | `testar-assistente.mjs` | teste da função da IA, com servidor falso no lugar da API |
 | `testar-cupom.mjs` | teste do resgate de cupom, com Firebase falso |
+| `testar-acessos.mjs` | teste do painel de acessos e do aviso de compra |
 | `montar.sh` | roda tudo na ordem |
 
 ## Trocar a logo
@@ -114,15 +115,43 @@ tela larga.
 
 ## Funções no servidor
 
-Em `netlify/functions/`:
+Ficam em **`functions/api/`, na raiz do repositório** — fora da pasta
+publicada, que é como o Cloudflare Pages espera. O endereço de cada uma é o
+nome do arquivo: `functions/api/cupom.js` atende em `/api/cupom`.
 
-- `assistente.mjs` — conversa com a IA; só o administrador pode usar
-- `cupom.mjs` — confere o cupom e libera o plano
-- `compra.mjs` — recebe o aviso de compra da Kiwify ou Hotmart
-- `acessos.mjs` — painel do dono, libera e revoga acessos
+- `assistente.js` — conversa com a IA; só o administrador pode usar
+- `cupom.js` — confere o cupom e libera o plano
+- `compra.js` — recebe o aviso de compra da Kiwify ou Hotmart
+- `acessos.js` — painel do dono, libera e revoga acessos
+- `_comum.js` — JWT, Firestore e identidade; o `_` impede que vire endereço
 
 Variáveis de ambiente: `FIREBASE_API_KEY`, `FIREBASE_SERVICE_ACCOUNT`,
-`WEBHOOK_SEGREDO`, e a chave da IA.
+`WEBHOOK_SEGREDO`, `CUPONS` e a chave da IA.
+
+**A assinatura do JWT usa WebCrypto, não `node:crypto`.** O Cloudflare roda
+as funções no runtime de Workers, que não tem `createSign` nem `Buffer`. O
+WebCrypto existe nos dois lugares, então o mesmo código serve para Cloudflare
+e para Node — e a assinatura sai byte a byte igual à do `node:crypto`.
+
+A pasta `fonte/netlify/` é a versão antiga, do Netlify, guardada só como
+reserva. O `netlify.toml` reescreve `/api/*` para `/.netlify/functions/*`,
+então o mesmo HTML roda nos dois lugares. Quando o Cloudflare estiver firme,
+dá para apagar essa pasta.
+
+## Publicar no Cloudflare Pages
+
+Uma vez só, na criação do projeto:
+
+1. dash.cloudflare.com → **Workers & Pages** → **Create** → **Pages** →
+   **Connect to Git** → escolher este repositório
+2. **Build command**: deixar vazio (o repositório já tem tudo compilado)
+3. **Build output directory**: `publicar`
+4. **Environment variables**: cadastrar `FIREBASE_API_KEY`,
+   `FIREBASE_SERVICE_ACCOUNT`, `GEMINI_API_KEY` e, quando houver checkout,
+   `WEBHOOK_SEGREDO`
+
+Depois disso, cada `git push` publica sozinho. Conferir com
+`/api/assistente` no navegador: responde qual IA está ligada.
 
 ### Qual IA o assistente usa
 

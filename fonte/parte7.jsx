@@ -337,7 +337,7 @@ function Heatmap({ byDay, today, weeks = 22 }) {
    descobrir todos. Daqui só sai o que a pessoa digitou.
    ═══════════════════════════════════════════════════════════════════ */
 
-const ROTA_CUPOM = "/.netlify/functions/cupom";
+const ROTA_CUPOM = "/api/cupom";
 
 async function resgatarCupom(nuvem, codigo) {
   let token = "";

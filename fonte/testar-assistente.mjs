@@ -1,7 +1,9 @@
 /* Testa a função do assistente sem gastar cota de verdade.
  *
- * Sobe um servidor falso no lugar da API do Google e da Anthropic, e confere
- * o formato do pedido que sai daqui e o que a função devolve em cada erro.
+ * Roda contra o arquivo do Cloudflare Pages (functions/api/assistente.js),
+ * que é o que vai para o ar. Sobe um servidor falso no lugar da API do
+ * Google e da Anthropic, e confere o formato do pedido que sai daqui e o
+ * que a função devolve em cada erro.
  *
  *   node testar-assistente.mjs
  */
@@ -51,12 +53,12 @@ globalThis.fetch = (url, opcoes) => {
 };
 
 const pedir = async (fn, corpo) => {
-  const req = new Request('http://local/.netlify/functions/assistente', {
+  const req = new Request('http://local/api/assistente', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(corpo),
   });
-  const res = await fn(req);
+  const res = await fn({ request: req, env });
   return { status: res.status, corpo: await res.json() };
 };
 
@@ -71,19 +73,22 @@ const CONVERSA = {
   ],
 };
 
-const carregar = async () => (await import('./netlify/functions/assistente.mjs?v=' + Math.random())).default;
+/* As variáveis de ambiente do Cloudflare chegam num objeto, não em
+   process.env, então o teste monta esse objeto na mão. */
+const env = {};
+const carregar = async () => (await import('../functions/api/assistente.js?v=' + Math.random())).onRequest;
 
 /* ── 1. sem chave nenhuma ────────────────────────────────────────────── */
-delete process.env.GEMINI_API_KEY;
-delete process.env.ANTHROPIC_API_KEY;
-delete process.env.IA_PROVEDOR;
-process.env.FIREBASE_API_KEY = 'chave-firebase';
+delete env.GEMINI_API_KEY;
+delete env.ANTHROPIC_API_KEY;
+delete env.IA_PROVEDOR;
+env.FIREBASE_API_KEY = 'chave-firebase';
 let r = await pedir(await carregar(), CONVERSA);
 if (r.status === 500 && /GEMINI_API_KEY/.test(r.corpo.erro)) ok('sem chave: explica o que cadastrar');
 else falha('sem chave: ' + JSON.stringify(r));
 
 /* ── 2. Gemini responde certo ────────────────────────────────────────── */
-process.env.GEMINI_API_KEY = 'chave-de-teste';
+env.GEMINI_API_KEY = 'chave-de-teste';
 responder = () => ({
   status: 200,
   corpo: { candidates: [{ content: { parts: [{ text: 'Comece por Glomerulopatias.' }] }, finishReason: 'STOP' }] },
@@ -133,8 +138,8 @@ if (/longa demais/.test(r.corpo.erro)) ok('Gemini: resposta cortada é explicada
 else falha('Gemini MAX_TOKENS: ' + JSON.stringify(r));
 
 /* ── 4. Anthropic continua funcionando ───────────────────────────────── */
-delete process.env.GEMINI_API_KEY;
-process.env.ANTHROPIC_API_KEY = 'sk-ant-teste';
+delete env.GEMINI_API_KEY;
+env.ANTHROPIC_API_KEY = 'sk-ant-teste';
 responder = () => ({ status: 200, corpo: { content: [{ type: 'text', text: 'Resposta do Claude.' }] } });
 r = await pedir(await carregar(), CONVERSA);
 if (r.status === 200 && r.corpo.texto === 'Resposta do Claude.') ok('Anthropic: continua funcionando igual');
@@ -143,7 +148,7 @@ if (ultimoPedido.headers['x-api-key'] === 'sk-ant-teste') ok('Anthropic: chave v
 else falha('Anthropic cabeçalho errado');
 
 /* ── 5. as duas chaves: o Gemini ganha, e IA_PROVEDOR manda ──────────── */
-process.env.GEMINI_API_KEY = 'chave-de-teste';
+env.GEMINI_API_KEY = 'chave-de-teste';
 responder = (req) => (req.url.includes('generativelanguage') || req.url.includes('models')
   ? { status: 200, corpo: { candidates: [{ content: { parts: [{ text: 'do gemini' }] } }] } }
   : { status: 200, corpo: { content: [{ type: 'text', text: 'do claude' }] } });
@@ -151,11 +156,11 @@ r = await pedir(await carregar(), CONVERSA);
 if (r.corpo.texto === 'do gemini') ok('com as duas chaves, o Gemini é o escolhido');
 else falha('escolha padrão: ' + JSON.stringify(r));
 
-process.env.IA_PROVEDOR = 'anthropic';
+env.IA_PROVEDOR = 'anthropic';
 r = await pedir(await carregar(), CONVERSA);
 if (r.corpo.texto === 'do claude') ok('IA_PROVEDOR=anthropic força o Claude');
 else falha('IA_PROVEDOR: ' + JSON.stringify(r));
-delete process.env.IA_PROVEDOR;
+delete env.IA_PROVEDOR;
 
 /* ── 6. histórico que começa pela IA é corrigido ─────────────────────── */
 responder = () => ({ status: 200, corpo: { candidates: [{ content: { parts: [{ text: 'ok' }] } }] } });
@@ -168,11 +173,11 @@ else falha('histórico não corrigido: ' + JSON.stringify(ultimoPedido.corpo.con
 
 /* ── 7. a conferência pelo navegador (GET) ───────────────────────────── */
 const olhar = async (fn) => {
-  const res = await fn(new Request('http://local/.netlify/functions/assistente'));
+  const res = await fn({ request: new Request('http://local/api/assistente'), env });
   return { status: res.status, corpo: await res.json() };
 };
-process.env.GEMINI_API_KEY = 'chave-de-teste';
-process.env.ANTHROPIC_API_KEY = 'sk-ant-teste';
+env.GEMINI_API_KEY = 'chave-de-teste';
+env.ANTHROPIC_API_KEY = 'sk-ant-teste';
 r = await olhar(await carregar());
 if (r.corpo.provedor === 'gemini' && r.corpo.modelo === 'gemini-2.5-flash') ok('GET mostra qual IA está ligada');
 else falha('GET provedor: ' + JSON.stringify(r.corpo));
@@ -181,12 +186,12 @@ else falha('GET chaves: ' + JSON.stringify(r.corpo.chaves));
 if (!JSON.stringify(r.corpo).includes('chave-de-teste') && !JSON.stringify(r.corpo).includes('sk-ant-teste')) ok('GET não vaza o valor de nenhuma chave');
 else falha('GET VAZOU CHAVE: ' + JSON.stringify(r.corpo));
 
-delete process.env.GEMINI_API_KEY;
-delete process.env.ANTHROPIC_API_KEY;
+delete env.GEMINI_API_KEY;
+delete env.ANTHROPIC_API_KEY;
 r = await olhar(await carregar());
 if (r.corpo.provedor === 'nenhum') ok('GET avisa quando nenhuma chave chegou');
 else falha('GET sem chave: ' + JSON.stringify(r.corpo));
-process.env.GEMINI_API_KEY = 'chave-de-teste';
+env.GEMINI_API_KEY = 'chave-de-teste';
 
 /* ── 8. o assistente é só do administrador ───────────────────────────── */
 responder = () => ({ status: 200, corpo: { candidates: [{ content: { parts: [{ text: 'ok' }] } }] } });
@@ -212,11 +217,11 @@ else falha('dono: ' + JSON.stringify(r));
 
 /* sem a chave do Firebase não dá para saber quem pede: tem de recusar, e
    não liberar geral como acontecia antes */
-delete process.env.FIREBASE_API_KEY;
+delete env.FIREBASE_API_KEY;
 r = await pedir(await carregar(), CONVERSA);
 if (r.status === 500 && /FIREBASE_API_KEY/.test(r.corpo.erro)) ok('sem FIREBASE_API_KEY o assistente fecha, não abre');
 else falha('sem FIREBASE_API_KEY: ' + JSON.stringify(r));
-process.env.FIREBASE_API_KEY = 'chave-firebase';
+env.FIREBASE_API_KEY = 'chave-firebase';
 
 servidor.close();
 console.log(passos.join('\n'));

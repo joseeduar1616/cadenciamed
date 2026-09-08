@@ -39,6 +39,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   echo "── funções do servidor ─────────────────────────────"
   node testar-assistente.mjs
   node testar-cupom.mjs
+  node testar-acessos.mjs
 fi
 
 echo "── pasta para publicar ─────────────────────────────"

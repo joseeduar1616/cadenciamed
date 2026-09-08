@@ -1,0 +1,193 @@
+/* Assistente do painel · Cloudflare Pages Functions
+ *
+ * A chave da IA NUNCA vai para o navegador: fica em variável de ambiente do
+ * Cloudflare, e só este código, que roda no servidor, a enxerga.
+ *
+ * Funciona com dois provedores; quem manda é a variável que existir:
+ *   GEMINI_API_KEY     → Gemini, do Google (tem camada gratuita)
+ *   ANTHROPIC_API_KEY  → Claude, da Anthropic (pré-pago)
+ * Com as duas, o Gemini ganha. IA_PROVEDOR força um dos dois.
+ * GEMINI_MODELO e ANTHROPIC_MODELO trocam o modelo sem mexer no código.
+ */
+import { json, quemPede, ehDono, corpoJson } from "./_comum.js";
+
+const LIMITE_ENTRADA = 24000;   // caracteres, para conter o custo por chamada
+const MAX_SAIDA = 1400;
+
+/* Traduz o erro do provedor para uma frase que o estudante entenda, sem
+   esconder o motivo real, que é o que costuma resolver mais rápido. */
+function recado(status, real, provedor) {
+  const ondePagar = provedor === "gemini"
+    ? "Confira a cota da chave em aistudio.google.com."
+    : "Confira o saldo em console.anthropic.com, em Plans & Billing.";
+  if (status === 401 || status === 403) {
+    return provedor === "gemini"
+      ? "A chave do Gemini foi recusada. Confira GEMINI_API_KEY nas variáveis do site."
+      : "A chave da API foi recusada. Confira ANTHROPIC_API_KEY nas variáveis do site.";
+  }
+  if (status === 429) return `Cota esgotada ou pedidos demais seguidos. Espere um pouco. ${ondePagar}`;
+  if (status === 503 || status === 529) return "O serviço está sobrecarregado. Tente de novo em instantes.";
+  if (real) return `A IA recusou o pedido: ${real}`;
+  return `O serviço respondeu com erro ${status}.`;
+}
+
+/* ── Gemini ────────────────────────────────────────────────────────────
+   O Gemini chama de "model" o que a Anthropic chama de "assistant", e as
+   instruções do sistema vão num campo separado, fora da conversa. */
+async function chamarGemini(chave, modelo, { sistema, mensagens }) {
+  const r = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": chave },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: sistema }] },
+        contents: mensagens.map((m) => ({
+          role: m.role === "assistant" ? "model" : "user",
+          parts: [{ text: m.content }],
+        })),
+        generationConfig: { maxOutputTokens: MAX_SAIDA },
+      }),
+    });
+
+  if (!r.ok) {
+    const detalhe = await r.text().catch(() => "");
+    let real = "";
+    try { real = (JSON.parse(detalhe).error || {}).message || ""; } catch (e) { /* texto puro */ }
+    console.error("gemini", r.status, detalhe.slice(0, 500));
+    return { erro: recado(r.status, real, "gemini") };
+  }
+
+  const j = await r.json();
+  const c = (j.candidates || [])[0];
+
+  /* O Gemini responde 200 mesmo quando corta por filtro de conteúdo ou por
+     falta de espaço, e aí não vem texto nenhum. Sem tratar isso, o estudante
+     veria só "resposta vazia" e não saberia o que fazer. */
+  if (!c) {
+    const bloqueio = ((j.promptFeedback || {}).blockReason) || "";
+    return { erro: bloqueio ? `O Gemini bloqueou o pedido (${bloqueio}).` : "A IA não respondeu nada." };
+  }
+  const texto = ((c.content || {}).parts || []).map((p) => p.text || "").join("").trim();
+  if (!texto) {
+    if (c.finishReason === "MAX_TOKENS") return { erro: "A resposta ficou longa demais e foi cortada. Pergunte de novo, mais específico." };
+    if (c.finishReason === "SAFETY") return { erro: "O Gemini bloqueou a resposta por política de conteúdo." };
+    return { erro: "A IA devolveu uma resposta vazia." };
+  }
+  return { texto };
+}
+
+/* ── Anthropic ─────────────────────────────────────────────────────── */
+async function chamarAnthropic(chave, modelo, { sistema, mensagens }) {
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": chave,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({ model: modelo, max_tokens: MAX_SAIDA, system: sistema, messages: mensagens }),
+  });
+
+  if (!r.ok) {
+    const detalhe = await r.text().catch(() => "");
+    let real = "";
+    try { real = (JSON.parse(detalhe).error || {}).message || ""; } catch (e) { /* texto puro */ }
+    console.error("anthropic", r.status, detalhe.slice(0, 500));
+    return { erro: recado(r.status, real, "anthropic") };
+  }
+
+  const j = await r.json();
+  const texto = (j.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
+  if (!texto) return { erro: "A IA devolveu uma resposta vazia." };
+  return { texto };
+}
+
+function escolherProvedor(env) {
+  const pedido = String(env.IA_PROVEDOR || "").toLowerCase();
+  const gem = env.GEMINI_API_KEY, ant = env.ANTHROPIC_API_KEY;
+  if (pedido === "gemini") return gem ? { nome: "gemini", chave: gem } : null;
+  if (pedido === "anthropic") return ant ? { nome: "anthropic", chave: ant } : null;
+  /* sem preferência: o Gemini vem primeiro por ter camada gratuita */
+  if (gem) return { nome: "gemini", chave: gem };
+  if (ant) return { nome: "anthropic", chave: ant };
+  return null;
+}
+
+export async function onRequest({ request, env }) {
+  const provedor = escolherProvedor(env);
+  const modelo = provedor && provedor.nome === "gemini"
+    ? (env.GEMINI_MODELO || "gemini-2.5-flash")
+    : (env.ANTHROPIC_MODELO || "claude-sonnet-5");
+
+  /* Abrir o endereço no navegador mostra qual IA está ligada. Serve para
+     conferir, depois de publicar, se a chave chegou até aqui. Nenhuma chave
+     é mostrada, só o nome do provedor e do modelo. */
+  if (request.method === "GET") {
+    return json({
+      provedor: provedor ? provedor.nome : "nenhum",
+      modelo: provedor ? modelo : null,
+      chaves: {
+        GEMINI_API_KEY: !!env.GEMINI_API_KEY,
+        ANTHROPIC_API_KEY: !!env.ANTHROPIC_API_KEY,
+        FIREBASE_API_KEY: !!env.FIREBASE_API_KEY,
+        IA_PROVEDOR: env.IA_PROVEDOR || null,
+      },
+    });
+  }
+
+  if (request.method !== "POST") return json({ erro: "Método não permitido." }, 405);
+
+  if (!provedor) {
+    return json({
+      erro: "A chave da IA não está configurada. Cadastre GEMINI_API_KEY (ou ANTHROPIC_API_KEY) nas variáveis do site e publique de novo.",
+    }, 500);
+  }
+
+  const corpo = await corpoJson(request);
+  if (!corpo) return json({ erro: "Pedido inválido." }, 400);
+
+  /* Sem FIREBASE_API_KEY não há como saber quem está pedindo, e aí o certo é
+     recusar: o endereço desta função é público, e liberar geral deixaria
+     qualquer pessoa gastar a cota da conta que paga. */
+  if (!env.FIREBASE_API_KEY) {
+    return json({
+      erro: "Falta FIREBASE_API_KEY nas variáveis do site. Sem ela não dá para confirmar quem está pedindo, e o assistente fica desligado.",
+    }, 500);
+  }
+
+  /* O assistente é só do administrador. O navegador esconde a aba, mas quem
+     protege de verdade é esta checagem. */
+  if (!corpo.token) return json({ erro: "Entre na sua conta para usar o assistente." }, 403);
+  const pessoa = await quemPede(corpo.token, env.FIREBASE_API_KEY);
+  if (!pessoa) return json({ erro: "Sua sessão expirou. Entre de novo." }, 403);
+  if (!ehDono(pessoa.email)) {
+    return json({ erro: "O assistente está disponível apenas para o administrador." }, 403);
+  }
+
+  const mensagens = Array.isArray(corpo.mensagens) ? corpo.mensagens.slice(-14) : [];
+  if (mensagens.length === 0) return json({ erro: "Nenhuma mensagem enviada." }, 400);
+
+  const sistema = `${String(corpo.instrucoes || "").slice(0, 6000)}
+\n=== DADOS ATUAIS DO PAINEL ===\n${String(corpo.contexto || "").slice(0, LIMITE_ENTRADA)}`;
+
+  const limpas = mensagens
+    .filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
+    .map((m) => ({ role: m.role, content: m.content.slice(0, 6000) }));
+
+  /* A conversa precisa começar por uma fala do estudante: os dois provedores
+     recusam um histórico que abre com a resposta da IA. */
+  while (limpas.length && limpas[0].role === "assistant") limpas.shift();
+  if (limpas.length === 0) return json({ erro: "Nenhuma mensagem enviada." }, 400);
+
+  try {
+    const r = provedor.nome === "gemini"
+      ? await chamarGemini(provedor.chave, modelo, { sistema, mensagens: limpas })
+      : await chamarAnthropic(provedor.chave, modelo, { sistema, mensagens: limpas });
+    if (r.erro) return json({ erro: r.erro }, 502);
+    return json({ texto: r.texto });
+  } catch (e) {
+    console.error("falha", provedor.nome, e && e.message);
+    return json({ erro: "Não consegui alcançar o serviço da IA." }, 502);
+  }
+}

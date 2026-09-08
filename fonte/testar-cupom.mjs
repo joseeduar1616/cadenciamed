@@ -1,5 +1,7 @@
 /* Testa o resgate de cupom sem tocar no Firebase de verdade.
  *
+ * Roda contra o arquivo do Cloudflare Pages (functions/api/cupom.js).
+ *
  * A identidade e o banco são respondidos aqui mesmo, então dá para
  * exercitar cupom certo, cupom errado, sessão inválida e quem já tem plano.
  *
@@ -47,20 +49,24 @@ globalThis.fetch = async (url, opcoes = {}) => {
   throw new Error('chamada inesperada: ' + u);
 };
 
-const carregar = async () => (await import('./netlify/functions/cupom.mjs?v=' + Math.random())).default;
+const env = {};
+const carregar = async () => (await import('../functions/api/cupom.js?v=' + Math.random())).onRequest;
 const pedir = async (corpo, metodo = 'POST') => {
   const fn = await carregar();
-  const res = await fn(new Request('http://local/.netlify/functions/cupom', {
-    method: metodo,
-    headers: { 'Content-Type': 'application/json' },
-    ...(metodo === 'POST' ? { body: JSON.stringify(corpo) } : {}),
-  }));
+  const res = await fn({
+    request: new Request('http://local/api/cupom', {
+      method: metodo,
+      headers: { 'Content-Type': 'application/json' },
+      ...(metodo === 'POST' ? { body: JSON.stringify(corpo) } : {}),
+    }),
+    env,
+  });
   return { status: res.status, corpo: await res.json() };
 };
 
-process.env.FIREBASE_API_KEY = 'chave-firebase';
-process.env.FIREBASE_SERVICE_ACCOUNT = JSON.stringify(CONTA);
-delete process.env.CUPONS;
+env.FIREBASE_API_KEY = 'chave-firebase';
+env.FIREBASE_SERVICE_ACCOUNT = JSON.stringify(CONTA);
+delete env.CUPONS;
 
 /* ── os dois cupons combinados funcionam ─────────────────────────────── */
 for (const cod of ['secdamocada', 'medeasysoft']) {
@@ -127,7 +133,7 @@ else falha('plano vencido: ' + JSON.stringify(r));
 PLANO_ATUAL = null;
 
 /* ── configuração pela variável de ambiente ──────────────────────────── */
-process.env.CUPONS = 'turma2026:mensal,vip:vitalicio';
+env.CUPONS = 'turma2026:mensal,vip:vitalicio';
 GRAVADO = null;
 r = await pedir({ token: 't', codigo: 'turma2026' });
 if (r.corpo.ok && GRAVADO.fields.plano.stringValue === 'mensal') ok('CUPONS troca a lista sem mexer no código');
@@ -135,14 +141,14 @@ else falha('CUPONS: ' + JSON.stringify(r));
 r = await pedir({ token: 't', codigo: 'secdamocada' });
 if (r.status === 404) ok('com CUPONS cadastrada, os cupons padrão deixam de valer');
 else falha('CUPONS não substituiu os padrão: ' + JSON.stringify(r));
-delete process.env.CUPONS;
+delete env.CUPONS;
 
 /* ── falhas de configuração e de banco ───────────────────────────────── */
-delete process.env.FIREBASE_SERVICE_ACCOUNT;
+delete env.FIREBASE_SERVICE_ACCOUNT;
 r = await pedir({ token: 't', codigo: 'secdamocada' });
 if (r.status === 500 && /FIREBASE_SERVICE_ACCOUNT/.test(r.corpo.erro)) ok('sem conta de serviço, explica o que falta');
 else falha('sem conta de serviço: ' + JSON.stringify(r));
-process.env.FIREBASE_SERVICE_ACCOUNT = JSON.stringify(CONTA);
+env.FIREBASE_SERVICE_ACCOUNT = JSON.stringify(CONTA);
 
 FALHAR_GRAVACAO = true;
 r = await pedir({ token: 't', codigo: 'secdamocada' });

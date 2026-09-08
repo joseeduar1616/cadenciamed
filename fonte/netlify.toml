@@ -7,6 +7,15 @@
 [functions]
   directory = "netlify/functions"
 
+# O front-end chama /api/..., que é o formato do Cloudflare Pages. Aqui esse
+# endereço é reescrito para o das funções do Netlify, então o mesmo HTML roda
+# nos dois lugares sem precisar de build diferente.
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+  force = true
+
 # A pasta das funções fica dentro do que é publicado, então o Netlify serve
 # os .mjs como arquivo de texto além de registrá-los como função. O código
 # não guarda segredo nenhum (as chaves ficam em variável de ambiente), mas

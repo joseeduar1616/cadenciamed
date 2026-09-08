@@ -227,7 +227,7 @@ function Bloqueado({ recurso, onVerPlanos }) {
    tela: quem pede, o servidor decide.
    ═══════════════════════════════════════════════════════════════════ */
 
-const ROTA_ACESSOS = "/.netlify/functions/acessos";
+const ROTA_ACESSOS = "/api/acessos";
 
 function PainelDono({ nuvem, notify }) {
   const [lista, setLista] = useState(null);

@@ -6,7 +6,7 @@
    silenciosamente.
    ═══════════════════════════════════════════════════════════════════ */
 
-const ROTA_IA = "/.netlify/functions/assistente";
+const ROTA_IA = "/api/assistente";
 
 /* Resumo do estado do estudo, enviado junto com a pergunta para o modelo
    ter contexto real em vez de responder no vácuo. */
