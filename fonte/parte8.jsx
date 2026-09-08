@@ -419,7 +419,7 @@ export default function Cadencia() {
      e não dentro da aba Amigos, para o perfil continuar em dia mesmo de
      quem nunca abre essa aba — senão o ranking mostraria zero para quem
      estudou e simplesmente não estava com ela aberta. */
-  usePerfilPublico(nuvem, data.profile.name, data.sessions, today);
+  usePerfilPublico(nuvem, data.profile.name, data.sessions, today, data.mostrarDesempenho);
 
   /* Menu lateral: no celular é gaveta que abre por cima; no computador
      fica fixo e só encolhe para a largura dos ícones. */
@@ -473,7 +473,9 @@ export default function Cadencia() {
     );
   }
 
-  const needsOnboarding = !data.profile.onboarded;
+  /* Entrar numa conta que já existe encerra as boas-vindas: os dados vêm da
+     nuvem, e pedir o nome de novo seria perguntar o que já se sabe. */
+  const needsOnboarding = !data.profile.onboarded && !nuvem.usuario;
   const hour = new Date().getHours();
   const greet = hour < 5 ? "Boa madrugada" : hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
   const firstName = (data.profile.name || "").trim().split(" ")[0];
@@ -623,7 +625,8 @@ export default function Cadencia() {
       ) : null}
 
       {needsOnboarding ? (
-        <Onboarding onDone={(name) => setData((p) => ({ ...p, profile: { ...p.profile, name, onboarded: true } }))}
+        <Onboarding nuvem={nuvem}
+          onDone={(name) => setData((p) => ({ ...p, profile: { ...p.profile, name, onboarded: true } }))}
           theme={data.theme} toggleTheme={() => setData((p) => ({ ...p, theme: p.theme === "dark" ? "light" : "dark" }))} />
       ) : (
         /* O tamanho do texto escolhido em Progresso é aplicado com zoom só
@@ -747,7 +750,7 @@ export default function Cadencia() {
               {tab === "revisoes" && pro && <Revisoes {...{ rows: ladder, toggleStep, resetCycle, data, setData, degraus, notify }} />}
               {tab === "rotina" && pro && <Rotina {...{ data, setData, gcal, today }} />}
               {tab === "amigos" && !pro && <Bloqueado recurso={RECURSOS_PRO.amigos} onVerPlanos={() => setTab("planos")} />}
-              {tab === "amigos" && pro && <Amigos {...{ nuvem, notify }} />}
+              {tab === "amigos" && pro && <Amigos {...{ nuvem, notify, data, setData }} />}
               {tab === "metas" && pro && <Metas {...{ data, setData, today, qWeek, notify, ladder, gcal }} />}
               {tab === "progresso" && <Progresso {...{ data, setData, byDay, today, totals, subjects, notify, nuvem, pro }} />}
             </div>

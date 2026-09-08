@@ -148,15 +148,20 @@ function Publicados({ nuvem, souDono, setData, notify, publicados, recarregar })
 
     const pasta = (j.pasta || PASTA_SOLTA).slice(0, 40);
     const nome = (j.nome || BARALHO_PADRAO).slice(0, 40);
-    const novos = (j.cartoes || []).map((c) => novoCartao(c.frente, c.verso, c.subjectId, nome, pasta));
-    if (!novos.length) { setErro("Esse baralho veio vazio."); return; }
+    /* Vindo uma pasta, cada cartão traz o baralho dele e a divisão é
+       recriada; vindo um baralho só, todos entram nele. */
+    const novos = (j.cartoes || []).map((c) => novoCartao(
+      c.frente, c.verso, c.subjectId,
+      j.tipo === "pasta" ? (c.baralho || BARALHO_PADRAO) : nome,
+      pasta));
+    if (!novos.length) { setErro("Isso veio vazio."); return; }
 
     setData((p) => ({
       ...p,
       flash: [...novos, ...(p.flash || [])],
       pastas: registrarPasta(p.pastas, pasta),
     }));
-    notify(`${novos.length} cartõe${novos.length === 1 ? "" : "s"} copiado${novos.length === 1 ? "" : "s"} para "${nome}".`);
+    notify(`${novos.length} cartõe${novos.length === 1 ? "" : "s"} copiado${novos.length === 1 ? "" : "s"} para "${j.tipo === "pasta" ? pasta : nome}".`);
   };
 
   const despublicar = async (b) => {
@@ -197,10 +202,19 @@ function Publicados({ nuvem, souDono, setData, notify, publicados, recarregar })
           <div key={b.slug} className="flex items-center gap-3 rounded-2xl px-4 py-3 flex-wrap"
             style={{ background: T.card2 }}>
             <div className="flex-1 min-w-0">
-              <div style={{ fontSize: 14.5, fontWeight: 600, color: T.ink }}>{b.nome}</div>
+              <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+                <span style={{ fontSize: 14.5, fontWeight: 600, color: T.ink }}>{b.nome}</span>
+                {b.tipo === "pasta" ? (
+                  <span style={{
+                    fontSize: 11, fontWeight: 700, color: "var(--neon2)",
+                    background: soft("var(--neon2)", 16), padding: "2px 8px", borderRadius: 99,
+                  }}>pasta</span>
+                ) : null}
+              </div>
               <Mini style={{ marginTop: 2 }}>
-                {b.pasta && b.pasta !== PASTA_SOLTA ? `${b.pasta} · ` : ""}
+                {b.tipo !== "pasta" && b.pasta && b.pasta !== PASTA_SOLTA ? `${b.pasta} · ` : ""}
                 {b.total} cartõe{b.total === 1 ? "" : "s"}
+                {b.tipo === "pasta" && b.baralhos ? ` em ${b.baralhos} baralho${b.baralhos === 1 ? "" : "s"}` : ""}
               </Mini>
             </div>
             <Btn size="sm" tone="primary" disabled={!!ocupado} onClick={() => baixar(b)}>
@@ -370,14 +384,24 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
 
   useEffect(() => { carregarPublicados(); }, [carregarPublicados]);
 
+  /* Sem baralho, publica a pasta inteira: todos os cartões dela, cada um
+     levando o baralho a que pertence. */
   const publicar = useCallback(async (pasta, baralho) => {
-    setPublicando(chaveBaralho(pasta, baralho));
-    const doDeck = (data.flash || []).filter((c) => (
-      (c.pasta || PASTA_SOLTA) === pasta && (c.baralho || BARALHO_PADRAO) === baralho));
-    const j = await falarComBaralhos(nuvem, { acao: "publicar", pasta, baralho, cartoes: doDeck });
+    const ehPasta = !baralho;
+    setPublicando(ehPasta ? `pasta|${pasta}` : chaveBaralho(pasta, baralho));
+    const escolhidos = (data.flash || []).filter((c) => (
+      (c.pasta || PASTA_SOLTA) === pasta
+      && (ehPasta || (c.baralho || BARALHO_PADRAO) === baralho)));
+    const j = await falarComBaralhos(nuvem, {
+      acao: "publicar",
+      tipo: ehPasta ? "pasta" : "baralho",
+      pasta,
+      baralho: baralho || "",
+      cartoes: escolhidos.map((c) => ({ ...c, baralho: c.baralho || BARALHO_PADRAO })),
+    });
     setPublicando("");
     if (j.erro) { notify(j.erro); return; }
-    notify(j.mensagem || "Baralho publicado.");
+    notify(j.mensagem || "Publicado.");
     carregarPublicados();
   }, [data.flash, nuvem, notify, carregarPublicados]);
 
@@ -899,6 +923,19 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
                           </button>
                           {p.nome !== PASTA_SOLTA ? (
                             <div className="flex items-center gap-1" style={{ flexShrink: 0 }}>
+                              {souDono && p.total ? (
+                                <button type="button" aria-label={`Publicar a pasta ${p.nome}`}
+                                  title="Publicar a pasta inteira, com os baralhos de dentro"
+                                  onClick={() => publicar(p.nome)}
+                                  disabled={publicando === `pasta|${p.nome}`}
+                                  className="toque rounded-full px-3"
+                                  style={{
+                                    background: soft("var(--ok)", 12), border: `1px solid ${soft("var(--ok)", 32)}`,
+                                    color: T.ok, fontSize: 12.5, fontWeight: 600, cursor: "pointer", minHeight: 28,
+                                  }}>
+                                  {publicando === `pasta|${p.nome}` ? "…" : "publicar"}
+                                </button>
+                              ) : null}
                               <button type="button" aria-label="Renomear pasta" title="Renomear"
                                 onClick={() => { setRenomeando({ tipo: "pasta", nome: p.nome }); setNovoNome(p.nome); }}
                                 style={{ background: "none", border: "none", color: T.ghost, cursor: "pointer", padding: 4 }}>

@@ -104,6 +104,83 @@ Se houver um CRONOGRAMA ANEXADO, use-o para saber o que a pessoa precisa cumprir
 
 Só inclua o bloco de ações quando a pessoa pedir para registrar, agendar ou anotar. Nunca invente ações que não foram pedidas. O texto da resposta deve fazer sentido sozinho, sem o bloco.`;
 
+/* ── desenhar a resposta ──────────────────────────────────────────────
+ *
+ * O modelo responde em markdown, e a bolha mostrava o texto cru: sobravam
+ * os asteriscos do negrito e os "#" dos títulos no meio da frase.
+ *
+ * É um pedaço pequeno de markdown, o que a resposta realmente usa: título,
+ * negrito, itálico, código curto e lista. Nada de HTML montado à mão — o
+ * texto vem de fora, e montar HTML com ele abriria a porta para injeção.
+ * Aqui cada pedaço vira um elemento React, que escapa sozinho.
+ */
+function trechos(linha, chave) {
+  /* Negrito, itálico e código na mesma passada, para o casamento não
+     brigar entre eles. O negrito vem antes do itálico de propósito: com o
+     itálico primeiro, "**palavra**" viraria itálico de um asterisco só. */
+  const partes = String(linha).split(/(\*\*[^*]+\*\*|`[^`]+`|(?<![*\w])\*[^*\n]+\*(?!\*))/g);
+  return partes.filter(Boolean).map((p, i) => {
+    const k = `${chave}-${i}`;
+    if (/^\*\*[\s\S]+\*\*$/.test(p)) return <strong key={k} style={{ fontWeight: 700 }}>{p.slice(2, -2)}</strong>;
+    if (/^`[^`]+`$/.test(p)) {
+      return (
+        <code key={k} style={{
+          fontFamily: F_MONO, fontSize: "0.92em", background: T.card3,
+          padding: "1px 5px", borderRadius: 4,
+        }}>{p.slice(1, -1)}</code>
+      );
+    }
+    if (/^\*[^*]+\*$/.test(p)) return <em key={k}>{p.slice(1, -1)}</em>;
+    return <span key={k}>{p}</span>;
+  });
+}
+
+function Markdown({ texto }) {
+  const linhas = String(texto || "").split("\n");
+  const saida = [];
+  let lista = null;
+
+  const fecharLista = () => {
+    if (!lista) return;
+    const Tag = lista.tipo === "num" ? "ol" : "ul";
+    saida.push(
+      <Tag key={`l${saida.length}`} style={{ margin: "6px 0", paddingLeft: 22 }}>
+        {lista.itens.map((it, i) => (
+          <li key={i} style={{ margin: "3px 0" }}>{trechos(it, `li${saida.length}-${i}`)}</li>
+        ))}
+      </Tag>);
+    lista = null;
+  };
+
+  linhas.forEach((linha, n) => {
+    const bullet = linha.match(/^\s*[-*+]\s+(.*)$/);
+    const numero = linha.match(/^\s*\d+[.)]\s+(.*)$/);
+    if (bullet || numero) {
+      const tipo = bullet ? "pt" : "num";
+      if (!lista || lista.tipo !== tipo) { fecharLista(); lista = { tipo, itens: [] }; }
+      lista.itens.push((bullet || numero)[1]);
+      return;
+    }
+    fecharLista();
+
+    const titulo = linha.match(/^\s*(#{1,4})\s+(.*)$/);
+    if (titulo) {
+      const nivel = titulo[1].length;
+      saida.push(
+        <div key={`h${n}`} style={{
+          fontSize: nivel <= 2 ? 16.5 : 15, fontWeight: 700, color: T.ink,
+          margin: saida.length ? "12px 0 4px" : "0 0 4px",
+        }}>{trechos(titulo[2], `h${n}`)}</div>);
+      return;
+    }
+    if (!linha.trim()) { saida.push(<div key={`v${n}`} style={{ height: 8 }} />); return; }
+    saida.push(<div key={`p${n}`}>{trechos(linha, `p${n}`)}</div>);
+  });
+
+  fecharLista();
+  return <>{saida}</>;
+}
+
 /* ── o cronograma do curso da pessoa ──────────────────────────────────
  *
  * Fica guardado junto com os outros dados, e não só nesta sessão: assim o
@@ -287,7 +364,7 @@ function Assistente({ data, setData, subjects, ladder, today, totals, minWeek, q
         return;
       }
       const { limpo, feitas } = aplicarAcoes(j.texto);
-      setMsgs([...historico, { papel: "claude", texto: limpo || j.texto }]);
+      setMsgs([...historico, { papel: "claude", texto: limpo || j.texto, cortado: !!j.cortado }]);
       if (feitas) notify(`${feitas} ite${feitas === 1 ? "m adicionado" : "ns adicionados"} ao painel.`);
     } catch (e) {
       setErro("Não consegui falar com o assistente. Verifique a conexão.");
@@ -341,8 +418,20 @@ function Assistente({ data, setData, subjects, ladder, today, totals, minWeek, q
                 maxWidth: "86%",
                 background: m.papel === "user" ? soft("var(--neon2)", 20) : T.card2,
                 border: `1px solid ${m.papel === "user" ? "transparent" : T.line}`,
-                fontSize: 14.5, lineHeight: 1.65, color: T.ink, whiteSpace: "pre-wrap",
-              }}>{m.texto}</div>
+                fontSize: 14.5, lineHeight: 1.65, color: T.ink,
+                /* O que a pessoa escreveu vai como está, com as quebras de
+                   linha dela; a resposta do modelo passa pelo desenhador de
+                   markdown, senão sobram os asteriscos na tela. */
+                whiteSpace: m.papel === "user" ? "pre-wrap" : "normal",
+              }}>
+                {m.papel === "user" ? m.texto : <Markdown texto={m.texto} />}
+                {m.cortado ? (
+                  <Mini style={{ marginTop: 10, color: T.warn, display: "block" }}>
+                    A resposta bateu no limite e parou aqui. Peça a continuação,
+                    ou faça uma pergunta mais estreita.
+                  </Mini>
+                ) : null}
+              </div>
             </div>
           ))}
           {ocupado ? (

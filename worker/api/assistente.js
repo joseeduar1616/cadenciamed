@@ -38,7 +38,11 @@ async function podeUsar(pessoa, env) {
 }
 
 const LIMITE_ENTRADA = 24000;   // caracteres, para conter o custo por chamada
-const MAX_SAIDA = 1400;
+/* Teto de saída. Estava em 1400, e um plano de semana passa disso fácil: a
+   resposta chegava cortada no meio da frase, sem nada dizendo por quê. Os
+   modelos de hoje também gastam parte deste teto pensando antes de escrever,
+   o que apertava ainda mais o que sobrava para o texto. */
+const MAX_SAIDA = 4000;
 
 /* Modelo padrão do Gemini.
  *
@@ -120,11 +124,13 @@ async function chamarGemini(chave, modelo, { sistema, mensagens }) {
   }
   const texto = ((c.content || {}).parts || []).map((p) => p.text || "").join("").trim();
   if (!texto) {
-    if (c.finishReason === "MAX_TOKENS") return { erro: "A resposta ficou longa demais e foi cortada. Pergunte de novo, mais específico." };
+    if (c.finishReason === "MAX_TOKENS") return { erro: "A resposta ficou longa demais e foi cortada antes de começar. Pergunte de novo, mais específico." };
     if (c.finishReason === "SAFETY") return { erro: "O Gemini bloqueou a resposta por política de conteúdo." };
     return { erro: "A IA devolveu uma resposta vazia." };
   }
-  return { texto };
+  /* Veio texto, mas o modelo parou no teto: a resposta acaba no meio da
+     frase. Antes ela chegava assim, calada, e parecia travamento. */
+  return { texto, cortado: c.finishReason === "MAX_TOKENS" };
 }
 
 /* ── Anthropic ─────────────────────────────────────────────────────── */
@@ -150,7 +156,7 @@ async function chamarAnthropic(chave, modelo, { sistema, mensagens }) {
   const j = await r.json();
   const texto = (j.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
   if (!texto) return { erro: "A IA devolveu uma resposta vazia." };
-  return { texto };
+  return { texto, cortado: j.stop_reason === "max_tokens" };
 }
 
 function escolherProvedor(env) {
@@ -234,7 +240,7 @@ export async function onRequest({ request, env }) {
       ? await chamarGemini(provedor.chave, modelo, { sistema, mensagens: limpas })
       : await chamarAnthropic(provedor.chave, modelo, { sistema, mensagens: limpas });
     if (r.erro) return json({ erro: r.erro }, 502);
-    return json({ texto: r.texto });
+    return json({ texto: r.texto, cortado: !!r.cortado });
   } catch (e) {
     console.error("falha", provedor.nome, e && e.message);
     return json({ erro: "Não consegui alcançar o serviço da IA." }, 502);

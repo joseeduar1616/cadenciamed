@@ -401,6 +401,9 @@ function Cupom({ nuvem, notify }) {
 
 function ContaNuvem({ nuvem, notify }) {
   const [modo, setModo] = useState("entrar");
+  /* Marcado por padrão: é o que a maioria quer, e quem está num computador
+     de todo mundo desmarca. */
+  const [manter, setManter] = useState(true);
   const [f, setF] = useState({ nome: "", email: "", senha: "", cupom: "" });
   const [msg, setMsg] = useState("");
   const [ocupado, setOcupado] = useState(false);
@@ -473,7 +476,7 @@ function ContaNuvem({ nuvem, notify }) {
   const enviarForm = async () => {
     setMsg(""); setOcupado(true);
     let e = null;
-    if (modo === "entrar") e = await nuvem.entrar(f.email, f.senha);
+    if (modo === "entrar") e = await nuvem.entrar(f.email, f.senha, manter);
     else if (modo === "criar") e = await nuvem.cadastrar(f.nome, f.email, f.senha);
     else {
       e = await nuvem.recuperar(f.email);
@@ -533,6 +536,17 @@ function ContaNuvem({ nuvem, notify }) {
           </Field>
         ) : null}
       </div>
+      {modo === "entrar" ? (
+        <label className="mt-4 flex items-center gap-2.5" style={{ cursor: "pointer" }}>
+          <input type="checkbox" checked={manter} onChange={(e) => setManter(e.target.checked)} />
+          <span style={{ fontSize: 13.5, color: T.dim }}>
+            Manter conectado
+            <span style={{ color: T.ghost }}>
+              {" · "}desmarque num computador compartilhado: a sessão acaba ao fechar o navegador
+            </span>
+          </span>
+        </label>
+      ) : null}
       {msg ? <Label style={{ marginTop: 14, lineHeight: 1.5, textTransform: "none", letterSpacing: 0, fontSize: 14.5, color: /^(Enviei|Cupom aceito)/.test(msg) ? T.ok : T.bad }}>{msg}</Label> : null}
       <div className="mt-5">
         <Btn tone="primary" onClick={enviarForm} disabled={ocupado}>
@@ -901,41 +915,181 @@ function Progresso({ data, setData, byDay, today, totals, subjects, notify, nuve
    17 · ONBOARDING
    ═══════════════════════════════════════════════════════════════════ */
 
-function Onboarding({ onDone, theme, toggleTheme }) {
-  const [name, setName] = useState("");
-  return (
+function Onboarding({ onDone, theme, toggleTheme, nuvem }) {
+  /* A primeira tela pede conta, não nome.
+   *
+   * Pedir só o nome deixava a pessoa entrar sem conta, estudar, e descobrir
+   * depois que nada daquilo estava sincronizado. Aqui a conta vem primeiro,
+   * e quem quiser experimentar antes tem a saída logo abaixo — quem faz a
+   * conta depois traz junto o que já anotou, porque os dados são deste
+   * aparelho até o primeiro envio. */
+  const [modo, setModo] = useState("entrar");   // entrar | criar
+  const [f, setF] = useState({ nome: "", email: "", senha: "", cupom: "" });
+  const [manter, setManter] = useState(true);
+  const [msg, setMsg] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+  const [semConta, setSemConta] = useState(false);
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+
+  const enviar = async () => {
+    if (!f.email.trim()) { setMsg("Escreva seu e-mail."); return; }
+    if (!f.senha) { setMsg("Escreva sua senha."); return; }
+    setMsg(""); setOcupado(true);
+    const e = modo === "entrar"
+      ? await nuvem.entrar(f.email, f.senha, manter)
+      : await nuvem.cadastrar(f.nome, f.email, f.senha);
+    setOcupado(false);
+    if (e) { setMsg(e); return; }
+    /* Criar conta já marca as boas-vindas como vistas, com o nome digitado;
+       entrar numa conta existente é tratado no componente raiz, que fecha
+       esta tela assim que a sessão abre. */
+    if (modo === "criar") {
+      onDone(f.nome.trim() || "Estudante");
+      const cod = f.cupom.trim();
+      if (cod) {
+        setOcupado(true);
+        const j = await resgatarCupom(nuvem, cod);
+        setOcupado(false);
+        if (!j.ok) setMsg(`Conta criada, mas o cupom não passou: ${j.erro}`);
+      }
+    }
+  };
+
+  const cabecalho = (
+    <>
+      <div className="flex justify-end mb-4">
+        <button type="button" aria-label="Alternar tema" onClick={toggleTheme}
+          className="flex items-center justify-center rounded-full"
+          style={{ width: 38, height: 38, background: T.card, border: `1px solid ${T.line}`, color: T.dim, cursor: "pointer" }}>
+          {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+        </button>
+      </div>
+      <div className="flex items-center gap-2.5">
+        <h1 style={{ fontFamily: F_SERIF, fontSize: 38, fontWeight: 400, margin: 0, lineHeight: 1 }}>Cadência</h1>
+        <span style={{ width: 6, height: 6, borderRadius: 99, background: T.warn }} />
+      </div>
+    </>
+  );
+
+  const moldura = (dentro) => (
     <div className="flex items-center justify-center px-6" style={{ minHeight: "100vh", position: "relative", zIndex: 1 }}>
-      <div style={{ width: "100%", maxWidth: 460 }}>
-        <div className="flex justify-end mb-4">
-          <button type="button" aria-label="Alternar tema" onClick={toggleTheme}
-            className="flex items-center justify-center rounded-full"
-            style={{ width: 38, height: 38, background: T.card, border: `1px solid ${T.line}`, color: T.dim, cursor: "pointer" }}>
-            {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
-          </button>
-        </div>
+      <div style={{ width: "100%", maxWidth: 460 }}>{dentro}</div>
+    </div>
+  );
+
+  /* Sem sincronização configurada, ou com ela fora do ar, não há conta a
+     pedir: continua valendo a entrada pelo nome. */
+  if (!nuvem || !nuvem.ligado || nuvem.estado === "erro" || semConta) {
+    return moldura(
+      <>
+        {cabecalho}
         <Card className="px-7 sm:px-9 py-9" style={{ boxShadow: T.shadow }}>
-          <div className="flex items-center gap-2.5">
-            <h1 style={{ fontFamily: F_SERIF, fontSize: 38, fontWeight: 400, margin: 0, lineHeight: 1 }}>Cadência</h1>
-            <span style={{ width: 6, height: 6, borderRadius: 99, background: T.warn }} />
-          </div>
-          <p style={{ color: T.dim, fontSize: 15, lineHeight: 1.6, marginTop: 14 }}>
+          <p style={{ color: T.dim, fontSize: 15, lineHeight: 1.6, marginTop: 4 }}>
             Painel de estudos e rotina para residência médica. Traz o cronograma
             completo com {CURRICULUM.length} aulas principais e {TOTAL_BONUS} tópicos,
             cronômetro, escada de revisão espaçada e acompanhamento por especialidade.
           </p>
           <div className="mt-7">
             <Field label="Como quer ser chamado">
-              <TextInput value={name} placeholder="Seu nome" autoFocus
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) onDone(name.trim()); }} />
+              <TextInput value={f.nome} placeholder="Seu nome" autoFocus
+                onChange={(e) => set("nome", e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") onDone(f.nome.trim() || "Estudante"); }} />
             </Field>
           </div>
           <div className="mt-5 flex items-center gap-3 flex-wrap">
-            <Btn tone="primary" onClick={() => onDone(name.trim() || "Estudante")}>Começar <ArrowUpRight size={15} /></Btn>
-            <Label>dá para criar conta depois e sincronizar</Label>
+            <Btn tone="primary" onClick={() => onDone(f.nome.trim() || "Estudante")}>
+              Começar <ArrowUpRight size={15} />
+            </Btn>
+            {semConta ? (
+              <Btn tone="outline" size="sm" onClick={() => { setSemConta(false); setMsg(""); }}>
+                voltar para a conta
+              </Btn>
+            ) : <Label>dá para criar conta depois e sincronizar</Label>}
           </div>
         </Card>
-      </div>
-    </div>
+      </>
+    );
+  }
+
+  return moldura(
+    <>
+      {cabecalho}
+      <Card className="px-7 sm:px-9 py-9" style={{ boxShadow: T.shadow }}>
+        <p style={{ color: T.dim, fontSize: 15, lineHeight: 1.6, marginTop: 4 }}>
+          Painel de estudos para residência médica: {CURRICULUM.length} aulas,
+          revisão espaçada, cartões e rotina. Entre na sua conta para continuar
+          de onde parou em qualquer aparelho.
+        </p>
+
+        <div className="flex gap-2 mt-6 flex-wrap">
+          {[["entrar", "Entrar"], ["criar", "Criar conta"]].map(([id, lb]) => (
+            <button key={id} type="button" onClick={() => { setModo(id); setMsg(""); }}
+              className="toque-larg rounded-full px-4 py-2"
+              style={{
+                background: modo === id ? T.card3 : "transparent",
+                border: `1px solid ${modo === id ? "transparent" : T.line}`,
+                color: modo === id ? T.ink : T.dim,
+                fontSize: 14, fontWeight: modo === id ? 700 : 500, cursor: "pointer",
+              }}>{lb}</button>
+          ))}
+        </div>
+
+        <div className="mt-5 flex flex-col gap-4">
+          {modo === "criar" ? (
+            <Field label="Seu nome">
+              <TextInput value={f.nome} placeholder="Como quer ser chamado" autoFocus
+                onChange={(e) => set("nome", e.target.value)} />
+            </Field>
+          ) : null}
+          <Field label="E-mail">
+            <TextInput type="email" autoComplete="email" value={f.email} placeholder="voce@email.com"
+              autoFocus={modo === "entrar"}
+              onChange={(e) => set("email", e.target.value)} />
+          </Field>
+          <Field label="Senha">
+            <TextInput type="password" value={f.senha} placeholder="mínimo 6 caracteres"
+              autoComplete={modo === "criar" ? "new-password" : "current-password"}
+              onChange={(e) => set("senha", e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") enviar(); }} />
+          </Field>
+          {modo === "criar" ? (
+            <Field label="Cupom (opcional)">
+              <TextInput value={f.cupom} placeholder="Se você recebeu um código" autoCapitalize="none"
+                onChange={(e) => set("cupom", e.target.value)} />
+            </Field>
+          ) : null}
+        </div>
+
+        {modo === "entrar" ? (
+          <label className="mt-4 flex items-center gap-2.5" style={{ cursor: "pointer" }}>
+            <input type="checkbox" checked={manter} onChange={(e) => setManter(e.target.checked)} />
+            <span style={{ fontSize: 13.5, color: T.dim }}>
+              Manter conectado
+              <span style={{ color: T.ghost }}>
+                {" · "}desmarque num computador compartilhado
+              </span>
+            </span>
+          </label>
+        ) : null}
+
+        {msg ? (
+          <Label style={{ marginTop: 14, lineHeight: 1.5, textTransform: "none", letterSpacing: 0, fontSize: 14.5, color: T.bad }}>
+            {msg}
+          </Label>
+        ) : null}
+
+        <div className="mt-6 flex items-center gap-3 flex-wrap">
+          <Btn tone="primary" onClick={enviar} disabled={ocupado || nuvem.estado === "carregando"}>
+            {ocupado ? "Aguarde…" : nuvem.estado === "carregando" ? "Conectando…"
+              : modo === "entrar" ? "Entrar" : "Criar conta"}
+            <ArrowUpRight size={15} />
+          </Btn>
+          <button type="button" onClick={() => { setSemConta(true); setMsg(""); }}
+            style={{ background: "none", border: "none", color: T.faint, fontSize: 13.5, cursor: "pointer", textDecoration: "underline" }}>
+            usar sem conta por enquanto
+          </button>
+        </div>
+      </Card>
+    </>
   );
 }

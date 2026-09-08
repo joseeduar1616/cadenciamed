@@ -31,7 +31,7 @@ const PERIODOS = [
  * semana, com números que já não valem.
  *
  * Só números: nada do que foi estudado, nenhuma anotação. */
-function usePerfilPublico(nuvem, nome, sessions, today) {
+function usePerfilPublico(nuvem, nome, sessions, today, mostrar) {
   const dados = useMemo(() => {
     const iniSemana = weekStart(today);
     const mes = String(today).slice(0, 7);
@@ -50,15 +50,29 @@ function usePerfilPublico(nuvem, nome, sessions, today) {
       if (d.slice(0, 7) === mes) { mensal.min += m; mensal.q += q; mensal.ok += ok; }
     }
 
+    /* Quem escolheu não mostrar publica só o nome e o aviso. Zerar aqui, e
+       não esconder na hora de desenhar, é o que garante que os números não
+       saiam do aparelho: eles nem chegam a ser gravados. */
+    if (!mostrar) {
+      return {
+        nome: String(nome || "").trim().slice(0, 40),
+        oculto: true,
+        minutos: 0, questoes: 0, acertos: 0,
+        semanaChave: iniSemana, semanaMinutos: 0, semanaQuestoes: 0, semanaAcertos: 0,
+        mesChave: mes, mesMinutos: 0, mesQuestoes: 0, mesAcertos: 0,
+      };
+    }
+
     return {
       nome: String(nome || "").trim().slice(0, 40),
+      oculto: false,
       minutos: Math.round(soma.min), questoes: soma.q, acertos: soma.ok,
       semanaChave: iniSemana,
       semanaMinutos: Math.round(sem.min), semanaQuestoes: sem.q, semanaAcertos: sem.ok,
       mesChave: mes,
       mesMinutos: Math.round(mensal.min), mesQuestoes: mensal.q, mesAcertos: mensal.ok,
     };
-  }, [nome, sessions, today]);
+  }, [nome, sessions, today, mostrar]);
 
   const ultimo = useRef("");
 
@@ -95,7 +109,7 @@ async function falarComSalas(nuvem, corpo) {
 const MEDALHA = ["var(--warn)", "var(--dim)", "var(--a-CL)"];
 
 function LinhaRanking({ x }) {
-  const cor = x.posicao <= 3 ? MEDALHA[x.posicao - 1] : T.ghost;
+  const cor = !x.oculto && x.posicao <= 3 ? MEDALHA[x.posicao - 1] : T.ghost;
   return (
     <div className="flex items-center gap-3 rounded-2xl px-4 py-3.5"
       style={{
@@ -105,10 +119,11 @@ function LinhaRanking({ x }) {
       <span className="flex items-center justify-center rounded-full"
         style={{
           width: 30, height: 30, flexShrink: 0,
-          background: x.posicao <= 3 ? soft(cor, 18) : "transparent",
-          border: x.posicao <= 3 ? "none" : `1px solid ${T.line}`,
-          fontFamily: F_MONO, fontSize: 13, fontWeight: 700, color: cor,
-        }}>{x.posicao}</span>
+          background: !x.oculto && x.posicao <= 3 ? soft(cor, 18) : "transparent",
+          border: !x.oculto && x.posicao <= 3 ? "none" : `1px solid ${T.line}`,
+          fontFamily: F_MONO, fontSize: 13, fontWeight: 700,
+          color: x.oculto ? T.ghost : cor,
+        }}>{x.oculto ? "—" : x.posicao}</span>
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
@@ -125,29 +140,36 @@ function LinhaRanking({ x }) {
           {x.dono ? <Mini>criou a sala</Mini> : null}
         </div>
         <Mini style={{ marginTop: 3 }}>
-          {x.questoes ? `${x.acertos} de ${x.questoes} questões` : "sem questões lançadas"}
-          {!x.atualizadoEm ? " · ainda não sincronizou"
+          {x.oculto ? "escolheu não mostrar o desempenho"
+            : x.questoes ? `${x.acertos} de ${x.questoes} questões` : "sem questões lançadas"}
+          {x.oculto ? "" : !x.atualizadoEm ? " · ainda não sincronizou"
             : x.foraDoRecorte ? " · não abriu o app neste período" : ""}
         </Mini>
       </div>
 
-      <div className="flex items-center gap-5" style={{ flexShrink: 0 }}>
-        <div className="text-right">
-          <Num size={17} weight={700}>{fmtMin(x.minutos)}</Num>
-          <Mini>líquidas</Mini>
+      {x.oculto ? (
+        <span style={{ flexShrink: 0, color: T.ghost, display: "inline-flex" }}>
+          <Lock size={15} />
+        </span>
+      ) : (
+        <div className="flex items-center gap-5" style={{ flexShrink: 0 }}>
+          <div className="text-right">
+            <Num size={17} weight={700}>{fmtMin(x.minutos)}</Num>
+            <Mini>líquidas</Mini>
+          </div>
+          <div className="text-right" style={{ minWidth: 52 }}>
+            <Num size={17} weight={700} color={x.pct === null ? T.ghost : x.pct >= 70 ? T.ok : x.pct >= 50 ? T.warn : T.bad}>
+              {x.pct === null ? "—" : `${x.pct}%`}
+            </Num>
+            <Mini>acerto</Mini>
+          </div>
         </div>
-        <div className="text-right" style={{ minWidth: 52 }}>
-          <Num size={17} weight={700} color={x.pct === null ? T.ghost : x.pct >= 70 ? T.ok : x.pct >= 50 ? T.warn : T.bad}>
-            {x.pct === null ? "—" : `${x.pct}%`}
-          </Num>
-          <Mini>acerto</Mini>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
 
-function Amigos({ nuvem, notify }) {
+function Amigos({ nuvem, notify, data, setData }) {
   const [salas, setSalas] = useState(null);
   const [atual, setAtual] = useState(null);        // slug escolhido
   const [ranking, setRanking] = useState(null);
@@ -246,6 +268,19 @@ function Amigos({ nuvem, notify }) {
           com os dois vê o mesmo ranking, feito com as horas líquidas, as questões
           e o acerto que cada um já lançou aqui.
         </Texto>
+
+        <label className="mt-4 flex items-start gap-2.5" style={{ cursor: "pointer" }}>
+          <input type="checkbox" checked={data.mostrarDesempenho !== false}
+            style={{ marginTop: 2 }}
+            onChange={(e) => setData((p) => ({ ...p, mostrarDesempenho: e.target.checked }))} />
+          <span style={{ fontSize: 13.5, color: T.dim, lineHeight: 1.55 }}>
+            Mostrar meu desempenho no ranking
+            <span style={{ color: T.ghost }}>
+              {" · "}desligado, você continua nas salas e vê o de todo mundo, mas
+              seus números param de ser enviados
+            </span>
+          </span>
+        </label>
 
         {salas && salas.length ? (
           <div className="mt-5 flex gap-2 flex-wrap">

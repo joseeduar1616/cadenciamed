@@ -35,6 +35,10 @@ const DEFAULTS = {
   /* Cronograma que a pessoa recebeu do curso dela, em texto, para o
      assistente organizar a rotina em cima do que ela realmente tem. */
   cronograma: { nome: "", texto: "" },
+  /* Se os números desta pessoa aparecem no ranking das salas de amigos.
+     Começa ligado, que é o motivo de entrar numa sala; desligar mantém a
+     pessoa na sala, sem os números dela à mostra. */
+  mostrarDesempenho: true,
   flash: [], pastas: [],
   /* Ajustes de cada baralho, por "pasta|baralho": se embaralha a ordem e
      quantos cartões por dia. */
@@ -104,6 +108,7 @@ function normalize(raw) {
     pomoLog: arr(d.pomoLog, []), simulados: obj(d.simulados), provas: arr(d.provas, []),
     habits: arr(d.habits, HABITS_SEED), habitLog: obj(d.habitLog),
     rever: arr(d.rever, []), notes: obj(d.notes),
+    mostrarDesempenho: d.mostrarDesempenho !== false,
     cronograma: {
       nome: String(obj(d.cronograma).nome || "").slice(0, 80),
       /* Cortado aqui, e não só na hora de enviar: um arquivo enorme colado

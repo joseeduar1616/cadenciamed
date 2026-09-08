@@ -133,7 +133,7 @@ if (papeis === 'user,model,user') ok('Gemini: "assistant" virou "model" no hist�
 else falha('Gemini papéis: ' + papeis);
 if (p.corpo.contents[0].parts[0].text === 'O que eu deveria estudar hoje?') ok('Gemini: texto das mensagens preservado');
 else falha('Gemini texto: ' + JSON.stringify(p.corpo.contents[0]));
-if (p.corpo.generationConfig.maxOutputTokens === 1400) ok('Gemini: limite de saída aplicado');
+if (p.corpo.generationConfig.maxOutputTokens >= 3000) ok('Gemini: limite de saída aplicado, com folga para um plano inteiro');
 else falha('Gemini maxOutputTokens: ' + JSON.stringify(p.corpo.generationConfig));
 
 /* ── 3. erros do Gemini ──────────────────────────────────────────────── */
@@ -176,6 +176,24 @@ responder = () => ({ status: 404, corpo: { error: { message: 'Model not found' }
 r = await pedir(await carregar(), CONVERSA);
 if (/GEMINI_MODELO/.test(r.corpo.erro) && /modelo atual/.test(r.corpo.erro)) ok('modelo desconhecido: aponta a variável mesmo sem sugestão do provedor');
 else falha('modelo desconhecido: ' + JSON.stringify(r));
+
+/* Resposta que veio, mas parou no teto: chega ao painel marcada, senão
+   acaba no meio da frase e parece travamento. */
+responder = () => ({
+  status: 200,
+  corpo: { candidates: [{ content: { parts: [{ text: 'Comece por Glomerulo' }] }, finishReason: 'MAX_TOKENS' }] },
+});
+r = await pedir(await carregar(), CONVERSA);
+if (r.corpo.texto === 'Comece por Glomerulo' && r.corpo.cortado === true) ok('resposta cortada no teto chega marcada como cortada');
+else falha('resposta cortada: ' + JSON.stringify(r));
+
+responder = () => ({
+  status: 200,
+  corpo: { candidates: [{ content: { parts: [{ text: 'Resposta inteira.' }] }, finishReason: 'STOP' }] },
+});
+r = await pedir(await carregar(), CONVERSA);
+if (r.corpo.cortado === false) ok('resposta inteira não é marcada como cortada');
+else falha('marcou inteira como cortada: ' + JSON.stringify(r));
 
 /* resposta 200 mas sem texto, que é o jeito do Gemini avisar bloqueio */
 responder = () => ({ status: 200, corpo: { promptFeedback: { blockReason: 'SAFETY' }, candidates: [] } });

@@ -158,10 +158,23 @@ function useNuvem(data, setData, notify, pronto, pro) {
     return () => { if (tmr.current) window.clearTimeout(tmr.current); };
   }, [data, sdk, usuario, pronto, pro, enviar]);
 
-  const entrar = useCallback(async (email, senha) => {
+  /* "Manter conectado" escolhe onde a sessão fica guardada: no disco, e aí
+     ela sobrevive a fechar o navegador, ou só na aba, e aí some ao fechar.
+     Precisa ser decidido ANTES de entrar — depois já está gravado. Num
+     computador compartilhado, deixar desmarcado é o certo. */
+  const entrar = useCallback(async (email, senha, manter) => {
     if (!sdk) return "Serviço indisponível.";
-    try { await sdk.U.signInWithEmailAndPassword(sdk.auth, email.trim(), senha); return null; }
-    catch (e) { return traduzErro(e); }
+    try {
+      const guardar = manter === false
+        ? sdk.U.browserSessionPersistence
+        : sdk.U.browserLocalPersistence;
+      /* Se o navegador não aceitar a escolha (aba anônima, por exemplo), o
+         login continua valendo para esta sessão: melhor entrar com a
+         persistência padrão do que recusar a entrada. */
+      if (guardar) await sdk.U.setPersistence(sdk.auth, guardar).catch(() => {});
+      await sdk.U.signInWithEmailAndPassword(sdk.auth, email.trim(), senha);
+      return null;
+    } catch (e) { return traduzErro(e); }
   }, [sdk]);
 
   const cadastrar = useCallback(async (nome, email, senha) => {

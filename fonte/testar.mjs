@@ -62,14 +62,25 @@ if (!(await pag.evaluate(() => document.querySelector('#root')?.children.length 
   falha('o #root ficou vazio: o React não montou');
 } else ok('o app montou');
 
-/* boas-vindas */
+/* ── boas-vindas ──────────────────────────────────────────────────────
+   A primeira tela pede conta. Aqui não há rede, então o Firebase não
+   carrega e a tela cai na entrada pelo nome — que é justamente o caminho
+   que precisa existir: sem essa reserva, quem abrisse o site com o Firebase
+   fora do ar veria um login que não funciona e não teria como passar. */
+const semConta = pag.locator('button:has-text("usar sem conta")');
+if (await semConta.count() > 0) {
+  await semConta.first().click();
+  await pag.waitForTimeout(400);
+  ok('a primeira tela abre na conta, com saída para usar sem conta');
+}
 const campoNome = pag.locator('input[placeholder="Seu nome"]');
 if (await campoNome.count() > 0) {
+  ok('sem sincronização disponível, as boas-vindas não travam: dá para começar pelo nome');
   await campoNome.fill('Teste');
   await pag.locator('button:has-text("Começar")').first().click();
   await pag.waitForTimeout(1000);
   ok('passou pelas boas-vindas');
-}
+} else falha('as boas-vindas não ofereceram nenhum caminho para entrar');
 
 /* a marca aparece no cabeçalho */
 const marca = pag.locator('header img[alt="Cadência Med"]');
@@ -256,6 +267,11 @@ if (liberado) {
     if (/Baralho de teste/.test(await texto())) falha('o baralho não foi apagado');
     else ok('baralho apagado');
   }
+
+  /* A caixa de "manter conectado" fica no formulário de entrada, que só
+     aparece com a sincronização ligada. Aqui não há rede, então não dá para
+     conferir por este teste — e uma asserção que o ambiente não alcança
+     seria pior que nenhuma. */
 
   /* ── revisões: trocar o esquema de intervalos ────────────────────── */
   await ir('Revisões');

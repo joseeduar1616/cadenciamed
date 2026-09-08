@@ -316,13 +316,33 @@ quem desligou o embaralhar no baralho dele.
 
 ### Baralhos publicados
 
-O dono publica um baralho pela engrenagem da linha dele; quem assina copia
-para a própria conta. É **cópia**, não pasta compartilhada, e de propósito:
+O dono publica um baralho pela engrenagem da linha dele, ou a **pasta
+inteira** pelo botão na linha da pasta. Publicando a pasta, cada cartão leva
+o baralho dele junto, e quem copia recebe a pasta já dividida do mesmo jeito.
+A pasta e um baralho de mesmo nome dentro dela não caem no mesmo endereço,
+senão um sobrescreveria o outro.
+
+Quem assina copia para a própria conta. É **cópia**, não pasta compartilhada, e de propósito:
 duas pessoas estudando o mesmo cartão têm intervalos de revisão diferentes.
 
 As imagens não viajam — elas moram no IndexedDB de cada aparelho, então o que
 iria junto seria um nome de arquivo que não existe do outro lado. O
 agendamento de quem publicou também fica de fora: quem copia começa do zero.
+
+## Primeira tela
+
+Abre pedindo conta, não o nome. Pedir só o nome deixava a pessoa estudar e
+descobrir depois que nada estava sincronizado.
+
+A saída "usar sem conta por enquanto" existe, e a tela cai nela sozinha
+quando a sincronização está desligada ou fora do ar — sem essa reserva, quem
+abrisse o site com o Firebase indisponível veria um login que não funciona e
+não teria como passar. É o caminho que o teste do navegador exercita, já que
+lá não há rede.
+
+"Manter conectado" escolhe onde a sessão fica guardada: no disco, sobrevivendo
+a fechar o navegador, ou só na aba. Precisa ser decidido **antes** de entrar,
+porque depois já está gravado.
 
 ## Alvos de toque
 
@@ -331,6 +351,18 @@ Botões abaixo de 32px são chute num aparelho de dedo. As classes `.toque` e
 `(pointer: coarse)` — no computador o cursor acerta qualquer coisa, e engordar
 tudo lá só ocuparia espaço à toa. Elas estão na lista `DO_APP` do
 `gerar_css.py`, porque não são utilitárias.
+
+## Assistente
+
+A resposta chega em markdown e é desenhada pelo `Markdown`, no `parte9.jsx` —
+um pedaço pequeno da linguagem, o que a resposta realmente usa. Cada trecho
+vira elemento React, nunca HTML montado à mão: o texto vem de fora, e montar
+HTML com ele abriria a porta para injeção.
+
+O teto de saída é 4000 tokens. Estava em 1400, e um plano de semana passava
+disso: a resposta chegava cortada no meio da frase sem nada dizendo por quê.
+Quando ainda assim bater no teto, o servidor devolve `cortado: true` e a
+bolha avisa, em vez de parecer travamento.
 
 ## Salas de amigos
 
@@ -358,6 +390,12 @@ lido só por ele. Quem monta o ranking é o servidor, com a conta de serviço:
 sem isso bastaria saber o uid de alguém para ler os números dessa pessoa sem
 estar em sala nenhuma. Aparecem o nome do perfil, os minutos lançados em
 sessão, as questões e o acerto — nada do que foi estudado.
+
+Cada pessoa decide se aparece, pela caixa na própria aba. Desligado, o app
+grava o perfil **zerado**, com a marca de oculto: os números nem chegam a
+sair do aparelho. No ranking essa pessoa fica no fim e sem posição — aparecer
+em último com zero horas exporia uma escolha de privacidade como se fosse
+desempenho ruim.
 
 Quem publica o perfil é o `usePerfilPublico`, chamado no componente raiz e
 não dentro da aba. Fosse dentro da aba, o ranking mostraria zero para quem

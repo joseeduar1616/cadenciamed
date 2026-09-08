@@ -42,18 +42,23 @@ const numero = (v) => Number((v && (v.doubleValue || v.integerValue)) || 0);
 /* Só o que faz sentido viajar. As imagens ficam de fora: elas moram no
    IndexedDB de cada aparelho, então o que viajaria seria um nome de arquivo
    que não existe do outro lado, e o cartão apareceria com um buraco. */
-export function limparParaPublicar(cartoes) {
+export function limparParaPublicar(cartoes, comBaralho) {
   const fora = [];
   for (const c of cartoes || []) {
     if (!c || typeof c !== "object") continue;
     const frente = String(c.frente || "").replace(/\[\[img:[^\]]+\]\]/g, "").trim();
     const verso = String(c.verso || "").replace(/\[\[img:[^\]]+\]\]/g, "").trim();
     if (!frente || !verso) continue;
-    fora.push({
+    const limpo = {
       frente: frente.slice(0, 400),
       verso: verso.slice(0, 800),
       subjectId: c.subjectId ? String(c.subjectId).slice(0, 40) : null,
-    });
+    };
+    /* Publicando uma pasta, cada cartão leva o baralho dele: é isso que
+       permite recriar a pasta com a divisão original do outro lado. Num
+       baralho só, esse campo seria sempre o mesmo e não vale o espaço. */
+    if (comBaralho) limpo.baralho = String(c.baralho || "").slice(0, 40) || null;
+    fora.push(limpo);
     if (fora.length >= MAX_CARTOES) break;
   }
   return fora;
@@ -99,6 +104,8 @@ export async function onRequest({ request, env }) {
         slug: d.name.split("/").pop(),
         nome: texto(f.nome),
         pasta: texto(f.pasta),
+        tipo: texto(f.tipo) === "pasta" ? "pasta" : "baralho",
+        baralhos: numero(f.baralhos),
         total: numero(f.total),
         atualizadoEm: numero(f.atualizadoEm),
       };
@@ -123,6 +130,7 @@ export async function onRequest({ request, env }) {
     return json({
       ok: true,
       nome: texto(f.nome), pasta: texto(f.pasta),
+      tipo: texto(f.tipo) === "pasta" ? "pasta" : "baralho",
       cartoes: Array.isArray(cartoes) ? cartoes : [],
     });
   }
@@ -131,25 +139,39 @@ export async function onRequest({ request, env }) {
      quem protege de verdade é esta linha. */
   if (!dono) return json({ erro: "Só a conta do dono publica baralhos." }, 403);
 
-  /* ── publicar ──────────────────────────────────────────────────────── */
+  /* ── publicar ──────────────────────────────────────────────────────
+     Um baralho, ou a pasta inteira. Na pasta, cada cartão leva o baralho
+     dele, e quem copia recebe a pasta já dividida do mesmo jeito. */
   if (acao === "publicar") {
+    const ehPasta = corpo.tipo === "pasta";
     const pasta = String(corpo.pasta || "").slice(0, 40);
-    const nome = String(corpo.baralho || "").slice(0, 40);
-    if (!nome) return json({ erro: "Informe o baralho." }, 400);
+    const nome = ehPasta ? pasta : String(corpo.baralho || "").slice(0, 40);
+    if (!nome) return json({ erro: ehPasta ? "Informe a pasta." : "Informe o baralho." }, 400);
 
-    const cartoes = limparParaPublicar(corpo.cartoes);
+    const cartoes = limparParaPublicar(corpo.cartoes, ehPasta);
     if (!cartoes.length) {
-      return json({ erro: "Esse baralho não tem cartão com frente e verso preenchidos." }, 400);
+      return json({
+        erro: `Essa ${ehPasta ? "pasta" : "baralho"} não tem cartão com frente e verso preenchidos.`,
+      }, 400);
     }
     const serializado = JSON.stringify(cartoes);
     if (serializado.length > MAX_BYTES) {
       return json({
-        erro: `Esse baralho é grande demais para publicar de uma vez (${cartoes.length} cartões). `
-          + "Divida em baralhos menores.",
+        erro: `${ehPasta ? "Essa pasta" : "Esse baralho"} é grande demais para publicar de uma vez `
+          + `(${cartoes.length} cartões). ` + (ehPasta
+            ? "Publique os baralhos de dentro dela um a um."
+            : "Divida em baralhos menores."),
       }, 413);
     }
 
-    const slug = apelidoBaralho(pasta, nome);
+    /* A pasta e um baralho de mesmo nome dentro dela não podem cair no
+       mesmo endereço, senão um sobrescreveria o outro. */
+    const slug = ehPasta
+      ? apelidoBaralho("pasta", pasta)
+      : apelidoBaralho(pasta, nome);
+    const quantosBaralhos = ehPasta
+      ? new Set(cartoes.map((c) => c.baralho || "")).size : 1;
+
     const r = await fetch(`${BASE_FIRESTORE}/publicos/${slug}`, {
       method: "PATCH",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -157,6 +179,8 @@ export async function onRequest({ request, env }) {
         fields: {
           nome: { stringValue: nome },
           pasta: { stringValue: pasta },
+          tipo: { stringValue: ehPasta ? "pasta" : "baralho" },
+          baralhos: { doubleValue: quantosBaralhos },
           total: { doubleValue: cartoes.length },
           cartoes: { stringValue: serializado },
           publicadoPor: { stringValue: pessoa.email },
@@ -167,7 +191,8 @@ export async function onRequest({ request, env }) {
     if (!r.ok) return json({ erro: "Não consegui publicar." }, 500);
     return json({
       ok: true, slug,
-      mensagem: `"${nome}" publicado com ${cartoes.length} cartõe${cartoes.length === 1 ? "" : "s"}.`
+      mensagem: `"${nome}" publicad${ehPasta ? "a" : "o"} com ${cartoes.length} cartõe${cartoes.length === 1 ? "" : "s"}`
+        + (ehPasta ? ` em ${quantosBaralhos} baralho${quantosBaralhos === 1 ? "" : "s"}` : "") + "."
         + (cartoes.length < (corpo.cartoes || []).length
           ? " Cartões sem frente ou verso, e as imagens, ficaram de fora." : ""),
     });

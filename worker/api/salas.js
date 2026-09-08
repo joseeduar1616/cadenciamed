@@ -126,6 +126,7 @@ async function perfisDe(token, uids) {
     fora[uid] = {
       nome: texto(f.nome),
       atualizadoEm: numero(f.atualizadoEm),
+      oculto: !!((f.oculto || {}).booleanValue),
       total: { minutos: numero(f.minutos), questoes: numero(f.questoes), acertos: numero(f.acertos) },
       semana: {
         chave: texto(f.semanaChave),
@@ -178,11 +179,14 @@ export function montarRanking(sala, perfis, eu, periodo) {
   const linhas = sala.membros.map((uid) => {
     const p = perfis[uid] || {};
     const bloco = p[recorte.campo] || {};
+    /* Quem escolheu não mostrar continua na sala, sem números. Eles nem
+       chegam aqui: o app dessa pessoa grava zerado. */
+    const escondido = !!p.oculto;
 
     /* Números de outra semana não valem para esta. Acontece com quem estudou
        muito e não abriu o app desde então: sem esta conferência, essa pessoa
        lideraria a semana atual com o resultado da anterior. */
-    const vale = recorte.chave === null || bloco.chave === recorte.chave;
+    const vale = !escondido && (recorte.chave === null || bloco.chave === recorte.chave);
 
     const questoes = vale ? Math.max(0, Math.round(bloco.questoes || 0)) : 0;
     const acertos = vale ? Math.min(questoes, Math.max(0, Math.round(bloco.acertos || 0))) : 0;
@@ -197,14 +201,23 @@ export function montarRanking(sala, perfis, eu, periodo) {
       atualizadoEm: p.atualizadoEm || 0,
       /* Diferencia "não estudou" de "não abriu o app no recorte", que na tela
          são coisas bem diferentes. */
-      foraDoRecorte: !vale && !!p.atualizadoEm,
+      oculto: escondido,
+      foraDoRecorte: !escondido && !vale && !!p.atualizadoEm,
       souEu: uid === eu,
       dono: uid === sala.dono,
     };
   });
 
-  linhas.sort((a, b) => b.minutos - a.minutos || b.questoes - a.questoes);
-  return { recorte, linhas: linhas.map((x, i) => ({ ...x, posicao: i + 1 })) };
+  /* Quem não mostra fica no fim, e sem posição: aparecer em último com
+     zero horas seria expor uma escolha de privacidade como se fosse
+     desempenho ruim. */
+  linhas.sort((a, b) => (a.oculto ? 1 : 0) - (b.oculto ? 1 : 0)
+    || b.minutos - a.minutos || b.questoes - a.questoes);
+  let n = 0;
+  return {
+    recorte,
+    linhas: linhas.map((x) => ({ ...x, posicao: x.oculto ? null : (n += 1) })),
+  };
 }
 
 export async function onRequest({ request, env }) {
