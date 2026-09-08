@@ -259,7 +259,7 @@ function eventosGoogle({ routine, agenda, ladder, simulados, examDate, today, op
         ev.push({
           id: idGoogle(`revisao-${r.id}-${st.d}`),
           summary: `Revisar ${st.label}: ${r.title}`,
-          description: `Semana ${r.week} · ${aLabel(r.area)} · estudado em ${brDate(r.anchor)}`,
+          description: `${aLabel(r.area)} · estudado em ${brDate(r.anchor)}`,
           start: { date: st.due }, end: { date: addDays(st.due, 1) },
           transparency: "transparent",
         });

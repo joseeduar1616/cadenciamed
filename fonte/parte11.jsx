@@ -19,13 +19,16 @@ const RECURSOS_PRO = {
   cartoes: "Seus próprios flashcards, com repetição espaçada",
   revisoes: "A escada de revisão espaçada, com os prazos de cada aula",
   temas: "O cronograma por especialidade, com o radar das áreas",
-  assistente: "O assistente que lê seu progresso e responde",
   rotina: "Calendário da semana e sincronização com o Google Agenda",
   metas: "Simulados, provas resolvidas, hábitos e exportação da agenda",
   nuvem: "Seus dados sincronizados em todos os aparelhos",
   projecao: "Ritmo e projeção até a prova",
 };
-const ABAS_PRO = ["cartoes", "revisoes", "temas", "assistente", "rotina", "metas"];
+const ABAS_PRO = ["cartoes", "revisoes", "temas", "rotina", "metas"];
+
+/* Abas que só o administrador enxerga. O servidor faz a mesma checagem,
+   então esconder aqui é conveniência, não é o que protege. */
+const ABAS_DONO = ["assistente"];
 
 /* Conta do dono: acesso completo sem precisar assinar. O servidor faz a
    mesma verificação, então isso não é um atalho que outra pessoa consiga
@@ -87,7 +90,7 @@ function Precos({ compacto, onFechar, usuario, plano }) {
           <div style={{
             fontFamily: F_MONO, fontSize: 10, letterSpacing: "0.32em",
             textTransform: "uppercase", color: "var(--neon)", marginBottom: 18,
-          }}>Residência médica · MEDCURSO 2026</div>
+          }}>Preparação para residência médica</div>
           <h2 style={{
             fontFamily: F_UI, fontSize: "clamp(30px, 5.4vw, 58px)", fontWeight: 300,
             margin: 0, color: T.ink, lineHeight: 1.1, letterSpacing: "-0.02em", maxWidth: 760,
@@ -96,7 +99,7 @@ function Precos({ compacto, onFechar, usuario, plano }) {
             <span style={{ fontWeight: 500 }}>organizado num lugar só</span>
           </h2>
           <p style={{ color: T.dim, fontSize: 16, lineHeight: 1.7, marginTop: 22, maxWidth: 470 }}>
-            As {CURRICULUM.length} aulas e {TOTAL_BONUS} bônus para marcar, revisão espaçada,
+            As {CURRICULUM.length} aulas e {TOTAL_BONUS} tópicos para marcar, revisão espaçada,
             flashcards seus, cronômetro e acompanhamento por especialidade.
           </p>
         </div>
@@ -167,7 +170,7 @@ function Precos({ compacto, onFechar, usuario, plano }) {
         <div className="mt-5 pt-5" style={{ borderTop: `1px solid ${T.line}` }}>
           <Label>Continua de graça, para sempre</Label>
           <Mini style={{ marginTop: 8, lineHeight: 1.7 }}>
-            O cronograma completo com as {CURRICULUM.length} aulas e {TOTAL_BONUS} bônus
+            O cronograma completo com as {CURRICULUM.length} aulas e {TOTAL_BONUS} tópicos
             para marcar, o cronômetro com pomodoro e tempo corrido, o registro de
             sessões com questões e acertos, e o backup do seu arquivo. Nada do que
             você já anotou é perdido ou bloqueado.

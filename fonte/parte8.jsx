@@ -1,4 +1,154 @@
 /* ═══════════════════════════════════════════════════════════════════
+   17b · BARRA LATERAL
+   No lugar da fileira de abas que rolava para o lado, um menu vertical
+   que mostra tudo de uma vez. No computador ele fica fixo e encolhe para
+   só os ícones; no celular vira gaveta, que abre por cima do conteúdo e
+   fecha sozinha ao escolher.
+   ═══════════════════════════════════════════════════════════════════ */
+
+const ICONE_ABA = {
+  hoje: CalendarDays, foco: Target, materias: ListChecks, temas: Stethoscope,
+  assistente: Sparkles, cartoes: Layers, revisoes: RotateCcw, rotina: Coffee,
+  metas: Flame, progresso: BarChart3, planos: Zap,
+};
+
+/* Diz se a tela é estreita. A escolha "forçar celular" no rodapé manda
+   aqui também, senão o menu ficaria fixo num layout feito para caber
+   numa coluna só. */
+function useTelaEstreita(forcado) {
+  const [estreita, setEstreita] = useState(true);
+  useEffect(() => {
+    if (forcado) { setEstreita(true); return undefined; }
+    const medir = () => setEstreita(window.innerWidth < 1024);
+    medir();
+    window.addEventListener("resize", medir);
+    return () => window.removeEventListener("resize", medir);
+  }, [forcado]);
+  return forcado ? true : estreita;
+}
+
+function BarraLateral({ abas, atual, onEscolher, estreita, aberta, onFechar, aberto, setAberto, pro }) {
+  /* No celular a gaveta some do caminho quando fechada; no computador ela
+     continua na tela, só encolhida para a largura dos ícones. */
+  const expandida = estreita ? true : aberto;
+  const largura = expandida ? 236 : 72;
+
+  useEffect(() => {
+    if (!estreita || !aberta) return undefined;
+    const h = (e) => { if (e.key === "Escape") onFechar(); };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [estreita, aberta, onFechar]);
+
+  const conteudo = (
+    <>
+      <div className="flex items-center gap-2 px-3" style={{ height: 58, flexShrink: 0 }}>
+        {estreita ? (
+          <button type="button" aria-label="Fechar menu" onClick={onFechar}
+            className="flex items-center justify-center rounded-full brilhar"
+            style={{ width: 36, height: 36, background: "transparent", border: `1px solid ${T.line}`, color: T.dim, cursor: "pointer" }}>
+            <X size={16} />
+          </button>
+        ) : (
+          <button type="button" aria-label={aberto ? "Encolher menu" : "Expandir menu"}
+            onClick={() => setAberto(!aberto)}
+            className="flex items-center justify-center rounded-full brilhar"
+            style={{ width: 36, height: 36, background: "transparent", border: `1px solid ${T.line}`, color: T.dim, cursor: "pointer", flexShrink: 0 }}>
+            <PanelLeft size={16} style={{ transform: aberto ? "none" : "scaleX(-1)", transition: "transform .2s" }} />
+          </button>
+        )}
+        {expandida ? (
+          <span style={{
+            fontFamily: F_MONO, fontSize: 10, letterSpacing: "0.28em",
+            textTransform: "uppercase", color: T.ghost, whiteSpace: "nowrap",
+          }}>Navegação</span>
+        ) : null}
+      </div>
+
+      <nav className="flex flex-col gap-1 px-3 pb-4" style={{ overflowY: "auto", flex: 1 }}>
+        {abas.map((t) => {
+          const on = atual === t.id;
+          const Ic = ICONE_ABA[t.id] || Layers;
+          const trancada = !pro && ABAS_PRO.indexOf(t.id) >= 0;
+          return (
+            <button key={t.id} type="button" title={expandida ? undefined : t.label}
+              onClick={() => { onEscolher(t.id); if (estreita) onFechar(); }}
+              className="aba flex items-center gap-3 rounded-2xl px-3 whitespace-nowrap"
+              data-on={on ? "1" : "0"}
+              style={{
+                minHeight: 44, flexShrink: 0,
+                background: on
+                  ? `linear-gradient(100deg, ${soft(t.acc, 26)}, ${soft(t.acc, 8)})`
+                  : "transparent",
+                border: `1px solid ${on ? soft(t.acc, 40) : "transparent"}`,
+                color: on ? t.acc : T.dim,
+                fontSize: 13.5, fontWeight: on ? 700 : 500,
+                letterSpacing: "0.06em", textTransform: "uppercase",
+                cursor: "pointer", justifyContent: expandida ? "flex-start" : "center",
+                textShadow: on ? `0 0 18px ${t.acc}` : "none",
+              }}>
+              <Ic size={17} style={{ flexShrink: 0 }} />
+              {expandida ? <span className="flex-1 text-left">{t.label}</span> : null}
+              {expandida && trancada ? (
+                <span style={{ color: T.ghost, display: "inline-flex" }}><Cadeado tamanho={12} /></span>
+              ) : null}
+              {t.badge ? (
+                <span style={{
+                  fontFamily: F_MONO, fontSize: 10, background: T.warn, color: "var(--bg)",
+                  borderRadius: 99, padding: "1px 6px", fontWeight: 700,
+                  position: expandida ? "static" : "absolute", marginLeft: expandida ? 0 : 22,
+                  marginTop: expandida ? 0 : -18,
+                }}>{t.badge}</span>
+              ) : null}
+            </button>
+          );
+        })}
+      </nav>
+    </>
+  );
+
+  if (estreita) {
+    return (
+      <>
+        {aberta ? (
+          <div aria-hidden="true" onClick={onFechar}
+            style={{
+              position: "fixed", inset: 0, zIndex: 58,
+              background: soft("var(--bg)", 72), backdropFilter: "blur(4px)",
+            }} />
+        ) : null}
+        <aside aria-label="Navegação" aria-hidden={!aberta}
+          className="flex flex-col"
+          style={{
+            position: "fixed", top: 0, bottom: 0, left: 0, width: 268, maxWidth: "84vw",
+            zIndex: 59, background: T.card3, borderRight: `1px solid ${T.line2}`,
+            backdropFilter: "blur(18px)", WebkitBackdropFilter: "blur(18px)",
+            boxShadow: aberta ? T.shadow : "none",
+            transform: aberta ? "none" : "translateX(-100%)",
+            transition: "transform .28s cubic-bezier(.2,.8,.2,1)",
+            visibility: aberta ? "visible" : "hidden",
+          }}>
+          {conteudo}
+        </aside>
+      </>
+    );
+  }
+
+  return (
+    <aside aria-label="Navegação" className="flex flex-col"
+      style={{
+        width: largura, flexShrink: 0, position: "sticky", top: 0,
+        height: "100vh", borderRight: `1px solid ${T.line}`,
+        background: soft("var(--bg2)", 55),
+        backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
+        transition: "width .25s cubic-bezier(.2,.8,.2,1)",
+      }}>
+      {conteudo}
+    </aside>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
    18 · APP
    ═══════════════════════════════════════════════════════════════════ */
 
@@ -139,11 +289,7 @@ export default function Cadencia() {
       if (!s.aula) continue;
       const rec = data.reviews[s.id] || {};
       const anchor = rec.anchor || s.date || today;
-      const seeded = {};
-      for (let i = 0; i < Math.min(s.seedLadder || 0, degraus.length); i++) {
-        seeded[String(degraus[i].d)] = addDays(anchor, degraus[i].d);
-      }
-      const marked = { ...seeded, ...(rec.done || {}) };
+      const marked = { ...(rec.done || {}) };
       for (const k of Object.keys(rec.undone || {})) delete marked[k];
       const steps = degraus.map((st) => {
         const due = addDays(anchor, st.d);
@@ -226,11 +372,9 @@ export default function Cadencia() {
     setData((p) => {
       const rec = { ...(p.reviews[id] || {}) };
       const doneMap = { ...(rec.done || {}) }, undo = { ...(rec.undone || {}) };
-      const k = String(days), subj = BY_ID[id];
-      const pos = degrausRef.current.findIndex((x) => String(x.d) === k);
-      const seeded = subj && pos >= 0 && pos < (subj.seedLadder || 0);
-      const currently = !!(doneMap[k] || (seeded && !undo[k]));
-      if (currently) { delete doneMap[k]; undo[k] = 1; } else { doneMap[k] = todayISO(); delete undo[k]; }
+      const k = String(days);
+      if (doneMap[k]) { delete doneMap[k]; undo[k] = 1; }
+      else { doneMap[k] = todayISO(); delete undo[k]; }
       rec.done = doneMap; rec.undone = undo;
       if (!rec.anchor) rec.anchor = anchor;
       return { ...p, reviews: { ...p.reviews, [id]: rec } };
@@ -269,12 +413,21 @@ export default function Cadencia() {
   const pro = assinatura.pro;
   useEffect(() => { setProAtivo(pro); }, [pro]);
 
+  const souDono = ehDono(nuvem.usuario);
+
+  /* Menu lateral: no celular é gaveta que abre por cima; no computador
+     fica fixo e só encolhe para a largura dos ícones. */
+  const estreita = useTelaEstreita(data.layout === "movel");
+  const [menuAberto, setMenuAberto] = useState(false);
+  const [menuFixo, setMenuFixo] = useState(true);
+  useEffect(() => { if (!estreita) setMenuAberto(false); }, [estreita]);
+
   const TABS = [
     { id: "hoje", label: "Hoje", acc: "var(--a-CL)" },
     { id: "foco", label: "Foco", acc: "var(--a-PR)" },
     { id: "materias", label: "Matérias", acc: "var(--a-GO)" },
     { id: "temas", label: "Temas", acc: "var(--a-CI)" },
-    { id: "assistente", label: "Assistente", acc: "var(--neon)" },
+    ...(souDono ? [{ id: "assistente", label: "Assistente", acc: "var(--neon)" }] : []),
     { id: "cartoes", label: "Cartões", acc: "var(--neon)", badge: cartoesHoje },
     { id: "revisoes", label: "Revisões", acc: "var(--ok)", badge: late.length },
     { id: "rotina", label: "Rotina", acc: "var(--a-PE)" },
@@ -283,6 +436,12 @@ export default function Cadencia() {
     { id: "planos", label: pro ? "Plano" : "Assinar", acc: "var(--neon2)" },
   ];
   const acc = (TABS.find((t) => t.id === tab) || TABS[0]).acc;
+
+  /* Sair da conta com o Assistente aberto deixaria uma aba escolhida que já
+     não existe mais na barra, e a tela ficaria em branco. */
+  useEffect(() => {
+    if (!TABS.some((t) => t.id === tab)) setTab("hoje");
+  }, [souDono, tab]);
 
   useEffect(() => {
     const h = (e) => {
@@ -454,7 +613,12 @@ export default function Cadencia() {
         /* O tamanho do texto escolhido em Progresso é aplicado com zoom só
            no conteúdo: as camadas de fundo ficam de fora, porque elas são
            fixas na tela e escalar junto deslocaria as auras. */
-        <div style={{ position: "relative", zIndex: 1, zoom: aparencia.tamanho !== 1 ? aparencia.tamanho : undefined }}>
+        <div className="flex" style={{ position: "relative", zIndex: 1, alignItems: "flex-start", zoom: aparencia.tamanho !== 1 ? aparencia.tamanho : undefined }}>
+          <BarraLateral abas={TABS} atual={tab} onEscolher={setTab} pro={pro}
+            estreita={estreita} aberta={menuAberto} onFechar={() => setMenuAberto(false)}
+            aberto={menuFixo} setAberto={setMenuFixo} />
+
+          <div className="flex-1 min-w-0">
           <header className="px-5 sm:px-8 pt-7 pb-4">
             <div className="mx-auto" style={{ maxWidth: LARGURA }}>
               {/* Marca ao centro, saudação à esquerda e controles à direita,
@@ -462,8 +626,17 @@ export default function Cadencia() {
               {/* Marca ao centro, controles flutuando nos cantos e a
                   navegação logo abaixo, também centralizada. */}
               <div style={{ position: "relative" }}>
-                <div className="hidden sm:block" style={{ position: "absolute", left: 0, top: 4 }}>
-                  <Mini>{greet}{firstName ? `, ${firstName}` : ""}</Mini>
+                <div className="flex items-center gap-3" style={{ position: "absolute", left: 0, top: 0 }}>
+                  {estreita ? (
+                    <button type="button" aria-label="Abrir menu" onClick={() => setMenuAberto(true)}
+                      className="flex items-center justify-center rounded-full brilhar"
+                      style={{ width: 38, height: 38, background: T.card, border: `1px solid ${T.line}`, color: T.ink, cursor: "pointer" }}>
+                      <Menu size={17} />
+                    </button>
+                  ) : null}
+                  <span className="hidden sm:block" style={{ marginTop: 4 }}>
+                    <Mini>{greet}{firstName ? `, ${firstName}` : ""}</Mini>
+                  </span>
                 </div>
 
                 <div className="flex items-center gap-2" style={{ position: "absolute", right: 0, top: 0 }}>
@@ -538,41 +711,6 @@ export default function Cadencia() {
                 </button>
               </div>
 
-              <nav className="flex gap-1 mt-6 rounded-full p-1 overflow-x-auto mx-auto"
-                style={{
-                  background: T.card, border: `1px solid ${T.line}`,
-                  scrollbarWidth: "none", width: "fit-content", maxWidth: "100%",
-                  backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)",
-                  boxShadow: `0 16px 44px -28px ${soft("var(--neon2)", 90)}`,
-                }}>
-                {TABS.map((t) => {
-                  const on = tab === t.id;
-                  return (
-                    <button key={t.id} type="button" onClick={() => setTab(t.id)}
-                      className="aba inline-flex items-center gap-1.5 rounded-full px-4 py-2 whitespace-nowrap"
-                      data-on={on ? "1" : "0"}
-                      style={{
-                        background: on
-                          ? `linear-gradient(180deg, ${soft(t.acc, 26)}, ${soft(t.acc, 10)})`
-                          : "transparent",
-                        border: "none",
-                        color: on ? t.acc : T.faint, fontSize: 12.5,
-                        fontWeight: on ? 700 : 500, letterSpacing: "0.12em", textTransform: "uppercase",
-                        cursor: "pointer",
-                        textShadow: on ? `0 0 18px ${t.acc}` : "none",
-                        boxShadow: on ? `inset 0 0 20px -12px ${t.acc}` : "none",
-                      }}>
-                      {!pro && ABAS_PRO.indexOf(t.id) >= 0 ? (
-                        <span style={{ color: T.ghost, display: "inline-flex" }}><Cadeado tamanho={11} /></span>
-                      ) : null}
-                      {t.label}
-                      {t.badge ? (
-                        <span style={{ fontFamily: F_MONO, fontSize: 10, background: T.warn, color: "var(--bg)", borderRadius: 99, padding: "1px 6px", fontWeight: 700 }}>{t.badge}</span>
-                      ) : null}
-                    </button>
-                  );
-                })}
-              </nav>
             </div>
           </header>
 
@@ -582,7 +720,6 @@ export default function Cadencia() {
               {tab === "foco" && <Foco {...{ data, setData, today, P, subjectId: pomoSubject, setSubjectId: setPomoSubject }} />}
               {tab === "materias" && <Materias {...{ subjects, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone }} />}
               {tab === "temas" && !pro && <Bloqueado recurso={RECURSOS_PRO.temas} onVerPlanos={() => setTab("planos")} />}
-              {tab === "assistente" && !pro && <Bloqueado recurso={RECURSOS_PRO.assistente} onVerPlanos={() => setTab("planos")} />}
               {tab === "rotina" && !pro && <Bloqueado recurso={RECURSOS_PRO.rotina} onVerPlanos={() => setTab("planos")} />}
               {tab === "cartoes" && !pro && <Bloqueado recurso={RECURSOS_PRO.cartoes} onVerPlanos={() => setTab("planos")} />}
               {tab === "cartoes" && pro && <Cartoes {...{ data, setData, subjects, today, notify }} />}
@@ -590,11 +727,11 @@ export default function Cadencia() {
               {tab === "metas" && !pro && <Bloqueado recurso={RECURSOS_PRO.metas} onVerPlanos={() => setTab("planos")} />}
               {tab === "planos" && <Precos usuario={nuvem.usuario} plano={assinatura.plano} />}
               {tab === "temas" && pro && <Temas {...{ subjects, setMark, minutos: minutesBySubject, sessoes: data.sessions, today }} />}
-              {tab === "assistente" && pro && <Assistente {...{ data, setData, subjects, ladder, today, totals, minWeek, qWeek, notify, nuvem }} />}
+              {tab === "assistente" && souDono && <Assistente {...{ data, setData, subjects, ladder, today, totals, minWeek, qWeek, notify, nuvem }} />}
               {tab === "revisoes" && pro && <Revisoes {...{ rows: ladder, toggleStep, resetCycle, data, setData, degraus, notify }} />}
               {tab === "rotina" && pro && <Rotina {...{ data, setData, gcal, today }} />}
               {tab === "metas" && pro && <Metas {...{ data, setData, today, qWeek, notify, ladder, gcal }} />}
-              {tab === "progresso" && <Progresso {...{ data, setData, byDay, today, totals, subjects, notify, nuvem }} />}
+              {tab === "progresso" && <Progresso {...{ data, setData, byDay, today, totals, subjects, notify, nuvem, pro }} />}
             </div>
           </main>
 
@@ -617,17 +754,18 @@ export default function Cadencia() {
               </button>
               <div style={{ width: 34, height: 1, background: T.line2 }} />
               <div className="text-center">
-                <div style={{ fontSize: 14.5, fontWeight: 700, color: T.dim }}>Fonte: Medgrupo</div>
+                <div style={{ fontSize: 14.5, fontWeight: 700, color: T.dim }}>Cadência Med</div>
                 <Mini style={{ marginTop: 4, fontFamily: F_MONO, color: T.ghost }}>
-                  versão {VERSAO} · {CURRICULUM.length} aulas e {TOTAL_BONUS} bônus
+                  versão {VERSAO} · {CURRICULUM.length} aulas e {TOTAL_BONUS} tópicos
                 </Mini>
                 <Mini style={{ marginTop: 5, lineHeight: 1.6, maxWidth: 420 }}>
-                  Cronograma do MEDCURSO 2026. Cadência é uma ferramenta de organização
-                  pessoal, sem vínculo com o Medgrupo.
+                  Ferramenta independente de organização pessoal. O conteúdo das
+                  aulas é de quem você estuda; aqui ficam só as suas marcações.
                 </Mini>
               </div>
             </div>
           </footer>
+          </div>
         </div>
       )}
 

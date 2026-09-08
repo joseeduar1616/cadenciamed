@@ -22,7 +22,7 @@ ARQUIVOS = [
     'icone-512.png',
     'icone-512-maskable.png',
 ]
-FUNCOES = ['assistente.mjs', 'compra.mjs', 'acessos.mjs']
+FUNCOES = ['assistente.mjs', 'compra.mjs', 'acessos.mjs', 'cupom.mjs']
 
 if os.path.isdir(DESTINO):
     shutil.rmtree(DESTINO)

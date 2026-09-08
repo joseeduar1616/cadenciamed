@@ -70,9 +70,8 @@ troca de esquema de revisão e de aparência não pegar.
 | `parte6.jsx` | Matérias, Revisões, escolha do esquema, exportação `.ics` |
 | `parte7.jsx` | Metas, Progresso, aparência, painel de conta |
 | `parte9.jsx` | assistente que conversa com a API |
-| `parte8.jsx` | componente raiz, cabeçalho, abas, rodapé |
-| `seed.js` | currículo: 90 aulas e 217 bônus do MEDCURSO 2026 |
-| `especialidades.js` | de qual especialidade é cada aula |
+| `parte8.jsx` | componente raiz, cabeçalho, barra lateral, rodapé |
+| `curriculo.js` | cronograma próprio: 90 aulas em 34 blocos de especialidade |
 | `gerar_css.py` | varre o `app.jsx` e gera só as regras das classes usadas |
 | `gerar_icones.py` | ícones, favicon e marca, a partir de `logo-original.png` |
 | `montar.py` | junta CSS e JS num `index.html` autônomo |
@@ -80,6 +79,7 @@ troca de esquema de revisão e de aparência não pegar.
 | `publicar.py` | monta a pasta `publicar/`, que é o que se arrasta no Netlify |
 | `testar.mjs` | teste de fumaça no Chromium |
 | `testar-assistente.mjs` | teste da função da IA, com servidor falso no lugar da API |
+| `testar-cupom.mjs` | teste do resgate de cupom, com Firebase falso |
 | `montar.sh` | roda tudo na ordem |
 
 ## Trocar a logo
@@ -116,7 +116,8 @@ tela larga.
 
 Em `netlify/functions/`:
 
-- `assistente.mjs` — conversa com a IA, confere a assinatura
+- `assistente.mjs` — conversa com a IA; só o administrador pode usar
+- `cupom.mjs` — confere o cupom e libera o plano
 - `compra.mjs` — recebe o aviso de compra da Kiwify ou Hotmart
 - `acessos.mjs` — painel do dono, libera e revoga acessos
 
@@ -141,6 +142,25 @@ A assinatura do Gemini Advanced e a do Claude **não** dão acesso às APIs: sã
 cobranças separadas. A camada gratuita do Gemini vem da chave do AI Studio,
 não do plano Pro.
 
+## Cronograma
+
+O `curriculo.js` tem a ordem de estudo da casa, em blocos de especialidade,
+sem vínculo com o calendário de nenhum curso preparatório.
+
+**O `id` de cada aula é fixo e nunca pode ser reaproveitado.** É ele que fica
+gravado no progresso de quem usa: mudar o id de uma aula equivale a apagar o
+que já foi marcado nela. Reordenar a lista, renomear o título ou acrescentar
+aula é seguro, desde que os ids fiquem como estão. A tabela `ID_ANTIGO`, no
+fim do arquivo, traduz o formato antigo (a posição na lista) e não deve ser
+mexida nem encurtada.
+
+## Cupons
+
+Os códigos ficam no `cupom.mjs`, no servidor, e nunca no navegador. Para
+trocá-los sem mexer no código, cadastre `CUPONS` no Netlify, no formato
+`codigo:plano,codigo:plano` (planos: mensal, anual, vitalicio). Enquanto essa
+variável não existir, valem os dois cupons escritos no arquivo.
+
 ## Cuidados
 
 - Nunca editar o `index.html` gerado, que é minificado.
@@ -149,3 +169,4 @@ não do plano Pro.
 - Testar num navegador de verdade antes de publicar.
 - Tudo que for guardado precisa passar pelo `normalize()`, no `parte2.jsx`.
   O que não for copiado ali se perde ao recarregar a página.
+- Não citar cursos preparatórios em lugar nenhum do site.

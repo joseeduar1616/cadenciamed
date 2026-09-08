@@ -408,7 +408,7 @@ function Temas({ subjects, setMark, minutos, sessoes, today }) {
                   </span>
                   <Mini style={{ marginTop: 6 }}>
                     {g.feitas} de {g.total} aulas
-                    {g.bonusTot ? ` · ${g.bonusFeit}/${g.bonusTot} bônus` : ""}
+                    {g.bonusTot ? ` · ${g.bonusFeit}/${g.bonusTot} tópicos` : ""}
                     {g.min ? ` · ${fmtMin(g.min)}` : ""}
                     {g.pct !== null ? ` · ${g.pct}% em ${g.q} questões` : ""}
                   </Mini>
@@ -428,7 +428,7 @@ function Temas({ subjects, setMark, minutos, sessoes, today }) {
                         <span className="flex-1 min-w-0">
                           <span style={{ display: "block", fontSize: 14.5, fontWeight: 600, color: s.aula ? T.dim : T.ink, lineHeight: 1.35 }}>{s.title}</span>
                           <Mini style={{ marginTop: 2 }}>
-                            semana {s.week}
+                            {s.esp}
                             {s.date ? ` · ${brDate(s.date)}` : ""}
                             {minutos[s.id] ? ` · ${fmtMin(minutos[s.id])}` : ""}
                             {d ? ` · ${d.ok}/${d.q}` : ""}

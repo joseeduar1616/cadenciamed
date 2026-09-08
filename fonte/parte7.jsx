@@ -330,9 +330,89 @@ function Heatmap({ byDay, today, weeks = 22 }) {
   );
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   16c · CUPOM
+   O código é conferido no servidor, nunca aqui: se a lista de cupons
+   estivesse no navegador, bastaria abrir o código-fonte da página para
+   descobrir todos. Daqui só sai o que a pessoa digitou.
+   ═══════════════════════════════════════════════════════════════════ */
+
+const ROTA_CUPOM = "/.netlify/functions/cupom";
+
+async function resgatarCupom(nuvem, codigo) {
+  let token = "";
+  try {
+    if (nuvem && nuvem.sdk && nuvem.sdk.auth && nuvem.sdk.auth.currentUser) {
+      token = await nuvem.sdk.auth.currentUser.getIdToken();
+    }
+  } catch (e) { /* segue sem token, o servidor recusa */ }
+  if (!token) return { erro: "Entre na sua conta antes de resgatar o cupom." };
+
+  let r;
+  try {
+    r = await fetch(ROTA_CUPOM, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, codigo }),
+    });
+  } catch (e) {
+    return { erro: "Não consegui falar com o servidor. Verifique a conexão." };
+  }
+  const j = await r.json().catch(() => null);
+  /* 404 sem corpo é função não publicada; com corpo é cupom inválido */
+  if (r.status === 404 && !j) return { erro: "O resgate de cupom ainda não foi publicado neste site." };
+  if (!r.ok || !j) return { erro: (j && j.erro) || "Não deu certo." };
+  return j;
+}
+
+/* Caixa avulsa, para quem já tem conta criada. */
+function Cupom({ nuvem, notify }) {
+  const [codigo, setCodigo] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [bom, setBom] = useState(false);
+
+  const enviar = async () => {
+    if (!codigo.trim()) { setBom(false); setMsg("Escreva o código."); return; }
+    setOcupado(true); setMsg("");
+    const j = await resgatarCupom(nuvem, codigo.trim());
+    setOcupado(false);
+    setBom(!!j.ok);
+    setMsg(j.erro || j.mensagem || "");
+    if (j.ok) { setCodigo(""); notify(j.mensagem || "Acesso liberado."); }
+  };
+
+  return (
+    <Card className="px-6 py-6" brilho="var(--ok)">
+      <H size={18} color="var(--ok)" icon={<Sparkles size={16} />}>Tenho um cupom</H>
+      <Texto style={{ marginTop: 10 }}>
+        Recebeu um código de liberação? Escreva aqui para abrir o plano completo
+        na sua conta.
+      </Texto>
+      <div className="mt-5 flex gap-2 flex-wrap items-end">
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <Field label="Código do cupom">
+            <TextInput value={codigo} placeholder="Ex.: meucupom" autoCapitalize="none"
+              onChange={(e) => setCodigo(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") enviar(); }} />
+          </Field>
+        </div>
+        <Btn tone="primary" onClick={enviar} disabled={ocupado}>
+          {ocupado ? "Conferindo…" : "Resgatar"}
+        </Btn>
+      </div>
+      {msg ? (
+        <Label style={{ marginTop: 14, color: bom ? T.ok : T.bad, textTransform: "none", letterSpacing: 0, fontSize: 14.5 }}>
+          {msg}
+        </Label>
+      ) : null}
+    </Card>
+  );
+}
+
 function ContaNuvem({ nuvem, notify }) {
   const [modo, setModo] = useState("entrar");
-  const [f, setF] = useState({ nome: "", email: "", senha: "" });
+  const [f, setF] = useState({ nome: "", email: "", senha: "", cupom: "" });
   const [msg, setMsg] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
@@ -411,7 +491,18 @@ function ContaNuvem({ nuvem, notify }) {
       if (!e) { setMsg("Enviei um link de redefinição para o seu e-mail."); setOcupado(false); return; }
     }
     setOcupado(false);
-    if (e) setMsg(e); else setF({ nome: "", email: "", senha: "" });
+    if (e) { setMsg(e); return; }
+
+    /* Conta criada. Se veio cupom junto, ele é resgatado agora, já com a
+       sessão aberta: o servidor precisa do token para saber de quem é. */
+    const cod = f.cupom.trim();
+    setF({ nome: "", email: "", senha: "", cupom: "" });
+    if (!cod) return;
+    setOcupado(true);
+    const j = await resgatarCupom(nuvem, cod);
+    setOcupado(false);
+    if (j.ok) { setMsg(j.mensagem || "Cupom aceito."); notify(j.mensagem || "Acesso liberado."); }
+    else setMsg(`Conta criada, mas o cupom não passou: ${j.erro}`);
   };
 
   return (
@@ -438,6 +529,12 @@ function ContaNuvem({ nuvem, notify }) {
         <Field label="E-mail">
           <TextInput type="email" autoComplete="email" value={f.email} placeholder="voce@email.com" onChange={(e) => set("email", e.target.value)} />
         </Field>
+        {modo === "criar" ? (
+          <Field label="Cupom (opcional)">
+            <TextInput value={f.cupom} placeholder="Se você recebeu um código" autoCapitalize="none"
+              onChange={(e) => set("cupom", e.target.value)} />
+          </Field>
+        ) : null}
         {modo !== "senha" ? (
           <Field label="Senha">
             <TextInput type="password" value={f.senha} placeholder="mínimo 6 caracteres"
@@ -447,7 +544,7 @@ function ContaNuvem({ nuvem, notify }) {
           </Field>
         ) : null}
       </div>
-      {msg ? <Label style={{ marginTop: 14, color: msg.startsWith("Enviei") ? T.ok : T.bad }}>{msg}</Label> : null}
+      {msg ? <Label style={{ marginTop: 14, lineHeight: 1.5, textTransform: "none", letterSpacing: 0, fontSize: 14.5, color: /^(Enviei|Cupom aceito)/.test(msg) ? T.ok : T.bad }}>{msg}</Label> : null}
       <div className="mt-5">
         <Btn tone="primary" onClick={enviarForm} disabled={ocupado}>
           {ocupado ? "Aguarde…" : modo === "entrar" ? "Entrar" : modo === "criar" ? "Criar conta" : "Enviar link"}
@@ -618,7 +715,7 @@ function Aparencia({ data, setData }) {
   );
 }
 
-function Progresso({ data, setData, byDay, today, totals, subjects, notify, nuvem }) {
+function Progresso({ data, setData, byDay, today, totals, subjects, notify, nuvem, pro }) {
   const [confirm, setConfirm] = useState(false);
   const fileRef = useRef(null);
 
@@ -685,6 +782,7 @@ function Progresso({ data, setData, byDay, today, totals, subjects, notify, nuve
   return (
     <div className="flex flex-col gap-5">
       <ContaNuvem nuvem={nuvem} notify={notify} />
+      {nuvem.usuario && !pro ? <Cupom nuvem={nuvem} notify={notify} /> : null}
       {ehDono(nuvem.usuario) ? <PainelDono nuvem={nuvem} notify={notify} /> : null}
       <Aparencia data={data} setData={setData} />
 
@@ -781,7 +879,7 @@ function Progresso({ data, setData, byDay, today, totals, subjects, notify, nuve
       <Card className="px-6 py-6">
         <H size={18} color="var(--a-PR)" icon={<Download size={16} />}>Seus dados</H>
         <Label style={{ marginTop: 4 }}>
-          {doneCount} de {subjects.length} aulas principais e {bonusCount} de {TOTAL_BONUS} bônus marcadas
+          {doneCount} de {subjects.length} aulas e {bonusCount} de {TOTAL_BONUS} tópicos marcados
         </Label>
         <div className="mt-5 flex flex-wrap gap-2">
           <Btn onClick={exportar}><Download size={15} /> Baixar backup</Btn>
@@ -833,7 +931,7 @@ function Onboarding({ onDone, theme, toggleTheme }) {
           </div>
           <p style={{ color: T.dim, fontSize: 15, lineHeight: 1.6, marginTop: 14 }}>
             Painel de estudos e rotina para residência médica. Traz o cronograma
-            completo com {CURRICULUM.length} aulas principais e {TOTAL_BONUS} bônus,
+            completo com {CURRICULUM.length} aulas principais e {TOTAL_BONUS} tópicos,
             cronômetro, escada de revisão espaçada e acompanhamento por especialidade.
           </p>
           <div className="mt-7">

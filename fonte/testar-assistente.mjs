@@ -29,11 +29,21 @@ const servidor = http.createServer((req, res) => {
 await new Promise((r) => servidor.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${servidor.address().port}`;
 
+/* Quem a função acha que está pedindo. O teste troca isto para exercitar
+   o dono, um estranho e uma sessão inválida. */
+let QUEM = { email: 'joseeduardo1616@gmail.com', localId: 'uid-dono' };
+
 /* Redireciona as chamadas da função para o servidor falso, sem tocar no
-   código de produção: só o destino do fetch muda. */
+   código de produção: só o destino do fetch muda. A conferência de
+   identidade é respondida aqui mesmo, para o teste não depender do Google. */
 const fetchReal = globalThis.fetch;
 globalThis.fetch = (url, opcoes) => {
   const u = String(url);
+  if (u.includes('identitytoolkit.googleapis.com')) {
+    return Promise.resolve(new Response(
+      JSON.stringify(QUEM ? { users: [QUEM] } : { users: [] }),
+      { status: QUEM === null ? 400 : 200, headers: { 'Content-Type': 'application/json' } }));
+  }
   if (u.includes('generativelanguage.googleapis.com') || u.includes('api.anthropic.com')) {
     return fetchReal(base + new URL(u).pathname, opcoes);
   }
@@ -51,6 +61,7 @@ const pedir = async (fn, corpo) => {
 };
 
 const CONVERSA = {
+  token: 'token-de-teste',
   contexto: 'Aulas feitas: 12 de 90.',
   instrucoes: 'Você é o assistente do Cadência Med.',
   mensagens: [
@@ -65,8 +76,8 @@ const carregar = async () => (await import('./netlify/functions/assistente.mjs?v
 /* ── 1. sem chave nenhuma ────────────────────────────────────────────── */
 delete process.env.GEMINI_API_KEY;
 delete process.env.ANTHROPIC_API_KEY;
-delete process.env.FIREBASE_API_KEY;
 delete process.env.IA_PROVEDOR;
+process.env.FIREBASE_API_KEY = 'chave-firebase';
 let r = await pedir(await carregar(), CONVERSA);
 if (r.status === 500 && /GEMINI_API_KEY/.test(r.corpo.erro)) ok('sem chave: explica o que cadastrar');
 else falha('sem chave: ' + JSON.stringify(r));
@@ -177,11 +188,35 @@ if (r.corpo.provedor === 'nenhum') ok('GET avisa quando nenhuma chave chegou');
 else falha('GET sem chave: ' + JSON.stringify(r.corpo));
 process.env.GEMINI_API_KEY = 'chave-de-teste';
 
-/* ── 8. a assinatura ainda é conferida ───────────────────────────────── */
-process.env.FIREBASE_API_KEY = 'x';
+/* ── 8. o assistente é só do administrador ───────────────────────────── */
+responder = () => ({ status: 200, corpo: { candidates: [{ content: { parts: [{ text: 'ok' }] } }] } });
+
 r = await pedir(await carregar(), { ...CONVERSA, token: '' });
-if (r.status === 402 && /Entre na sua conta/.test(r.corpo.erro)) ok('sem token, o assistente é recusado antes de gastar cota');
-else falha('checagem de assinatura: ' + JSON.stringify(r));
+if (r.status === 403 && /Entre na sua conta/.test(r.corpo.erro)) ok('sem token: recusado antes de gastar cota');
+else falha('sem token: ' + JSON.stringify(r));
+
+QUEM = { email: 'outra.pessoa@email.com', localId: 'uid-estranho' };
+r = await pedir(await carregar(), CONVERSA);
+if (r.status === 403 && /apenas para o administrador/.test(r.corpo.erro)) ok('quem não é o administrador é recusado');
+else falha('estranho: ' + JSON.stringify(r));
+
+QUEM = null;
+r = await pedir(await carregar(), CONVERSA);
+if (r.status === 403) ok('sessão inválida é recusada');
+else falha('sessão inválida: ' + JSON.stringify(r));
+
+QUEM = { email: 'joseeduardo1616@gmail.com', localId: 'uid-dono' };
+r = await pedir(await carregar(), CONVERSA);
+if (r.status === 200 && r.corpo.texto) ok('o administrador consegue usar');
+else falha('dono: ' + JSON.stringify(r));
+
+/* sem a chave do Firebase não dá para saber quem pede: tem de recusar, e
+   não liberar geral como acontecia antes */
+delete process.env.FIREBASE_API_KEY;
+r = await pedir(await carregar(), CONVERSA);
+if (r.status === 500 && /FIREBASE_API_KEY/.test(r.corpo.erro)) ok('sem FIREBASE_API_KEY o assistente fecha, não abre');
+else falha('sem FIREBASE_API_KEY: ' + JSON.stringify(r));
+process.env.FIREBASE_API_KEY = 'chave-firebase';
 
 servidor.close();
 console.log(passos.join('\n'));

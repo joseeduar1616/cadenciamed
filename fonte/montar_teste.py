@@ -16,7 +16,7 @@ if n != 1:
 
 os.makedirs('_teste', exist_ok=True)
 open('_teste/app.jsx', 'w', encoding='utf-8').write(patch)
-for f in ('main.jsx', 'seed.js', 'especialidades.js'):
+for f in ('main.jsx', 'curriculo.js'):
     shutil.copy(f, '_teste/' + f)
 
 subprocess.run([

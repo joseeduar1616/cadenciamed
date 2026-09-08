@@ -348,7 +348,7 @@ function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, do
           </div>
           <div className="flex items-baseline gap-2.5">
             <Num size={24} color="var(--a-PE)">{bonusDone}<span style={{ fontSize: 16, color: T.faint }}>/{TOTAL_BONUS}</span></Num>
-            <Label>bônus</Label>
+            <Label>tópicos</Label>
           </div>
           <div className="flex-1" style={{ minWidth: 160 }}>
             <Track pct={((done + bonusDone) / (CURRICULUM.length + TOTAL_BONUS)) * 100} color={T.ok} />
@@ -444,7 +444,7 @@ function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, do
                   <span style={{ width: 3, height: 26, borderRadius: 3, background: aColor(r.area), flexShrink: 0 }} />
                   <div className="flex-1 min-w-0">
                     <div style={{ fontSize: 15, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title}</div>
-                    <Mini style={{ marginTop: 1 }}>semana {r.week} · {r.late.map((x) => x.label).join(", ")}</Mini>
+                    <Mini style={{ marginTop: 1 }}>{BY_ID[r.id] ? BY_ID[r.id].esp : ""} · {r.late.map((x) => x.label).join(", ")}</Mini>
                   </div>
                   <Num size={13} color={T.warn} weight={600}>{r.overdueBy > 0 ? `${r.overdueBy}d` : "hoje"}</Num>
                 </div>

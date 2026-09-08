@@ -102,4 +102,4 @@ def build(js, out, title, desc):
 
 if __name__ == '__main__':
     build('b-limpa.js', 'index.html', 'Cadência Med · Estudos para residência',
-          'Painel de estudos para residencia medica: cronograma MEDCURSO 2026, cronometro, revisao espacada e rotina.')
+          'Painel de estudos para residencia medica: cronograma, cronometro, revisao espacada, flashcards e rotina.')

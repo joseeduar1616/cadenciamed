@@ -29,16 +29,16 @@ const ANTHROPIC_MODELO = process.env.ANTHROPIC_MODELO || "claude-sonnet-5";
 
 const LIMITE_ENTRADA = 24000;   // caracteres, para conter custo por chamada
 const MAX_SAIDA = 1400;
-const PROJETO = "cadencia-7c1f1";
 /* Contas com acesso liberado sem assinatura. O e-mail vem do token já
    validado pelo Google, então não dá para forjar. */
 const DONOS = ["joseeduardo1616@gmail.com"];
 
 /* Confere quem está pedindo antes de gastar a cota.
-   O navegador manda o token do Firebase; aqui ele é validado direto com o
-   Google, e só então olhamos se a assinatura está em dia. Sem isso qualquer
-   visitante do site gastaria a conta do dono. */
-async function assinanteValido(idToken, apiKey) {
+   O assistente é só do administrador: a cota da IA é paga pela conta dele,
+   então liberar para todo assinante seria abrir a torneira. O navegador
+   esconde a aba, mas quem protege de verdade é esta função, porque o
+   endereço dela é público e o e-mail vem do token validado com o Google. */
+async function podeUsar(idToken, apiKey) {
   if (!idToken) return { ok: false, motivo: "Entre na sua conta para usar o assistente." };
   try {
     const v = await fetch(
@@ -55,17 +55,9 @@ async function assinanteValido(idToken, apiKey) {
     if (u.email && DONOS.indexOf(String(u.email).toLowerCase()) >= 0) {
       return { ok: true, uid: u.localId, dono: true };
     }
-
-    const doc = await fetch(
-      `https://firestore.googleapis.com/v1/projects/${PROJETO}/databases/(default)/documents/assinaturas/${u.localId}`,
-      { headers: { Authorization: `Bearer ${idToken}` } });
-    if (!doc.ok) return { ok: false, motivo: "O assistente faz parte do plano completo." };
-    const j = await doc.json();
-    const ate = Number(((j.fields || {}).validoAte || {}).doubleValue || 0);
-    if (ate <= Date.now()) return { ok: false, motivo: "Sua assinatura não está ativa." };
-    return { ok: true, uid: u.localId };
+    return { ok: false, motivo: "O assistente está disponível apenas para o administrador." };
   } catch (e) {
-    return { ok: false, motivo: "Não consegui verificar sua assinatura." };
+    return { ok: false, motivo: "Não consegui verificar sua conta." };
   }
 }
 
@@ -219,11 +211,17 @@ export default async (req) => {
     return Response.json({ erro: "Pedido inválido." }, { status: 400 });
   }
 
+  /* Sem FIREBASE_API_KEY não há como saber quem está pedindo, e aí o certo
+     é recusar. Antes a checagem era pulada nesse caso, o que deixava o
+     endereço da função aberto para qualquer pessoa gastar a cota. */
   const apiKeyFirebase = process.env.FIREBASE_API_KEY;
-  if (apiKeyFirebase) {
-    const check = await assinanteValido(corpo.token, apiKeyFirebase);
-    if (!check.ok) return Response.json({ erro: check.motivo }, { status: 402 });
+  if (!apiKeyFirebase) {
+    return Response.json({
+      erro: "Falta FIREBASE_API_KEY no Netlify. Sem ela não dá para confirmar quem está pedindo, e o assistente fica desligado.",
+    }, { status: 500 });
   }
+  const check = await podeUsar(corpo.token, apiKeyFirebase);
+  if (!check.ok) return Response.json({ erro: check.motivo }, { status: 403 });
 
   const mensagens = Array.isArray(corpo.mensagens) ? corpo.mensagens.slice(-14) : [];
   if (mensagens.length === 0) {

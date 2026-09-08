@@ -57,7 +57,7 @@ function SubjectRow({ s, open, minutes, onToggleOpen, setMark, toggleBonus }) {
           {s.bonus.length ? (
             <div className="sm:col-span-2 pt-4" style={{ borderTop: `1px solid ${T.line}` }}>
               <div className="flex items-center justify-between mb-3">
-                <Label>Aulas bônus da semana</Label>
+                <Label>Tópicos relacionados</Label>
                 <Num size={12} color={T.faint} weight={500}>{s.bonusCount}/{s.bonus.length}</Num>
               </div>
               <div className="grid sm:grid-cols-2 gap-x-6 gap-y-2.5">
@@ -137,7 +137,7 @@ function Materias({ subjects, setMark, toggleBonus, minutes, done, bonusDone }) 
           </div>
           <div className="flex items-baseline gap-3">
             <Num size={24} color={T.dim}>{bonusDone}</Num>
-            <Label>de {TOTAL_BONUS} aulas bônus</Label>
+            <Label>de {TOTAL_BONUS} tópicos</Label>
           </div>
         </div>
         <div className="mt-6 grid grid-cols-1 sm:grid-cols-5 gap-4">
@@ -156,11 +156,11 @@ function Materias({ subjects, setMark, toggleBonus, minutes, done, bonusDone }) 
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="flex items-center gap-2 rounded-full px-4 flex-1" style={{ background: T.card, border: `1px solid ${T.line}` }}>
           <Search size={15} style={{ color: T.faint }} />
-          <input value={q} placeholder="Buscar aula, bônus, especialidade ou semana" onChange={(e) => setQ(e.target.value)}
+          <input value={q} placeholder="Buscar aula, tópico ou especialidade" onChange={(e) => setQ(e.target.value)}
             style={{ ...inp, background: "transparent", border: "none", padding: "11px 0", borderRadius: 0 }} />
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1">
-          {[["todas", "Todas"], ["pendentes", "A fazer"], ["feitas", "Feitas"], ["questoes", "Sem questões"], ["bonus", "Bônus abertos"], ["fracas", "Baixo desempenho"]].map(([id, lb]) => (
+          {[["todas", "Todas"], ["pendentes", "A fazer"], ["feitas", "Feitas"], ["questoes", "Sem questões"], ["bonus", "Tópicos abertos"], ["fracas", "Baixo desempenho"]].map(([id, lb]) => (
             <button key={id} type="button" onClick={() => setStatus(id)} className="rounded-full px-4 py-2 whitespace-nowrap"
               style={{
                 background: status === id ? T.card3 : T.card, border: `1px solid ${T.line}`,
@@ -186,7 +186,7 @@ function Materias({ subjects, setMark, toggleBonus, minutes, done, bonusDone }) 
         ))}
         <div className="flex-1" />
         <Btn size="sm" tone="outline" onClick={() => setGrouped((v) => !v)}>
-          {grouped ? "lista corrida" : "agrupar por semana"}
+          {grouped ? "lista corrida" : "agrupar por bloco"}
         </Btn>
       </div>
 
@@ -199,7 +199,7 @@ function Materias({ subjects, setMark, toggleBonus, minutes, done, bonusDone }) 
             return (
               <div key={w}>
                 <div className="flex items-center gap-3 mb-2.5 px-1">
-                  <span style={{ fontFamily: F_SERIF, fontSize: 20, color: T.ink }}>Semana {pad(w)}</span>
+                  <span style={{ fontFamily: F_SERIF, fontSize: 20, color: T.ink }}>Bloco {pad(w)} · {items[0].esp}</span>
                   <div className="flex-1" style={{ height: 1, background: T.line }} />
                   <Num size={12.5} color={T.faint} weight={500}>{wDone}/{items.length}</Num>
                 </div>
@@ -354,7 +354,7 @@ function Revisoes({ rows, toggleStep, resetCycle, data, setData, degraus, notify
                 <div className="flex-1 min-w-0">
                   <div style={{ fontSize: 16, fontWeight: 600, lineHeight: 1.35 }}>{r.title}</div>
                   <Mini style={{ marginTop: 3 }}>
-                    semana {r.week} · âncora em {brDate(r.anchor)}{r.minutes ? ` · ${fmtMin(r.minutes)} registrados` : ""}
+                    {BY_ID[r.id] ? BY_ID[r.id].esp : ""} · âncora em {brDate(r.anchor)}{r.minutes ? ` · ${fmtMin(r.minutes)} registrados` : ""}
                   </Mini>
                 </div>
                 <Btn size="sm" tone="outline" onClick={() => resetCycle(r.id)} title="Recomeça a contagem hoje">
@@ -446,7 +446,7 @@ function buildICS({ routine, agenda, ladder, simulados, examDate, today, opts })
         push(["BEGIN:VEVENT", `UID:revisao-${r.id}-${st.d}@cadencia`, `DTSTAMP:${stamp}`,
           `DTSTART;VALUE=DATE:${icsDay(st.due)}`, `DTEND;VALUE=DATE:${icsDay(addDays(st.due, 1))}`,
           `SUMMARY:${icsText(`Revisar ${st.label}: ${r.title}`)}`,
-          `DESCRIPTION:${icsText(`Semana ${r.week} · ${aLabel(r.area)} · estudado em ${brDate(r.anchor)}`)}`,
+          `DESCRIPTION:${icsText(`${aLabel(r.area)} · estudado em ${brDate(r.anchor)}`)}`,
           "CATEGORIES:Revisão", "TRANSP:TRANSPARENT", "END:VEVENT"]);
       }
     }

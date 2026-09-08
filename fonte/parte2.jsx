@@ -45,6 +45,21 @@ function normalize(raw) {
   const gc = obj(d.googleCal);
   const rv = obj(d.revisao), tm = obj(d.tema);
   const hex = (v) => (/^#[0-9a-fA-F]{6}$/.test(v) ? v : "");
+
+  /* Até a reorganização do cronograma o identificador da aula era a posição
+     na lista ("m12"). Agora é fixo. Quem já usava tem o formato antigo
+     gravado, então ele é traduzido aqui, na volta do disco e da nuvem: sem
+     isto o progresso apontaria para a aula errada depois da reordenação. */
+  const traduzir = (mapa) => {
+    const fora = {};
+    for (const [k, v] of Object.entries(obj(mapa))) {
+      const novo = ID_NOVO(k);
+      if (novo) { if (!fora[novo]) fora[novo] = v; }
+      else fora[k] = v;
+    }
+    return fora;
+  };
+
   return {
     profile: {
       name: typeof pr.name === "string" ? pr.name : DEFAULTS.profile.name,
@@ -53,7 +68,10 @@ function normalize(raw) {
     },
     theme: d.theme === "light" ? "light" : "dark",
     layout: d.layout === "movel" ? "movel" : "auto",
-    sessions: arr(d.sessions, []), marks: obj(d.marks), reviews: obj(d.reviews),
+    sessions: arr(d.sessions, []).map((x) => (
+      x && x.subjectId && ID_NOVO(x.subjectId) ? { ...x, subjectId: ID_NOVO(x.subjectId) } : x
+    )),
+    marks: traduzir(d.marks), reviews: traduzir(d.reviews),
     routine: arr(d.routine, []), agenda: arr(d.agenda, []), tasks: arr(d.tasks, []),
     goals: {
       daily: Number(g.daily) > 0 ? Number(g.daily) : 120,
@@ -103,11 +121,11 @@ function subjectState(s, marks) {
   const bonusDone = m.bonusDone && typeof m.bonusDone === "object" ? m.bonusDone : {};
   return {
     ...s,
-    aula: m.aula === undefined ? s.seedAula : !!m.aula,
-    qts: m.qts === undefined ? s.seedQts : !!m.qts,
-    cards: m.cards === undefined ? false : !!m.cards,
-    perf: m.perf === undefined ? s.seedPerf : Number(m.perf),
-    date: m.date === undefined ? s.seedDate : m.date,
+    aula: !!m.aula,
+    qts: !!m.qts,
+    cards: !!m.cards,
+    perf: Number(m.perf) || 0,
+    date: m.date === undefined ? null : m.date,
     bonusDone,
     bonusCount: s.bonus.filter((_, i) => bonusDone[i]).length,
   };
@@ -411,7 +429,7 @@ function SubjectPicker({ value, onChange, placeholder = "Buscar matéria" }) {
     const t = q.trim().toLowerCase();
     if (!t) return CURRICULUM.slice(0, 8);
     return CURRICULUM.filter((s) =>
-      s.title.toLowerCase().includes(t) || `semana ${s.week}`.includes(t)
+      s.title.toLowerCase().includes(t) || s.esp.toLowerCase().includes(t)
       || aLabel(s.area).toLowerCase().includes(t) || s.esp.toLowerCase().includes(t)
     ).slice(0, 10);
   }, [q]);

@@ -17,7 +17,7 @@ const liberado = path.basename(alvo) === 'teste.html';
 
 /* A última aba se chama "Plano" para quem assina e "Assinar" para quem não
    assina, então é procurada pelos dois nomes. */
-const ABAS = ['Hoje', 'Foco', 'Matérias', 'Temas', 'Assistente', 'Cartões',
+const ABAS = ['Hoje', 'Foco', 'Matérias', 'Temas', 'Cartões',
               'Revisões', 'Rotina', 'Metas', 'Progresso', 'Plano|Assinar'];
 
 const erros = [];
@@ -90,6 +90,11 @@ for (const aba of ABAS) {
 }
 
 if (liberado) {
+  /* ── o assistente é só do administrador ──────────────────────────── */
+  const temAssistente = await pag.locator('nav button:has-text("Assistente")').count();
+  if (temAssistente === 0) ok('a aba Assistente fica escondida para quem não é o administrador');
+  else falha('a aba Assistente apareceu para quem não é o administrador');
+
   /* ── cartões: criar pasta, criar cartão, estudar ─────────────────── */
   await ir('Cartões');
   await pag.locator('button:has-text("Novo cartão")').first().click();
@@ -171,7 +176,10 @@ if (liberado) {
   await pag.locator('button:has-text("Bem maior")').first().click();
   await pag.waitForTimeout(300);
   const zoom = await pag.evaluate(() => {
-    const el = document.querySelector('header')?.parentElement;
+    /* o conteúdo fica dentro da coluna ao lado da barra lateral, então o
+       elemento com zoom é o avô do cabeçalho */
+    let el = document.querySelector('header');
+    while (el && getComputedStyle(el).zoom === '1') el = el.parentElement;
     return el ? getComputedStyle(el).zoom : '';
   });
   if (zoom && zoom !== '1' && zoom !== 'normal') ok('tamanho do texto aplicado (zoom ' + zoom + ')');
@@ -203,9 +211,62 @@ if (liberado) {
   else falha('o esquema de revisão sumiu depois de recarregar');
 }
 
+/* ── barra lateral ────────────────────────────────────────────────── */
+const lateral = pag.locator('aside[aria-label="Navegação"]');
+if (await lateral.count() === 1) ok('a barra lateral existe');
+else falha('não achei a barra lateral');
+const larguraLateral = () => lateral.first().evaluate((el) => el.getBoundingClientRect().width);
+/* A largura é animada, então medir depois de um tempo fixo pega o valor no
+   meio do caminho. Aqui a espera é pela largura chegar onde deveria. */
+const esperarLargura = async (alvo, ms = 3000) => {
+  const fim = Date.now() + ms;
+  let w = await larguraLateral();
+  while (Date.now() < fim && Math.abs(w - alvo) > 3) {
+    await pag.waitForTimeout(100);
+    w = await larguraLateral();
+  }
+  return w;
+};
+
+const larguraAberta = await larguraLateral();
+await pag.locator('button[aria-label="Encolher menu"]').first().click();
+const larguraEncolhida = await esperarLargura(72);
+if (larguraEncolhida < larguraAberta - 40) ok(`a barra encolhe (${Math.round(larguraAberta)} → ${Math.round(larguraEncolhida)}px)`);
+else falha(`a barra não encolheu (${Math.round(larguraAberta)} → ${Math.round(larguraEncolhida)})`);
+
+/* Encolhida, ficam só os ícones. O contador de revisões continua, de
+   propósito: é ele que avisa que tem coisa vencida sem precisar abrir. */
+const textoBarra = await pag.locator('aside[aria-label="Navegação"] nav').innerText();
+if (!/MAT[ÉE]RIAS|PROGRESSO/i.test(textoBarra)) ok('encolhida, a barra mostra só os ícones');
+else falha('encolhida, os nomes das abas continuaram aparecendo');
+
+await pag.locator('button[aria-label="Expandir menu"]').first().click();
+const larguraDeVolta = await esperarLargura(larguraAberta);
+if (Math.abs(larguraDeVolta - larguraAberta) < 3) ok('a barra volta a expandir');
+else falha(`a barra não voltou (${Math.round(larguraDeVolta)} vs ${Math.round(larguraAberta)})`);
+
 /* ── celular ──────────────────────────────────────────────────────── */
 await pag.setViewportSize({ width: 390, height: 844 });
 await pag.waitForTimeout(700);
+
+/* no celular a barra vira gaveta: fica fora da tela até abrir */
+const escondida = await lateral.first().evaluate((el) => el.getBoundingClientRect().right <= 1);
+if (escondida) ok('no celular a gaveta começa fechada');
+else falha('no celular a gaveta apareceu sem ser chamada');
+await pag.locator('button[aria-label="Abrir menu"]').first().click();
+await pag.waitForTimeout(500);
+const abriu = await lateral.first().evaluate((el) => el.getBoundingClientRect().right > 100);
+if (abriu) ok('a gaveta abre no celular');
+else falha('a gaveta não abriu no celular');
+const todasVisiveis = await pag.locator('aside[aria-label="Navegação"] nav button').count();
+if (todasVisiveis >= 9) ok(`a gaveta mostra as ${todasVisiveis} abas de uma vez, sem rolagem lateral`);
+else falha('a gaveta não listou as abas: ' + todasVisiveis);
+await pag.screenshot({ path: 'captura-gaveta.png' });
+await pag.locator('aside[aria-label="Navegação"] nav button').first().click();
+await pag.waitForTimeout(500);
+const fechou = await lateral.first().evaluate((el) => el.getBoundingClientRect().right <= 1);
+if (fechou) ok('a gaveta fecha sozinha ao escolher uma aba');
+else falha('a gaveta ficou aberta depois de escolher');
 if (await pag.evaluate(() => document.querySelector('#root')?.children.length > 0)) ok('roda no tamanho de celular');
 else falha('o app sumiu no tamanho de celular');
 const vazaLargura = await pag.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2);

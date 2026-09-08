@@ -52,7 +52,7 @@ PROVA: ${prova}
 
 PROGRESSO GERAL
 Aulas principais: ${subjects.filter((s) => s.aula).length} de ${subjects.length}
-Aulas bônus: ${subjects.reduce((a, s) => a + s.bonusCount, 0)} de ${TOTAL_BONUS}
+Aulas tópicos: ${subjects.reduce((a, s) => a + s.bonusCount, 0)} de ${TOTAL_BONUS}
 Tempo total registrado: ${fmtMin(totals.min)} em ${data.sessions.length} sessões
 Nesta semana: ${fmtMin(minWeek)} e ${qWeek} questões (metas: ${fmtMin(data.goals.weekly)} e ${data.goals.questions} questões)
 Acerto geral: ${totals.pct === null ? "sem questões lançadas" : totals.pct + "%"}
@@ -73,7 +73,7 @@ PENDÊNCIAS ABERTAS: ${pendencias}
 LISTA "PRECISO REVER": ${rever}`;
 }
 
-const INSTRUCOES_IA = `Você é o assistente do Cadência Med, um painel de estudos de um estudante brasileiro que se prepara para a prova de residência médica com o cronograma do MEDCURSO.
+const INSTRUCOES_IA = `Você é o assistente do Cadência Med, um painel de estudos de um estudante brasileiro que se prepara para a prova de residência médica.
 
 Responda sempre em português do Brasil, de forma direta e concreta. Use os dados reais fornecidos: cite números, nomes de aulas e datas em vez de dar conselhos genéricos. Se a pessoa perguntar o que estudar, olhe as revisões atrasadas, as especialidades mais fracas e o tempo livre na rotina antes de responder.
 
