@@ -9,7 +9,7 @@
 const ICONE_ABA = {
   hoje: CalendarDays, foco: Target, materias: ListChecks, temas: Stethoscope,
   assistente: Sparkles, cartoes: Layers, revisoes: RotateCcw, rotina: Coffee,
-  metas: Flame, progresso: BarChart3, planos: Zap,
+  amigos: Users, metas: Flame, progresso: BarChart3, planos: Zap,
 };
 
 /* Diz se a tela é estreita. A escolha "forçar celular" no rodapé manda
@@ -415,6 +415,12 @@ export default function Cadencia() {
 
   const souDono = ehDono(nuvem.usuario);
 
+  /* Publica os três números que aparecem no ranking das salas. Fica aqui,
+     e não dentro da aba Amigos, para o perfil continuar em dia mesmo de
+     quem nunca abre essa aba — senão o ranking mostraria zero para quem
+     estudou e simplesmente não estava com ela aberta. */
+  usePerfilPublico(nuvem, data.profile.name, totals);
+
   /* Menu lateral: no celular é gaveta que abre por cima; no computador
      fica fixo e só encolhe para a largura dos ícones. */
   const estreita = useTelaEstreita(data.layout === "movel");
@@ -431,6 +437,7 @@ export default function Cadencia() {
     { id: "cartoes", label: "Cartões", acc: "var(--neon)", badge: cartoesHoje },
     { id: "revisoes", label: "Revisões", acc: "var(--ok)", badge: late.length },
     { id: "rotina", label: "Rotina", acc: "var(--a-PE)" },
+    { id: "amigos", label: "Amigos", acc: "var(--neon2)" },
     { id: "metas", label: "Metas", acc: "var(--warn)" },
     { id: "progresso", label: "Progresso", acc: "var(--a-CI)" },
     { id: "planos", label: pro ? "Plano" : "Assinar", acc: "var(--neon2)" },
@@ -730,6 +737,8 @@ export default function Cadencia() {
               {tab === "assistente" && souDono && <Assistente {...{ data, setData, subjects, ladder, today, totals, minWeek, qWeek, notify, nuvem }} />}
               {tab === "revisoes" && pro && <Revisoes {...{ rows: ladder, toggleStep, resetCycle, data, setData, degraus, notify }} />}
               {tab === "rotina" && pro && <Rotina {...{ data, setData, gcal, today }} />}
+              {tab === "amigos" && !pro && <Bloqueado recurso={RECURSOS_PRO.amigos} onVerPlanos={() => setTab("planos")} />}
+              {tab === "amigos" && pro && <Amigos {...{ nuvem, notify }} />}
               {tab === "metas" && pro && <Metas {...{ data, setData, today, qWeek, notify, ladder, gcal }} />}
               {tab === "progresso" && <Progresso {...{ data, setData, byDay, today, totals, subjects, notify, nuvem, pro }} />}
             </div>

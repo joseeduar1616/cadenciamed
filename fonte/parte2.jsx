@@ -20,6 +20,10 @@ const DEFAULTS = {
   theme: "dark",
   layout: "auto",
   sessions: [], marks: {}, reviews: {}, routine: [], agenda: [], tasks: [],
+  /* Blocos da agenda já cumpridos, por "id do bloco|data". A chave leva a
+     data porque um bloco que se repete toda semana é um compromisso
+     diferente em cada segunda-feira. */
+  blocos: {},
   goals: { daily: 120, weekly: 720, questions: 200 },
   pomo: {
     focus: 25, short: 5, long: 15, cycle: 4, modo: "pomodoro",
@@ -73,6 +77,9 @@ function normalize(raw) {
     )),
     marks: traduzir(d.marks), reviews: traduzir(d.reviews),
     routine: arr(d.routine, []), agenda: arr(d.agenda, []), tasks: arr(d.tasks, []),
+    /* O que já foi cumprido na agenda precisa sobreviver ao recarregar a
+       página: o que não for copiado aqui se perde. */
+    blocos: obj(d.blocos),
     goals: {
       daily: Number(g.daily) > 0 ? Number(g.daily) : 120,
       weekly: Number(g.weekly) > 0 ? Number(g.weekly) : 720,
@@ -116,6 +123,67 @@ function normalize(raw) {
   };
 }
 
+/* ── onde ficam as rotas /api ──────────────────────────────────────────
+ *
+ * O site e o servidor podem estar em endereços diferentes. Enquanto as
+ * páginas vêm do Firebase Hosting, quem responde /api é o Worker do
+ * Cloudflare, noutro domínio; quando o domínio apontar para o Worker, os
+ * dois passam a ser o mesmo lugar.
+ *
+ * Em vez de fixar um endereço que fica errado na primeira mudança, a
+ * primeira chamada tenta o próprio site e, se a resposta for a página em
+ * vez de dados, repete no Worker. Qual dos dois funcionou fica guardado
+ * para as chamadas seguintes irem direto.
+ *
+ * Para apontar para outro servidor sem recompilar, defina window.CADENCIA_API
+ * no topo do index.html. String vazia significa "o próprio site".
+ */
+const API_RESERVA = "https://cadenciamed.joseeduardo1616.workers.dev";
+
+function basesDeApi() {
+  const cfg = typeof window !== "undefined" ? window.CADENCIA_API : undefined;
+  if (typeof cfg === "string") return [cfg.replace(/\/+$/, "")];
+  const aqui = (typeof window !== "undefined" && window.location && window.location.origin) || "";
+  /* Servido pelo próprio Worker: não há segundo lugar para tentar. */
+  if (aqui === API_RESERVA) return [""];
+  return ["", API_RESERVA];
+}
+
+let baseQueRespondeu = null;
+
+/* Chama uma rota /api e devolve { dados } ou { erro }. */
+async function chamarApi(caminho, corpo, oQue, opcoes) {
+  const metodo = (opcoes && opcoes.metodo) || "POST";
+  const bases = baseQueRespondeu === null ? basesDeApi() : [baseQueRespondeu];
+  let ultimo = { erro: `${oQue} não respondeu.` };
+
+  for (const base of bases) {
+    let r;
+    try {
+      r = await fetch(base + caminho, metodo === "GET" ? undefined : {
+        method: metodo,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(corpo || {}),
+      });
+    } catch (e) {
+      /* Rede fora do ar, ou o navegador barrou por CORS. Nos dois casos vale
+         tentar o próximo endereço antes de desistir. */
+      ultimo = { erro: "Não consegui falar com o servidor. Verifique a conexão." };
+      continue;
+    }
+    const lido = await lerRespostaDoServidor(r, oQue);
+    /* Só troca de endereço quando não há servidor atrás deste. Um erro que
+       veio do próprio servidor (cupom inválido, sessão expirada) é resposta
+       de verdade e precisa chegar a quem perguntou. */
+    if (!lido.semServidor) {
+      baseQueRespondeu = base;
+      return lido;
+    }
+    ultimo = lido;
+  }
+  return ultimo;
+}
+
 /* Lê a resposta de uma rota /api do servidor.
  *
  * O caso que mais confunde: quando o site está numa hospedagem só de
@@ -123,6 +191,9 @@ function normalize(raw) {
  * página do site com status 200. O JSON.parse falha, e antes isso virava um
  * "Não deu certo." que não dizia nada — o problema real é que falta publicar
  * o servidor, e a pessoa ficava procurando defeito no lugar errado.
+ *
+ * O campo semServidor marca justamente esse caso, para quem chamou saber que
+ * vale a pena repetir noutro endereço em vez de mostrar o erro.
  */
 async function lerRespostaDoServidor(r, oQue) {
   const bruto = await r.text().catch(() => "");
@@ -137,12 +208,15 @@ async function lerRespostaDoServidor(r, oQue) {
   /* veio HTML: quem respondeu foi a hospedagem de arquivos, não o servidor */
   if (/^\s*<(!doctype|html)/i.test(bruto)) {
     return {
+      semServidor: true,
       erro: `${oQue} não está publicado neste endereço: o servidor devolveu a `
         + "página do site em vez de dados. As rotas /api precisam ser publicadas "
         + "junto, numa hospedagem que rode código.",
     };
   }
-  if (r.status === 404) return { erro: `${oQue} ainda não foi publicado neste site.` };
+  if (r.status === 404) {
+    return { semServidor: true, erro: `${oQue} ainda não foi publicado neste site.` };
+  }
   return { erro: `${oQue} não respondeu (erro ${r.status}).` };
 }
 

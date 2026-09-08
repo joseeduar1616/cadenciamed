@@ -46,13 +46,18 @@ python3 montar_teste.py         # gera teste.html, igual ao site mas com o plano
 node testar.mjs                 # abre no Chromium e confere tudo
 node testar.mjs index.html      # confere o arquivo de produção
 node testar-assistente.mjs      # confere a função da IA, sem gastar cota
+node testar-salas.mjs           # confere as salas de amigos, com banco de mentira
+node testar-api.mjs             # confere como o app acha o servidor das rotas /api
+node testar-worker.mjs          # confere o roteamento e os cabeçalhos de CORS
 ```
 
 O `teste.html` existe só para o teste conseguir abrir as abas pagas. Ele é
 gerado a partir de uma cópia do `app.jsx` e **não** entra na pasta de
 publicação. O teste falha se qualquer aba não montar, se sobrar erro no
 console, se as pastas ou os cartões sumirem ao recarregar a página, ou se a
-troca de esquema de revisão e de aparência não pegar.
+troca de esquema de revisão e de aparência não pegar. O bloco da agenda
+marcado como cumprido entra nessa mesma conferência: é o tipo de coisa que
+some calada quando falta uma linha no `normalize()`.
 
 ## O que é cada arquivo
 
@@ -65,11 +70,12 @@ troca de esquema de revisão e de aparência não pegar.
 | `parte11.jsx` | assinatura, tela de planos, painel do dono |
 | `parte13.jsx` | leitor de `.apkg` do Anki e imagens no IndexedDB |
 | `parte12.jsx` | flashcards, pastas, repetição espaçada |
-| `parte4.jsx` | rotina em calendário e aba Temas |
+| `parte4.jsx` | agenda da Rotina (semana e dia) e aba Temas |
 | `parte5.jsx` | aba Foco e aba Hoje |
 | `parte6.jsx` | Matérias, Revisões, escolha do esquema, exportação `.ics` |
 | `parte7.jsx` | Metas, Progresso, aparência, painel de conta |
 | `parte9.jsx` | assistente que conversa com a API |
+| `parte14.jsx` | salas de amigos, ranking e envio do perfil público |
 | `parte8.jsx` | componente raiz, cabeçalho, barra lateral, rodapé |
 | `curriculo.js` | cronograma próprio: 90 aulas em 34 blocos de especialidade |
 | `gerar_css.py` | varre o `app.jsx` e gera só as regras das classes usadas |
@@ -127,6 +133,7 @@ problema que existia quando as funções moravam dentro do que ia ao ar.
 | `worker/api/cupom.js` | confere o cupom e libera o plano |
 | `worker/api/compra.js` | recebe o aviso de compra da Kiwify ou Hotmart |
 | `worker/api/acessos.js` | painel do dono, libera e revoga acessos |
+| `worker/api/salas.js` | salas de amigos: cria, entra, sai e monta o ranking |
 | `worker/api/_comum.js` | JWT, Firestore e identidade |
 
 Acrescentar um endereço é escrever o arquivo em `worker/api/` e citá-lo na
@@ -138,6 +145,23 @@ passem pelo Worker. Todo o resto é servido direto do arquivo, sem custo de
 invocação. O `not_found_handling: "single-page-application"` faz um endereço
 desconhecido devolver o `index.html`, então atualizar a página numa rota
 inventada não dá erro.
+
+### Onde o app procura as rotas /api
+
+O site e o servidor podem estar em endereços diferentes: enquanto as páginas
+vêm do Firebase Hosting, quem responde `/api` é o Worker, noutro domínio.
+
+O `chamarApi`, no `parte2.jsx`, resolve isso sozinho: tenta o próprio site e,
+se a resposta for a página em vez de dados, repete no Worker e guarda qual
+dos dois funcionou. Era esta a causa do "Não deu certo." no painel de acessos
+e no cupom. Para fixar um endereço, preencha `window.CADENCIA_API` no topo do
+`index.html` — string vazia significa "o próprio site", que é o certo depois
+que o domínio apontar para o Worker.
+
+Do lado do Worker, o `index.js` responde os cabeçalhos de CORS. A lista de
+sites liberados é fechada de propósito: com `*` qualquer página conseguiria
+chamar estas rotas com o token de quem estivesse logado. Para acrescentar
+endereço sem mexer no código, cadastre `ORIGENS`, separando por vírgula.
 
 **A assinatura do JWT usa WebCrypto, não `node:crypto`.** O runtime de
 Workers não tem `createSign` nem `Buffer`. O WebCrypto existe nos dois
@@ -229,6 +253,26 @@ Os códigos ficam no `worker/api/cupom.js`, no servidor, e nunca no navegador.
 Para trocá-los sem mexer no código, cadastre `CUPONS` no Cloudflare, no formato
 `codigo:plano,codigo:plano` (planos: mensal, anual, vitalicio). Enquanto essa
 variável não existir, valem os dois cupons escritos no arquivo.
+
+## Salas de amigos
+
+Uma sala é um nome mais uma senha. O nome vira apelido (`Plantão da
+Madrugada!` → `plantao-da-madrugada`), então maiúscula, acento e espaço levam
+todo mundo à mesma sala em vez de criarem quase-duplicatas.
+
+A senha nunca é guardada: fica gravado o PBKDF2 dela, com um sal sorteado por
+sala. A conferência é no servidor — no navegador bastaria abrir o código da
+página para entrar em qualquer sala.
+
+Os números do ranking ficam em `perfis/{uid}`, escrito pelo próprio dono e
+lido só por ele. Quem monta o ranking é o servidor, com a conta de serviço:
+sem isso bastaria saber o uid de alguém para ler os números dessa pessoa sem
+estar em sala nenhuma. Aparecem o nome do perfil, os minutos lançados em
+sessão, as questões e o acerto — nada do que foi estudado.
+
+Quem publica o perfil é o `usePerfilPublico`, chamado no componente raiz e
+não dentro da aba. Fosse dentro da aba, o ranking mostraria zero para quem
+estudou e simplesmente não a tinha aberto.
 
 ## Domínio
 

@@ -19,12 +19,13 @@ const RECURSOS_PRO = {
   cartoes: "Seus próprios flashcards, com repetição espaçada",
   revisoes: "A escada de revisão espaçada, com os prazos de cada aula",
   temas: "O cronograma por especialidade, com o radar das áreas",
-  rotina: "Calendário da semana e sincronização com o Google Agenda",
+  rotina: "Agenda da semana e do dia, com o Google Agenda junto",
+  amigos: "Salas com seus amigos e ranking de horas, questões e acerto",
   metas: "Simulados, provas resolvidas, hábitos e exportação da agenda",
   nuvem: "Seus dados sincronizados em todos os aparelhos",
   projecao: "Ritmo e projeção até a prova",
 };
-const ABAS_PRO = ["cartoes", "revisoes", "temas", "rotina", "metas"];
+const ABAS_PRO = ["cartoes", "revisoes", "temas", "rotina", "amigos", "metas"];
 
 /* Abas que só o administrador enxerga. O servidor faz a mesma checagem,
    então esconder aqui é conveniência, não é o que protege. */
@@ -244,17 +245,13 @@ function PainelDono({ nuvem, notify }) {
         token = await nuvem.sdk.auth.currentUser.getIdToken();
       }
     } catch (e) { /* segue sem token, o servidor recusa */ }
-    const r = await fetch(ROTA_ACESSOS, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...corpo, token }),
-    });
     /* Atenção ao 404: a própria função responde 404 quando não acha conta
        com aquele e-mail, e aí vem JSON com a explicação. Só é "não
        publicado" quando o corpo não é JSON. Tratar os dois casos juntos
        escondia justamente o recado que resolve o problema. */
-    const { dados, erro } = await lerRespostaDoServidor(r, "O painel de acessos");
-    if (erro) { setErro(erro); return null; }
+    const { dados, erro: falha } = await chamarApi(
+      ROTA_ACESSOS, { ...corpo, token }, "O painel de acessos");
+    if (falha) { setErro(falha); return null; }
     return dados;
   }, [nuvem]);
 

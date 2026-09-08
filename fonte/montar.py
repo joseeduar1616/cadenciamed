@@ -34,7 +34,7 @@ TPL = """<!DOCTYPE html>
 /* ══════════════════════════════════════════════════════════════════════
    CONTAS E SINCRONIZACAO (Firebase)
    Ja preenchido com o projeto cadencia-7c1f1.
-   Enderecos publicados: cadenciamed.com.br e cadenciamed.netlify.app
+   Enderecos publicados: cadenciamed.com.br e cadenciamed.joseeduardo1616.workers.dev
    TODO dominio novo precisa entrar em Authentication > Settings > Dominios
    autorizados, no console do Firebase. Sem isso o login para com o erro
    "auth/unauthorized-domain", e so nesse dominio: no antigo continua
@@ -55,7 +55,7 @@ window.CADENCIA_FIREBASE = {
    do Google Cloud, dentro da credencial ID do cliente OAuth:
      https://cadenciamed.com.br
      https://www.cadenciamed.com.br
-     https://cadenciamed.netlify.app
+     https://cadenciamed.joseeduardo1616.workers.dev
    Sem isso da erro 400 origin_mismatch ao conectar o Google Agenda.
    ══════════════════════════════════════════════════════════════════════ */
 window.CADENCIA_GOOGLE = {
@@ -72,6 +72,19 @@ window.CADENCIA_CHECKOUT = {
   mensal: "",
   anual: ""
 };
+
+/* ══════════════════════════════════════════════════════════════════════
+   ONDE FICAM AS ROTAS /api
+   Deixe comentado e o app resolve sozinho: tenta o proprio site e, se a
+   resposta vier a pagina em vez de dados, repete no Worker do Cloudflare.
+   E isso que faz o painel de acessos e o cupom funcionarem enquanto as
+   paginas ainda sao servidas pelo Firebase Hosting.
+
+   Preencha so para apontar para outro servidor. String vazia significa
+   "o proprio site", que e o certo depois que o dominio apontar para o
+   Worker.
+   ══════════════════════════════════════════════════════════════════════ */
+// window.CADENCIA_API = "https://cadenciamed.joseeduardo1616.workers.dev";
 </script>
 
 <style>

@@ -27,17 +27,17 @@ const env = {
    o suficiente para provar que a rota existe e foi chamada. */
 const { default: worker } = await import('../worker/index.js');
 
-const pedir = (caminho, metodo = 'POST') => {
+const pedir = (caminho, metodo = 'POST', cabecalhos = {}) => {
   pedidoAoAssets = null;
   return worker.fetch(new Request('https://cadenciamed.com.br' + caminho, {
     method: metodo,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...cabecalhos },
     ...(metodo === 'POST' ? { body: '{}' } : {}),
   }), env, {});
 };
 
-/* ── as quatro rotas existem e não caem nos arquivos ─────────────────── */
-for (const rota of ['/api/assistente', '/api/cupom', '/api/acessos', '/api/compra']) {
+/* ── as cinco rotas existem e não caem nos arquivos ──────────────────── */
+for (const rota of ['/api/assistente', '/api/cupom', '/api/acessos', '/api/compra', '/api/salas']) {
   const r = await pedir(rota);
   if (pedidoAoAssets === null) ok(`${rota} é atendida pelo Worker, não pelos arquivos`);
   else falha(`${rota} caiu nos arquivos estáticos`);
@@ -61,6 +61,49 @@ for (const caminho of ['/', '/index.html', '/icone-192.png', '/manifest.webmanif
 const r2 = await pedir('/api/inventada', 'GET');
 if (pedidoAoAssets === '/api/inventada') ok('rota /api inexistente cai no site, sem erro cru');
 else falha('rota /api inexistente: ' + pedidoAoAssets);
+
+/* ── CORS ────────────────────────────────────────────────────────────
+   Enquanto as páginas vêm do Firebase Hosting e as rotas /api vêm do
+   Worker, toda chamada é entre domínios: sem estes cabeçalhos o navegador
+   descarta a resposta e o painel mostra "não deu certo" sem motivo. */
+const SITE = 'https://cadenciamed.com.br';
+
+const pre = await pedir('/api/cupom', 'OPTIONS', { Origin: SITE });
+if (pre.status === 204) ok('a pergunta de permissão (OPTIONS) é respondida sem exigir token');
+else falha('OPTIONS: ' + pre.status);
+if (pre.headers.get('Access-Control-Allow-Origin') === SITE) ok('a resposta ao OPTIONS libera o site');
+else falha('OPTIONS sem origem liberada');
+if ((pre.headers.get('Access-Control-Allow-Headers') || '').toLowerCase().includes('content-type')) ok('o OPTIONS libera o cabeçalho Content-Type, que é o que o app manda');
+else falha('OPTIONS não libera Content-Type');
+
+const comOrigem = await pedir('/api/cupom', 'POST', { Origin: SITE });
+if (comOrigem.headers.get('Access-Control-Allow-Origin') === SITE) ok('a resposta da rota também vem liberada para o site');
+else falha('POST sem cabeçalho de liberação');
+if (comOrigem.headers.get('Vary') === 'Origin') ok('o Vary evita que um proxy sirva a resposta de uma origem para outra');
+else falha('sem Vary: Origin');
+if ((comOrigem.headers.get('Content-Type') || '').includes('json')) ok('liberar o CORS não estraga o Content-Type da rota');
+else falha('Content-Type virou: ' + comOrigem.headers.get('Content-Type'));
+
+/* site desconhecido não pode chamar com o token de quem está logado */
+const invasor = await pedir('/api/cupom', 'POST', { Origin: 'https://site-qualquer.com' });
+if (!invasor.headers.get('Access-Control-Allow-Origin')) ok('origem desconhecida não recebe liberação');
+else falha('liberou origem desconhecida');
+const preInvasor = await pedir('/api/cupom', 'OPTIONS', { Origin: 'https://site-qualquer.com' });
+if (preInvasor.status === 403) ok('a pergunta de permissão de origem desconhecida é recusada');
+else falha('OPTIONS de invasor: ' + preInvasor.status);
+
+/* a lista dá para trocar sem mexer no código */
+const envOutro = { ...env, ORIGENS: 'https://outro.exemplo' };
+const r4 = await worker.fetch(new Request('https://x/api/cupom', {
+  method: 'POST', headers: { Origin: 'https://outro.exemplo' }, body: '{}',
+}), envOutro, {});
+if (r4.headers.get('Access-Control-Allow-Origin') === 'https://outro.exemplo') ok('ORIGENS troca a lista de sites liberados');
+else falha('ORIGENS não foi respeitada');
+const r5 = await worker.fetch(new Request('https://x/api/cupom', {
+  method: 'POST', headers: { Origin: SITE }, body: '{}',
+}), envOutro, {});
+if (!r5.headers.get('Access-Control-Allow-Origin')) ok('com ORIGENS cadastrada, a lista padrão deixa de valer');
+else falha('ORIGENS não substituiu a lista padrão');
 
 /* ── exceção de dentro de uma rota vira JSON, não página do Cloudflare ─ */
 const { default: workerQuebrado } = await import('../worker/index.js?v=2');

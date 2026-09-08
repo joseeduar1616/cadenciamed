@@ -1,9 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════
    19 · ASSISTENTE
-   Conversa com o Claude através de uma função no servidor do Netlify.
-   A chave da API fica lá, como variável de ambiente, e nunca chega ao
-   navegador. Se a função não existir, a aba explica isso em vez de falhar
-   silenciosamente.
+   Conversa com a IA através de uma rota no Worker do Cloudflare. A chave da
+   API fica lá, como variável de ambiente, e nunca chega ao navegador. Se a
+   rota não existir, a aba explica isso em vez de falhar silenciosamente.
    ═══════════════════════════════════════════════════════════════════ */
 
 const ROTA_IA = "/api/assistente";
@@ -153,27 +152,18 @@ function Assistente({ data, setData, subjects, ladder, today, totals, minWeek, q
           tokenFirebase = await nuvem.sdk.auth.currentUser.getIdToken();
         }
       } catch (e) { /* segue sem token, o servidor decide */ }
-      const r = await fetch(ROTA_IA, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          token: tokenFirebase,
-          contexto: resumoParaIA({ subjects, ladder, data, today, totals, minWeek, qWeek }),
-          instrucoes: INSTRUCOES_IA,
-          mensagens: historico.slice(-14).map((m) => ({
-            role: m.papel === "user" ? "user" : "assistant",
-            content: m.texto,
-          })),
-        }),
-      });
-      if (r.status === 404) {
-        setErro("O assistente ainda não foi ligado neste site. Falta publicar a função e cadastrar a chave da API no Netlify.");
-        setMsgs(historico);
-        return;
-      }
-      const j = await r.json().catch(() => null);
-      if (!r.ok || !j || !j.texto) {
-        setErro((j && j.erro) || "O assistente não respondeu. Tente de novo em alguns instantes.");
+      const { dados: j, erro: falha } = await chamarApi(ROTA_IA, {
+        token: tokenFirebase,
+        contexto: resumoParaIA({ subjects, ladder, data, today, totals, minWeek, qWeek }),
+        instrucoes: INSTRUCOES_IA,
+        mensagens: historico.slice(-14).map((m) => ({
+          role: m.papel === "user" ? "user" : "assistant",
+          content: m.texto,
+        })),
+      }, "O assistente");
+      if (falha) { setErro(falha); setMsgs(historico); return; }
+      if (!j || !j.texto) {
+        setErro("O assistente não respondeu. Tente de novo em alguns instantes.");
         return;
       }
       const { limpo, feitas } = aplicarAcoes(j.texto);

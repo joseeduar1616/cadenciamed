@@ -348,18 +348,9 @@ async function resgatarCupom(nuvem, codigo) {
   } catch (e) { /* segue sem token, o servidor recusa */ }
   if (!token) return { erro: "Entre na sua conta antes de resgatar o cupom." };
 
-  let r;
-  try {
-    r = await fetch(ROTA_CUPOM, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token, codigo }),
-    });
-  } catch (e) {
-    return { erro: "Não consegui falar com o servidor. Verifique a conexão." };
-  }
   /* 404 com JSON é cupom inválido; sem JSON é servidor ausente */
-  const { dados, erro } = await lerRespostaDoServidor(r, "O resgate de cupom");
+  const { dados, erro } = await chamarApi(
+    ROTA_CUPOM, { token, codigo }, "O resgate de cupom");
   return erro ? { erro } : dados;
 }
 

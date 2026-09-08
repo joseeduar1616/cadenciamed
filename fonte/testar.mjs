@@ -18,7 +18,7 @@ const liberado = path.basename(alvo) === 'teste.html';
 /* A última aba se chama "Plano" para quem assina e "Assinar" para quem não
    assina, então é procurada pelos dois nomes. */
 const ABAS = ['Hoje', 'Foco', 'Matérias', 'Temas', 'Cartões',
-              'Revisões', 'Rotina', 'Metas', 'Progresso', 'Plano|Assinar'];
+              'Revisões', 'Rotina', 'Amigos', 'Metas', 'Progresso', 'Plano|Assinar'];
 
 const erros = [];
 const passos = [];
@@ -189,6 +189,32 @@ if (liberado) {
   await pag.waitForTimeout(300);
   ok('aparência voltou ao padrão');
 
+  /* ── rotina: criar bloco, marcar cumprido, ver o dia e a semana ──── */
+  await ir('Rotina');
+  await pag.locator('button:has-text("Novo bloco")').first().click();
+  await pag.waitForTimeout(300);
+  await pag.locator('input[placeholder="Ex.: enfermaria clínica médica"]').fill('Bloco que precisa sobreviver');
+  await pag.locator('button:has-text("Adicionar bloco")').first().click();
+  await pag.waitForTimeout(400);
+  if (/Bloco que precisa sobreviver/.test(await texto())) ok('o bloco criado aparece no dia');
+  else falha('o bloco criado não apareceu na agenda');
+
+  const marcar = pag.locator('button[aria-label="Marcar como cumprido"]');
+  if (await marcar.count() === 0) falha('não achei o botão de marcar bloco como cumprido');
+  else {
+    await marcar.first().click();
+    await pag.waitForTimeout(400);
+    if (/cumprido/.test(await texto())) ok('marcar o bloco muda o estado para cumprido');
+    else falha('o bloco não ficou marcado como cumprido');
+  }
+
+  await pag.locator('button:has-text("Semana")').first().click();
+  await pag.waitForTimeout(400);
+  if (/toda semana/.test(await texto())) ok('a vista de semana abre com a linha do tempo');
+  else falha('a vista de semana não apareceu');
+  await pag.locator('button:has-text("Dia")').first().click();
+  await pag.waitForTimeout(300);
+
   /* ── os dados sobrevivem a recarregar a página ───────────────────── */
   await ir('Cartões');
   await pag.locator('button:has-text("Novo cartão")').first().click();
@@ -209,6 +235,15 @@ if (liberado) {
   await ir('Revisões');
   if (/2 dias · 9 dias · 40 dias/.test((await texto()).replace(/\s+/g, ' '))) ok('o esquema de revisão sobrevive ao recarregar');
   else falha('o esquema de revisão sumiu depois de recarregar');
+
+  /* O que foi cumprido na agenda passa pelo normalize na volta do disco:
+     sem estar copiado lá, some a cada recarregar sem avisar. */
+  await ir('Rotina');
+  const rotinaDepois = await texto();
+  if (/Bloco que precisa sobreviver/.test(rotinaDepois)) ok('os blocos da agenda sobrevivem ao recarregar');
+  else falha('os blocos da agenda sumiram depois de recarregar');
+  if (/cumprido/.test(rotinaDepois)) ok('o bloco marcado como cumprido continua marcado depois de recarregar');
+  else falha('a marca de cumprido sumiu depois de recarregar');
 }
 
 /* ── barra lateral ────────────────────────────────────────────────── */

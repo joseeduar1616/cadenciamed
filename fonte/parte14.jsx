@@ -1,0 +1,309 @@
+/* ═══════════════════════════════════════════════════════════════════
+   28 · AMIGOS (salas com ranking)
+
+   Uma sala é um nome mais uma senha. Quem confere a senha é o servidor,
+   em /api/salas: se a conferência estivesse aqui, bastaria abrir o código
+   da página para entrar em qualquer sala.
+
+   Os números de cada pessoa ficam em perfis/{uid}, escrito pelo próprio
+   dono. O ranking vem montado do servidor porque, pelas regras do
+   Firestore, o navegador só lê o próprio perfil — sem isso bastaria saber
+   o uid de alguém para bisbilhotar os números dessa pessoa.
+   ═══════════════════════════════════════════════════════════════════ */
+
+const ROTA_SALAS = "/api/salas";
+
+/* De quanto em quanto tempo o ranking se atualiza sozinho enquanto a aba
+   está aberta. Curto demais vira uma chamada por segundo à toa. */
+const RITMO_RANKING = 45000;
+
+/* Publica os números de quem está logado, para aparecerem no ranking.
+   Só os totais: nada do que foi estudado, nenhuma anotação. */
+function usePerfilPublico(nuvem, nome, totals) {
+  const dados = useMemo(() => ({
+    nome: String(nome || "").trim().slice(0, 40),
+    minutos: Math.max(0, Math.round(totals.min || 0)),
+    questoes: Math.max(0, Math.round(totals.q || 0)),
+    acertos: Math.max(0, Math.round(totals.ok || 0)),
+  }), [nome, totals.min, totals.q, totals.ok]);
+
+  const ultimo = useRef("");
+
+  useEffect(() => {
+    if (!nuvem || !nuvem.sdk || !nuvem.usuario) return undefined;
+    const assinatura = JSON.stringify(dados);
+    if (assinatura === ultimo.current) return undefined;
+
+    /* Espera o dedo parar: lançar uma sessão mexe nos três números de uma
+       vez, e sem isto seriam três gravações seguidas. */
+    const t = setTimeout(() => {
+      ultimo.current = assinatura;
+      const { F, db } = nuvem.sdk;
+      F.setDoc(F.doc(db, "perfis", nuvem.usuario.uid), {
+        ...dados, atualizadoEm: Date.now(),
+      }).catch(() => { ultimo.current = ""; });
+    }, 2500);
+    return () => clearTimeout(t);
+  }, [nuvem, dados]);
+}
+
+async function falarComSalas(nuvem, corpo) {
+  let token = "";
+  try {
+    if (nuvem && nuvem.sdk && nuvem.sdk.auth && nuvem.sdk.auth.currentUser) {
+      token = await nuvem.sdk.auth.currentUser.getIdToken();
+    }
+  } catch (e) { /* segue sem token, o servidor recusa */ }
+  if (!token) return { erro: "Entre na sua conta para usar as salas." };
+  const { dados, erro } = await chamarApi(ROTA_SALAS, { ...corpo, token }, "As salas de amigos");
+  return erro ? { erro } : dados;
+}
+
+const MEDALHA = ["var(--warn)", "var(--dim)", "var(--a-CL)"];
+
+function LinhaRanking({ x }) {
+  const cor = x.posicao <= 3 ? MEDALHA[x.posicao - 1] : T.ghost;
+  return (
+    <div className="flex items-center gap-3 rounded-2xl px-4 py-3.5"
+      style={{
+        background: x.souEu ? soft("var(--neon)", 10) : T.card2,
+        border: `1px solid ${x.souEu ? soft("var(--neon)", 34) : "transparent"}`,
+      }}>
+      <span className="flex items-center justify-center rounded-full"
+        style={{
+          width: 30, height: 30, flexShrink: 0,
+          background: x.posicao <= 3 ? soft(cor, 18) : "transparent",
+          border: x.posicao <= 3 ? "none" : `1px solid ${T.line}`,
+          fontFamily: F_MONO, fontSize: 13, fontWeight: 700, color: cor,
+        }}>{x.posicao}</span>
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+          <span style={{
+            fontSize: 15, fontWeight: 600, color: T.ink,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220,
+          }}>{x.nome}</span>
+          {x.souEu ? (
+            <span style={{
+              fontSize: 11, fontWeight: 700, color: "var(--neon)",
+              background: soft("var(--neon)", 16), padding: "2px 8px", borderRadius: 99,
+            }}>você</span>
+          ) : null}
+          {x.dono ? <Mini>criou a sala</Mini> : null}
+        </div>
+        <Mini style={{ marginTop: 3 }}>
+          {x.questoes ? `${x.acertos} de ${x.questoes} questões` : "sem questões lançadas"}
+          {!x.atualizadoEm ? " · ainda não sincronizou" : ""}
+        </Mini>
+      </div>
+
+      <div className="flex items-center gap-5" style={{ flexShrink: 0 }}>
+        <div className="text-right">
+          <Num size={17} weight={700}>{fmtMin(x.minutos)}</Num>
+          <Mini>líquidas</Mini>
+        </div>
+        <div className="text-right" style={{ minWidth: 52 }}>
+          <Num size={17} weight={700} color={x.pct === null ? T.ghost : x.pct >= 70 ? T.ok : x.pct >= 50 ? T.warn : T.bad}>
+            {x.pct === null ? "—" : `${x.pct}%`}
+          </Num>
+          <Mini>acerto</Mini>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Amigos({ nuvem, notify }) {
+  const [salas, setSalas] = useState(null);
+  const [atual, setAtual] = useState(null);        // slug escolhido
+  const [ranking, setRanking] = useState(null);
+  const [cabecalho, setCabecalho] = useState(null);
+  const [form, setForm] = useState({ nome: "", senha: "" });
+  const [modo, setModo] = useState("entrar");      // entrar | criar
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState("");
+
+  const logado = !!(nuvem && nuvem.usuario);
+
+  const carregarSalas = useCallback(async () => {
+    if (!logado) return;
+    const j = await falarComSalas(nuvem, { acao: "minhas" });
+    if (j.erro) { setErro(j.erro); return; }
+    setSalas(j.salas || []);
+    /* Primeira sala vira a escolhida, senão a aba abre vazia mesmo para
+       quem já participa de alguma. */
+    setAtual((p) => (p || (j.salas && j.salas[0] ? j.salas[0].slug : null)));
+  }, [nuvem, logado]);
+
+  useEffect(() => { carregarSalas(); }, [carregarSalas]);
+
+  const carregarRanking = useCallback(async (slug, silencioso) => {
+    if (!slug) return;
+    if (!silencioso) setOcupado(true);
+    const j = await falarComSalas(nuvem, { acao: "ranking", nome: slug });
+    if (!silencioso) setOcupado(false);
+    if (j.erro) { if (!silencioso) setErro(j.erro); return; }
+    setRanking(j.ranking || []);
+    setCabecalho(j.sala || null);
+    setErro("");
+  }, [nuvem]);
+
+  useEffect(() => {
+    if (!atual) { setRanking(null); setCabecalho(null); return undefined; }
+    carregarRanking(atual);
+    const t = setInterval(() => carregarRanking(atual, true), RITMO_RANKING);
+    return () => clearInterval(t);
+  }, [atual, carregarRanking]);
+
+  const enviar = async () => {
+    if (!form.nome.trim()) { setErro("Escreva o nome da sala."); return; }
+    if (form.senha.length < 4) { setErro("A senha precisa ter pelo menos 4 caracteres."); return; }
+    setOcupado(true); setErro("");
+    const j = await falarComSalas(nuvem, { acao: modo, nome: form.nome.trim(), senha: form.senha });
+    setOcupado(false);
+    if (j.erro) { setErro(j.erro); return; }
+    notify(j.mensagem || "Pronto.");
+    setForm({ nome: "", senha: "" });
+    setAtual(j.slug);
+    await carregarSalas();
+  };
+
+  const sair = async () => {
+    if (!atual) return;
+    setOcupado(true);
+    const j = await falarComSalas(nuvem, { acao: "sair", nome: atual });
+    setOcupado(false);
+    if (j.erro) { setErro(j.erro); return; }
+    notify(j.mensagem || "Você saiu da sala.");
+    setAtual(null); setRanking(null); setCabecalho(null);
+    setSalas(null);
+    await carregarSalas();
+  };
+
+  if (!logado) {
+    return (
+      <Card className="px-6 sm:px-10 py-12 text-center" brilho="var(--neon2)">
+        <div className="flex justify-center" style={{ color: "var(--neon2)" }}>
+          <span className="flex items-center justify-center rounded-full"
+            style={{ width: 56, height: 56, background: soft("var(--neon2)", 16) }}>
+            <Users size={24} />
+          </span>
+        </div>
+        <h2 style={{ fontFamily: F_SERIF, fontSize: 24, fontWeight: 400, margin: "18px 0 0", color: T.ink }}>
+          Estudar acompanhado
+        </h2>
+        <p style={{ color: T.dim, fontSize: 15, lineHeight: 1.65, marginTop: 10, maxWidth: 430, marginLeft: "auto", marginRight: "auto" }}>
+          Crie uma conta em Progresso para montar salas com seus amigos e comparar
+          horas estudadas, questões e acerto.
+        </p>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      <Card className="px-6 py-6" brilho="var(--neon2)">
+        <H color="var(--neon2)" icon={<Users size={16} />}>Salas de amigos</H>
+        <Texto style={{ marginTop: 10 }}>
+          Combine um nome e uma senha com quem você estuda. Todo mundo que entrar
+          com os dois vê o mesmo ranking, feito com as horas líquidas, as questões
+          e o acerto que cada um já lançou aqui.
+        </Texto>
+
+        {salas && salas.length ? (
+          <div className="mt-5 flex gap-2 flex-wrap">
+            {salas.map((s) => (
+              <button key={s.slug} type="button" onClick={() => setAtual(s.slug)}
+                className="rounded-full px-4 py-2 brilhar"
+                style={{
+                  background: atual === s.slug ? soft("var(--neon2)", 18) : T.card,
+                  border: `1px solid ${atual === s.slug ? "transparent" : T.line}`,
+                  color: atual === s.slug ? "var(--neon2)" : T.dim,
+                  fontSize: 14, fontWeight: atual === s.slug ? 700 : 500, cursor: "pointer",
+                }}>
+                {s.nome} <span style={{ opacity: 0.65 }}>· {s.membros}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="mt-6 pt-5" style={{ borderTop: `1px solid ${T.line}` }}>
+          <div className="flex gap-2 flex-wrap">
+            {[["entrar", "Entrar numa sala"], ["criar", "Criar uma sala"]].map(([id, lb]) => (
+              <button key={id} type="button" onClick={() => { setModo(id); setErro(""); }}
+                className="rounded-full px-4 py-2"
+                style={{
+                  background: modo === id ? T.card3 : "transparent",
+                  border: `1px solid ${modo === id ? "transparent" : T.line}`,
+                  color: modo === id ? T.ink : T.dim,
+                  fontSize: 14, fontWeight: modo === id ? 700 : 500, cursor: "pointer",
+                }}>{lb}</button>
+            ))}
+          </div>
+
+          <div className="mt-4 grid sm:grid-cols-2 gap-3">
+            <Field label="Nome da sala">
+              <TextInput value={form.nome} placeholder="Ex.: plantão da madrugada"
+                onChange={(e) => setForm((p) => ({ ...p, nome: e.target.value }))}
+                onKeyDown={(e) => { if (e.key === "Enter") enviar(); }} />
+            </Field>
+            <Field label="Senha">
+              <TextInput type="password" value={form.senha} placeholder="pelo menos 4 caracteres"
+                autoComplete={modo === "criar" ? "new-password" : "current-password"}
+                onChange={(e) => setForm((p) => ({ ...p, senha: e.target.value }))}
+                onKeyDown={(e) => { if (e.key === "Enter") enviar(); }} />
+            </Field>
+          </div>
+
+          <div className="mt-4 flex items-center gap-3 flex-wrap">
+            <Btn tone="primary" onClick={enviar} disabled={ocupado}>
+              {ocupado ? "Aguarde…" : modo === "criar" ? "Criar sala" : "Entrar"}
+            </Btn>
+            <Mini style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <Lock size={12} /> a senha é conferida no servidor
+            </Mini>
+            {erro ? <span style={{ fontSize: 14, color: T.bad }}>{erro}</span> : null}
+          </div>
+        </div>
+      </Card>
+
+      {atual && ranking ? (
+        <Card className="px-6 py-6">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <H color="var(--warn)" icon={<Trophy size={16} />}>
+              {cabecalho ? cabecalho.nome : "Ranking"}
+            </H>
+            <div className="flex items-center gap-2">
+              <Btn size="sm" tone="outline" onClick={() => carregarRanking(atual)} disabled={ocupado}>
+                <RefreshCw size={14} /> atualizar
+              </Btn>
+              <Btn size="sm" tone="danger" onClick={sair} disabled={ocupado}>sair da sala</Btn>
+            </div>
+          </div>
+
+          <Mini style={{ marginTop: 8 }}>
+            {ranking.length} {ranking.length === 1 ? "pessoa" : "pessoas"} · ordenado
+            por horas líquidas · atualiza sozinho a cada {Math.round(RITMO_RANKING / 1000)} segundos
+          </Mini>
+
+          {ranking.length === 0 ? (
+            <Blank icon={<Users size={26} />} title="Sala vazia"
+              hint="Passe o nome e a senha para quem estuda com você." />
+          ) : (
+            <div className="mt-5 flex flex-col gap-2">
+              {ranking.map((x) => <LinhaRanking key={x.uid} x={x} />)}
+            </div>
+          )}
+
+          <Mini style={{ marginTop: 16, lineHeight: 1.7 }}>
+            Aparecem só o nome do perfil e os três números do ranking. O que você
+            estudou, suas anotações e seus cartões não são compartilhados. Para
+            mudar o nome que os outros veem, é o nome em Progresso.
+          </Mini>
+        </Card>
+      ) : atual && ocupado ? (
+        <Card className="px-6 py-6"><Label>carregando o ranking…</Label></Card>
+      ) : null}
+    </div>
+  );
+}

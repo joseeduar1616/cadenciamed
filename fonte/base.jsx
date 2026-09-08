@@ -5,7 +5,7 @@ import {
   Sun, Moon, CalendarDays, Layers, BarChart3, ListChecks, Coffee, Target, Zap,
   BookMarked, FileText, Keyboard, ArrowUpRight, Maximize2, Minimize2,
   Smartphone, Monitor, Cloud, CloudOff, LogOut, User, RefreshCw, Stethoscope,
-  Sparkles, Menu, PanelLeft,
+  Sparkles, Menu, PanelLeft, Users, Trophy, Clock, Lock,
 } from "lucide-react";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip,
