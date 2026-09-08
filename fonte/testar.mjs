@@ -162,8 +162,87 @@ if (liberado) {
   if (await play.count() === 0) falha('não achei o botão de estudar um baralho só');
   else ok('cada baralho tem seu botão de estudar');
 
+  /* ── imagens do cartão ───────────────────────────────────────────
+     As imagens ficam no IndexedDB deste navegador, e o cartão só guarda o
+     marcador [[img:nome]]. O teste grava uma imagem no depósito e cria dois
+     cartões com imagens diferentes, para conferir duas coisas: que a imagem
+     aparece, e que trocar de cartão troca a imagem — o componente é o mesmo
+     entre um cartão e outro, e antes ele desistia de buscar a segunda. */
+  const PIXEL = 'data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==';
+  await pag.evaluate(async (uri) => {
+    const bd = await new Promise((ok) => {
+      const req = indexedDB.open('cadencia-midia', 1);
+      req.onupgradeneeded = () => {
+        if (!req.result.objectStoreNames.contains('arquivos')) req.result.createObjectStore('arquivos');
+      };
+      req.onsuccess = () => ok(req.result);
+    });
+    await new Promise((ok) => {
+      const tx = bd.transaction('arquivos', 'readwrite');
+      tx.objectStore('arquivos').put(uri, 'foto-um.gif');
+      tx.objectStore('arquivos').put(uri, 'foto-dois.gif');
+      tx.oncomplete = ok;
+    });
+    bd.close();
+  }, PIXEL);
+
+  for (const [n, arq] of [['um', 'foto-um.gif'], ['dois', 'foto-dois.gif']]) {
+    /* "Novo cartão" alterna: se o formulário já estiver aberto, clicar
+       fecharia em vez de abrir. */
+    if (await pag.locator('textarea').count() === 0) {
+      await pag.locator('button:has-text("Novo cartão")').first().click();
+      await pag.waitForTimeout(400);
+    }
+    /* O formulário guarda a pasta de antes, e a pasta foi renomeada no
+       passo anterior: sem repetir o nome aqui, estes cartões criariam uma
+       segunda pasta com um baralho de mesmo nome, e o teste de apagar
+       encontraria dois. */
+    /* Pelo placeholder, e não por posição: com o painel de ajustes aberto
+       existem outros campos antes destes, e o nth(0) pegava o errado. */
+    await pag.locator('input[placeholder="Ex.: Clínica"]').fill('Pasta renomeada');
+    await pag.locator('input[placeholder="Ex.: Cardiologia"]').first().fill('Baralho de teste');
+    const a = pag.locator('textarea');
+    await a.nth(0).fill(`Com imagem ${n} [[img:${arq}]]`);
+    await a.nth(1).fill(`resposta ${n}`);
+    await pag.locator('button:has-text("Criar cartão")').first().click();
+    await pag.waitForTimeout(400);
+  }
+
+  await pag.locator('button:has-text("Estudar")').first().click();
+  await pag.waitForTimeout(700);
+  const vistas = new Set();
+  let comImagem = 0;
+  for (let i = 0; i < 4; i++) {
+    const src = await pag.locator('main img, [style*="position: fixed"] img').first()
+      .getAttribute('src').catch(() => null);
+    const aviso = /imagem indisponível/.test(await pag.evaluate(() => document.body.innerText));
+    const frente = await pag.evaluate(() => document.body.innerText.match(/Com imagem (um|dois)/)?.[1] || '');
+    if (frente) { vistas.add(frente); if (src && !aviso) comImagem += 1; }
+    await pag.locator('button:has-text("Ver a resposta")').first().click().catch(() => {});
+    await pag.waitForTimeout(250);
+    await pag.getByRole('button', { name: /^Fácil/ }).first().click().catch(() => {});
+    await pag.waitForTimeout(450);
+  }
+  if (comImagem >= 1) ok('a imagem do cartão carrega do depósito do navegador');
+  else falha('o cartão com imagem mostrou "imagem indisponível"');
+  if (vistas.size >= 2 && comImagem >= 2) ok('trocar de cartão troca a imagem, em vez de repetir a anterior');
+  else falha(`imagens por cartão: vistas=${[...vistas]} comImagem=${comImagem}`);
+
+  /* Respondidos todos os cartões, o estudo cai na tela de "sessão
+     encerrada", que tem "Voltar ao painel" e não o X de encerrar. */
+  const voltar = pag.locator('button:has-text("Voltar ao painel")');
+  if (await voltar.count()) await voltar.first().click();
+  else await pag.locator('button[aria-label="Encerrar o estudo"]').first().click().catch(() => {});
+  await pag.waitForTimeout(600);
+  await ir('Cartões');
+
   /* apagar o baralho, com confirmação. O botão desceu para o painel de
-     ajustes: cinco controles na mesma linha não cabiam no celular. */
+     ajustes: cinco controles na mesma linha não cabiam no celular, então o
+     painel precisa estar aberto. */
+  if (await pag.locator('button[aria-label^="Apagar o baralho"]').count() === 0) {
+    await pag.locator('button[aria-label^="Ajustes de"]').first().click();
+    await pag.waitForTimeout(400);
+  }
   const lixo = pag.locator('button[aria-label^="Apagar o baralho"]');
   if (await lixo.count() === 0) falha('não achei o botão de apagar baralho');
   else {

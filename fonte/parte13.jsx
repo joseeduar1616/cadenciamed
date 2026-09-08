@@ -53,7 +53,11 @@ async function lerMidia(nome) {
       r.onerror = () => falha(r.error);
     });
     bd.close();
-    cacheMidia.set(nome, v);
+    /* Só o que foi achado entra no cache. Guardar o "não achei" fazia uma
+       falha de um instante virar permanente: bastava a leitura acontecer
+       antes de a importação terminar de gravar, e aquela imagem ficava
+       "indisponível" para sempre, mesmo já estando no banco. */
+    if (v) cacheMidia.set(nome, v);
     return v;
   } catch (e) { return null; }
 }
@@ -237,18 +241,30 @@ async function lerApkg(arquivo, aviso) {
 
 /* ── mostra uma imagem guardada no IndexedDB ────────────────────── */
 function Figura({ nome, altura = 260 }) {
-  const [uri, setUri] = useState(cacheMidia.get(nome) || null);
+  const [uri, setUri] = useState(() => cacheMidia.get(nome) || null);
+
+  /* Ao trocar de cartão muda o nome, mas o componente é o mesmo, e com ele
+     o estado. O `if (!uri)` de antes fazia o efeito desistir de buscar
+     justamente quando já havia uma imagem carregada: o cartão novo ficava
+     mostrando a imagem do cartão anterior. Zerar e buscar sempre resolve os
+     dois casos. */
   useEffect(() => {
     let vivo = true;
-    if (!uri) lerMidia(nome).then((v) => { if (vivo) setUri(v); });
+    setUri(cacheMidia.get(nome) || null);
+    lerMidia(nome).then((v) => { if (vivo) setUri(v); });
     return () => { vivo = false; };
-  }, [nome]); // eslint-disable-line
+  }, [nome]);
+
   if (!uri) {
+    /* O nome do arquivo entra no aviso: sem ele não dá para saber se a
+       imagem faltou na importação, se veio com outro nome, ou se foi
+       importada noutro navegador — o depósito é por aparelho. */
     return (
-      <span style={{
-        display: "inline-block", padding: "6px 10px", borderRadius: 4,
-        border: `1px dashed ${T.line2}`, color: T.faint, fontSize: 12.5,
-      }}>imagem indisponível</span>
+      <span title={`Não achei "${nome}" no depósito de imagens deste navegador.`}
+        style={{
+          display: "inline-block", padding: "6px 10px", borderRadius: 4,
+          border: `1px dashed ${T.line2}`, color: T.faint, fontSize: 12.5,
+        }}>imagem indisponível · {nome}</span>
     );
   }
   return (
