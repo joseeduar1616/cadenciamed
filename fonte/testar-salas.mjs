@@ -140,26 +140,78 @@ if (r.status === 404) ok('sala inexistente avisa em vez de criar');
 else falha('sala inexistente: ' + JSON.stringify(r));
 
 /* ── ranking ─────────────────────────────────────────────────────────── */
+/* O recorte é decidido pelo servidor, no fuso de quem usa o app. O teste
+   pergunta a ele qual é, em vez de recalcular — recalcular aqui era só uma
+   segunda chance de errar do mesmo jeito. */
+const SEMANA = mod.recorteAtual('semana').chave;
+const MES = mod.recorteAtual('mes').chave;
+
+/* Bia estudou mais no acumulado; Ana estudou mais nesta semana. É a troca de
+   liderança entre os recortes que prova que o filtro faz alguma coisa. */
 PERFIS['uid-ana'] = {
-  nome: { stringValue: 'Ana' }, minutos: { doubleValue: 600 },
-  questoes: { doubleValue: 200 }, acertos: { doubleValue: 150 },
+  nome: { stringValue: 'Ana' },
+  minutos: { doubleValue: 600 }, questoes: { doubleValue: 200 }, acertos: { doubleValue: 150 },
+  semanaChave: { stringValue: SEMANA },
+  semanaMinutos: { doubleValue: 300 }, semanaQuestoes: { doubleValue: 80 }, semanaAcertos: { doubleValue: 60 },
+  mesChave: { stringValue: MES },
+  mesMinutos: { doubleValue: 500 }, mesQuestoes: { doubleValue: 120 }, mesAcertos: { doubleValue: 90 },
   atualizadoEm: { doubleValue: Date.now() },
 };
 PERFIS['uid-bia'] = {
-  nome: { stringValue: 'Bia' }, minutos: { doubleValue: 900 },
-  questoes: { doubleValue: 100 }, acertos: { doubleValue: 90 },
+  nome: { stringValue: 'Bia' },
+  minutos: { doubleValue: 900 }, questoes: { doubleValue: 100 }, acertos: { doubleValue: 90 },
+  semanaChave: { stringValue: SEMANA },
+  semanaMinutos: { doubleValue: 120 }, semanaQuestoes: { doubleValue: 40 }, semanaAcertos: { doubleValue: 30 },
+  mesChave: { stringValue: MES },
+  mesMinutos: { doubleValue: 800 }, mesQuestoes: { doubleValue: 90 }, mesAcertos: { doubleValue: 81 },
   atualizadoEm: { doubleValue: Date.now() },
 };
+
+/* sem pedir período, vale a semana: é a corrida que interessa */
 r = await pedir({ token: 't', acao: 'ranking', nome: 'r3-clinica' });
-const lista = r.corpo.ranking || [];
-if (lista.length === 2 && lista[0].nome === 'Bia') ok('o ranking ordena por horas líquidas');
-else falha('ranking: ' + JSON.stringify(r.corpo));
+let lista = r.corpo.ranking || [];
+if (r.corpo.sala.periodo === 'semana') ok('sem pedir período, o ranking é o da semana');
+else falha('período padrão: ' + JSON.stringify(r.corpo.sala));
+if (lista.length === 2 && lista[0].nome === 'Ana' && lista[0].minutos === 300) ok('na semana lidera quem estudou mais na semana');
+else falha('ranking semanal: ' + JSON.stringify(lista));
 if (lista[0].posicao === 1 && lista[1].posicao === 2) ok('as posições vêm numeradas');
 else falha('posições erradas');
-if (lista[0].pct === 90 && lista[1].pct === 75) ok('a porcentagem de acerto vem calculada');
-else falha('pct: ' + JSON.stringify(lista.map((x) => x.pct)));
+if (lista[0].pct === 75 && lista[1].pct === 75) ok('a porcentagem de acerto é a do recorte, não a geral');
+else falha('pct semanal: ' + JSON.stringify(lista.map((x) => x.pct)));
 if (lista.find((x) => x.nome === 'Bia').souEu) ok('o ranking marca quem está pedindo');
 else falha('não marcou souEu');
+
+/* mês */
+r = await pedir({ token: 't', acao: 'ranking', nome: 'r3-clinica', periodo: 'mes' });
+lista = r.corpo.ranking || [];
+if (r.corpo.sala.periodo === 'mes' && lista[0].nome === 'Bia' && lista[0].minutos === 800) ok('no mês a liderança troca, com os números do mês');
+else falha('ranking mensal: ' + JSON.stringify(r.corpo));
+
+/* desde sempre */
+r = await pedir({ token: 't', acao: 'ranking', nome: 'r3-clinica', periodo: 'total' });
+lista = r.corpo.ranking || [];
+if (lista[0].nome === 'Bia' && lista[0].minutos === 900) ok('o total continua sendo o acumulado de sempre');
+else falha('ranking total: ' + JSON.stringify(lista));
+
+/* período inventado não pode derrubar a rota nem virar outro recorte */
+r = await pedir({ token: 't', acao: 'ranking', nome: 'r3-clinica', periodo: 'trimestre' });
+if (r.corpo.sala.periodo === 'semana') ok('período desconhecido cai na semana em vez de quebrar');
+else falha('período inventado: ' + JSON.stringify(r.corpo.sala));
+
+/* ── números velhos não valem para o recorte de agora ────────────────── */
+PERFIS['uid-bia'].semanaChave = { stringValue: '2020-01-06' };
+PERFIS['uid-bia'].semanaMinutos = { doubleValue: 5000 };
+r = await pedir({ token: 't', acao: 'ranking', nome: 'r3-clinica' });
+lista = r.corpo.ranking || [];
+const velha = lista.find((x) => x.nome === 'Bia');
+if (velha.minutos === 0 && lista[0].nome === 'Ana') ok('quem não abriu o app nesta semana não lidera com número da semana passada');
+else falha('semana velha: ' + JSON.stringify(lista));
+if (velha.foraDoRecorte) ok('a tela consegue diferenciar "não estudou" de "não abriu o app no período"');
+else falha('não marcou foraDoRecorte');
+if (lista.find((x) => x.nome === 'Ana').minutos === 300) ok('quem está em dia mantém os números da semana');
+else falha('Ana perdeu os números');
+PERFIS['uid-bia'].semanaChave = { stringValue: SEMANA };
+PERFIS['uid-bia'].semanaMinutos = { doubleValue: 120 };
 
 /* quem não é da sala não vê o ranking */
 como('caio@email.com', 'uid-caio');

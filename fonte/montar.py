@@ -63,10 +63,21 @@ window.CADENCIA_GOOGLE = {
 };
 
 /* ══════════════════════════════════════════════════════════════════════
-   LINKS DE PAGAMENTO
-   Cole aqui os links de checkout dos seus dois produtos, criados na
-   Kiwify ou na Hotmart. Enquanto estiverem vazios, a tela de planos
-   mostra os precos mas avisa que o pagamento nao esta configurado.
+   LINKS DE PAGAMENTO — e o que falta para vender
+
+   1. Crie dois produtos na Kiwify ou na Hotmart: um mensal (R$ 30) e um
+      anual (R$ 250). O nome do produto precisa ter a palavra "anual" no
+      anual: e por ela que o servidor sabe qual plano liberar.
+   2. Cole os dois links de checkout aqui embaixo.
+   3. Na plataforma, cadastre o aviso de compra (webhook):
+        https://cadenciamed.joseeduardo1616.workers.dev/api/compra?segredo=SEU_SEGREDO
+      Eventos: compra aprovada, reembolso e chargeback.
+   4. Cadastre WEBHOOK_SEGREDO nas variaveis do Worker, com esse mesmo
+      SEU_SEGREDO. Sem ele o aviso de compra e recusado de proposito:
+      qualquer pessoa poderia forjar uma compra e liberar assinatura.
+
+   Enquanto os links estiverem vazios, a tela de planos mostra os precos e
+   diz "em breve" a quem visita.
    ══════════════════════════════════════════════════════════════════════ */
 window.CADENCIA_CHECKOUT = {
   mensal: "",

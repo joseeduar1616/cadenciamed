@@ -288,9 +288,21 @@ await pag.waitForTimeout(700);
 const escondida = await lateral.first().evaluate((el) => el.getBoundingClientRect().right <= 1);
 if (escondida) ok('no celular a gaveta começa fechada');
 else falha('no celular a gaveta apareceu sem ser chamada');
+/* A gaveta desliza, e esperar um tempo fixo dava resultado diferente a cada
+   rodada: às vezes a medida caía no meio da animação. Aqui a espera é pela
+   posição chegar onde deveria. */
+const esperarGaveta = async (querAberta, ms = 3000) => {
+  const fim = Date.now() + ms;
+  for (;;) {
+    const dir = await lateral.first().evaluate((el) => el.getBoundingClientRect().right);
+    if (querAberta ? dir > 100 : dir <= 1) return true;
+    if (Date.now() > fim) return false;
+    await pag.waitForTimeout(100);
+  }
+};
+
 await pag.locator('button[aria-label="Abrir menu"]').first().click();
-await pag.waitForTimeout(500);
-const abriu = await lateral.first().evaluate((el) => el.getBoundingClientRect().right > 100);
+const abriu = await esperarGaveta(true);
 if (abriu) ok('a gaveta abre no celular');
 else falha('a gaveta não abriu no celular');
 const todasVisiveis = await pag.locator('aside[aria-label="Navegação"] nav button').count();
@@ -298,8 +310,7 @@ if (todasVisiveis >= 9) ok(`a gaveta mostra as ${todasVisiveis} abas de uma vez,
 else falha('a gaveta não listou as abas: ' + todasVisiveis);
 await pag.screenshot({ path: 'captura-gaveta.png' });
 await pag.locator('aside[aria-label="Navegação"] nav button').first().click();
-await pag.waitForTimeout(500);
-const fechou = await lateral.first().evaluate((el) => el.getBoundingClientRect().right <= 1);
+const fechou = await esperarGaveta(false);
 if (fechou) ok('a gaveta fecha sozinha ao escolher uma aba');
 else falha('a gaveta ficou aberta depois de escolher');
 if (await pag.evaluate(() => document.querySelector('#root')?.children.length > 0)) ok('roda no tamanho de celular');

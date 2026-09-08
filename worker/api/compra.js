@@ -69,12 +69,21 @@ function interpretar(corpo) {
 export async function onRequest({ request, env }) {
   if (request.method !== "POST") return new Response("Método não permitido", { status: 405 });
 
+  /* Sem segredo cadastrado, este endereço libera assinatura para quem
+     mandar um aviso de compra forjado — e ele é público. Antes o código
+     seguia em frente nesse caso, o que só se percebe quando alguém descobre.
+     Agora recusa, e o erro diz o que falta. */
   const segredo = env.WEBHOOK_SEGREDO;
-  if (segredo) {
-    const url = new URL(request.url);
-    const enviado = url.searchParams.get("segredo") || request.headers.get("x-segredo") || "";
-    if (enviado !== segredo) return new Response("não autorizado", { status: 401 });
+  if (!segredo) {
+    console.error("compra: WEBHOOK_SEGREDO não cadastrado");
+    return new Response(
+      "WEBHOOK_SEGREDO não cadastrado nas variáveis do Worker. Sem ele "
+      + "qualquer pessoa liberaria assinatura de graça, então o aviso de "
+      + "compra fica recusado.", { status: 500 });
   }
+  const url = new URL(request.url);
+  const enviado = url.searchParams.get("segredo") || request.headers.get("x-segredo") || "";
+  if (enviado !== segredo) return new Response("não autorizado", { status: 401 });
 
   const conta = contaDeServico(env);
   if (!conta) return new Response("conta de serviço ausente ou inválida", { status: 500 });
@@ -87,7 +96,7 @@ export async function onRequest({ request, env }) {
   /* Respostas 200 de propósito: a plataforma de pagamento reenvia o aviso
      quando recebe erro, e não adianta insistir num evento que não interessa. */
   if (!info || !info.email) return new Response("formato não reconhecido", { status: 200 });
-  if (!info.pago) return new Response("evento ignorado", { status: 200 });
+  if (!info.pago && !info.cancelado) return new Response("evento ignorado", { status: 200 });
 
   try {
     const token = await tokenDeAcesso(conta);
@@ -96,6 +105,19 @@ export async function onRequest({ request, env }) {
       console.error("compra sem conta correspondente:", info.email);
       return new Response("conta não encontrada para esse e-mail", { status: 200 });
     }
+
+    /* Reembolso e chargeback já vinham interpretados, mas nada era feito com
+       eles: quem pedia o dinheiro de volta ficava com o acesso do mesmo
+       jeito, até o prazo vencer. */
+    if (info.cancelado) {
+      const r = await fetch(`${BASE_FIRESTORE}/assinaturas/${uid}`, {
+        method: "DELETE", headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) return new Response("erro ao remover", { status: 500 });
+      console.log("assinatura removida por estorno", info.email);
+      return new Response("ok", { status: 200 });
+    }
+
     const ate = Date.now() + DIAS[info.plano] * 86400000;
     const gravou = await gravarAssinatura(token, uid, {
       plano: { stringValue: info.plano },

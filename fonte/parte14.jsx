@@ -17,15 +17,48 @@ const ROTA_SALAS = "/api/salas";
    está aberta. Curto demais vira uma chamada por segundo à toa. */
 const RITMO_RANKING = 45000;
 
+const PERIODOS = [
+  ["semana", "Semana"],
+  ["mes", "Mês"],
+  ["total", "Desde sempre"],
+];
+
 /* Publica os números de quem está logado, para aparecerem no ranking.
-   Só os totais: nada do que foi estudado, nenhuma anotação. */
-function usePerfilPublico(nuvem, nome, totals) {
-  const dados = useMemo(() => ({
-    nome: String(nome || "").trim().slice(0, 40),
-    minutos: Math.max(0, Math.round(totals.min || 0)),
-    questoes: Math.max(0, Math.round(totals.q || 0)),
-    acertos: Math.max(0, Math.round(totals.ok || 0)),
-  }), [nome, totals.min, totals.q, totals.ok]);
+ *
+ * Vão três recortes: a semana, o mês e o total. Cada um leva junto a que
+ * semana e a que mês se refere — sem isso, quem estudou muito na semana
+ * passada e não abriu o app desde então continuaria no topo do ranking desta
+ * semana, com números que já não valem.
+ *
+ * Só números: nada do que foi estudado, nenhuma anotação. */
+function usePerfilPublico(nuvem, nome, sessions, today) {
+  const dados = useMemo(() => {
+    const iniSemana = weekStart(today);
+    const mes = String(today).slice(0, 7);
+    const soma = { min: 0, q: 0, ok: 0 };
+    const sem = { min: 0, q: 0, ok: 0 };
+    const mensal = { min: 0, q: 0, ok: 0 };
+
+    for (const s of sessions || []) {
+      if (!s) continue;
+      const m = Math.max(0, Number(s.minutes) || 0);
+      const q = Math.max(0, Number(s.questions) || 0);
+      const ok = Math.min(q, Math.max(0, Number(s.correct) || 0));
+      soma.min += m; soma.q += q; soma.ok += ok;
+      const d = String(s.date || "");
+      if (d >= iniSemana && d <= today) { sem.min += m; sem.q += q; sem.ok += ok; }
+      if (d.slice(0, 7) === mes) { mensal.min += m; mensal.q += q; mensal.ok += ok; }
+    }
+
+    return {
+      nome: String(nome || "").trim().slice(0, 40),
+      minutos: Math.round(soma.min), questoes: soma.q, acertos: soma.ok,
+      semanaChave: iniSemana,
+      semanaMinutos: Math.round(sem.min), semanaQuestoes: sem.q, semanaAcertos: sem.ok,
+      mesChave: mes,
+      mesMinutos: Math.round(mensal.min), mesQuestoes: mensal.q, mesAcertos: mensal.ok,
+    };
+  }, [nome, sessions, today]);
 
   const ultimo = useRef("");
 
@@ -93,7 +126,8 @@ function LinhaRanking({ x }) {
         </div>
         <Mini style={{ marginTop: 3 }}>
           {x.questoes ? `${x.acertos} de ${x.questoes} questões` : "sem questões lançadas"}
-          {!x.atualizadoEm ? " · ainda não sincronizou" : ""}
+          {!x.atualizadoEm ? " · ainda não sincronizou"
+            : x.foraDoRecorte ? " · não abriu o app neste período" : ""}
         </Mini>
       </div>
 
@@ -120,6 +154,9 @@ function Amigos({ nuvem, notify }) {
   const [cabecalho, setCabecalho] = useState(null);
   const [form, setForm] = useState({ nome: "", senha: "" });
   const [modo, setModo] = useState("entrar");      // entrar | criar
+  /* A semana é a corrida que interessa: dá para virar o jogo. O mês e o
+     total ficam a um toque, para quem quer ver o acumulado. */
+  const [periodo, setPeriodo] = useState("semana");
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState("");
 
@@ -140,13 +177,13 @@ function Amigos({ nuvem, notify }) {
   const carregarRanking = useCallback(async (slug, silencioso) => {
     if (!slug) return;
     if (!silencioso) setOcupado(true);
-    const j = await falarComSalas(nuvem, { acao: "ranking", nome: slug });
+    const j = await falarComSalas(nuvem, { acao: "ranking", nome: slug, periodo });
     if (!silencioso) setOcupado(false);
     if (j.erro) { if (!silencioso) setErro(j.erro); return; }
     setRanking(j.ranking || []);
     setCabecalho(j.sala || null);
     setErro("");
-  }, [nuvem]);
+  }, [nuvem, periodo]);
 
   useEffect(() => {
     if (!atual) { setRanking(null); setCabecalho(null); return undefined; }
@@ -281,7 +318,22 @@ function Amigos({ nuvem, notify }) {
             </div>
           </div>
 
-          <Mini style={{ marginTop: 8 }}>
+          <div className="mt-4 flex gap-2 flex-wrap items-center">
+            <div className="flex rounded-full" style={{ background: T.card2, padding: 3, border: `1px solid ${T.line}` }}>
+              {PERIODOS.map(([id, lb]) => (
+                <button key={id} type="button" onClick={() => setPeriodo(id)}
+                  className="rounded-full px-4 py-1.5"
+                  style={{
+                    background: periodo === id ? soft("var(--warn)", 20) : "transparent",
+                    border: "none", color: periodo === id ? "var(--warn)" : T.dim,
+                    fontSize: 13.5, fontWeight: periodo === id ? 700 : 500, cursor: "pointer",
+                  }}>{lb}</button>
+              ))}
+            </div>
+            {cabecalho && cabecalho.rotulo ? <Mini>{cabecalho.rotulo}</Mini> : null}
+          </div>
+
+          <Mini style={{ marginTop: 10 }}>
             {ranking.length} {ranking.length === 1 ? "pessoa" : "pessoas"} · ordenado
             por horas líquidas · atualiza sozinho a cada {Math.round(RITMO_RANKING / 1000)} segundos
           </Mini>

@@ -1,4 +1,8 @@
-/* Testa o painel de acessos e o aviso de compra, sem tocar no Firebase.
+/* Testa o painel de acessos, sem tocar no Firebase.
+ *
+ * O aviso de compra tem teste próprio, no testar-compra.mjs: manter os dois
+ * aqui deixava duas versões da mesma regra, e foi assim que a exigência do
+ * WEBHOOK_SEGREDO passou a ser afirmada num arquivo e negada no outro.
  *
  * Rodam contra os arquivos que vão para o ar (worker/api/). São as duas
  * funções que gravam assinatura, então valem teste próprio: um engano aqui
@@ -115,76 +119,6 @@ else falha('revogar: ' + JSON.stringify(r));
 r = await chamarAcessos({}, 'GET');
 if (r.status === 405) ok('o painel só aceita POST');
 else falha('método: ' + JSON.stringify(r));
-
-/* ══ aviso de compra ═══════════════════════════════════════════════════ */
-
-const chamarCompra = async (corpo, busca = '') => {
-  const { onRequest } = await import('../worker/api/compra.js?v=' + Math.random());
-  const res = await onRequest({
-    request: new Request('http://local/api/compra' + busca, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(corpo),
-    }),
-    env,
-  });
-  return { status: res.status, texto: await res.text() };
-};
-
-const KIWIFY_PAGO = { Customer: { email: 'compradora@x.com' }, order_status: 'paid', Product: { product_name: 'Plano Anual' } };
-
-/* sem segredo cadastrado, aceita (é o estado de quem ainda não configurou) */
-delete env.WEBHOOK_SEGREDO;
-GRAVADO = null;
-let c = await chamarCompra(KIWIFY_PAGO);
-if (c.status === 200 && GRAVADO && GRAVADO.fields.plano.stringValue === 'anual') ok('compra da Kiwify libera o plano anual');
-else falha('kiwify: ' + JSON.stringify(c) + ' ' + JSON.stringify(GRAVADO));
-if (GRAVADO.fields.cortesia.booleanValue === false) ok('compra paga não é marcada como cortesia');
-else falha('compra marcada como cortesia');
-
-/* com segredo cadastrado, recusa quem não manda o segredo certo */
-env.WEBHOOK_SEGREDO = 'abre-te-sesamo';
-GRAVADO = null;
-c = await chamarCompra(KIWIFY_PAGO);
-if (c.status === 401) ok('sem o segredo, o aviso de compra é recusado');
-else falha('sem segredo: ' + JSON.stringify(c));
-if (GRAVADO === null) ok('aviso recusado não grava nada');
-else falha('gravou mesmo recusando');
-
-c = await chamarCompra(KIWIFY_PAGO, '?segredo=errado');
-if (c.status === 401) ok('segredo errado é recusado');
-else falha('segredo errado: ' + JSON.stringify(c));
-
-GRAVADO = null;
-c = await chamarCompra(KIWIFY_PAGO, '?segredo=abre-te-sesamo');
-if (c.status === 200 && GRAVADO) ok('com o segredo certo, a compra passa');
-else falha('segredo certo: ' + JSON.stringify(c));
-delete env.WEBHOOK_SEGREDO;
-
-/* Hotmart */
-GRAVADO = null;
-c = await chamarCompra({ event: 'PURCHASE_APPROVED', data: { buyer: { email: 'h@x.com' }, product: { name: 'Assinatura Mensal' } } });
-if (c.status === 200 && GRAVADO.fields.plano.stringValue === 'mensal') ok('compra da Hotmart libera o plano mensal');
-else falha('hotmart: ' + JSON.stringify(c));
-
-/* eventos que não são compra aprovada não liberam nada */
-GRAVADO = null;
-c = await chamarCompra({ event: 'PURCHASE_REFUNDED', data: { buyer: { email: 'h@x.com' } } });
-if (c.status === 200 && GRAVADO === null) ok('estorno não libera acesso');
-else falha('estorno: ' + JSON.stringify(c) + ' ' + JSON.stringify(GRAVADO));
-
-GRAVADO = null;
-c = await chamarCompra({ Customer: { email: 'x@x.com' }, order_status: 'waiting_payment' });
-if (c.status === 200 && GRAVADO === null) ok('pagamento pendente não libera acesso');
-else falha('pendente: ' + JSON.stringify(c));
-
-/* compra de quem ainda não criou conta no site */
-UID_DO_EMAIL = null;
-GRAVADO = null;
-c = await chamarCompra(KIWIFY_PAGO);
-if (c.status === 200 && GRAVADO === null) ok('compra sem conta correspondente não quebra o webhook');
-else falha('compra sem conta: ' + JSON.stringify(c));
-UID_DO_EMAIL = 'uid-aluna';
 
 console.log(passos.join('\n'));
 console.log('\n' + (erros.length ? `${erros.length} PROBLEMA(S):\n` + erros.join('\n') : 'nenhum erro'));

@@ -1,7 +1,8 @@
 # Cadência Med · código-fonte
 
-Site estático em React, compilado para um único `index.html`, publicado em
-Cloudflare Workers (static assets) em `cadenciamed.com.br`.
+Site estático em React, compilado para um único `index.html`. As páginas são
+servidas pelo Firebase Hosting em `cadenciamed.com.br`; as rotas `/api` vêm de
+um Worker do Cloudflare. A seção **Publicar** explica os dois.
 
 ## Montar
 
@@ -24,7 +25,7 @@ python3 gerar_icones.py         # ícones, favicon e a marca embutida no base.js
 
 cat base.jsx parte2.jsx parte3.jsx parte10.jsx parte11.jsx parte13.jsx \
     parte12.jsx parte4.jsx parte5.jsx parte6.jsx parte7.jsx parte9.jsx \
-    parte8.jsx > app.jsx
+    parte14.jsx parte8.jsx > app.jsx
 
 npx esbuild main.jsx --bundle --minify --format=iife --loader:.jsx=jsx \
   --define:process.env.NODE_ENV='"production"' \
@@ -46,6 +47,7 @@ python3 montar_teste.py         # gera teste.html, igual ao site mas com o plano
 node testar.mjs                 # abre no Chromium e confere tudo
 node testar.mjs index.html      # confere o arquivo de produção
 node testar-assistente.mjs      # confere a função da IA, sem gastar cota
+node testar-compra.mjs          # confere o aviso de compra: segredo, plano e estorno
 node testar-salas.mjs           # confere as salas de amigos, com banco de mentira
 node testar-api.mjs             # confere como o app acha o servidor das rotas /api
 node testar-worker.mjs          # confere o roteamento e os cabeçalhos de CORS
@@ -82,11 +84,14 @@ some calada quando falta uma linha no `normalize()`.
 | `gerar_icones.py` | ícones, favicon e marca, a partir de `logo-original.png` |
 | `montar.py` | junta CSS e JS num `index.html` autônomo |
 | `montar_teste.py` | mesma coisa, com o plano liberado, para o teste |
-| `publicar.py` | monta a pasta `publicar/`, que é o que o Cloudflare serve |
+| `publicar.py` | monta a pasta `publicar/`, que é o que vai ao ar |
 | `testar.mjs` | teste de fumaça no Chromium |
 | `testar-assistente.mjs` | teste da função da IA, com servidor falso no lugar da API |
+| `testar-compra.mjs` | teste do aviso de compra: segredo, planos e estorno |
 | `testar-cupom.mjs` | teste do resgate de cupom, com Firebase falso |
-| `testar-acessos.mjs` | teste do painel de acessos e do aviso de compra |
+| `testar-acessos.mjs` | teste do painel de acessos do dono |
+| `testar-salas.mjs` | teste das salas de amigos e dos recortes do ranking |
+| `testar-api.mjs` | teste de como o app acha o servidor das rotas `/api` |
 | `testar-worker.mjs` | teste do roteamento: o que é API e o que é arquivo |
 | `montar.sh` | roda tudo na ordem |
 
@@ -288,6 +293,17 @@ todo mundo à mesma sala em vez de criarem quase-duplicatas.
 A senha nunca é guardada: fica gravado o PBKDF2 dela, com um sal sorteado por
 sala. A conferência é no servidor — no navegador bastaria abrir o código da
 página para entrar em qualquer sala.
+
+O ranking tem três recortes: **semana** (o padrão, porque é a corrida em que
+dá para virar o jogo), **mês** e **desde sempre**. Quem decide de que semana e
+de que mês se trata é o servidor, no fuso de São Paulo — deixar cada navegador
+decidir faria duas pessoas da mesma sala compararem semanas diferentes sem
+perceber.
+
+Cada recorte é gravado com a chave do período junto. Quem estudou muito na
+semana passada e não abriu o app desde então aparece zerado nesta semana, com
+a observação "não abriu o app neste período", em vez de liderar com número
+velho.
 
 Os números do ranking ficam em `perfis/{uid}`, escrito pelo próprio dono e
 lido só por ele. Quem monta o ranking é o servidor, com a conta de serviço:

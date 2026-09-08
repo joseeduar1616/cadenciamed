@@ -419,7 +419,7 @@ export default function Cadencia() {
      e não dentro da aba Amigos, para o perfil continuar em dia mesmo de
      quem nunca abre essa aba — senão o ranking mostraria zero para quem
      estudou e simplesmente não estava com ela aberta. */
-  usePerfilPublico(nuvem, data.profile.name, totals);
+  usePerfilPublico(nuvem, data.profile.name, data.sessions, today);
 
   /* Menu lateral: no celular é gaveta que abre por cima; no computador
      fica fixo e só encolhe para a largura dos ícones. */

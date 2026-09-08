@@ -125,35 +125,86 @@ async function perfisDe(token, uids) {
     const f = item.found.fields || {};
     fora[uid] = {
       nome: texto(f.nome),
-      minutos: numero(f.minutos),
-      questoes: numero(f.questoes),
-      acertos: numero(f.acertos),
       atualizadoEm: numero(f.atualizadoEm),
+      total: { minutos: numero(f.minutos), questoes: numero(f.questoes), acertos: numero(f.acertos) },
+      semana: {
+        chave: texto(f.semanaChave),
+        minutos: numero(f.semanaMinutos),
+        questoes: numero(f.semanaQuestoes),
+        acertos: numero(f.semanaAcertos),
+      },
+      mes: {
+        chave: texto(f.mesChave),
+        minutos: numero(f.mesMinutos),
+        questoes: numero(f.mesQuestoes),
+        acertos: numero(f.mesAcertos),
+      },
     };
   }
   return fora;
 }
 
-function montarRanking(sala, perfis, eu) {
+/* ── de que semana e de que mês estamos falando ────────────────────────
+ *
+ * O recorte precisa ser o mesmo para todo mundo da sala, então quem decide é
+ * o servidor, no fuso de quem usa o app. Deixar cada navegador decidir faria
+ * duas pessoas compararem semanas diferentes sem perceber. */
+const FUSO_APP = "America/Sao_Paulo";
+
+function hojeNoFuso() {
+  /* en-CA formata como AAAA-MM-DD, que é o formato usado no app inteiro. */
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: FUSO_APP, year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
+}
+
+/* Segunda-feira da semana daquela data, igual ao weekStart do app. */
+function inicioDaSemana(iso) {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+}
+
+export function recorteAtual(periodo) {
+  const hoje = hojeNoFuso();
+  if (periodo === "mes") return { campo: "mes", chave: hoje.slice(0, 7), rotulo: "neste mês" };
+  if (periodo === "total") return { campo: "total", chave: null, rotulo: "desde sempre" };
+  return { campo: "semana", chave: inicioDaSemana(hoje), rotulo: "nesta semana" };
+}
+
+export function montarRanking(sala, perfis, eu, periodo) {
+  const recorte = recorteAtual(periodo);
+
   const linhas = sala.membros.map((uid) => {
     const p = perfis[uid] || {};
-    const questoes = Math.max(0, Math.round(p.questoes || 0));
-    const acertos = Math.min(questoes, Math.max(0, Math.round(p.acertos || 0)));
+    const bloco = p[recorte.campo] || {};
+
+    /* Números de outra semana não valem para esta. Acontece com quem estudou
+       muito e não abriu o app desde então: sem esta conferência, essa pessoa
+       lideraria a semana atual com o resultado da anterior. */
+    const vale = recorte.chave === null || bloco.chave === recorte.chave;
+
+    const questoes = vale ? Math.max(0, Math.round(bloco.questoes || 0)) : 0;
+    const acertos = vale ? Math.min(questoes, Math.max(0, Math.round(bloco.acertos || 0))) : 0;
     return {
       uid,
       nome: p.nome || "sem nome",
       /* Horas líquidas: só o tempo lançado em sessão, sem contar pausa. */
-      minutos: Math.max(0, Math.round(p.minutos || 0)),
+      minutos: vale ? Math.max(0, Math.round(bloco.minutos || 0)) : 0,
       questoes,
       acertos,
       pct: questoes ? Math.round((acertos / questoes) * 100) : null,
       atualizadoEm: p.atualizadoEm || 0,
+      /* Diferencia "não estudou" de "não abriu o app no recorte", que na tela
+         são coisas bem diferentes. */
+      foraDoRecorte: !vale && !!p.atualizadoEm,
       souEu: uid === eu,
       dono: uid === sala.dono,
     };
   });
+
   linhas.sort((a, b) => b.minutos - a.minutos || b.questoes - a.questoes);
-  return linhas.map((x, i) => ({ ...x, posicao: i + 1 }));
+  return { recorte, linhas: linhas.map((x, i) => ({ ...x, posicao: i + 1 })) };
 }
 
 export async function onRequest({ request, env }) {
@@ -281,10 +332,14 @@ export async function onRequest({ request, env }) {
   /* ── ranking ───────────────────────────────────────────────────────── */
   if (acao === "ranking") {
     const perfis = await perfisDe(token, sala.membros);
+    const { recorte, linhas } = montarRanking(sala, perfis, pessoa.uid, corpo.periodo);
     return json({
       ok: true,
-      sala: { slug, nome: sala.nome, souDono: sala.dono === pessoa.uid },
-      ranking: montarRanking(sala, perfis, pessoa.uid),
+      sala: {
+        slug, nome: sala.nome, souDono: sala.dono === pessoa.uid,
+        periodo: recorte.campo, rotulo: recorte.rotulo,
+      },
+      ranking: linhas,
     });
   }
 

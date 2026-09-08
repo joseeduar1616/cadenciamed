@@ -146,8 +146,11 @@ function Precos({ compacto, onFechar, usuario, plano }) {
                     Assinar {p.rotulo.toLowerCase()} <ArrowUpRight size={16} />
                   </Btn>
                 ) : (
+                  /* Falta o link de pagamento. Quem visita não tem nada a ver
+                     com isso e só precisa saber que ainda não dá para assinar;
+                     o recado técnico é para o dono, que é quem resolve. */
                   <div className="rounded-full px-4 py-3 text-center" style={{ background: T.card2, color: T.faint, fontSize: 14 }}>
-                    link de pagamento não configurado
+                    {ehDono(usuario) ? "falta colar o link em CADENCIA_CHECKOUT" : "em breve"}
                   </div>
                 )}
               </div>
