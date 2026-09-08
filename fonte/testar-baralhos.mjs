@@ -27,7 +27,11 @@ const json = (corpo, status = 200) => new Response(JSON.stringify(corpo),
   { status, headers: { 'Content-Type': 'application/json' } });
 
 globalThis.fetch = async (url, opcoes = {}) => {
-  const u = String(url);
+  /* O fetch de verdade normaliza o ".." do endereço antes de sair. Sem
+     fazer o mesmo aqui, o teste de fuga passaria mesmo com a trava
+     removida: o banco de mentira leria "publicos/x" e nunca veria o
+     "usuarios/alguem" que a chamada realmente atingiria. */
+  const u = new URL(String(url)).href;
   if (u.includes('identitytoolkit.googleapis.com')) {
     return QUEM ? json({ users: [QUEM] }) : json({ error: {} }, 400);
   }
@@ -163,6 +167,37 @@ else falha('despublicar: ' + JSON.stringify(r));
 r = await pedir({ token: 't', acao: 'baixar', slug });
 if (r.status === 404) ok('baralho tirado do ar não é mais baixado');
 else falha('baixar depois de tirar: ' + JSON.stringify(r));
+
+/* ── o apelido não pode escapar da coleção ───────────────────────────
+   O apelido entra no endereço do Firestore, e endereço com ".." é
+   normalizado antes de sair: "publicos/x/../../usuarios/alguem" vira
+   "usuarios/alguem". Como baixar é aberto a qualquer assinante, sem esta
+   conferência bastaria saber o uid de alguém para ler os dados de estudo
+   dessa pessoa. O banco de mentira estoura se receber um endereço fora de
+   publicos/, então o teste falha alto se a trava sair. */
+como('aluna@email.com', 'uid-aluna');
+PLANO_ATE = Date.now() + 30 * 86400000;
+for (const veneno of [
+  'x/../../usuarios/uid-da-vitima',
+  '../assinaturas/uid-da-vitima',
+  'x/../../../databases',
+  'MAIÚSCULA',
+  'com espaço',
+]) {
+  r = await pedir({ token: 't', acao: 'baixar', slug: veneno });
+  if (r.status === 400 && !r.corpo.cartoes) ok(`baixar recusa apelido fora do formato: ${veneno.slice(0, 24)}`);
+  else falha(`baixar aceitou "${veneno}": ` + JSON.stringify(r));
+}
+PLANO_ATE = 0;
+
+como('joseeduardo1616@gmail.com', 'uid-dono');
+r = await pedir({ token: 't', acao: 'despublicar', slug: 'x/../../usuarios/uid-da-vitima' });
+if (r.status === 400) ok('despublicar recusa apelido fora do formato');
+else falha('despublicar aceitou apelido com "..": ' + JSON.stringify(r));
+
+/* o apelido que o próprio código gera continua passando */
+if (mod.apelidoValido(mod.apelidoBaralho('Nefrologia', 'Glomerulopatias'))) ok('o apelido gerado pelo código passa na conferência');
+else falha('a conferência recusa o apelido que o código gera');
 
 /* ── recusas gerais ──────────────────────────────────────────────────── */
 QUEM = null;

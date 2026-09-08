@@ -28,6 +28,14 @@ export function apelidoBaralho(pasta, baralho) {
   return `${limpo(pasta) || "sem-pasta"}--${limpo(baralho) || "geral"}`.slice(0, 90);
 }
 
+/* O apelido entra no endereço do Firestore, e endereço com ".." é
+   normalizado antes de sair: "publicos/x/../../usuarios/alguem" vira
+   "usuarios/alguem". Como baixar é aberto a qualquer assinante, isso daria a
+   leitura dos dados de estudo de outra pessoa a quem soubesse o uid dela.
+   Por isso o que vem do navegador só passa se tiver a forma que o
+   apelidoBaralho produz. */
+export const apelidoValido = (s) => /^[a-z0-9-]{1,90}$/.test(String(s || ""));
+
 const texto = (v) => (v && v.stringValue) || "";
 const numero = (v) => Number((v && (v.doubleValue || v.integerValue)) || 0);
 
@@ -103,7 +111,8 @@ export async function onRequest({ request, env }) {
     if (!dono && await validoAte(token, pessoa.uid) <= Date.now()) {
       return json({ erro: "Os baralhos publicados fazem parte do plano completo." }, 403);
     }
-    const slug = String(corpo.slug || "").slice(0, 90);
+    const slug = String(corpo.slug || "");
+    if (!apelidoValido(slug)) return json({ erro: "Baralho inválido." }, 400);
     const r = await fetch(`${BASE_FIRESTORE}/publicos/${slug}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -166,7 +175,8 @@ export async function onRequest({ request, env }) {
 
   /* ── despublicar ───────────────────────────────────────────────────── */
   if (acao === "despublicar") {
-    const slug = String(corpo.slug || "").slice(0, 90);
+    const slug = String(corpo.slug || "");
+    if (!apelidoValido(slug)) return json({ erro: "Baralho inválido." }, 400);
     const r = await fetch(`${BASE_FIRESTORE}/publicos/${slug}`, {
       method: "DELETE", headers: { Authorization: `Bearer ${token}` },
     });
