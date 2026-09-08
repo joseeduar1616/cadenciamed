@@ -183,29 +183,36 @@ function Amigos({ nuvem, notify, data, setData }) {
   const [erro, setErro] = useState("");
 
   const logado = !!(nuvem && nuvem.usuario);
+  /* O objeto da nuvem entra por referência, e não como dependência: quem
+     manda no recarregamento é quem está logado. Se um dia esse objeto voltar
+     a nascer novo a cada render, isto impede que o efeito dispare em laço —
+     foi assim que a aba começou a se recarregar sozinha sem parar. */
+  const refNuvem = useRef(nuvem);
+  refNuvem.current = nuvem;
+  const quem = nuvem && nuvem.usuario ? nuvem.usuario.uid : "";
 
   const carregarSalas = useCallback(async () => {
-    if (!logado) return;
-    const j = await falarComSalas(nuvem, { acao: "minhas" });
+    if (!quem) return;
+    const j = await falarComSalas(refNuvem.current, { acao: "minhas" });
     if (j.erro) { setErro(j.erro); return; }
     setSalas(j.salas || []);
     /* Primeira sala vira a escolhida, senão a aba abre vazia mesmo para
        quem já participa de alguma. */
     setAtual((p) => (p || (j.salas && j.salas[0] ? j.salas[0].slug : null)));
-  }, [nuvem, logado]);
+  }, [quem]);
 
   useEffect(() => { carregarSalas(); }, [carregarSalas]);
 
   const carregarRanking = useCallback(async (slug, silencioso) => {
     if (!slug) return;
     if (!silencioso) setOcupado(true);
-    const j = await falarComSalas(nuvem, { acao: "ranking", nome: slug, periodo });
+    const j = await falarComSalas(refNuvem.current, { acao: "ranking", nome: slug, periodo });
     if (!silencioso) setOcupado(false);
     if (j.erro) { if (!silencioso) setErro(j.erro); return; }
     setRanking(j.ranking || []);
     setCabecalho(j.sala || null);
     setErro("");
-  }, [nuvem, periodo]);
+  }, [periodo]);
 
   useEffect(() => {
     if (!atual) { setRanking(null); setCabecalho(null); return undefined; }
@@ -218,7 +225,7 @@ function Amigos({ nuvem, notify, data, setData }) {
     if (!form.nome.trim()) { setErro("Escreva o nome da sala."); return; }
     if (form.senha.length < 4) { setErro("A senha precisa ter pelo menos 4 caracteres."); return; }
     setOcupado(true); setErro("");
-    const j = await falarComSalas(nuvem, { acao: modo, nome: form.nome.trim(), senha: form.senha });
+    const j = await falarComSalas(refNuvem.current, { acao: modo, nome: form.nome.trim(), senha: form.senha });
     setOcupado(false);
     if (j.erro) { setErro(j.erro); return; }
     notify(j.mensagem || "Pronto.");
@@ -230,7 +237,7 @@ function Amigos({ nuvem, notify, data, setData }) {
   const sair = async () => {
     if (!atual) return;
     setOcupado(true);
-    const j = await falarComSalas(nuvem, { acao: "sair", nome: atual });
+    const j = await falarComSalas(refNuvem.current, { acao: "sair", nome: atual });
     setOcupado(false);
     if (j.erro) { setErro(j.erro); return; }
     notify(j.mensagem || "Você saiu da sala.");

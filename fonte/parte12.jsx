@@ -142,7 +142,7 @@ function Publicados({ nuvem, souDono, setData, notify, publicados, recarregar })
 
   const baixar = async (b) => {
     setOcupado(b.slug); setErro("");
-    const j = await falarComBaralhos(nuvem, { acao: "baixar", slug: b.slug });
+    const j = await falarComBaralhos(refNuvem.current, { acao: "baixar", slug: b.slug });
     setOcupado("");
     if (j.erro) { setErro(j.erro); return; }
 
@@ -166,7 +166,7 @@ function Publicados({ nuvem, souDono, setData, notify, publicados, recarregar })
 
   const despublicar = async (b) => {
     setOcupado(b.slug); setErro("");
-    const j = await falarComBaralhos(nuvem, { acao: "despublicar", slug: b.slug });
+    const j = await falarComBaralhos(refNuvem.current, { acao: "despublicar", slug: b.slug });
     setOcupado("");
     if (j.erro) { setErro(j.erro); return; }
     notify(j.mensagem || "Baralho tirado do ar.");
@@ -375,12 +375,18 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
   const [publicados, setPublicados] = useState(null);
   const [publicando, setPublicando] = useState("");
 
+  /* Pela referência, e não pela dependência: o objeto da nuvem já é estável,
+     mas depender dele aqui foi o que fez a lista se recarregar em laço. */
+  const refNuvem = useRef(nuvem);
+  refNuvem.current = nuvem;
+  const quem = nuvem && nuvem.usuario ? nuvem.usuario.uid : "";
+
   const carregarPublicados = useCallback(async () => {
-    if (!nuvem || !nuvem.usuario) { setPublicados(null); return; }
-    const j = await falarComBaralhos(nuvem, { acao: "listar" });
+    if (!quem) { setPublicados(null); return; }
+    const j = await falarComBaralhos(refNuvem.current, { acao: "listar" });
     if (j.erro) { setPublicados(null); return; }
     setPublicados({ lista: j.baralhos || [], precisaPlano: !!j.precisaPlano });
-  }, [nuvem]);
+  }, [quem]);
 
   useEffect(() => { carregarPublicados(); }, [carregarPublicados]);
 
@@ -392,7 +398,7 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
     const escolhidos = (data.flash || []).filter((c) => (
       (c.pasta || PASTA_SOLTA) === pasta
       && (ehPasta || (c.baralho || BARALHO_PADRAO) === baralho)));
-    const j = await falarComBaralhos(nuvem, {
+    const j = await falarComBaralhos(refNuvem.current, {
       acao: "publicar",
       tipo: ehPasta ? "pasta" : "baralho",
       pasta,

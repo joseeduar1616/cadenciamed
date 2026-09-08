@@ -210,10 +210,19 @@ function useNuvem(data, setData, notify, pronto, pro) {
     } catch (e) { notify("Não consegui ler a cópia local."); }
   }, [setData, notify]);
 
-  return {
+  /* Este objeto precisa manter a identidade entre renders.
+   *
+   * Sem o useMemo ele nascia novo a cada render, e quem o usa como
+   * dependência — as salas de amigos, os baralhos publicados — via uma
+   * dependência sempre diferente: o efeito disparava, mudava estado,
+   * renderizava de novo, e recomeçava. Na tela isso aparecia como a aba
+   * recarregando sozinha sem parar, e por baixo era uma chamada por render
+   * ao servidor. */
+  return useMemo(() => ({
     ligado: !!NUVEM_CFG, estado, usuario, erro, ultima, temBackup, sdk, sincroniza: !!pro,
     entrar, cadastrar, recuperar, sair, enviar, restaurarBackup,
-  };
+  }), [estado, usuario, erro, ultima, temBackup, sdk, pro,
+    entrar, cadastrar, recuperar, sair, enviar, restaurarBackup]);
 }
 
 /* ═══════════════════════════════════════════════════════════════════

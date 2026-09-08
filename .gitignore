@@ -12,6 +12,7 @@ fonte/_dump.mjs
 fonte/_capturas.mjs
 fonte/captura-*.png
 fonte/tela-*.png
+captura-*.png
 fonte/icones-embutidos.txt
 __pycache__/
 

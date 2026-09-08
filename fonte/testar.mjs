@@ -82,6 +82,18 @@ if (await campoNome.count() > 0) {
   ok('passou pelas boas-vindas');
 } else falha('as boas-vindas não ofereceram nenhum caminho para entrar');
 
+/* ── nada pode ficar se recarregando sozinho ──────────────────────────
+   O objeto da nuvem nascia novo a cada render, e quem o usava como
+   dependência disparava o efeito, mudava estado, renderizava de novo e
+   recomeçava: na tela a aba piscava sem parar, e por baixo saía uma chamada
+   ao servidor por render. Aqui as abas que fazem isso ficam abertas por um
+   tempo e o teste conta quantas vezes elas tentam falar com o servidor. */
+let chamadas = 0;
+await pag.route('**/api/**', (rota) => {
+  chamadas += 1;
+  rota.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true,"salas":[],"baralhos":[]}' });
+});
+
 /* a marca aparece no cabeçalho */
 const marca = pag.locator('header img[alt="Cadência Med"]');
 if (await marca.count() === 0) falha('a marca não está no cabeçalho');
@@ -272,6 +284,17 @@ if (liberado) {
      aparece com a sincronização ligada. Aqui não há rede, então não dá para
      conferir por este teste — e uma asserção que o ambiente não alcança
      seria pior que nenhuma. */
+
+  /* Amigos e Cartões são as abas que consultam o servidor sozinhas. Paradas,
+     elas não podem passar de umas poucas chamadas em três segundos. */
+  for (const aba of ['Amigos', 'Cartões']) {
+    await ir(aba);
+    chamadas = 0;
+    await pag.waitForTimeout(3000);
+    if (chamadas <= 3) ok(`a aba ${aba} fica parada quando não se mexe nela (${chamadas} chamadas em 3s)`);
+    else falha(`a aba ${aba} está se recarregando sozinha: ${chamadas} chamadas em 3s`);
+  }
+  await ir('Cartões');
 
   /* ── revisões: trocar o esquema de intervalos ────────────────────── */
   await ir('Revisões');
