@@ -1,6 +1,6 @@
 /* Testa a função do assistente sem gastar cota de verdade.
  *
- * Roda contra o arquivo do Cloudflare Pages (functions/api/assistente.js),
+ * Roda contra o arquivo que vai para o ar (worker/api/assistente.js).
  * que é o que vai para o ar. Sobe um servidor falso no lugar da API do
  * Google e da Anthropic, e confere o formato do pedido que sai daqui e o
  * que a função devolve em cada erro.
@@ -76,7 +76,7 @@ const CONVERSA = {
 /* As variáveis de ambiente do Cloudflare chegam num objeto, não em
    process.env, então o teste monta esse objeto na mão. */
 const env = {};
-const carregar = async () => (await import('../functions/api/assistente.js?v=' + Math.random())).onRequest;
+const carregar = async () => (await import('../worker/api/assistente.js?v=' + Math.random())).onRequest;
 
 /* ── 1. sem chave nenhuma ────────────────────────────────────────────── */
 delete env.GEMINI_API_KEY;

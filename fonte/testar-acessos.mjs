@@ -1,6 +1,6 @@
 /* Testa o painel de acessos e o aviso de compra, sem tocar no Firebase.
  *
- * Rodam contra os arquivos do Cloudflare Pages (functions/api/). São as duas
+ * Rodam contra os arquivos que vão para o ar (worker/api/). São as duas
  * funções que gravam assinatura, então valem teste próprio: um engano aqui
  * libera acesso pago para quem não pagou, ou deixa de liberar para quem pagou.
  *
@@ -51,7 +51,7 @@ globalThis.fetch = async (url, opcoes = {}) => {
 const env = { FIREBASE_API_KEY: 'k', FIREBASE_SERVICE_ACCOUNT: JSON.stringify(CONTA) };
 
 const chamarAcessos = async (corpo, metodo = 'POST') => {
-  const { onRequest } = await import('../functions/api/acessos.js?v=' + Math.random());
+  const { onRequest } = await import('../worker/api/acessos.js?v=' + Math.random());
   const res = await onRequest({
     request: new Request('http://local/api/acessos', {
       method: metodo,
@@ -119,7 +119,7 @@ else falha('método: ' + JSON.stringify(r));
 /* ══ aviso de compra ═══════════════════════════════════════════════════ */
 
 const chamarCompra = async (corpo, busca = '') => {
-  const { onRequest } = await import('../functions/api/compra.js?v=' + Math.random());
+  const { onRequest } = await import('../worker/api/compra.js?v=' + Math.random());
   const res = await onRequest({
     request: new Request('http://local/api/compra' + busca, {
       method: 'POST',

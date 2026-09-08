@@ -1,6 +1,6 @@
 /* Testa o resgate de cupom sem tocar no Firebase de verdade.
  *
- * Roda contra o arquivo do Cloudflare Pages (functions/api/cupom.js).
+ * Roda contra o arquivo que vai para o ar (worker/api/cupom.js).
  *
  * A identidade e o banco são respondidos aqui mesmo, então dá para
  * exercitar cupom certo, cupom errado, sessão inválida e quem já tem plano.
@@ -50,7 +50,7 @@ globalThis.fetch = async (url, opcoes = {}) => {
 };
 
 const env = {};
-const carregar = async () => (await import('../functions/api/cupom.js?v=' + Math.random())).onRequest;
+const carregar = async () => (await import('../worker/api/cupom.js?v=' + Math.random())).onRequest;
 const pedir = async (corpo, metodo = 'POST') => {
   const fn = await carregar();
   const res = await fn({

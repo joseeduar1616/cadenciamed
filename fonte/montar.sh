@@ -40,6 +40,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-assistente.mjs
   node testar-cupom.mjs
   node testar-acessos.mjs
+  node testar-worker.mjs
 fi
 
 echo "── pasta para publicar ─────────────────────────────"
