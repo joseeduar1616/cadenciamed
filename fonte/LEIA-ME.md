@@ -1,7 +1,7 @@
 # Cadência Med · código-fonte
 
 Site estático em React, compilado para um único `index.html`, publicado no
-Netlify em `cadenciamed.netlify.app`.
+Netlify em `cadenciamed.com.br`.
 
 ## Montar
 
@@ -160,6 +160,22 @@ Os códigos ficam no `cupom.mjs`, no servidor, e nunca no navegador. Para
 trocá-los sem mexer no código, cadastre `CUPONS` no Netlify, no formato
 `codigo:plano,codigo:plano` (planos: mensal, anual, vitalicio). Enquanto essa
 variável não existir, valem os dois cupons escritos no arquivo.
+
+## Domínio
+
+Ao acrescentar ou trocar de domínio, três lugares precisam saber, não só o
+Netlify. Os dois primeiros quebram calados, e só no domínio novo:
+
+1. **Firebase** → Authentication → Settings → Domínios autorizados. Sem isso o
+   login falha com `auth/unauthorized-domain`. O app mostra essa mensagem em
+   português, então o erro na tela já diz o que fazer.
+2. **Google Cloud** → credencial ID do cliente OAuth → Origens JavaScript
+   autorizadas. Sem isso o Google Agenda dá erro 400 `origin_mismatch`.
+3. **Kiwify ou Hotmart** → o endereço do aviso de compra (webhook) que aponta
+   para `/.netlify/functions/compra`.
+
+O domínio antigo continua funcionando enquanto estiver na lista, o que ajuda a
+migrar sem apagão.
 
 ## Cuidados
 

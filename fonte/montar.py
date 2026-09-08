@@ -34,9 +34,11 @@ TPL = """<!DOCTYPE html>
 /* ══════════════════════════════════════════════════════════════════════
    CONTAS E SINCRONIZACAO (Firebase)
    Ja preenchido com o projeto cadencia-7c1f1.
-   Endereco publicado: cadenciamed.netlify.app
-   Esse dominio precisa estar em Authentication > Settings > Dominios
-   autorizados, no console do Firebase.
+   Enderecos publicados: cadenciamed.com.br e cadenciamed.netlify.app
+   TODO dominio novo precisa entrar em Authentication > Settings > Dominios
+   autorizados, no console do Firebase. Sem isso o login para com o erro
+   "auth/unauthorized-domain", e so nesse dominio: no antigo continua
+   funcionando, o que faz parecer que o site quebrou sozinho.
    ══════════════════════════════════════════════════════════════════════ */
 window.CADENCIA_FIREBASE = {
   apiKey: "AIzaSyB0IlxoiJYpMr9S3uGpD1lnUwXvEVk8cVA",
@@ -49,9 +51,12 @@ window.CADENCIA_FIREBASE = {
 
 /* ══════════════════════════════════════════════════════════════════════
    GOOGLE AGENDA
-   A origem https://cadenciamed.netlify.app precisa estar em Origens
-   JavaScript autorizadas, no console do Google Cloud, dentro da credencial
-   ID do cliente OAuth. Sem isso da erro 400 origin_mismatch.
+   Cada origem precisa estar em Origens JavaScript autorizadas, no console
+   do Google Cloud, dentro da credencial ID do cliente OAuth:
+     https://cadenciamed.com.br
+     https://www.cadenciamed.com.br
+     https://cadenciamed.netlify.app
+   Sem isso da erro 400 origin_mismatch ao conectar o Google Agenda.
    ══════════════════════════════════════════════════════════════════════ */
 window.CADENCIA_GOOGLE = {
   clientId: "499777815393-3br9aadldo4vdqfpqfhmai2qrud2t89u.apps.googleusercontent.com"
