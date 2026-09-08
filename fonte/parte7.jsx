@@ -358,11 +358,9 @@ async function resgatarCupom(nuvem, codigo) {
   } catch (e) {
     return { erro: "Não consegui falar com o servidor. Verifique a conexão." };
   }
-  const j = await r.json().catch(() => null);
-  /* 404 sem corpo é função não publicada; com corpo é cupom inválido */
-  if (r.status === 404 && !j) return { erro: "O resgate de cupom ainda não foi publicado neste site." };
-  if (!r.ok || !j) return { erro: (j && j.erro) || "Não deu certo." };
-  return j;
+  /* 404 com JSON é cupom inválido; sem JSON é servidor ausente */
+  const { dados, erro } = await lerRespostaDoServidor(r, "O resgate de cupom");
+  return erro ? { erro } : dados;
 }
 
 /* Caixa avulsa, para quem já tem conta criada. */

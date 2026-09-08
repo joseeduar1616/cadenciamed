@@ -31,6 +31,7 @@ python3 gerar_css.py
 python3 montar.py
 
 if [ "${1:-}" != "--sem-teste" ]; then
+  python3 extrair_leitor.py
   echo "── teste no navegador ──────────────────────────────"
   python3 montar_teste.py > /dev/null
   node testar.mjs

@@ -1,9 +1,8 @@
 /* Testa a função do assistente sem gastar cota de verdade.
  *
  * Roda contra o arquivo que vai para o ar (worker/api/assistente.js).
- * que é o que vai para o ar. Sobe um servidor falso no lugar da API do
- * Google e da Anthropic, e confere o formato do pedido que sai daqui e o
- * que a função devolve em cada erro.
+ * Sobe um servidor falso no lugar da API do Google e da Anthropic, e confere
+ * o formato do pedido que sai daqui e o que a função devolve em cada erro.
  *
  *   node testar-assistente.mjs
  */
@@ -228,36 +227,44 @@ console.log(passos.join('\n'));
 console.log('\n' + (erros.length ? `${erros.length} PROBLEMA(S):\n` + erros.join('\n') : 'nenhum erro'));
 if (erros.length) process.exitCode = 1;
 
-/* ── 9. o painel de acessos não pode esconder o recado do servidor ────
-   A função responde 404 tanto quando não existe (aí quem responde é o
-   Netlify, sem JSON) quanto quando não achou conta com aquele e-mail (aí
-   vem JSON com o motivo). Confundir os dois escondia a explicação. */
-const painel = async (status, corpo) => {
-  /* reproduz o que o parte11.jsx faz com a resposta */
-  const r = new Response(corpo === null ? '<html>404</html>' : JSON.stringify(corpo),
-    { status, headers: { 'Content-Type': corpo === null ? 'text/html' : 'application/json' } });
-  const j = await r.json().catch(() => null);
-  if (r.status === 404 && !j) return 'A função de acessos ainda não foi publicada neste site.';
-  if (!r.ok || !j) return (j && j.erro) || 'Não deu certo.';
-  return j;
+/* ── 9. o painel não pode esconder o motivo do erro ──────────────────
+   Três casos que antes viravam a mesma frase inútil "Não deu certo.":
+   o servidor ausente (hospedagem devolve a página do site com status 200),
+   o 404 com explicação, e o 403 do servidor. */
+const { lerRespostaDoServidor } = await import('./_leitor.mjs');
+
+const painel = async (status, corpo, tipo = 'application/json') => {
+  const r = new Response(typeof corpo === 'string' ? corpo : JSON.stringify(corpo),
+    { status, headers: { 'Content-Type': tipo } });
+  return lerRespostaDoServidor(r, 'O painel de acessos');
 };
 
-let m = await painel(404, null);
-if (m === 'A função de acessos ainda não foi publicada neste site.') ok('404 sem JSON: avisa que a função não subiu');
-else falha('404 sem JSON: ' + m);
+/* o caso que estava acontecendo de verdade: site em hospedagem só de
+   arquivos, /api devolve o index.html com status 200 */
+let m = await painel(200, '<!doctype html><html><body>o site</body></html>', 'text/html');
+if (/não está publicado neste endereço/.test(m.erro)) ok('página do site no lugar de dados: explica que falta publicar o servidor');
+else falha('HTML com 200: ' + JSON.stringify(m));
+
+m = await painel(404, '<html>404</html>', 'text/html');
+if (/não está publicado|não foi publicado/.test(m.erro)) ok('404 sem JSON: avisa que o servidor não subiu');
+else falha('404 sem JSON: ' + JSON.stringify(m));
 
 m = await painel(404, { erro: 'Não achei conta com esse e-mail. A pessoa precisa criar a conta no site antes.' });
-if (/Não achei conta com esse e-mail/.test(m)) ok('404 com JSON: mostra o motivo real, não "função não publicada"');
-else falha('404 com JSON: ' + m);
+if (/Não achei conta com esse e-mail/.test(m.erro)) ok('404 com JSON: mostra o motivo real, não "não publicado"');
+else falha('404 com JSON: ' + JSON.stringify(m));
 
 m = await painel(403, { erro: 'Só a conta do dono pode liberar acessos.' });
-if (/conta do dono/.test(m)) ok('403: mostra o recado do servidor');
-else falha('403: ' + m);
+if (/conta do dono/.test(m.erro)) ok('403: mostra o recado do servidor');
+else falha('403: ' + JSON.stringify(m));
+
+m = await painel(500, { erro: 'Faltam FIREBASE_API_KEY ou FIREBASE_SERVICE_ACCOUNT.' });
+if (/FIREBASE_API_KEY/.test(m.erro)) ok('500 com JSON: mostra o que falta configurar');
+else falha('500 com JSON: ' + JSON.stringify(m));
 
 m = await painel(200, { lista: [] });
-if (m && Array.isArray(m.lista)) ok('200: a lista chega ao painel');
-else falha('200: ' + JSON.stringify(m));
+if (m.dados && Array.isArray(m.dados.lista)) ok('200 com JSON: a lista chega ao painel');
+else falha('200 com JSON: ' + JSON.stringify(m));
 
-console.log('\n(reexecutando o resumo com os testes do painel)');
-console.log(passos.slice(-4).join('\n'));
+console.log('\n(testes do leitor de resposta)');
+console.log(passos.slice(-6).join('\n'));
 if (erros.length) process.exitCode = 1;

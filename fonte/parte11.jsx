@@ -250,16 +250,12 @@ function PainelDono({ nuvem, notify }) {
       body: JSON.stringify({ ...corpo, token }),
     });
     /* Atenção ao 404: a própria função responde 404 quando não acha conta
-       com aquele e-mail. Só é "função não publicada" quando quem responde é
-       o Netlify, e aí não vem JSON nenhum no corpo. Tratar os dois casos
-       juntos escondia o recado que resolve o problema de quem está usando. */
-    const j = await r.json().catch(() => null);
-    if (r.status === 404 && !j) {
-      setErro("A função de acessos ainda não foi publicada neste site.");
-      return null;
-    }
-    if (!r.ok || !j) { setErro((j && j.erro) || "Não deu certo."); return null; }
-    return j;
+       com aquele e-mail, e aí vem JSON com a explicação. Só é "não
+       publicado" quando o corpo não é JSON. Tratar os dois casos juntos
+       escondia justamente o recado que resolve o problema. */
+    const { dados, erro } = await lerRespostaDoServidor(r, "O painel de acessos");
+    if (erro) { setErro(erro); return null; }
+    return dados;
   }, [nuvem]);
 
   const carregar = useCallback(async () => {

@@ -116,6 +116,36 @@ function normalize(raw) {
   };
 }
 
+/* Lê a resposta de uma rota /api do servidor.
+ *
+ * O caso que mais confunde: quando o site está numa hospedagem só de
+ * arquivos, /api/... não existe como rota, e a hospedagem devolve a própria
+ * página do site com status 200. O JSON.parse falha, e antes isso virava um
+ * "Não deu certo." que não dizia nada — o problema real é que falta publicar
+ * o servidor, e a pessoa ficava procurando defeito no lugar errado.
+ */
+async function lerRespostaDoServidor(r, oQue) {
+  const bruto = await r.text().catch(() => "");
+  let j = null;
+  try { j = JSON.parse(bruto); } catch (e) { /* não é JSON */ }
+
+  if (j && typeof j === "object") {
+    if (r.ok) return { dados: j };
+    return { erro: j.erro || `O servidor respondeu com erro ${r.status}.` };
+  }
+
+  /* veio HTML: quem respondeu foi a hospedagem de arquivos, não o servidor */
+  if (/^\s*<(!doctype|html)/i.test(bruto)) {
+    return {
+      erro: `${oQue} não está publicado neste endereço: o servidor devolveu a `
+        + "página do site em vez de dados. As rotas /api precisam ser publicadas "
+        + "junto, numa hospedagem que rode código.",
+    };
+  }
+  if (r.status === 404) return { erro: `${oQue} ainda não foi publicado neste site.` };
+  return { erro: `${oQue} não respondeu (erro ${r.status}).` };
+}
+
 function subjectState(s, marks) {
   const m = marks[s.id] || {};
   const bonusDone = m.bonusDone && typeof m.bonusDone === "object" ? m.bonusDone : {};
