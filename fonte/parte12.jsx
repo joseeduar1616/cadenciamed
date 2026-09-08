@@ -16,6 +16,78 @@ const NOTAS = [
 const BARALHO_PADRAO = "Geral";
 const PASTA_SOLTA = "Sem pasta";
 
+/* ── ajustes de cada baralho ──────────────────────────────────────────
+ *
+ * Ficam em data.baralhoCfg, com a pasta na chave: dois baralhos de mesmo
+ * nome em pastas diferentes são baralhos diferentes.
+ */
+const CFG_PADRAO = { embaralhar: true, min: 0, max: 0 };
+const chaveBaralho = (pasta, baralho) =>
+  `${pasta || PASTA_SOLTA}|${baralho || BARALHO_PADRAO}`;
+const lerCfg = (cfgs, chave) => ({ ...CFG_PADRAO, ...((cfgs || {})[chave] || {}) });
+
+/* Embaralhar de verdade (Fisher-Yates). Um sort com Math.random() parece
+   fazer isso, mas distribui torto e ainda depende do algoritmo do
+   navegador. */
+function baralhar(lista) {
+  const a = lista.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/* A fila de um baralho, já com os ajustes dele aplicados.
+ *
+ * O mínimo adianta os cartões que vencem mais cedo, para um dia fraco não
+ * ficar curto demais; eles entram no fim, depois dos que já venceram. O
+ * máximo corta o excesso, para um dia pesado não virar desistência. */
+function filaDoBaralho(lista, hoje, cfg) {
+  const vencidos = lista.filter((c) => (c.prox || hoje) <= hoje);
+  let fila = cfg.embaralhar ? baralhar(vencidos) : vencidos.slice();
+
+  if (cfg.min > 0 && fila.length < cfg.min) {
+    const adiantar = lista
+      .filter((c) => (c.prox || hoje) > hoje)
+      .sort((a, b) => String(a.prox || "").localeCompare(String(b.prox || "")))
+      .slice(0, cfg.min - fila.length);
+    fila = fila.concat(cfg.embaralhar ? baralhar(adiantar) : adiantar);
+  }
+  if (cfg.max > 0 && fila.length > cfg.max) fila = fila.slice(0, cfg.max);
+  return fila;
+}
+
+/* Renomear ou mover um baralho muda a chave dele. Sem levar o ajuste junto,
+   o embaralhar e os limites voltariam ao padrão calados, e a pessoa só
+   perceberia dias depois, estudando demais ou de menos. */
+function moverCfg(cfgs, mudar) {
+  const fora = {};
+  for (const [k, v] of Object.entries(cfgs || {})) {
+    const [pasta, baralho] = k.split("|");
+    const novo = mudar(pasta, baralho);
+    fora[novo ? chaveBaralho(novo.pasta, novo.baralho) : k] = v;
+  }
+  return fora;
+}
+
+/* Estudando mais de um baralho de uma vez, cada um entra com os próprios
+   ajustes, um depois do outro. Misturar tudo num embaralhamento só
+   desrespeitaria quem desligou o embaralhar no baralho dele. */
+function filaDeVarios(cartoes, hoje, cfgs) {
+  const grupos = new Map();
+  for (const c of cartoes) {
+    const k = chaveBaralho(c.pasta, c.baralho);
+    if (!grupos.has(k)) grupos.set(k, []);
+    grupos.get(k).push(c);
+  }
+  const fora = [];
+  for (const [k, lista] of grupos) {
+    for (const c of filaDoBaralho(lista, hoje, lerCfg(cfgs, k))) fora.push(c);
+  }
+  return fora;
+}
+
 /* Os baralhos moram em pastas. A pasta é um rótulo guardado no cartão, o que
    evita uma estrutura paralela que poderia sair de sincronia. A lista em
    data.pastas existe só para as pastas vazias não sumirem ao recarregar:
@@ -167,6 +239,7 @@ function Cartoes({ data, setData, subjects, today, notify }) {
   const [pastaAtiva, setPastaAtiva] = useState("todas");
   const [abertas, setAbertas] = useState({});
   const [renomeando, setRenomeando] = useState(null);   // {tipo, nome, pasta}
+  const [ajustando, setAjustando] = useState(null);     // {nome, pasta}
   const [confirmando, setConfirmando] = useState(null); // {tipo, nome, pasta}
   const [novoNome, setNovoNome] = useState("");
   const [novaPasta, setNovaPasta] = useState("");
@@ -212,7 +285,14 @@ function Cartoes({ data, setData, subjects, today, notify }) {
       const pastasSalvas = alvo.tipo === "pasta"
         ? [...new Set((p.pastas || []).map((x) => (x === alvo.nome ? nome : x)))]
         : (p.pastas || []);
-      return { ...p, flash, pastas: pastasSalvas };
+      const cfgs = moverCfg(p.baralhoCfg, (pasta, baralho) => {
+        if (alvo.tipo === "pasta" && pasta === alvo.nome) return { pasta: nome, baralho };
+        if (alvo.tipo === "baralho" && baralho === alvo.nome && pasta === alvo.pasta) {
+          return { pasta, baralho: nome };
+        }
+        return null;
+      });
+      return { ...p, flash, pastas: pastasSalvas, baralhoCfg: cfgs };
     });
     if (alvo.tipo === "pasta") {
       if (pastaAtiva === alvo.nome) setPastaAtiva(nome);
@@ -221,6 +301,14 @@ function Cartoes({ data, setData, subjects, today, notify }) {
     setRenomeando(null); setNovoNome("");
     notify("Nome alterado.");
   }, [renomeando, novoNome, setData, notify, pastaAtiva, baralhoAtivo]);
+
+  const mudarCfg = useCallback((pasta, baralho, campo, valor) => {
+    const k = chaveBaralho(pasta, baralho);
+    setData((p) => ({
+      ...p,
+      baralhoCfg: { ...(p.baralhoCfg || {}), [k]: { ...lerCfg(p.baralhoCfg, k), [campo]: valor } },
+    }));
+  }, [setData]);
 
   const moverBaralho = useCallback((baralho, dePasta, paraPasta) => {
     if (dePasta === paraPasta) return;
@@ -231,6 +319,8 @@ function Cartoes({ data, setData, subjects, today, notify }) {
           ? { ...c, pasta: paraPasta } : c
       )),
       pastas: registrarPasta(p.pastas, paraPasta),
+      baralhoCfg: moverCfg(p.baralhoCfg, (pasta, b) => (
+        b === baralho && pasta === dePasta ? { pasta: paraPasta, baralho: b } : null)),
     }));
     setAbertas((a) => ({ ...a, [paraPasta]: true }));
     notify(`"${baralho}" foi para "${paraPasta}".`);
@@ -257,6 +347,8 @@ function Cartoes({ data, setData, subjects, today, notify }) {
       ...p,
       flash: (p.flash || []).map((c) => ((c.pasta || PASTA_SOLTA) === nome ? { ...c, pasta: PASTA_SOLTA } : c)),
       pastas: (p.pastas || []).filter((x) => x !== nome),
+      baralhoCfg: moverCfg(p.baralhoCfg, (pasta, b) => (
+        pasta === nome ? { pasta: PASTA_SOLTA, baralho: b } : null)),
     }));
     setAbertas((a) => { const n = { ...a }; delete n[nome]; return n; });
     if (pastaAtiva === nome) { setPastaAtiva("todas"); setBaralhoAtivo("todos"); }
@@ -270,6 +362,8 @@ function Cartoes({ data, setData, subjects, today, notify }) {
       flash: (p.flash || []).filter((c) => !(
         (c.baralho || BARALHO_PADRAO) === baralho && (c.pasta || PASTA_SOLTA) === pasta
       )),
+      baralhoCfg: Object.fromEntries(Object.entries(p.baralhoCfg || {})
+        .filter(([k]) => k !== chaveBaralho(pasta, baralho))),
     }));
     if (baralhoAtivo === baralho) setBaralhoAtivo("todos");
     setConfirmando(null);
@@ -339,9 +433,22 @@ function Cartoes({ data, setData, subjects, today, notify }) {
     return r;
   }, [doBaralho]);
 
-  const comecar = () => {
-    if (vencidos.length === 0) return notify("Nenhum cartão para hoje.");
-    setFila(vencidos.map((c) => c.id));
+  /* Sem escopo, estuda o que estiver filtrado na tela; com escopo, estuda um
+     baralho só — que é o botão de play na linha de cada baralho. */
+  const comecar = (escopo) => {
+    const lista = escopo
+      ? cartoes.filter((c) => (c.pasta || PASTA_SOLTA) === escopo.pasta
+        && (c.baralho || BARALHO_PADRAO) === escopo.baralho)
+      : doBaralho;
+
+    const nova = filaDeVarios(lista, today, data.baralhoCfg);
+    if (nova.length === 0) {
+      return notify(escopo
+        ? `Nada para hoje em "${escopo.baralho}".`
+        : "Nenhum cartão para hoje.");
+    }
+    if (escopo) { setPastaAtiva(escopo.pasta); setBaralhoAtivo(escopo.baralho); }
+    setFila(nova.map((c) => c.id));
     setFeitos(0);
     setVirado(false);
     setModo("estudo");
@@ -422,83 +529,123 @@ function Cartoes({ data, setData, subjects, today, notify }) {
     }
 
     const aula = atual.subjectId ? BY_ID[atual.subjectId] : null;
-    return (
-      <div className="flex flex-col gap-5">
-        <Card className="px-5 py-4">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-3">
-              <Num size={20} weight={700} color="var(--neon)">{fila.length}</Num>
-              <Label>na fila</Label>
-              <span style={{ width: 1, height: 18, background: T.line }} />
-              <Num size={20} weight={700} color={T.dim}>{feitos}</Num>
-              <Label>respondidos</Label>
-            </div>
-            <Btn size="sm" tone="outline" onClick={() => setModo("painel")}>encerrar</Btn>
-          </div>
-          <div className="mt-3"><Track pct={(feitos / Math.max(1, feitos + fila.length)) * 100} color="var(--neon)" height={5} /></div>
-        </Card>
 
-        {/* o cartão gira em 3D ao ser virado */}
-        <div style={{ perspective: 1400 }}>
-          <div style={{
-            position: "relative", minHeight: 300,
-            transformStyle: "preserve-3d",
-            transition: "transform .55s cubic-bezier(.2,.8,.2,1)",
-            transform: virado ? "rotateY(180deg)" : "rotateY(0deg)",
-          }}>
-            {[false, true].map((lado) => (
-              <div key={String(lado)}
-                onClick={() => setVirado((v) => !v)}
-                className="rounded-3xl vidro flex flex-col items-center justify-center px-6 sm:px-10 py-12 text-center"
+    /* Tela cheia de verdade: por cima de tudo, sem o cabeçalho, o menu e o
+       rodapé disputando espaço com o cartão. Era isso que deixava uma coisa
+       em cima da outra, principalmente no celular.
+
+       A altura usa dvh, e não vh: no celular a barra do navegador some e
+       aparece durante a rolagem, e com vh o rodapé de botões ficava
+       escondido atrás dela justamente na hora de responder. */
+    return (
+      <div style={{
+        position: "fixed", inset: 0, zIndex: 60,
+        background: T.bg, display: "flex", flexDirection: "column",
+        height: "100dvh", maxHeight: "100dvh",
+        paddingTop: "env(safe-area-inset-top)",
+        paddingBottom: "env(safe-area-inset-bottom)",
+      }}>
+        {/* ── barra de cima ─────────────────────────────────────────── */}
+        <div style={{ flexShrink: 0, borderBottom: `1px solid ${T.line}` }}>
+          <div className="flex items-center justify-between gap-3 px-4 sm:px-6"
+            style={{ height: 56 }}>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <Num size={19} weight={700} color="var(--neon)">{fila.length}</Num>
+              <Label>na fila</Label>
+              <span style={{ width: 1, height: 16, background: T.line, flexShrink: 0 }} />
+              <Num size={19} weight={700} color={T.dim}>{feitos}</Num>
+              <Label>feitos</Label>
+            </div>
+            <div className="flex items-center gap-2" style={{ flexShrink: 0 }}>
+              <Mini style={{ display: "none" }} className="sm:inline">
+                {baralhoAtivo === "todos" ? "" : baralhoAtivo}
+              </Mini>
+              <button type="button" aria-label="Encerrar o estudo"
+                onClick={() => setModo("painel")}
+                className="flex items-center justify-center rounded-full brilhar"
                 style={{
-                  position: lado ? "absolute" : "relative", inset: lado ? 0 : undefined,
-                  minHeight: 300, width: "100%", cursor: "pointer",
-                  background: `${T.vidro}, ${T.card}`,
-                  border: `1px solid ${lado ? soft("var(--neon)", 40) : T.line}`,
-                  backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)",
-                  backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden",
-                  transform: lado ? "rotateY(180deg)" : "none",
+                  width: 38, height: 38, background: T.card2,
+                  border: `1px solid ${T.line}`, color: T.dim, cursor: "pointer",
                 }}>
-                {aula ? (
-                  <div className="flex items-center gap-2 mb-5">
-                    <Chip area={aula.area} small />
-                    <Mini>{aula.esp}</Mini>
-                  </div>
-                ) : null}
-                <div style={{ maxWidth: 640, width: "100%" }}>
-                  <LadoDoCartao
-                    texto={lado ? atual.verso : atual.frente}
-                    imagens={lado ? atual.imgVerso : atual.imgFrente}
-                    tamanho={lado ? 19 : 22}
-                    peso={lado ? 500 : 600}
-                    altura={280} />
-                </div>
-                {!lado ? <Mini style={{ marginTop: 26 }}>toque ou aperte espaço para ver a resposta</Mini> : null}
+                <X size={17} />
+              </button>
+            </div>
+          </div>
+          <Track pct={(feitos / Math.max(1, feitos + fila.length)) * 100} color="var(--neon)" height={3} />
+        </div>
+
+        {/* ── o cartão ──────────────────────────────────────────────── */}
+        <div onClick={() => setVirado((v) => !v)}
+          style={{
+            flex: 1, minHeight: 0, overflowY: "auto", cursor: "pointer",
+            display: "flex", flexDirection: "column",
+            alignItems: "center", justifyContent: "center",
+            padding: "28px 20px",
+          }}>
+          <div style={{ width: "100%", maxWidth: 760, textAlign: "center" }}>
+            {aula ? (
+              <div className="flex items-center justify-center gap-2" style={{ marginBottom: 22 }}>
+                <Chip area={aula.area} small />
+                <Mini>{aula.esp}</Mini>
               </div>
-            ))}
+            ) : null}
+
+            {/* A pergunta continua visível junto da resposta: some ela e a
+                pessoa responde sem lembrar o que foi perguntado. */}
+            <LadoDoCartao
+              texto={atual.frente}
+              imagens={atual.imgFrente}
+              tamanho={virado ? "clamp(17px, 3vw, 21px)" : "clamp(22px, 4.4vw, 34px)"}
+              peso={virado ? 500 : 650}
+              altura={virado ? 200 : 320} />
+
+            {virado ? (
+              <>
+                <div style={{
+                  height: 1, background: T.line, margin: "26px auto",
+                  maxWidth: 220,
+                }} />
+                <LadoDoCartao
+                  texto={atual.verso}
+                  imagens={atual.imgVerso}
+                  tamanho="clamp(19px, 3.6vw, 27px)"
+                  peso={550}
+                  altura={340} />
+              </>
+            ) : (
+              <Mini style={{ marginTop: 34, display: "block" }}>
+                toque em qualquer lugar, ou aperte espaço, para ver a resposta
+              </Mini>
+            )}
           </div>
         </div>
 
-        {virado ? (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            {NOTAS.map((n) => (
-              <button key={n.id} type="button" onClick={() => responder(n.id)}
-                className="rounded-2xl px-3 py-4 flex flex-col items-center gap-1 nota"
-                style={{
-                  background: soft(n.cor, 12), border: `1px solid ${soft(n.cor, 36)}`,
-                  color: n.cor, cursor: "pointer", "--c": n.cor,
-                }}>
-                <span style={{ fontSize: 15.5, fontWeight: 700 }}>{n.rotulo}</span>
-                <span style={{ fontSize: 12, color: T.faint }}>{n.dica}</span>
-                <span style={{ fontFamily: F_MONO, fontSize: 11, color: T.ghost, marginTop: 2 }}>tecla {n.atalho}</span>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div className="flex justify-center">
-            <Btn tone="primary" onClick={() => setVirado(true)}>Ver a resposta</Btn>
-          </div>
-        )}
+        {/* ── as respostas ──────────────────────────────────────────── */}
+        <div style={{
+          flexShrink: 0, borderTop: `1px solid ${T.line}`,
+          padding: "14px 16px 18px", background: T.bg2,
+        }}>
+          {virado ? (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5"
+              style={{ maxWidth: 760, margin: "0 auto" }}>
+              {NOTAS.map((n) => (
+                <button key={n.id} type="button" onClick={() => responder(n.id)}
+                  className="rounded-2xl px-3 py-3 flex flex-col items-center gap-0.5 nota"
+                  style={{
+                    background: soft(n.cor, 12), border: `1px solid ${soft(n.cor, 36)}`,
+                    color: n.cor, cursor: "pointer", "--c": n.cor,
+                  }}>
+                  <span style={{ fontSize: 16, fontWeight: 700 }}>{n.rotulo}</span>
+                  <span style={{ fontSize: 11.5, color: T.faint }}>{n.dica}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="flex justify-center">
+              <Btn tone="primary" onClick={() => setVirado(true)}>Ver a resposta</Btn>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -660,54 +807,126 @@ function Cartoes({ data, setData, subjects, today, notify }) {
                             && renomeando.nome === b.nome && renomeando.pasta === p.nome;
                           const confirmaB = confirmando && confirmando.tipo === "baralho"
                             && confirmando.nome === b.nome && confirmando.pasta === p.nome;
+                          const abertoB = ajustando && ajustando.nome === b.nome && ajustando.pasta === p.nome;
+                          const cfg = lerCfg(data.baralhoCfg, chaveBaralho(p.nome, b.nome));
+                          const mudou = !cfg.embaralhar || cfg.min > 0 || cfg.max > 0;
                           return (
                             <div key={b.nome} className="rounded-xl"
                               style={{ background: sel ? soft("var(--neon)", 14) : "transparent", border: `1px solid ${sel ? soft("var(--neon)", 40) : T.line}` }}>
-                              <div className="flex items-center gap-2 px-3 py-2 flex-wrap">
-                                {editandoB ? (
-                                  <>
-                                    <TextInput value={novoNome} autoFocus
-                                      onChange={(e) => setNovoNome(e.target.value)}
-                                      onKeyDown={(e) => { if (e.key === "Enter") renomear(); if (e.key === "Escape") setRenomeando(null); }}
-                                      style={{ padding: "6px 10px", fontSize: 13.5, flex: 1, minWidth: 130 }} />
-                                    <Btn size="sm" tone="primary" onClick={renomear}>Salvar</Btn>
-                                    <Btn size="sm" tone="outline" onClick={() => setRenomeando(null)}>cancelar</Btn>
-                                  </>
-                                ) : (
-                                  <>
-                                    <button type="button"
-                                      onClick={() => { setPastaAtiva(p.nome); setBaralhoAtivo(sel ? "todos" : b.nome); }}
-                                      className="flex-1 min-w-0 flex items-center gap-2"
-                                      style={{ background: "none", border: "none", cursor: "pointer", padding: 0, textAlign: "left" }}>
-                                      <span style={{ fontSize: 14, fontWeight: sel ? 700 : 500, color: sel ? "var(--neon)" : T.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.nome}</span>
-                                      <span style={{ fontFamily: F_MONO, fontSize: 11, color: b.hoje ? T.warn : T.ghost, flexShrink: 0 }}>
-                                        {b.hoje ? `${b.hoje} hoje` : b.total}
-                                      </span>
-                                    </button>
-                                    <label className="flex items-center gap-1.5" style={{ flexShrink: 0 }} title="Mover para outra pasta">
-                                      <span style={{ fontSize: 11, color: T.ghost }}>mover</span>
-                                      <select value={p.nome}
-                                        onChange={(e) => moverBaralho(b.nome, p.nome, e.target.value)}
-                                        style={{
-                                          background: T.card2, border: `1px solid ${T.line}`, color: T.dim,
-                                          borderRadius: 5, fontSize: 12, padding: "4px 6px", cursor: "pointer", maxWidth: 140,
-                                        }}>
-                                        {nomesDePasta.map((n) => <option key={n} value={n}>{n}</option>)}
-                                      </select>
-                                    </label>
-                                    <button type="button" aria-label="Renomear baralho" title="Renomear"
-                                      onClick={() => { setRenomeando({ tipo: "baralho", nome: b.nome, pasta: p.nome }); setNovoNome(b.nome); }}
-                                      style={{ background: "none", border: "none", color: T.ghost, cursor: "pointer", padding: 4, flexShrink: 0 }}>
-                                      <Settings2 size={13} />
-                                    </button>
-                                    <button type="button" aria-label="Apagar baralho" title="Apagar o baralho"
-                                      onClick={() => setConfirmando(confirmaB ? null : { tipo: "baralho", nome: b.nome, pasta: p.nome })}
-                                      style={{ background: "none", border: "none", color: confirmaB ? T.bad : T.ghost, cursor: "pointer", padding: 4, flexShrink: 0 }}>
-                                      <Trash2 size={13} />
-                                    </button>
-                                  </>
-                                )}
+                              {/* A linha ficou com o essencial: o nome, estudar
+                                  e a engrenagem. Mover, renomear e apagar
+                                  desceram para o painel, porque cinco controles
+                                  lado a lado não cabiam na largura do celular. */}
+                              <div className="flex items-center gap-2 px-3 py-2">
+                                <button type="button"
+                                  onClick={() => { setPastaAtiva(p.nome); setBaralhoAtivo(sel ? "todos" : b.nome); }}
+                                  className="flex-1 min-w-0 flex items-center gap-2"
+                                  style={{ background: "none", border: "none", cursor: "pointer", padding: 0, textAlign: "left" }}>
+                                  <span style={{ fontSize: 14.5, fontWeight: sel ? 700 : 500, color: sel ? "var(--neon)" : T.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.nome}</span>
+                                  <span style={{ fontFamily: F_MONO, fontSize: 11, color: b.hoje ? T.warn : T.ghost, flexShrink: 0 }}>
+                                    {b.hoje ? `${b.hoje} hoje` : b.total}
+                                  </span>
+                                </button>
+
+                                <button type="button" aria-label={`Estudar ${b.nome}`} title="Estudar só este baralho"
+                                  onClick={() => comecar({ pasta: p.nome, baralho: b.nome })}
+                                  className="flex items-center justify-center rounded-full brilhar"
+                                  style={{
+                                    width: 30, height: 30, flexShrink: 0, cursor: "pointer",
+                                    background: b.hoje ? soft("var(--neon)", 16) : "transparent",
+                                    border: `1px solid ${b.hoje ? soft("var(--neon)", 40) : T.line}`,
+                                    color: b.hoje ? "var(--neon)" : T.ghost,
+                                  }}>
+                                  <Play size={13} />
+                                </button>
+
+                                <button type="button" aria-label={`Ajustes de ${b.nome}`} title="Ajustes do baralho"
+                                  onClick={() => { setAjustando(abertoB ? null : { nome: b.nome, pasta: p.nome }); setConfirmando(null); }}
+                                  className="flex items-center justify-center rounded-full"
+                                  style={{
+                                    width: 30, height: 30, flexShrink: 0, cursor: "pointer",
+                                    background: abertoB ? T.card3 : "transparent",
+                                    border: `1px solid ${abertoB ? "transparent" : T.line}`,
+                                    color: mudou ? "var(--warn)" : T.ghost,
+                                  }}>
+                                  <Settings2 size={13} />
+                                </button>
                               </div>
+
+                              {abertoB ? (
+                                <div className="px-3 pb-3 flex flex-col gap-3" style={{ borderTop: `1px solid ${T.line}`, paddingTop: 12 }}>
+                                  {editandoB ? (
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <TextInput value={novoNome} autoFocus
+                                        onChange={(e) => setNovoNome(e.target.value)}
+                                        onKeyDown={(e) => { if (e.key === "Enter") renomear(); if (e.key === "Escape") setRenomeando(null); }}
+                                        style={{ padding: "6px 10px", fontSize: 13.5, flex: 1, minWidth: 130 }} />
+                                      <Btn size="sm" tone="primary" onClick={renomear}>Salvar</Btn>
+                                      <Btn size="sm" tone="outline" onClick={() => setRenomeando(null)}>cancelar</Btn>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <Btn size="sm" tone="outline"
+                                        onClick={() => { setRenomeando({ tipo: "baralho", nome: b.nome, pasta: p.nome }); setNovoNome(b.nome); }}>
+                                        renomear
+                                      </Btn>
+                                      <label className="flex items-center gap-1.5">
+                                        <span style={{ fontSize: 11.5, color: T.ghost }}>mover para</span>
+                                        <select value={p.nome}
+                                          onChange={(e) => moverBaralho(b.nome, p.nome, e.target.value)}
+                                          style={{
+                                            background: T.card2, border: `1px solid ${T.line}`, color: T.dim,
+                                            borderRadius: 5, fontSize: 12.5, padding: "5px 7px", cursor: "pointer", maxWidth: 150,
+                                          }}>
+                                          {nomesDePasta.map((n) => <option key={n} value={n}>{n}</option>)}
+                                        </select>
+                                      </label>
+                                      <button type="button" aria-label={`Apagar o baralho ${b.nome}`}
+                                        onClick={() => setConfirmando(confirmaB ? null : { tipo: "baralho", nome: b.nome, pasta: p.nome })}
+                                        className="rounded-full px-4 py-2"
+                                        style={{
+                                          background: soft("var(--bad)", 12), border: `1px solid ${soft("var(--bad)", 34)}`,
+                                          color: T.bad, fontSize: 13.5, fontWeight: 600, cursor: "pointer",
+                                        }}>
+                                        apagar
+                                      </button>
+                                    </div>
+                                  )}
+
+                                  <label className="flex items-center gap-2.5" style={{ cursor: "pointer" }}>
+                                    <input type="checkbox" checked={cfg.embaralhar}
+                                      onChange={(e) => mudarCfg(p.nome, b.nome, "embaralhar", e.target.checked)} />
+                                    <span style={{ fontSize: 13.5, color: T.dim }}>
+                                      Embaralhar a ordem
+                                      <span style={{ color: T.ghost }}> · sem isso você acaba decorando pela posição</span>
+                                    </span>
+                                  </label>
+
+                                  <div className="flex gap-3 flex-wrap">
+                                    <label className="flex items-center gap-2">
+                                      <span style={{ fontSize: 12.5, color: T.ghost, whiteSpace: "nowrap" }}>mín. por dia</span>
+                                      <TextInput type="number" min="0" max="999" value={cfg.min || ""}
+                                        placeholder="0"
+                                        onChange={(e) => mudarCfg(p.nome, b.nome, "min", Math.max(0, Math.min(999, Math.floor(Number(e.target.value) || 0))))}
+                                        style={{ padding: "5px 8px", fontSize: 13, width: 78 }} />
+                                    </label>
+                                    <label className="flex items-center gap-2">
+                                      <span style={{ fontSize: 12.5, color: T.ghost, whiteSpace: "nowrap" }}>máx. por dia</span>
+                                      <TextInput type="number" min="0" max="999" value={cfg.max || ""}
+                                        placeholder="0"
+                                        onChange={(e) => mudarCfg(p.nome, b.nome, "max", Math.max(0, Math.min(999, Math.floor(Number(e.target.value) || 0))))}
+                                        style={{ padding: "5px 8px", fontSize: 13, width: 78 }} />
+                                    </label>
+                                  </div>
+                                  <Mini style={{ lineHeight: 1.6 }}>
+                                    Zero é sem limite. O mínimo adianta os cartões que vencem
+                                    mais cedo, para um dia fraco não ficar curto demais; o
+                                    máximo corta o excesso, para um dia pesado não virar
+                                    desistência.
+                                  </Mini>
+                                </div>
+                              ) : null}
+
                               {confirmaB ? (
                                 <div className="px-3 pb-2.5 flex items-center gap-2.5 flex-wrap">
                                   <Mini style={{ color: T.bad }}>

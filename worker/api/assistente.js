@@ -9,7 +9,33 @@
  * Com as duas, o Gemini ganha. IA_PROVEDOR força um dos dois.
  * GEMINI_MODELO e ANTHROPIC_MODELO trocam o modelo sem mexer no código.
  */
-import { json, quemPede, ehDono, corpoJson } from "./_comum.js";
+import {
+  json, quemPede, ehDono, corpoJson, contaDeServico, tokenDeAcesso, validoAte,
+} from "./_comum.js";
+
+/* Quem pode usar o assistente: o dono e quem tem plano em dia.
+ *
+ * A assinatura é lida com a conta de serviço, e não com o token de quem
+ * está navegando: assinaturas/{uid} é somente leitura no cliente, mas quem
+ * decide aqui não pode depender de nada que venha do navegador.
+ *
+ * Sem a conta de serviço cadastrada não há como conferir plano, e aí só o
+ * dono passa. Liberar geral nesse caso deixaria qualquer pessoa gastando a
+ * cota da conta que paga. */
+async function podeUsar(pessoa, env) {
+  if (ehDono(pessoa.email)) return { ok: true };
+  const conta = contaDeServico(env);
+  if (!conta) {
+    return { ok: false, erro: "O assistente está indisponível: falta configurar o servidor." };
+  }
+  try {
+    const token = await tokenDeAcesso(conta);
+    if (await validoAte(token, pessoa.uid) > Date.now()) return { ok: true };
+  } catch (e) {
+    return { ok: false, erro: "Não consegui conferir sua assinatura. Tente de novo em instantes." };
+  }
+  return { ok: false, erro: "O assistente faz parte do plano completo." };
+}
 
 const LIMITE_ENTRADA = 24000;   // caracteres, para conter o custo por chamada
 const MAX_SAIDA = 1400;
@@ -180,14 +206,13 @@ export async function onRequest({ request, env }) {
     }, 500);
   }
 
-  /* O assistente é só do administrador. O navegador esconde a aba, mas quem
-     protege de verdade é esta checagem. */
+  /* O navegador esconde a aba de quem não assina, mas quem protege de
+     verdade é esta checagem. */
   if (!corpo.token) return json({ erro: "Entre na sua conta para usar o assistente." }, 403);
   const pessoa = await quemPede(corpo.token, env.FIREBASE_API_KEY);
   if (!pessoa) return json({ erro: "Sua sessão expirou. Entre de novo." }, 403);
-  if (!ehDono(pessoa.email)) {
-    return json({ erro: "O assistente está disponível apenas para o administrador." }, 403);
-  }
+  const permissao = await podeUsar(pessoa, env);
+  if (!permissao.ok) return json({ erro: permissao.erro }, 403);
 
   const mensagens = Array.isArray(corpo.mensagens) ? corpo.mensagens.slice(-14) : [];
   if (mensagens.length === 0) return json({ erro: "Nenhuma mensagem enviada." }, 400);

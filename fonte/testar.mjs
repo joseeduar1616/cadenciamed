@@ -90,10 +90,29 @@ for (const aba of ABAS) {
 }
 
 if (liberado) {
-  /* ── o assistente é só do administrador ──────────────────────────── */
+  /* ── o assistente entrou no plano completo ───────────────────────── */
+  /* O teste.html abre com o plano liberado, então aqui a aba tem de
+     aparecer. Quem não assina e não é o dono não a vê, e o servidor faz a
+     mesma checagem — testada no testar-assistente.mjs, que é onde a regra
+     realmente protege alguma coisa. */
   const temAssistente = await pag.locator('nav button:has-text("Assistente")').count();
-  if (temAssistente === 0) ok('a aba Assistente fica escondida para quem não é o administrador');
-  else falha('a aba Assistente apareceu para quem não é o administrador');
+  if (temAssistente > 0) ok('a aba Assistente aparece para quem tem o plano completo');
+  else falha('a aba Assistente sumiu para quem tem o plano completo');
+
+  /* anexar o cronograma do curso, que o assistente passa a enxergar */
+  await ir('Assistente');
+  const anexar = pag.locator('button:has-text("Anexar meu cronograma")');
+  if (await anexar.count() === 0) falha('não achei o botão de anexar o cronograma');
+  else {
+    await anexar.first().click();
+    await pag.waitForTimeout(300);
+    await pag.locator('textarea').first().fill('Semana 1 — Cardiologia: valvopatias');
+    await pag.locator('button:has-text("Guardar")').first().click();
+    await pag.waitForTimeout(400);
+    if (/cronograma anexado|caracteres/.test(await texto())) ok('o cronograma do curso fica anexado no assistente');
+    else falha('o cronograma anexado não apareceu');
+  }
+  await ir('Cartões');
 
   /* ── cartões: criar pasta, criar cartão, estudar ─────────────────── */
   await ir('Cartões');
@@ -125,13 +144,35 @@ if (liberado) {
     } else falha('o campo de renomear não abriu');
   }
 
-  /* apagar o baralho, com confirmação */
-  const lixo = pag.locator('button[aria-label="Apagar baralho"]');
+  /* ── ajustes do baralho: embaralhar e limites por dia ────────────── */
+  const engrenagemB = pag.locator('button[aria-label^="Ajustes de"]');
+  if (await engrenagemB.count() === 0) falha('não achei a engrenagem de ajustes do baralho');
+  else {
+    await engrenagemB.first().click();
+    await pag.waitForTimeout(300);
+    const t = await texto();
+    if (/Embaralhar a ordem/.test(t)) ok('o painel de ajustes do baralho abre');
+    else falha('o painel de ajustes não abriu');
+    if (/máx\. por dia/.test(t)) ok('o limite por dia fica no painel do baralho');
+    else falha('não achei o limite por dia');
+  }
+
+  /* estudar um baralho só, pelo play da linha dele */
+  const play = pag.locator('button[aria-label^="Estudar "]');
+  if (await play.count() === 0) falha('não achei o botão de estudar um baralho só');
+  else ok('cada baralho tem seu botão de estudar');
+
+  /* apagar o baralho, com confirmação. O botão desceu para o painel de
+     ajustes: cinco controles na mesma linha não cabiam no celular. */
+  const lixo = pag.locator('button[aria-label^="Apagar o baralho"]');
   if (await lixo.count() === 0) falha('não achei o botão de apagar baralho');
   else {
     await lixo.first().click();
     await pag.waitForTimeout(250);
-    await pag.locator('button:has-text("Apagar")').first().click();
+    /* O painel tem "apagar" e a confirmação tem "Apagar". O has-text do
+       Playwright não diferencia maiúscula, então clicava de volta no
+       primeiro e fechava a confirmação em vez de confirmar. */
+    await pag.getByRole('button', { name: 'Apagar', exact: true }).first().click();
     await pag.waitForTimeout(450);
     if (/Baralho de teste/.test(await texto())) falha('o baralho não foi apagado');
     else ok('baralho apagado');

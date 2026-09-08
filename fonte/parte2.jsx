@@ -32,7 +32,13 @@ const DEFAULTS = {
   pomoLog: [],
   simulados: {}, provas: [], habits: HABITS_SEED, habitLog: {},
   rever: [], notes: {}, googleCal: { id: "", ultima: 0 },
+  /* Cronograma que a pessoa recebeu do curso dela, em texto, para o
+     assistente organizar a rotina em cima do que ela realmente tem. */
+  cronograma: { nome: "", texto: "" },
   flash: [], pastas: [],
+  /* Ajustes de cada baralho, por "pasta|baralho": se embaralha a ordem e
+     quantos cartões por dia. */
+  baralhoCfg: {},
   /* esquema da escada de revisão espaçada, escolhido em Revisões */
   revisao: { esquema: "cadencia", dias: [7, 21, 60, 150] },
   /* aparência: cor de acento, fonte e tamanho do texto */
@@ -98,6 +104,13 @@ function normalize(raw) {
     pomoLog: arr(d.pomoLog, []), simulados: obj(d.simulados), provas: arr(d.provas, []),
     habits: arr(d.habits, HABITS_SEED), habitLog: obj(d.habitLog),
     rever: arr(d.rever, []), notes: obj(d.notes),
+    cronograma: {
+      nome: String(obj(d.cronograma).nome || "").slice(0, 80),
+      /* Cortado aqui, e não só na hora de enviar: um arquivo enorme colado
+         encheria o armazenamento do navegador e derrubaria o salvamento
+         inteiro, não só o assistente. */
+      texto: String(obj(d.cronograma).texto || "").slice(0, 20000),
+    },
     googleCal: {
       id: typeof gc.id === "string" ? gc.id : "",
       ultima: Number(gc.ultima) || 0,
@@ -110,6 +123,21 @@ function normalize(raw) {
     pastas: [...new Set(arr(d.pastas, [])
       .filter((x) => typeof x === "string" && x.trim())
       .map((x) => x.trim().slice(0, 40)))].slice(0, 60),
+    /* Cada ajuste é conferido na volta do disco: um número negativo ou um
+       texto no lugar do limite faria a fila de estudo sair vazia, e o
+       sintoma apareceria longe daqui. */
+    baralhoCfg: Object.fromEntries(
+      Object.entries(obj(d.baralhoCfg)).slice(0, 300).map(([k, v]) => {
+        const c = obj(v);
+        const limite = (x) => {
+          const n = Math.floor(Number(x));
+          return Number.isFinite(n) && n > 0 ? Math.min(n, 999) : 0;
+        };
+        return [String(k).slice(0, 90), {
+          embaralhar: c.embaralhar !== false,
+          min: limite(c.min), max: limite(c.max),
+        }];
+      })),
     revisao: {
       esquema: ESQUEMAS.some((e) => e.id === rv.esquema) ? rv.esquema : "cadencia",
       dias: limparDias(rv.dias).length ? limparDias(rv.dias) : DEFAULTS.revisao.dias,

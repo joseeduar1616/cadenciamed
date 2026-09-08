@@ -433,7 +433,7 @@ export default function Cadencia() {
     { id: "foco", label: "Foco", acc: "var(--a-PR)" },
     { id: "materias", label: "Matérias", acc: "var(--a-GO)" },
     { id: "temas", label: "Temas", acc: "var(--a-CI)" },
-    ...(souDono ? [{ id: "assistente", label: "Assistente", acc: "var(--neon)" }] : []),
+    ...(souDono || pro ? [{ id: "assistente", label: "Assistente", acc: "var(--neon)" }] : []),
     { id: "cartoes", label: "Cartões", acc: "var(--neon)", badge: cartoesHoje },
     { id: "revisoes", label: "Revisões", acc: "var(--ok)", badge: late.length },
     { id: "rotina", label: "Rotina", acc: "var(--a-PE)" },
@@ -444,11 +444,11 @@ export default function Cadencia() {
   ];
   const acc = (TABS.find((t) => t.id === tab) || TABS[0]).acc;
 
-  /* Sair da conta com o Assistente aberto deixaria uma aba escolhida que já
+  /* Sair da conta, ou a assinatura vencer, com o Assistente aberto deixaria uma
      não existe mais na barra, e a tela ficaria em branco. */
   useEffect(() => {
     if (!TABS.some((t) => t.id === tab)) setTab("hoje");
-  }, [souDono, tab]);
+  }, [souDono, pro, tab]);
 
   useEffect(() => {
     const h = (e) => {
@@ -734,7 +734,7 @@ export default function Cadencia() {
               {tab === "metas" && !pro && <Bloqueado recurso={RECURSOS_PRO.metas} onVerPlanos={() => setTab("planos")} />}
               {tab === "planos" && <Precos usuario={nuvem.usuario} plano={assinatura.plano} />}
               {tab === "temas" && pro && <Temas {...{ subjects, setMark, minutos: minutesBySubject, sessoes: data.sessions, today }} />}
-              {tab === "assistente" && souDono && <Assistente {...{ data, setData, subjects, ladder, today, totals, minWeek, qWeek, notify, nuvem }} />}
+              {tab === "assistente" && (souDono || pro) && <Assistente {...{ data, setData, subjects, ladder, today, totals, minWeek, qWeek, notify, nuvem }} />}
               {tab === "revisoes" && pro && <Revisoes {...{ rows: ladder, toggleStep, resetCycle, data, setData, degraus, notify }} />}
               {tab === "rotina" && pro && <Rotina {...{ data, setData, gcal, today }} />}
               {tab === "amigos" && !pro && <Bloqueado recurso={RECURSOS_PRO.amigos} onVerPlanos={() => setTab("planos")} />}
@@ -764,9 +764,6 @@ export default function Cadencia() {
               <div style={{ width: 34, height: 1, background: T.line2 }} />
               <div className="text-center">
                 <div style={{ fontSize: 14.5, fontWeight: 700, color: T.dim }}>Cadência Med</div>
-                <Mini style={{ marginTop: 4, fontFamily: F_MONO, color: T.ghost }}>
-                  versão {VERSAO} · {CURRICULUM.length} aulas e {TOTAL_BONUS} tópicos
-                </Mini>
                 <Mini style={{ marginTop: 5, lineHeight: 1.6, maxWidth: 420 }}>
                   Ferramenta independente de organização pessoal. O conteúdo das
                   aulas é de quem você estuda; aqui ficam só as suas marcações.

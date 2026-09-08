@@ -31,8 +31,21 @@ await new Promise((r) => servidor.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${servidor.address().port}`;
 
 /* Quem a função acha que está pedindo. O teste troca isto para exercitar
-   o dono, um estranho e uma sessão inválida. */
+   o dono, um assinante, um estranho e uma sessão inválida. */
 let QUEM = { email: 'joseeduardo1616@gmail.com', localId: 'uid-dono' };
+
+/* Até quando vale a assinatura de quem está pedindo. 0 = não assina. */
+let PLANO_ATE = 0;
+
+/* Chave privada de teste, gerada na hora. Não é segredo de nada: serve só
+   para o assinador RSA ter algo válido para assinar ao pedir o token da
+   conta de serviço. */
+const { generateKeyPairSync } = await import('node:crypto');
+const CONTA = {
+  client_email: 'teste@exemplo.iam.gserviceaccount.com',
+  private_key: generateKeyPairSync('rsa', { modulusLength: 2048 })
+    .privateKey.export({ type: 'pkcs8', format: 'pem' }),
+};
 
 /* Redireciona as chamadas da função para o servidor falso, sem tocar no
    código de produção: só o destino do fetch muda. A conferência de
@@ -47,6 +60,17 @@ globalThis.fetch = (url, opcoes) => {
   }
   if (u.includes('generativelanguage.googleapis.com') || u.includes('api.anthropic.com')) {
     return fetchReal(base + new URL(u).pathname, opcoes);
+  }
+  /* A assinatura é lida com a conta de serviço: é assim que o assistente
+     sabe se quem pede tem plano em dia. */
+  if (u.includes('oauth2.googleapis.com/token')) {
+    return Promise.resolve(new Response(JSON.stringify({ access_token: 'token-falso' }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }));
+  }
+  if (u.includes('firestore.googleapis.com')) {
+    return Promise.resolve(new Response(
+      JSON.stringify(PLANO_ATE ? { fields: { validoAte: { doubleValue: PLANO_ATE } } } : {}),
+      { status: PLANO_ATE ? 200 : 404, headers: { 'Content-Type': 'application/json' } }));
   }
   return fetchReal(url, opcoes);
 };
@@ -220,17 +244,39 @@ if (r.corpo.provedor === 'nenhum') ok('GET avisa quando nenhuma chave chegou');
 else falha('GET sem chave: ' + JSON.stringify(r.corpo));
 env.GEMINI_API_KEY = 'chave-de-teste';
 
-/* ── 8. o assistente é só do administrador ───────────────────────────── */
+/* ── 8. quem pode usar: o dono e quem tem plano em dia ───────────────── */
 responder = () => ({ status: 200, corpo: { candidates: [{ content: { parts: [{ text: 'ok' }] } }] } });
 
 r = await pedir(await carregar(), { ...CONVERSA, token: '' });
 if (r.status === 403 && /Entre na sua conta/.test(r.corpo.erro)) ok('sem token: recusado antes de gastar cota');
 else falha('sem token: ' + JSON.stringify(r));
 
+/* Sem conta de serviço não há como conferir plano. Aí só o dono passa:
+   liberar geral deixaria qualquer pessoa gastando a cota de quem paga. */
 QUEM = { email: 'outra.pessoa@email.com', localId: 'uid-estranho' };
+delete env.FIREBASE_SERVICE_ACCOUNT;
 r = await pedir(await carregar(), CONVERSA);
-if (r.status === 403 && /apenas para o administrador/.test(r.corpo.erro)) ok('quem não é o administrador é recusado');
-else falha('estranho: ' + JSON.stringify(r));
+if (r.status === 403 && !r.corpo.texto) ok('sem conta de serviço, quem não é dono é recusado');
+else falha('estranho sem conta de serviço: ' + JSON.stringify(r));
+env.FIREBASE_SERVICE_ACCOUNT = JSON.stringify(CONTA);
+
+/* Com conta de serviço, quem manda é a assinatura. */
+PLANO_ATE = 0;
+r = await pedir(await carregar(), CONVERSA);
+if (r.status === 403 && /plano completo/.test(r.corpo.erro)) ok('quem não assina é recusado, e a mensagem diz por quê');
+else falha('sem assinatura: ' + JSON.stringify(r));
+
+PLANO_ATE = Date.now() + 30 * 86400000;
+r = await pedir(await carregar(), CONVERSA);
+if (r.status === 200 && r.corpo.texto) ok('quem assina consegue usar o assistente');
+else falha('assinante: ' + JSON.stringify(r));
+
+/* Assinatura vencida não vale, senão o acesso nunca acabaria. */
+PLANO_ATE = Date.now() - 86400000;
+r = await pedir(await carregar(), CONVERSA);
+if (r.status === 403) ok('assinatura vencida perde o assistente');
+else falha('assinatura vencida: ' + JSON.stringify(r));
+PLANO_ATE = 0;
 
 QUEM = null;
 r = await pedir(await carregar(), CONVERSA);
@@ -239,7 +285,7 @@ else falha('sessão inválida: ' + JSON.stringify(r));
 
 QUEM = { email: 'joseeduardo1616@gmail.com', localId: 'uid-dono' };
 r = await pedir(await carregar(), CONVERSA);
-if (r.status === 200 && r.corpo.texto) ok('o administrador consegue usar');
+if (r.status === 200 && r.corpo.texto) ok('o administrador consegue usar sem assinar nada');
 else falha('dono: ' + JSON.stringify(r));
 
 /* sem a chave do Firebase não dá para saber quem pede: tem de recusar, e
