@@ -80,8 +80,8 @@ window.CADENCIA_GOOGLE = {
    diz "em breve" a quem visita.
    ══════════════════════════════════════════════════════════════════════ */
 window.CADENCIA_CHECKOUT = {
-  mensal: "",
-  anual: ""
+  mensal: "https://pay.kiwify.com.br/tnUuamR",
+  anual: "https://pay.kiwify.com.br/MHVKdUS"
 };
 
 /* ══════════════════════════════════════════════════════════════════════

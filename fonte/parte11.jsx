@@ -182,11 +182,23 @@ function Precos({ compacto, onFechar, usuario, plano }) {
         </div>
       </Card>
 
+      {/* O aviso de compra casa pagamento com conta pelo e-mail. Pagar com
+          outro endereço é o jeito mais fácil de comprar e ficar sem acesso, e
+          o lembrete só serve na hora de clicar em assinar — por isso ele
+          aparece também para quem já está logado, dizendo qual e-mail é. */}
       {!usuario ? (
         <Card className="px-6 py-5" flat>
           <Mini style={{ lineHeight: 1.7 }}>
             Crie sua conta em Progresso antes de assinar, e use o mesmo e-mail
             na hora do pagamento. É assim que a assinatura é reconhecida.
+          </Mini>
+        </Card>
+      ) : !plano ? (
+        <Card className="px-6 py-5" flat>
+          <Mini style={{ lineHeight: 1.7 }}>
+            Pague com <strong style={{ color: T.dim }}>{usuario.email}</strong>, o
+            mesmo e-mail desta conta. É por ele que a assinatura é reconhecida:
+            com outro endereço, o pagamento não chega até aqui.
           </Mini>
         </Card>
       ) : null}
