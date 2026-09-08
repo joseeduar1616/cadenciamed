@@ -176,6 +176,25 @@ reserva. Quando o Cloudflare estiver firme, dá para apagar.
 
 ## Publicar
 
+Como está no ar hoje, em dois lugares:
+
+| Quem serve | O quê | Como sobe |
+|---|---|---|
+| **Firebase Hosting** | `cadenciamed.com.br`, as páginas | `.github/workflows/deploy-firebase.yml` |
+| **Cloudflare Worker** | as rotas `/api/...` | `.github/workflows/publicar.yml` |
+
+Os dois disparam no mesmo push e nenhum dos dois compila nada: mandam a pasta
+`publicar/` como ela está no repositório. Quem refaz essa pasta é o
+`fonte/montar.sh`, que abre um navegador para os testes e por isso não cabe
+num passo de deploy — **rode-o e faça commit de `publicar/` antes de enviar**,
+senão o push publica a versão anterior sem avisar.
+
+As chamadas do site ao Worker atravessam domínios, e é o `chamarApi` mais os
+cabeçalhos de CORS que fazem isso funcionar. Se um dia o domínio apontar para
+o Worker, os dois viram o mesmo lugar e o Firebase Hosting sai de cena.
+
+### Publicar tudo no Cloudflare, se quiser juntar os dois
+
 Uma vez só, na criação do projeto:
 
 1. dash.cloudflare.com → **Workers & Pages** → **Create** → **Import a

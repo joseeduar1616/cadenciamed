@@ -1,9 +1,27 @@
+# Publica o site no Firebase Hosting a cada push.
+#
+# Não há build aqui: a pasta publicar/ já vai pronta no repositório, e é ela
+# que o firebase.json manda para o ar. Quem refaz essa pasta é o
+# fonte/montar.sh, que abre um navegador para os testes e por isso não cabe
+# num passo de deploy.
+#
+# O segredo FIREBASE_SERVICE_ACCOUNT fica em Settings › Secrets and variables
+# › Actions, e precisa ser uma conta de serviço com permissão de publicar no
+# Hosting.
 name: Deploy to Firebase Hosting
+
 on:
   push:
     branches:
+      - main
       - claude/seguir-arquivo-prompt-l5s9ed
   workflow_dispatch:
+
+# Dois pushes seguidos publicavam ao mesmo tempo no canal live, um por cima
+# do outro. Vale o último.
+concurrency:
+  group: firebase-hosting-live
+  cancel-in-progress: true
 
 jobs:
   build_and_deploy:
@@ -15,4 +33,4 @@ jobs:
           repoToken: '${{ secrets.GITHUB_TOKEN }}'
           firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
           channelId: live
-          projectId: cadencia-7c1f1 
+          projectId: cadencia-7c1f1
