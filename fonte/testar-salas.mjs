@@ -22,6 +22,7 @@ const CONTA = {
 /* ── banco de mentira ────────────────────────────────────────────────── */
 let SALAS = {};        // slug  -> { fields }
 let PERFIS = {};       // uid   -> { fields }
+let RECADOS = {};      // slug  -> { fields }  (salas/{slug}/mensagens/log)
 let QUEM = { email: 'ana@email.com', localId: 'uid-ana' };
 
 const json = (corpo, status = 200) => new Response(JSON.stringify(corpo),
@@ -60,7 +61,20 @@ globalThis.fetch = async (url, opcoes = {}) => {
     }));
   }
 
-  const m = /\/documents\/salas\/([^/?]+)/.exec(u);
+  /* Os recados moram pendurados na sala, num documento só. Vem antes da
+     regra da sala porque o caminho começa igual — e se a rota errar o
+     endereço, é aqui que o teste percebe, em vez de devolver a sala. */
+  const c = /\/documents\/salas\/([^/?]+)\/mensagens\/log$/.exec(u);
+  if (c) {
+    const slug = c[1];
+    const metodo = opcoes.method || 'GET';
+    if (metodo === 'GET') return RECADOS[slug] ? json(RECADOS[slug]) : json({ error: {} }, 404);
+    if (metodo === 'DELETE') { delete RECADOS[slug]; return json({}); }
+    RECADOS[slug] = JSON.parse(opcoes.body);
+    return json({ name: slug });
+  }
+
+  const m = /\/documents\/salas\/([^/?]+)(?:\?|$)/.exec(u);
   if (m) {
     const slug = m[1];
     const metodo = opcoes.method || 'GET';
@@ -226,6 +240,84 @@ const semPerfil = (r.corpo.ranking || []).find((x) => x.uid === 'uid-caio');
 if (semPerfil && semPerfil.minutos === 0 && semPerfil.pct === null) ok('quem ainda não sincronizou aparece zerado, não some');
 else falha('membro sem perfil: ' + JSON.stringify(semPerfil));
 
+/* ── estudando agora ─────────────────────────────────────────────────── */
+como('ana@email.com', 'uid-ana');
+
+/* Bia deu sinal de vida há pouco, com 20 minutos já corridos. */
+PERFIS['uid-bia'].presencaEm = { doubleValue: Date.now() - 30000 };
+PERFIS['uid-bia'].presencaMin = { doubleValue: 20 };
+r = await pedir({ token: 't', acao: 'ranking', nome: 'r3-clinica' });
+let bia = (r.corpo.ranking || []).find((x) => x.nome === 'Bia');
+if (bia.estudando) ok('quem está com o cronômetro andando aparece como estudando agora');
+else falha('presença recente não apareceu: ' + JSON.stringify(bia));
+if (bia.agoraMin >= 20 && bia.agoraMin <= 21) ok('o tempo em andamento acompanha o relógio desde o último sinal');
+else falha('minutos ao vivo: ' + bia.agoraMin);
+if (bia.minutos === 120) ok('o tempo em andamento não entra no ranking, que conta sessão lançada');
+else falha('o tempo em andamento vazou para o ranking: ' + bia.minutos);
+if (!(r.corpo.ranking || []).find((x) => x.nome === 'Ana').estudando) ok('quem não deu sinal não aparece estudando');
+else falha('Ana apareceu estudando sem ter dado sinal');
+
+/* Sinal velho é de quem fechou a aba sem avisar. */
+PERFIS['uid-bia'].presencaEm = { doubleValue: Date.now() - 600000 };
+r = await pedir({ token: 't', acao: 'ranking', nome: 'r3-clinica' });
+bia = (r.corpo.ranking || []).find((x) => x.nome === 'Bia');
+if (!bia.estudando && bia.agoraMin === 0) ok('sinal antigo vence sozinho, para quem fechou a aba sem avisar');
+else falha('sinal velho continuou valendo: ' + JSON.stringify(bia));
+
+/* Quem escolheu não mostrar o desempenho também não é marcado na sala. */
+PERFIS['uid-bia'].presencaEm = { doubleValue: Date.now() - 30000 };
+PERFIS['uid-bia'].oculto = { booleanValue: true };
+r = await pedir({ token: 't', acao: 'ranking', nome: 'r3-clinica' });
+bia = (r.corpo.ranking || []).find((x) => x.nome === 'Bia');
+if (!bia.estudando) ok('quem não mostra o desempenho também não aparece estudando');
+else falha('privacidade furada pela presença: ' + JSON.stringify(bia));
+delete PERFIS['uid-bia'].oculto;
+delete PERFIS['uid-bia'].presencaEm;
+delete PERFIS['uid-bia'].presencaMin;
+
+/* ── recados ─────────────────────────────────────────────────────────── */
+r = await pedir({ token: 't', acao: 'recados', nome: 'r3-clinica' });
+if (r.status === 200 && (r.corpo.recados || []).length === 0) ok('sala sem conversa devolve lista vazia, não erro');
+else falha('recados de sala nova: ' + JSON.stringify(r));
+
+r = await pedir({ token: 't', acao: 'dizer', nome: 'r3-clinica', texto: '  bora às 19h  ' });
+if (r.corpo.ok && r.corpo.recados.length === 1 && r.corpo.recados[0].texto === 'bora às 19h') ok('a mensagem é gravada sem o espaço sobrando');
+else falha('dizer: ' + JSON.stringify(r));
+if (r.corpo.recados[0].nome === 'Ana') ok('a assinatura vem do perfil de quem manda');
+else falha('nome na mensagem: ' + JSON.stringify(r.corpo.recados[0]));
+
+/* Assinar como outra pessoa é o que o servidor precisa impedir: o nome do
+   pedido é ignorado, vale o do perfil. */
+r = await pedir({ token: 't', acao: 'dizer', nome: 'r3-clinica', texto: 'sou a Bia', nomeAutor: 'Bia', autor: 'Bia' });
+if (r.corpo.recados[1].nome === 'Ana') ok('não dá para assinar a mensagem como outra pessoa');
+else falha('assinatura forjada: ' + JSON.stringify(r.corpo.recados[1]));
+
+r = await pedir({ token: 't', acao: 'dizer', nome: 'r3-clinica', texto: '   ' });
+if (r.status === 400) ok('mensagem só de espaço é recusada');
+else falha('mensagem vazia: ' + JSON.stringify(r));
+
+r = await pedir({ token: 't', acao: 'dizer', nome: 'r3-clinica', texto: 'x'.repeat(900) });
+if (r.corpo.recados[r.corpo.recados.length - 1].texto.length === 400) ok('mensagem comprida é cortada no limite');
+else falha('corte: ' + r.corpo.recados[r.corpo.recados.length - 1].texto.length);
+
+/* A sala guarda as últimas, e não a conversa inteira: senão o documento
+   cresceria para sempre. */
+for (let i = 0; i < 82; i++) {
+  r = await pedir({ token: 't', acao: 'dizer', nome: 'r3-clinica', texto: 'msg ' + i });
+}
+if (r.corpo.recados.length === 80) ok('a sala guarda só as 80 últimas mensagens');
+else falha('quantidade guardada: ' + r.corpo.recados.length);
+if (r.corpo.recados[79].texto === 'msg 81') ok('a última mensagem é a mais recente');
+else falha('ordem das mensagens: ' + r.corpo.recados[79].texto);
+
+como('dani@email.com', 'uid-dani');
+r = await pedir({ token: 't', acao: 'recados', nome: 'r3-clinica' });
+if (r.status === 403) ok('quem não está na sala não lê a conversa');
+else falha('recados sem ser membro: ' + JSON.stringify(r));
+r = await pedir({ token: 't', acao: 'dizer', nome: 'r3-clinica', texto: 'oi' });
+if (r.status === 403) ok('quem não está na sala não escreve nela');
+else falha('dizer sem ser membro: ' + JSON.stringify(r));
+
 /* ── minhas salas ────────────────────────────────────────────────────── */
 como('ana@email.com', 'uid-ana');
 r = await pedir({ token: 't', acao: 'minhas' });
@@ -251,6 +343,11 @@ como('caio@email.com', 'uid-caio');
 r = await pedir({ token: 't', acao: 'sair', nome: 'r3-clinica' });
 if (!SALAS['r3-clinica']) ok('a última pessoa a sair encerra a sala');
 else falha('sala vazia continuou de pé');
+/* No Firestore o que está pendurado num documento sobrevive a ele: sem
+   apagar aqui, a conversa antiga apareceria para a próxima sala de mesmo
+   nome, criada por outras pessoas. */
+if (!RECADOS['r3-clinica']) ok('encerrar a sala apaga a conversa junto');
+else falha('a conversa sobreviveu à sala');
 
 /* ── recusas gerais ──────────────────────────────────────────────────── */
 QUEM = null;

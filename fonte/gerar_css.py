@@ -20,7 +20,7 @@ for trecho in re.findall(r'className=(?:"([^"]*)"|\{`([^`]*)`\})', fonte):
 # Estas não são utilitárias: são escritas no <style> do próprio app, junto
 # das animações, então não devem ganhar regra aqui.
 DO_APP = {
-    'aba', 'aura', 'aura-a', 'aura-b', 'aura-c', 'aura-d', 'brilhar',
+    'aba', 'aovivo', 'aura', 'aura-a', 'aura-b', 'aura-c', 'aura-d', 'brilhar',
     'breathe', 'marca', 'nota', 'pulso', 'rise', 'vidro',
     'toque', 'toque-larg',
 }

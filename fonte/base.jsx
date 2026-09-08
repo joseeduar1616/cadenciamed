@@ -6,6 +6,7 @@ import {
   BookMarked, FileText, Keyboard, ArrowUpRight, Maximize2, Minimize2,
   Smartphone, Monitor, Cloud, CloudOff, LogOut, User, RefreshCw, Stethoscope,
   Sparkles, Menu, PanelLeft, Users, Trophy, Clock, Lock,
+  MessageCircle, Send,
 } from "lucide-react";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip,

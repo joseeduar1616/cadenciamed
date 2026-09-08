@@ -17,6 +17,21 @@ const ROTA_SALAS = "/api/salas";
    está aberta. Curto demais vira uma chamada por segundo à toa. */
 const RITMO_RANKING = 45000;
 
+/* Os recados pedem resposta rápida, então vão num ritmo mais curto que o
+   ranking — mas só com a aba à vista: em segundo plano ninguém está lendo,
+   e o app ficaria conversando com o servidor à toa. */
+const RITMO_RECADOS = 12000;
+
+/* De quanto em quanto tempo quem está com o cronômetro andando avisa que
+   continua na mesa. O servidor descarta o sinal com mais de 2min30. */
+const RITMO_PRESENCA = 45000;
+
+/* Precisam bater com o MAX_LETRAS e o MAX_MENSAGENS do servidor, que é
+   quem corta de verdade. Aqui é só para a tela não prometer o que a rota
+   vai recusar. */
+const MAX_RECADO = 400;
+const MAX_RECADO_ITENS = 80;
+
 const PERIODOS = [
   ["semana", "Semana"],
   ["mes", "Mês"],
@@ -31,7 +46,7 @@ const PERIODOS = [
  * semana, com números que já não valem.
  *
  * Só números: nada do que foi estudado, nenhuma anotação. */
-function usePerfilPublico(nuvem, nome, sessions, today, mostrar) {
+function usePerfilPublico(nuvem, nome, sessions, today, mostrar, aoVivo) {
   const dados = useMemo(() => {
     const iniSemana = weekStart(today);
     const mes = String(today).slice(0, 7);
@@ -86,12 +101,51 @@ function usePerfilPublico(nuvem, nome, sessions, today, mostrar) {
     const t = setTimeout(() => {
       ultimo.current = assinatura;
       const { F, db } = nuvem.sdk;
+      /* merge para não apagar a marca de "estudando agora", que é gravada
+         em separado, por outro efeito, em outro ritmo. */
       F.setDoc(F.doc(db, "perfis", nuvem.usuario.uid), {
         ...dados, atualizadoEm: Date.now(),
-      }).catch(() => { ultimo.current = ""; });
+      }, { merge: true }).catch(() => { ultimo.current = ""; });
     }, 2500);
     return () => clearTimeout(t);
   }, [nuvem, dados]);
+
+  /* ── estudando agora ───────────────────────────────────────────────────
+   *
+   * Enquanto o cronômetro anda, o app dá sinal de vida de tempos em tempos.
+   * Fechar a aba não avisa ninguém, então o sinal vem com hora: o servidor
+   * descarta o que ficou velho, e a marca some sozinha.
+   *
+   * Vai só o tempo em andamento. Que matéria está sendo estudada não sai
+   * daqui — a promessa da sala é essa, o ranking mostra números, não o que
+   * cada um está fazendo. */
+  const ativo = !!(aoVivo && aoVivo.ativo && mostrar);
+  const minRef = useRef(0);
+  minRef.current = aoVivo ? Math.max(0, Math.round(aoVivo.minutos || 0)) : 0;
+  const marcado = useRef(false);
+
+  useEffect(() => {
+    if (!nuvem || !nuvem.sdk || !nuvem.usuario) return undefined;
+    const { F, db } = nuvem.sdk;
+    const ref = F.doc(db, "perfis", nuvem.usuario.uid);
+    const marcar = (em) => {
+      marcado.current = !!em;
+      return F.setDoc(ref, {
+        presencaEm: em, presencaMin: em ? minRef.current : 0,
+      }, { merge: true }).catch(() => {});
+    };
+
+    if (!ativo) {
+      /* Apagar na saída faz a marca sumir na hora para quem pausou ou
+         desligou o cronômetro, em vez de esperar o prazo vencer. Quem nunca
+         apareceu como estudando não tem o que apagar. */
+      if (marcado.current) marcar(0);
+      return undefined;
+    }
+    marcar(Date.now());
+    const i = setInterval(() => marcar(Date.now()), RITMO_PRESENCA);
+    return () => clearInterval(i);
+  }, [nuvem, ativo]);
 }
 
 async function falarComSalas(nuvem, corpo) {
@@ -107,6 +161,26 @@ async function falarComSalas(nuvem, corpo) {
 }
 
 const MEDALHA = ["var(--warn)", "var(--dim)", "var(--a-CL)"];
+
+/* Quem está com o cronômetro andando neste instante.
+ *
+ * O tempo aqui é o do bloco em andamento, e ele não entra no ranking: entra
+ * quando a sessão termina e é lançada. Somar antes contaria o mesmo tempo
+ * duas vezes enquanto o cronômetro anda. */
+function Estudando({ minutos }) {
+  return (
+    <span className="inline-flex items-center gap-1.5"
+      style={{
+        fontSize: 11, fontWeight: 700, color: "var(--ok)",
+        background: soft("var(--ok)", 15), padding: "2px 9px 2px 7px", borderRadius: 99,
+      }}>
+      <span className="aovivo" style={{
+        width: 6, height: 6, borderRadius: 99, background: "var(--ok)", display: "inline-block",
+      }} />
+      estudando {minutos > 0 ? `· ${fmtMin(minutos)}` : "agora"}
+    </span>
+  );
+}
 
 function LinhaRanking({ x }) {
   const cor = !x.oculto && x.posicao <= 3 ? MEDALHA[x.posicao - 1] : T.ghost;
@@ -137,6 +211,7 @@ function LinhaRanking({ x }) {
               background: soft("var(--neon)", 16), padding: "2px 8px", borderRadius: 99,
             }}>você</span>
           ) : null}
+          {x.estudando ? <Estudando minutos={x.agoraMin} /> : null}
           {x.dono ? <Mini>criou a sala</Mini> : null}
         </div>
         <Mini style={{ marginTop: 3 }}>
@@ -169,6 +244,128 @@ function LinhaRanking({ x }) {
   );
 }
 
+/* Hora curta para a conversa: "14:32" quando é de hoje, com o dia junto
+   quando é de outro dia. */
+function horaCurta(em) {
+  const d = new Date(em || 0);
+  if (!em || Number.isNaN(d.getTime())) return "";
+  const hora = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const hoje = new Date();
+  const mesmoDia = d.toDateString() === hoje.toDateString();
+  return mesmoDia ? hora : `${d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} ${hora}`;
+}
+
+/* Os recados da sala.
+ *
+ * Vai e volta pelo servidor, como o resto: pelas regras do Firestore o
+ * navegador não abre a sala nem para ler. Quem não é da sala não recebe
+ * nada — quem confere é a rota, que já sabe quem está pedindo. */
+function Recados({ nuvem, slug, quem }) {
+  const [itens, setItens] = useState(null);
+  const [texto, setTexto] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState("");
+  const fim = useRef(null);
+  const refNuvem = useRef(nuvem);
+  refNuvem.current = nuvem;
+
+  const buscar = useCallback(async () => {
+    if (!slug) return;
+    const j = await falarComSalas(refNuvem.current, { acao: "recados", nome: slug });
+    if (j.erro) return;                        // silencioso: é atualização de fundo
+    setItens(j.recados || []);
+  }, [slug]);
+
+  useEffect(() => {
+    setItens(null);
+    buscar();
+    /* Em segundo plano ninguém está lendo, e continuar perguntando seria
+       conversa com o servidor à toa — e bateria do celular. */
+    const t = setInterval(() => {
+      if (!document.hidden) buscar();
+    }, RITMO_RECADOS);
+    const aoVoltar = () => { if (!document.hidden) buscar(); };
+    document.addEventListener("visibilitychange", aoVoltar);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", aoVoltar); };
+  }, [buscar]);
+
+  /* Desce até a última mensagem quando chega coisa nova. */
+  useEffect(() => {
+    if (fim.current && fim.current.scrollIntoView) {
+      fim.current.scrollIntoView({ block: "nearest" });
+    }
+  }, [itens]);
+
+  const mandar = async () => {
+    const escrito = texto.trim();
+    if (!escrito || enviando) return;
+    setEnviando(true); setErro("");
+    const j = await falarComSalas(refNuvem.current, { acao: "dizer", nome: slug, texto: escrito });
+    setEnviando(false);
+    if (j.erro) { setErro(j.erro); return; }
+    setTexto("");
+    setItens(j.recados || []);
+  };
+
+  return (
+    <Card className="px-6 py-6">
+      <H color="var(--neon2)" icon={<MessageCircle size={16} />}>Recados da sala</H>
+
+      <div className="mt-4 flex flex-col gap-3" style={{
+        maxHeight: 340, overflowY: "auto", overflowX: "hidden",
+      }}>
+        {itens === null ? (
+          <Label>carregando…</Label>
+        ) : itens.length === 0 ? (
+          <Mini>Nenhum recado ainda. Combine o horário, conte como foi o dia.</Mini>
+        ) : itens.map((m, i) => {
+          const meu = m.uid === quem;
+          return (
+            <div key={`${m.em}-${i}`} className="flex flex-col"
+              style={{ alignItems: meu ? "flex-end" : "flex-start" }}>
+              <div className="rounded-2xl px-3.5 py-2.5" style={{
+                maxWidth: "86%",
+                background: meu ? soft("var(--neon)", 12) : T.card2,
+                border: `1px solid ${meu ? soft("var(--neon)", 26) : T.line}`,
+              }}>
+                {meu ? null : (
+                  <div style={{ fontSize: 12, fontWeight: 700, color: T.dim, marginBottom: 3 }}>
+                    {m.nome}
+                  </div>
+                )}
+                <div style={{
+                  fontSize: 14.5, color: T.ink, lineHeight: 1.5,
+                  overflowWrap: "anywhere", whiteSpace: "pre-wrap",
+                }}>{m.texto}</div>
+              </div>
+              <Mini style={{ marginTop: 3 }}>{horaCurta(m.em)}</Mini>
+            </div>
+          );
+        })}
+        <div ref={fim} />
+      </div>
+
+      <div className="mt-4 flex gap-2 items-end">
+        <div className="flex-1 min-w-0">
+          <TextInput value={texto} placeholder="escreva um recado"
+            maxLength={MAX_RECADO}
+            onChange={(e) => setTexto(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") mandar(); }} />
+        </div>
+        <Btn tone="primary" onClick={mandar} disabled={enviando || !texto.trim()}>
+          {enviando ? "…" : <Send size={15} />}
+        </Btn>
+      </div>
+
+      {erro ? <span style={{ fontSize: 14, color: T.bad }}>{erro}</span> : null}
+      <Mini style={{ marginTop: 10 }}>
+        Fica só para quem está na sala, e a sala guarda os {MAX_RECADO_ITENS} últimos
+        recados. Atualiza sozinho a cada {Math.round(RITMO_RECADOS / 1000)} segundos.
+      </Mini>
+    </Card>
+  );
+}
+
 function Amigos({ nuvem, notify, data, setData }) {
   const [salas, setSalas] = useState(null);
   const [atual, setAtual] = useState(null);        // slug escolhido
@@ -181,6 +378,7 @@ function Amigos({ nuvem, notify, data, setData }) {
   const [periodo, setPeriodo] = useState("semana");
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState("");
+  const estudandoAgora = (ranking || []).filter((x) => x.estudando).length;
 
   const logado = !!(nuvem && nuvem.usuario);
   /* O objeto da nuvem entra por referência, e não como dependência: quem
@@ -376,8 +574,9 @@ function Amigos({ nuvem, notify, data, setData }) {
           </div>
 
           <Mini style={{ marginTop: 10 }}>
-            {ranking.length} {ranking.length === 1 ? "pessoa" : "pessoas"} · ordenado
-            por horas líquidas · atualiza sozinho a cada {Math.round(RITMO_RANKING / 1000)} segundos
+            {ranking.length} {ranking.length === 1 ? "pessoa" : "pessoas"}
+            {estudandoAgora ? ` · ${estudandoAgora} estudando agora` : ""}
+            {" · "}ordenado por horas líquidas · atualiza sozinho a cada {Math.round(RITMO_RANKING / 1000)} segundos
           </Mini>
 
           {ranking.length === 0 ? (
@@ -390,7 +589,8 @@ function Amigos({ nuvem, notify, data, setData }) {
           )}
 
           <Mini style={{ marginTop: 16, lineHeight: 1.7 }}>
-            Aparecem só o nome do perfil e os três números do ranking. O que você
+            Aparecem só o nome do perfil e os três números do ranking, mais a
+            marca de quem está com o cronômetro andando agora. O que você
             estudou, suas anotações e seus cartões não são compartilhados. Para
             mudar o nome que os outros veem, é o nome em Progresso.
           </Mini>
@@ -398,6 +598,8 @@ function Amigos({ nuvem, notify, data, setData }) {
       ) : atual && ocupado ? (
         <Card className="px-6 py-6"><Label>carregando o ranking…</Label></Card>
       ) : null}
+
+      {atual && ranking ? <Recados nuvem={nuvem} slug={atual} quem={quem} /> : null}
     </div>
   );
 }

@@ -419,7 +419,15 @@ export default function Cadencia() {
      e não dentro da aba Amigos, para o perfil continuar em dia mesmo de
      quem nunca abre essa aba — senão o ranking mostraria zero para quem
      estudou e simplesmente não estava com ela aberta. */
-  usePerfilPublico(nuvem, data.profile.name, data.sessions, today, data.mostrarDesempenho);
+  /* E, junto, o "estudando agora" das salas: vale enquanto o cronômetro
+     anda em foco. A pausa e o descanso não contam — quem parou não está
+     estudando, e mostrar o contrário seria o app mentindo para os amigos. */
+  const aoVivo = {
+    ativo: P.running && P.phase === "foco",
+    minutos: P.modo === "corrido" ? P.corrido / 60 : (P.total - P.left) / 60,
+  };
+
+  usePerfilPublico(nuvem, data.profile.name, data.sessions, today, data.mostrarDesempenho, aoVivo);
 
   /* Menu lateral: no celular é gaveta que abre por cima; no computador
      fica fixo e só encolhe para a largura dos ícones. */
@@ -556,6 +564,11 @@ export default function Cadencia() {
         @keyframes pulso{0%,100%{opacity:1;box-shadow:0 0 0 0 color-mix(in srgb,var(--neon) 55%,transparent)}
           50%{opacity:.55;box-shadow:0 0 0 7px transparent}}
         .pulso{animation:pulso 3.2s ease-in-out infinite}
+        /* O pontinho de quem está estudando agora, nas salas de amigos.
+           Batida lenta: é para dizer "tem gente aqui", não para puxar o
+           olho de quem está tentando estudar. */
+        @keyframes aovivo{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(.65);opacity:.4}}
+        .aovivo{animation:aovivo 1.9s ease-in-out infinite}
         /* ── vidro ──────────────────────────────────────────────────────
            Um fio de luz percorre a borda de cima e o painel ganha um
            reflexo interno na diagonal, que é o que dá a sensação de

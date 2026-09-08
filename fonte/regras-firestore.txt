@@ -43,6 +43,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Os recados da sala ficam pendurados nela, em salas/{sala}/mensagens.
+    // A regra de cima não alcança subcoleção, e o que não tem regra fica
+    // sem permissão nenhuma — mas escrever isto aqui deixa a intenção no
+    // papel e não depende de o Firestore continuar assim.
+    match /salas/{sala}/{resto=**} {
+      allow read, write: if false;
+    }
+
     // Baralhos que o dono publica. Também fechados para o navegador: quem
     // publica é só o dono e quem baixa é só quem tem plano em dia, e as
     // duas coisas são conferidas na rota /api/baralhos. Liberar a leitura

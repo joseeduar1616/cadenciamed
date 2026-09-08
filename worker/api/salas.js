@@ -11,6 +11,11 @@
  * As estatísticas de cada pessoa ficam em perfis/{uid}, que o próprio dono
  * escreve. O ranking é montado aqui porque só o servidor tem como ler o
  * perfil dos outros: pelas regras do Firestore, o navegador lê apenas o seu.
+ *
+ * O recado da sala fica em salas/{slug}/mensagens/log, num documento só, com
+ * as últimas mensagens numa lista. Uma coleção com uma mensagem por documento
+ * cresceria para sempre e precisaria de faxina; assim a própria gravação
+ * descarta o que passou do limite, e apagar a sala apaga o histórico junto.
  */
 import {
   json, corpoJson, quemPede, contaDeServico, tokenDeAcesso, BASE_FIRESTORE,
@@ -18,6 +23,19 @@ import {
 
 const MAX_MEMBROS = 60;
 const ITERACOES = 100000;
+
+/* Quantas mensagens a sala guarda e o tamanho de cada uma. O recado é para
+   combinar horário e dar força, não para virar arquivo de conversa. */
+const MAX_MENSAGENS = 80;
+const MAX_LETRAS = 400;
+
+/* Por quanto tempo um sinal de "estou estudando" continua valendo.
+ *
+ * O app manda um sinal a cada 45 segundos. Fechar a aba não avisa ninguém,
+ * então quem sai fica marcado como estudando até este prazo vencer — daí a
+ * folga ser curta, só o suficiente para um sinal perdido não apagar a
+ * marca de quem continua na mesa. */
+const VALIDADE_PRESENCA = 150000;
 
 /* "Plantão da Madrugada!" vira "plantao-da-madrugada", que é o que
    identifica a sala. Assim quem digita com outra caixa ou sem acento entra
@@ -127,6 +145,10 @@ async function perfisDe(token, uids) {
       nome: texto(f.nome),
       atualizadoEm: numero(f.atualizadoEm),
       oculto: !!((f.oculto || {}).booleanValue),
+      /* Último sinal de vida de quem está com o cronômetro andando, e
+         quantos minutos já tinha corrido quando o sinal saiu. */
+      presencaEm: numero(f.presencaEm),
+      presencaMin: numero(f.presencaMin),
       total: { minutos: numero(f.minutos), questoes: numero(f.questoes), acertos: numero(f.acertos) },
       semana: {
         chave: texto(f.semanaChave),
@@ -143,6 +165,71 @@ async function perfisDe(token, uids) {
     };
   }
   return fora;
+}
+
+/* ── recados da sala ──────────────────────────────────────────────────
+ *
+ * Tudo num documento só, salas/{slug}/mensagens/log, com uma lista das
+ * últimas mensagens. Duas pessoas mandando no mesmo instante podem perder
+ * uma das duas, porque cada chamada lê a lista e regrava o que leu — é o
+ * mesmo acerto já feito na lista de membros, e o preço é digitar de novo.
+ */
+const CAMINHO_RECADOS = (slug) => `${BASE_FIRESTORE}/salas/${slug}/mensagens/log`;
+
+const mapa = (v) => ((v && v.mapValue) || {}).fields || {};
+
+async function lerRecados(token, slug) {
+  const r = await fetch(CAMINHO_RECADOS(slug), {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) return [];                       // 404 é sala sem conversa ainda
+  const j = await r.json().catch(() => null);
+  const f = (j || {}).fields || {};
+  const itens = (((f.itens || {}).arrayValue || {}).values || []).map((v) => {
+    const m = mapa(v);
+    return {
+      uid: texto(m.uid),
+      nome: texto(m.nome),
+      texto: texto(m.texto),
+      em: numero(m.em),
+    };
+  });
+  return itens.filter((x) => x.texto);
+}
+
+async function gravarRecados(token, slug, itens) {
+  const r = await fetch(CAMINHO_RECADOS(slug), {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      fields: {
+        itens: {
+          arrayValue: {
+            values: itens.map((x) => ({
+              mapValue: {
+                fields: {
+                  uid: { stringValue: x.uid },
+                  nome: { stringValue: x.nome },
+                  texto: { stringValue: x.texto },
+                  em: { doubleValue: x.em },
+                },
+              },
+            })),
+          },
+        },
+      },
+    }),
+  });
+  return r.ok;
+}
+
+/* Apagar a sala não apaga o que está pendurado nela: no Firestore, a
+   subcoleção sobrevive ao documento pai e ficaria de herança para a próxima
+   sala de mesmo nome. */
+async function apagarRecados(token, slug) {
+  await fetch(CAMINHO_RECADOS(slug), {
+    method: "DELETE", headers: { Authorization: `Bearer ${token}` },
+  }).catch(() => {});
 }
 
 /* ── de que semana e de que mês estamos falando ────────────────────────
@@ -173,7 +260,7 @@ export function recorteAtual(periodo) {
   return { campo: "semana", chave: inicioDaSemana(hoje), rotulo: "nesta semana" };
 }
 
-export function montarRanking(sala, perfis, eu, periodo) {
+export function montarRanking(sala, perfis, eu, periodo, agora = Date.now()) {
   const recorte = recorteAtual(periodo);
 
   const linhas = sala.membros.map((uid) => {
@@ -190,6 +277,19 @@ export function montarRanking(sala, perfis, eu, periodo) {
 
     const questoes = vale ? Math.max(0, Math.round(bloco.questoes || 0)) : 0;
     const acertos = vale ? Math.min(questoes, Math.max(0, Math.round(bloco.acertos || 0))) : 0;
+
+    /* Estudando agora.
+     *
+     * O sinal só vale por um tempo curto: quem fecha a aba não avisa. E os
+     * minutos em andamento ficam de fora do ranking de propósito — eles
+     * entram quando a sessão é lançada, e somar aqui contaria duas vezes o
+     * mesmo tempo enquanto o cronômetro anda. */
+    const vivo = !escondido && !!p.presencaEm
+      && (agora - p.presencaEm) >= 0 && (agora - p.presencaEm) < VALIDADE_PRESENCA;
+    const agoraMin = vivo
+      ? Math.max(0, Math.round((p.presencaMin || 0) + (agora - p.presencaEm) / 60000))
+      : 0;
+
     return {
       uid,
       nome: p.nome || "sem nome",
@@ -203,6 +303,8 @@ export function montarRanking(sala, perfis, eu, periodo) {
          são coisas bem diferentes. */
       oculto: escondido,
       foraDoRecorte: !escondido && !vale && !!p.atualizadoEm,
+      estudando: vivo,
+      agoraMin,
       souEu: uid === eu,
       dono: uid === sala.dono,
     };
@@ -330,6 +432,7 @@ export async function onRequest({ request, env }) {
     sala.membros = sala.membros.filter((x) => x !== pessoa.uid);
     if (!sala.membros.length) {
       /* Sala vazia é sala que ninguém mais abre, e o nome fica preso. */
+      await apagarRecados(token, slug);
       await fetch(`${BASE_FIRESTORE}/salas/${slug}`, {
         method: "DELETE", headers: { Authorization: `Bearer ${token}` },
       });
@@ -354,6 +457,35 @@ export async function onRequest({ request, env }) {
       },
       ranking: linhas,
     });
+  }
+
+  /* ── recados ───────────────────────────────────────────────────────── */
+  if (acao === "recados") {
+    return json({ ok: true, recados: await lerRecados(token, slug) });
+  }
+
+  if (acao === "dizer") {
+    /* Uma linha só: quebra de linha aqui é espaço, senão uma mensagem
+       esticada empurra a conversa inteira para fora da tela. */
+    const escrito = String(corpo.texto || "").replace(/\s+/g, " ").trim().slice(0, MAX_LETRAS);
+    if (!escrito) return json({ erro: "Escreva alguma coisa antes de mandar." }, 400);
+
+    /* O nome vem do perfil, não do pedido: aceitar o nome que o navegador
+       manda deixaria qualquer pessoa da sala assinar como outra. */
+    const meu = (await perfisDe(token, [pessoa.uid]))[pessoa.uid] || {};
+
+    const antes = await lerRecados(token, slug);
+    const itens = [...antes, {
+      uid: pessoa.uid,
+      nome: (meu.nome || "sem nome").slice(0, 40),
+      texto: escrito,
+      em: Date.now(),
+    }].slice(-MAX_MENSAGENS);
+
+    if (!await gravarRecados(token, slug, itens)) {
+      return json({ erro: "Não consegui mandar sua mensagem." }, 500);
+    }
+    return json({ ok: true, recados: itens });
   }
 
   return json({ erro: "Ação desconhecida." }, 400);
