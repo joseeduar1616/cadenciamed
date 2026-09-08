@@ -308,6 +308,27 @@ function useGoogleAgenda({ data, setData, notify, ladder, today }) {
     return () => { /* o script fica na página */ };
   }, []);
 
+  /* Por que a autorização do Google falhou.
+   *
+   * Antes tudo virava "Autorização cancelada.", que é justamente a leitura
+   * errada nos dois casos mais comuns: o navegador barrando a janela (quase
+   * sempre no celular) e o endereço do site não estar liberado no Google
+   * Cloud. Nos dois a pessoa não cancelou nada, e a frase mandava procurar
+   * defeito no lugar errado. */
+  const porQueFalhou = (e) => {
+    const tipo = String((e && e.type) || "");
+    if (tipo === "popup_failed_to_open") {
+      return "O navegador bloqueou a janela do Google. Libere as janelas "
+        + "pop-up para este site e tente de novo. No celular é o caso mais comum.";
+    }
+    if (tipo === "popup_closed") return "A janela do Google foi fechada antes de concluir.";
+    const origem = (typeof window !== "undefined" && window.location && window.location.origin) || "este endereço";
+    return `Não consegui autorizar com o Google. Se o erro na janela falar em `
+      + `"origin_mismatch", falta liberar ${origem} em Origens JavaScript `
+      + "autorizadas, no console do Google Cloud, dentro da credencial ID do "
+      + "cliente OAuth.";
+  };
+
   const pedirToken = useCallback(() => new Promise((resolve) => {
     if (!window.google || !window.google.accounts) return resolve(null);
     try {
@@ -315,10 +336,14 @@ function useGoogleAgenda({ data, setData, notify, ladder, today }) {
         client_id: GOOGLE_CFG.clientId,
         scope: ESCOPO_GC,
         callback: (r) => {
-          if (r && r.access_token) { setToken(r.access_token); resolve(r.access_token); }
-          else { setErro("Autorização não concluída."); resolve(null); }
+          if (r && r.access_token) { setToken(r.access_token); resolve(r.access_token); return; }
+          /* O Google devolve o motivo em r.error quando recusa o pedido, e
+             engolir isso deixava só "não concluída" na tela. */
+          const motivo = (r && (r.error_description || r.error)) || "";
+          setErro(motivo ? `O Google recusou a autorização: ${motivo}` : "Autorização não concluída.");
+          resolve(null);
         },
-        error_callback: () => { setErro("Autorização cancelada."); resolve(null); },
+        error_callback: (e) => { setErro(porQueFalhou(e)); resolve(null); },
       });
       cliente.current.requestAccessToken();
     } catch (e) { setErro("Não consegui abrir a autorização do Google."); resolve(null); }
