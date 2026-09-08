@@ -5,7 +5,9 @@
   "scripts": {
     "build": "fonte/montar.sh",
     "build:rapido": "fonte/montar.sh --sem-teste",
-    "test": "node fonte/testar.mjs fonte/teste.html"
+    "test": "node fonte/testar.mjs fonte/teste.html",
+    "publicar": "wrangler deploy",
+    "publicar:conferir": "wrangler deploy --dry-run --outdir=/tmp/conferir"
   },
   "dependencies": {
     "esbuild": "0.28.2",
@@ -17,6 +19,7 @@
     "sql.js": "1.10.3"
   },
   "devDependencies": {
-    "playwright": "1.63.0"
+    "playwright": "1.63.0",
+    "wrangler": "4.129.1"
   }
 }

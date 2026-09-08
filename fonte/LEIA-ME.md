@@ -165,7 +165,33 @@ Uma vez só, na criação do projeto:
 Depois disso, cada `git push` publica sozinho. Conferir abrindo
 `/api/assistente` no navegador: responde qual IA está ligada.
 
-Pela linha de comando, com a conta já autenticada: `npx wrangler deploy`.
+Pela linha de comando, com a conta já autenticada: `npm run publicar`. Para
+ver o que seria enviado sem enviar nada: `npm run publicar:conferir`.
+
+Quem preferir publicar pelo GitHub em vez do painel do Cloudflare já tem o
+caminho pronto em `.github/workflows/publicar.yml`. Falta só guardar o token
+em **Settings → Secrets and variables → Actions**, com o nome
+`CLOUDFLARE_API_TOKEN` (o token sai de dash.cloudflare.com → My Profile → API
+Tokens → *Edit Cloudflare Workers*). Enquanto o segredo não existir, o fluxo
+avisa e para sem erro. Os dois caminhos fazem a mesma coisa; usar um só evita
+publicar duas vezes a cada push.
+
+### Mudar o endereço de hospedagem
+
+Enquanto o site estiver no Firebase Hosting, `/api/...` devolve o
+`index.html` com status 200, porque hospedagem de arquivo não roda código. O
+app diz isso na tela em vez de um "não deu certo" vago, mas os painéis de
+acesso e de cupom só funcionam de verdade depois de o Worker estar no ar.
+
+Para apontar `cadenciamed.com.br` do Firebase para o Cloudflare:
+
+1. No registro.br, trocar os servidores DNS pelos dois que o Cloudflare
+   informa ao adicionar o domínio (**Add a domain**). A propagação leva de
+   minutos a algumas horas.
+2. No Worker, **Settings → Domains & Routes → Add → Custom domain**, com
+   `cadenciamed.com.br` e `www.cadenciamed.com.br`.
+3. Só então tirar o domínio do Firebase Hosting, para não ficar sem site no
+   meio do caminho.
 
 ### Qual IA o assistente usa
 
@@ -199,23 +225,23 @@ mexida nem encurtada.
 
 ## Cupons
 
-Os códigos ficam no `cupom.mjs`, no servidor, e nunca no navegador. Para
-trocá-los sem mexer no código, cadastre `CUPONS` no Netlify, no formato
+Os códigos ficam no `worker/api/cupom.js`, no servidor, e nunca no navegador.
+Para trocá-los sem mexer no código, cadastre `CUPONS` no Cloudflare, no formato
 `codigo:plano,codigo:plano` (planos: mensal, anual, vitalicio). Enquanto essa
 variável não existir, valem os dois cupons escritos no arquivo.
 
 ## Domínio
 
-Ao acrescentar ou trocar de domínio, três lugares precisam saber, não só o
-Netlify. Os dois primeiros quebram calados, e só no domínio novo:
+Ao acrescentar ou trocar de domínio, três lugares precisam saber, não só a
+hospedagem. Os dois primeiros quebram calados, e só no domínio novo:
 
 1. **Firebase** → Authentication → Settings → Domínios autorizados. Sem isso o
    login falha com `auth/unauthorized-domain`. O app mostra essa mensagem em
    português, então o erro na tela já diz o que fazer.
 2. **Google Cloud** → credencial ID do cliente OAuth → Origens JavaScript
    autorizadas. Sem isso o Google Agenda dá erro 400 `origin_mismatch`.
-3. **Kiwify ou Hotmart** → o endereço do aviso de compra (webhook) que aponta
-   para `/.netlify/functions/compra`.
+3. **Kiwify ou Hotmart** → o endereço do aviso de compra (webhook), que agora
+   é `https://cadenciamed.com.br/api/compra`.
 
 O domínio antigo continua funcionando enquanto estiver na lista, o que ajuda a
 migrar sem apagão.
