@@ -14,9 +14,18 @@ import { json, quemPede, ehDono, corpoJson } from "./_comum.js";
 const LIMITE_ENTRADA = 24000;   // caracteres, para conter o custo por chamada
 const MAX_SAIDA = 1400;
 
+/* Modelo padrão do Gemini.
+ *
+ * O Google aposenta modelo sem aviso: o gemini-2.5-flash parou de aceitar
+ * conta nova e o assistente passou a devolver a recusa da própria API. Se
+ * acontecer de novo, não precisa recompilar nem publicar: cadastre
+ * GEMINI_MODELO nas variáveis do Worker com o nome que a mensagem de erro
+ * indicar, e ela ganha deste padrão. */
+const GEMINI_PADRAO = "gemini-3.6-flash";
+
 /* Traduz o erro do provedor para uma frase que o estudante entenda, sem
    esconder o motivo real, que é o que costuma resolver mais rápido. */
-function recado(status, real, provedor) {
+function recado(status, real, provedor, modeloUsado) {
   const ondePagar = provedor === "gemini"
     ? "Confira a cota da chave em aistudio.google.com."
     : "Confira o saldo em console.anthropic.com, em Plans & Billing.";
@@ -27,6 +36,21 @@ function recado(status, real, provedor) {
   }
   if (status === 429) return `Cota esgotada ou pedidos demais seguidos. Espere um pouco. ${ondePagar}`;
   if (status === 503 || status === 529) return "O serviço está sobrecarregado. Tente de novo em instantes.";
+
+  /* Modelo aposentado. Acontece sem aviso e a mensagem crua não diz o que
+     fazer, embora costume trazer o nome do substituto. O conserto não exige
+     publicar de novo: é cadastrar a variável. */
+  if (/is no longer available|not found|is not supported|has been (?:deprecated|retired)/i.test(real || "")) {
+    /* A recusa costuma citar o substituto, em "models/nome". Fica o primeiro
+       que não for o que acabou de ser recusado. */
+    const citados = [...String(real).matchAll(/models\/([\w.-]+)/g)].map((m) => m[1]);
+    const sugerido = citados.filter((m) => m !== modeloUsado)[0];
+    const variavel = provedor === "gemini" ? "GEMINI_MODELO" : "ANTHROPIC_MODELO";
+    return `O modelo ${modeloUsado} saiu do ar. Cadastre ${variavel}`
+      + (sugerido ? ` com "${sugerido}"` : " com um modelo atual")
+      + ` nas variáveis do Worker. O provedor disse: ${real}`;
+  }
+
   if (real) return `A IA recusou o pedido: ${real}`;
   return `O serviço respondeu com erro ${status}.`;
 }
@@ -55,7 +79,7 @@ async function chamarGemini(chave, modelo, { sistema, mensagens }) {
     let real = "";
     try { real = (JSON.parse(detalhe).error || {}).message || ""; } catch (e) { /* texto puro */ }
     console.error("gemini", r.status, detalhe.slice(0, 500));
-    return { erro: recado(r.status, real, "gemini") };
+    return { erro: recado(r.status, real, "gemini", modelo) };
   }
 
   const j = await r.json();
@@ -94,7 +118,7 @@ async function chamarAnthropic(chave, modelo, { sistema, mensagens }) {
     let real = "";
     try { real = (JSON.parse(detalhe).error || {}).message || ""; } catch (e) { /* texto puro */ }
     console.error("anthropic", r.status, detalhe.slice(0, 500));
-    return { erro: recado(r.status, real, "anthropic") };
+    return { erro: recado(r.status, real, "anthropic", modelo) };
   }
 
   const j = await r.json();
@@ -117,7 +141,7 @@ function escolherProvedor(env) {
 export async function onRequest({ request, env }) {
   const provedor = escolherProvedor(env);
   const modelo = provedor && provedor.nome === "gemini"
-    ? (env.GEMINI_MODELO || "gemini-2.5-flash")
+    ? (env.GEMINI_MODELO || GEMINI_PADRAO)
     : (env.ANTHROPIC_MODELO || "claude-sonnet-5");
 
   /* Abrir o endereço no navegador mostra qual IA está ligada. Serve para

@@ -98,7 +98,7 @@ else falha('Gemini resposta: ' + JSON.stringify(r));
 
 /* formato do pedido que saiu */
 const p = ultimoPedido;
-if (/gemini-2\.5-flash:generateContent/.test(p.url)) ok('Gemini: modelo e método certos na URL');
+if (/gemini-3\.6-flash:generateContent/.test(p.url)) ok('Gemini: modelo e método certos na URL');
 else falha('Gemini URL: ' + p.url);
 if (p.headers['x-goog-api-key'] === 'chave-de-teste') ok('Gemini: chave vai no cabeçalho x-goog-api-key');
 else falha('Gemini cabeçalho: ' + JSON.stringify(p.headers['x-goog-api-key']));
@@ -124,6 +124,34 @@ for (const [status, corpo, esperado, nome] of casos) {
   if (r.status === 502 && esperado.test(r.corpo.erro)) ok(`Gemini ${status}: ${nome} explicado`);
   else falha(`Gemini ${status}: ` + JSON.stringify(r));
 }
+
+/* ── modelo aposentado ───────────────────────────────────────────────
+   Aconteceu de verdade: o Google tirou o gemini-2.5-flash de circulação e o
+   painel mostrou a recusa crua, em inglês, sem dizer o que fazer. O conserto
+   não exige publicar de novo, é cadastrar GEMINI_MODELO — e é isso que a
+   mensagem precisa dizer. */
+responder = () => ({
+  status: 400,
+  corpo: {
+    error: {
+      message: 'This model models/gemini-3.6-flash is no longer available to new users. '
+        + 'Please update your code to use models/gemini-4.0-flash for the latest features.',
+    },
+  },
+});
+r = await pedir(await carregar(), CONVERSA);
+if (/GEMINI_MODELO/.test(r.corpo.erro)) ok('modelo aposentado: diz qual variável cadastrar');
+else falha('modelo aposentado: ' + JSON.stringify(r));
+if (/gemini-4\.0-flash/.test(r.corpo.erro)) ok('modelo aposentado: aproveita o substituto que o provedor sugeriu');
+else falha('não citou o substituto: ' + JSON.stringify(r.corpo.erro));
+if (!/Cadastre GEMINI_MODELO com "gemini-3\.6-flash"/.test(r.corpo.erro)) ok('modelo aposentado: não sugere o modelo que acabou de ser recusado');
+else falha('sugeriu o próprio modelo recusado: ' + r.corpo.erro);
+
+/* sem substituto citado, ainda assim aponta o caminho */
+responder = () => ({ status: 404, corpo: { error: { message: 'Model not found' } } });
+r = await pedir(await carregar(), CONVERSA);
+if (/GEMINI_MODELO/.test(r.corpo.erro) && /modelo atual/.test(r.corpo.erro)) ok('modelo desconhecido: aponta a variável mesmo sem sugestão do provedor');
+else falha('modelo desconhecido: ' + JSON.stringify(r));
 
 /* resposta 200 mas sem texto, que é o jeito do Gemini avisar bloqueio */
 responder = () => ({ status: 200, corpo: { promptFeedback: { blockReason: 'SAFETY' }, candidates: [] } });
@@ -178,7 +206,7 @@ const olhar = async (fn) => {
 env.GEMINI_API_KEY = 'chave-de-teste';
 env.ANTHROPIC_API_KEY = 'sk-ant-teste';
 r = await olhar(await carregar());
-if (r.corpo.provedor === 'gemini' && r.corpo.modelo === 'gemini-2.5-flash') ok('GET mostra qual IA está ligada');
+if (r.corpo.provedor === 'gemini' && r.corpo.modelo === 'gemini-3.6-flash') ok('GET mostra qual IA está ligada');
 else falha('GET provedor: ' + JSON.stringify(r.corpo));
 if (r.corpo.chaves.GEMINI_API_KEY === true && r.corpo.chaves.ANTHROPIC_API_KEY === true) ok('GET diz quais chaves chegaram na função');
 else falha('GET chaves: ' + JSON.stringify(r.corpo.chaves));

@@ -231,6 +231,12 @@ Com as duas cadastradas o Gemini é o escolhido. Para forçar um deles,
 cadastre `IA_PROVEDOR` com `gemini` ou `anthropic`. O modelo também dá para
 trocar sem mexer no código, por `GEMINI_MODELO` e `ANTHROPIC_MODELO`.
 
+**O Google aposenta modelo sem aviso.** O `gemini-2.5-flash` parou de aceitar
+conta nova e o assistente passou a devolver a recusa da própria API. Quando
+acontecer de novo, não é preciso recompilar nem publicar: cadastre
+`GEMINI_MODELO` no Worker com o nome que a mensagem de erro indicar. A
+mensagem na tela já diz isso, e repete o substituto que o provedor sugeriu.
+
 A assinatura do Gemini Advanced e a do Claude **não** dão acesso às APIs: são
 cobranças separadas. A camada gratuita do Gemini vem da chave do AI Studio,
 não do plano Pro.
