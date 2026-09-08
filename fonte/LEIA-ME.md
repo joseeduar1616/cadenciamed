@@ -189,7 +189,14 @@ Como está no ar hoje, em dois lugares:
 | **Cloudflare Worker** | as rotas `/api/...` | `.github/workflows/publicar.yml` |
 
 Os dois disparam no mesmo push e nenhum dos dois compila nada: mandam a pasta
-`publicar/` como ela está no repositório. Quem refaz essa pasta é o
+`publicar/` como ela está no repositório.
+
+**Cabeçalhos de cache ficam no `firebase.json`, não no `publicar/_headers`.**
+Aquele arquivo é formato do Netlify e do Cloudflare; o Firebase o ignora em
+silêncio e aplica o padrão dele, que guarda HTML por uma hora. O app inteiro
+é o `index.html`, então nessa hora quem já visitou continua vendo a versão
+anterior depois de publicar — e não há erro nenhum para denunciar isso. O
+`firebase.json` marca o `index.html` como `no-cache` justamente por isso. Quem refaz essa pasta é o
 `fonte/montar.sh`, que abre um navegador para os testes e por isso não cabe
 num passo de deploy — **rode-o e faça commit de `publicar/` antes de enviar**,
 senão o push publica a versão anterior sem avisar.
