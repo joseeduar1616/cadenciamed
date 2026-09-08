@@ -1,0 +1,10 @@
+{
+  "hosting": {
+    "public": "cadenciamed-publicar",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ]
+  }
+}
