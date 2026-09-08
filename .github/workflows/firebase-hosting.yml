@@ -14,3 +14,4 @@ jobs:
           firebaseServiceAccount: '${{ secrets.FIREBASE_TOKEN }}'
           channelId: live
           projectId: cadencia-7c1f1
+          
