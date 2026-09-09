@@ -91,6 +91,8 @@ some calada quando falta uma linha no `normalize()`.
 | `testar.mjs` | teste de fumaça no Chromium |
 | `testar-assistente.mjs` | teste da função da IA, com servidor falso no lugar da API |
 | `testar-flashcards-ia.mjs` | teste do montador de flashcards a partir de PDF/Word, mesma técnica de servidor falso |
+| `testar-cronograma-ia.mjs` | teste de organizar o cronograma de outro curso (ou ciclo clínico) em matérias, mesma técnica |
+| `testar-curriculo.mjs` | teste de substituir o currículo padrão, no todo ou só numa área |
 | `testar-recorte-pdf.mjs` | teste da matemática que acha o retângulo de cada figura num PDF, com objetos falsos, sem abrir PDF nenhum |
 | `testar-compra.mjs` | teste do aviso de compra: segredo, planos e estorno |
 | `testar-cupom.mjs` | teste do resgate de cupom, com Firebase falso |
@@ -143,6 +145,8 @@ problema que existia quando as funções moravam dentro do que ia ao ar.
 | `worker/index.js` | entrada: decide o que é `/api/...` e o que é arquivo |
 | `worker/api/assistente.js` | conversa com a IA; o dono e quem assina podem usar |
 | `worker/api/flashcards-ia.js` | monta flashcards a partir do texto extraído de um PDF/Word |
+| `worker/api/cronograma-ia.js` | organiza o cronograma de outro curso (ou ciclo clínico) em matérias |
+| `worker/api/mentor.js` | papel de mentor, alunos, e a rotina/metas/currículo de cada um |
 | `worker/api/cupom.js` | confere o cupom e libera o plano |
 | `worker/api/compra.js` | recebe o aviso de compra da Kiwify ou Hotmart |
 | `worker/api/acessos.js` | painel do dono, libera e revoga acessos |
@@ -327,6 +331,53 @@ que já foi marcado nela. Reordenar a lista, renomear o título ou acrescentar
 aula é seguro, desde que os ids fiquem como estão. A tabela `ID_ANTIGO`, no
 fim do arquivo, traduz o formato antigo (a posição na lista) e não deve ser
 mexida nem encurtada.
+
+### Currículo próprio
+
+Em Assistente → Cronograma, a pessoa pode anexar (colar, ou enviar PDF/Word/
+texto) o cronograma de outro cursinho, ou o conteúdo do ciclo clínico
+(estágio) que está cursando agora. A rota `/api/cronograma-ia` (mesmo padrão
+de `_ia.js` do montador de flashcards) organiza o material em matérias,
+classificadas nas mesmas 5 áreas do currículo padrão (`CL`/`CI`/`GO`/`PE`/
+`PR` — `AREAS`, no `base.jsx`). A pessoa revê o que a IA separou, desmarca
+áreas que não quer trocar, e confirma.
+
+O resultado fica em `data.cronogramaProprio`: uma lista no mesmo formato do
+currículo padrão (`{id, week, area, title, esp, bonus}`), com o `id`
+prefixado por `"pp-"` (`materiaParaAula`, em `parte9.jsx`) para nunca bater
+com o id de uma aula padrão. Cada substituição (`aplicarNoCronogramaProprio`)
+troca só as áreas que vieram naquela leva, preservando o que já tinha sido
+trocado antes noutra área — é o que faz um envio "só uma área" (ciclo
+clínico) trocar só aquele pedaço, e um envio com as 5 áreas trocar o
+currículo inteiro, sem duplicar entre uma leva e outra.
+
+**Qual currículo está ativo, na prática**, é sempre `montarCurriculo(data.
+cronogramaProprio)` (`base.jsx`): sem currículo próprio, é o padrão inteiro;
+com ele, é o currículo próprio mais o que sobrou do padrão nas áreas que ele
+não cobre. Como o `id` de cada aula é fixo e o progresso fica preso a ele, as
+aulas do padrão que saem da lista ativa não são apagadas — `data.marks`
+continua com o que foi marcado nelas, só sem uso, e reaparece se a pessoa
+apagar o currículo próprio (botão "voltar ao currículo padrão") e voltar ao
+padrão.
+
+Como o restante do app (Matérias, Foco, Progresso, Cartões, o resumo que o
+Assistente lê, o seletor de matéria...) até então lia sempre as constantes
+fixas `CURRICULUM`/`BY_ID`/`TOTAL_BONUS`, essas telas passaram a ler o
+currículo ativo pelo hook `useAtivo()`, que lê o `AtivoContext` — fornecido
+uma vez, no componente raiz (`Cadencia`, em `parte8.jsx`), a partir de
+`montarCurriculo`. `CURRICULUM`/`BY_ID`/`TOTAL_BONUS` continuam existindo
+como estavam, e ainda são o que aparece nas telas de antes de entrar na
+conta (cadastro, plano) — ali não haveria de quem ser o currículo próprio.
+
+**Duas coisas ficam de fora, de propósito:**
+- `ORDEM_ESP` (a ordem das especialidades dentro de uma área, usada só para
+  ordenar a lista em Temas) continua vindo do currículo padrão. Uma
+  especialidade nova, de um currículo próprio, cai no fim da ordenação em
+  vez de quebrar — rugosidade pequena, não vale a complicação de recalcular.
+- Na aba Mentor, o currículo que aparece é sempre o **do aluno** (a rota
+  `/api/mentor` devolve o `cronogramaProprio` dele), nunca o do mentor —
+  `CurriculoDoAluno`, em `parte16.jsx`, chama `montarCurriculo` direto com os
+  dados do aluno, sem usar o `useAtivo()` do mentor.
 
 ## Cupons
 

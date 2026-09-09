@@ -208,6 +208,10 @@ export async function onRequest({ request, env }) {
         routine: dados.routine || [],
         tasks: dados.tasks || [],
         sessions: (dados.sessions || []).slice(0, 200),
+        /* O currículo do aluno pode ter sido substituído por ele (parte9.jsx,
+           Cronograma) — sem isso o painel do mentor mostraria sempre o
+           currículo padrão, mesmo para quem já trocou. */
+        cronogramaProprio: Array.isArray(dados.cronogramaProprio) ? dados.cronogramaProprio : [],
       },
     });
   }

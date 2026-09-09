@@ -35,6 +35,9 @@ const DEFAULTS = {
   /* Cronograma que a pessoa recebeu do curso dela, em texto, para o
      assistente organizar a rotina em cima do que ela realmente tem. */
   cronograma: { nome: "", texto: "" },
+  /* Currículo próprio, que substitui o padrão no todo ou por área — ver
+     normalize(), logo abaixo. */
+  cronogramaProprio: [],
   /* Se os números desta pessoa aparecem no ranking das salas de amigos.
      Começa ligado, que é o motivo de entrar numa sala; desligar mantém a
      pessoa na sala, sem os números dela à mostra. */
@@ -116,6 +119,22 @@ function normalize(raw) {
          inteiro, não só o assistente. */
       texto: String(obj(d.cronograma).texto || "").slice(0, 20000),
     },
+    /* Currículo próprio: substitui o padrão (curriculo.js) no todo ou só
+       numa área, montado pela IA a partir do que a pessoa anexou em
+       Cronograma (parte9.jsx). Mesmo formato do currículo padrão, para o
+       resto do app (Matérias, Rotina, Progresso...) não precisar saber a
+       diferença. */
+    cronogramaProprio: arr(d.cronogramaProprio, []).slice(0, 300).map((s) => (obj(s))).filter((s) => (
+      typeof s.id === "string" && s.id && typeof s.title === "string" && s.title.trim()
+      && AREA_IDS.indexOf(s.area) >= 0
+    )).map((s) => ({
+      id: String(s.id).slice(0, 60),
+      week: Number(s.week) || 0,
+      area: s.area,
+      title: String(s.title).trim().slice(0, 80),
+      esp: String(s.esp || "").trim().slice(0, 40) || String(s.title).trim().slice(0, 40),
+      bonus: arr(s.bonus, []).filter((t) => typeof t === "string" && t.trim()).slice(0, 10).map((t) => String(t).trim().slice(0, 80)),
+    })),
     googleCal: {
       id: typeof gc.id === "string" ? gc.id : "",
       ultima: Number(gc.ultima) || 0,
@@ -570,16 +589,17 @@ function SubjectPicker({ value, onChange, placeholder = "Buscar matéria" }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const caixa = useRef(null);
-  const sel = value ? BY_ID[value] : null;
+  const ativo = useAtivo();
+  const sel = value ? ativo.byId[value] : null;
 
   const results = useMemo(() => {
     const t = q.trim().toLowerCase();
-    if (!t) return CURRICULUM.slice(0, 8);
-    return CURRICULUM.filter((s) =>
+    if (!t) return ativo.lista.slice(0, 8);
+    return ativo.lista.filter((s) =>
       s.title.toLowerCase().includes(t) || s.esp.toLowerCase().includes(t)
       || aLabel(s.area).toLowerCase().includes(t) || s.esp.toLowerCase().includes(t)
     ).slice(0, 10);
-  }, [q]);
+  }, [q, ativo]);
 
   useEffect(() => {
     if (!open) return undefined;

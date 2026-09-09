@@ -26,6 +26,7 @@ function Foco({ data, setData, today, P, subjectId, setSubjectId }) {
   const [full, setFull] = useState(false);
   const pref = useRef(P);
   pref.current = P;
+  const ativo = useAtivo();
 
   useEffect(() => {
     const h = (e) => {
@@ -60,7 +61,7 @@ function Foco({ data, setData, today, P, subjectId, setSubjectId }) {
   const relogio = corrido ? fmtRelogio(P.corrido) : fmtClock(P.left);
   const todayLog = data.pomoLog.filter((x) => x.date === today);
   const set = (k, v) => setData((p) => ({ ...p, pomo: { ...p.pomo, [k]: v } }));
-  const subj = subjectId ? BY_ID[subjectId] : null;
+  const subj = subjectId ? ativo.byId[subjectId] : null;
 
   if (full) {
     return (
@@ -253,9 +254,10 @@ function LogForm({ today, addSession, notify, onDone }) {
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const mins = (Number(f.h) || 0) * 60 + (Number(f.m) || 0);
   const q = Number(f.q) || 0, ok = Number(f.c) || 0;
+  const ativo = useAtivo();
 
   const save = () => {
-    const subj = f.subjectId ? BY_ID[f.subjectId] : null;
+    const subj = f.subjectId ? ativo.byId[f.subjectId] : null;
     const topic = subj ? subj.title : f.free.trim();
     if (!topic) return notify("Escolha uma matéria ou escreva um tema.");
     if (mins < 1) return notify("Informe o tempo estudado.");
@@ -300,6 +302,7 @@ function LogForm({ today, addSession, notify, onDone }) {
 function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, done, bonusDone, addSession, delSession, notify, go, blocosHoje, projecao, pro, verPlanos, cartoesHoje }) {
   const [openLog, setOpenLog] = useState(false);
   const [newTask, setNewTask] = useState("");
+  const ativo = useAtivo();
   const todaySessions = data.sessions.filter((s) => s.date === today);
   const openTasks = data.tasks.filter((t) => !t.done).length;
 
@@ -343,15 +346,15 @@ function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, do
         </div>
         <div className="mt-7 pt-6 flex flex-wrap items-center gap-x-8 gap-y-4" style={{ borderTop: `1px solid ${T.line}` }}>
           <div className="flex items-baseline gap-2.5">
-            <Num size={24} color="var(--a-PR)">{done}<span style={{ fontSize: 16, color: T.faint }}>/{CURRICULUM.length}</span></Num>
+            <Num size={24} color="var(--a-PR)">{done}<span style={{ fontSize: 16, color: T.faint }}>/{ativo.lista.length}</span></Num>
             <Label>aulas principais</Label>
           </div>
           <div className="flex items-baseline gap-2.5">
-            <Num size={24} color="var(--a-PE)">{bonusDone}<span style={{ fontSize: 16, color: T.faint }}>/{TOTAL_BONUS}</span></Num>
+            <Num size={24} color="var(--a-PE)">{bonusDone}<span style={{ fontSize: 16, color: T.faint }}>/{ativo.totalBonus}</span></Num>
             <Label>tópicos</Label>
           </div>
           <div className="flex-1" style={{ minWidth: 160 }}>
-            <Track pct={((done + bonusDone) / (CURRICULUM.length + TOTAL_BONUS)) * 100} color={T.ok} />
+            <Track pct={((done + bonusDone) / (ativo.lista.length + ativo.totalBonus)) * 100} color={T.ok} />
           </div>
         </div>
       </Card>
@@ -444,7 +447,7 @@ function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, do
                   <span style={{ width: 3, height: 26, borderRadius: 3, background: aColor(r.area), flexShrink: 0 }} />
                   <div className="flex-1 min-w-0">
                     <div style={{ fontSize: 15, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title}</div>
-                    <Mini style={{ marginTop: 1 }}>{BY_ID[r.id] ? BY_ID[r.id].esp : ""} · {r.late.map((x) => x.label).join(", ")}</Mini>
+                    <Mini style={{ marginTop: 1 }}>{ativo.byId[r.id] ? ativo.byId[r.id].esp : ""} · {r.late.map((x) => x.label).join(", ")}</Mini>
                   </div>
                   <Num size={13} color={T.warn} weight={600}>{r.overdueBy > 0 ? `${r.overdueBy}d` : "hoje"}</Num>
                 </div>

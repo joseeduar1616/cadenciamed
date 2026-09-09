@@ -730,6 +730,7 @@ function Aparencia({ data, setData }) {
 function Progresso({ data, setData, byDay, today, totals, subjects, notify, nuvem, pro, aoLiberar }) {
   const [confirm, setConfirm] = useState(false);
   const fileRef = useRef(null);
+  const ativo = useAtivo();
 
   const last14 = useMemo(() => {
     const out = [];
@@ -891,7 +892,7 @@ function Progresso({ data, setData, byDay, today, totals, subjects, notify, nuve
       <Card className="px-6 py-6">
         <H size={18} color="var(--a-PR)" icon={<Download size={16} />}>Seus dados</H>
         <Label style={{ marginTop: 4 }}>
-          {doneCount} de {subjects.length} aulas e {bonusCount} de {TOTAL_BONUS} tópicos marcados
+          {doneCount} de {subjects.length} aulas e {bonusCount} de {ativo.totalBonus} tópicos marcados
         </Label>
         <div className="mt-5 flex flex-wrap gap-2">
           <Btn onClick={exportar}><Download size={15} /> Baixar backup</Btn>

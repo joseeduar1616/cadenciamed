@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import React, {
+  useState, useEffect, useMemo, useRef, useCallback, createContext, useContext,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   Play, Pause, RotateCcw, SkipForward, Plus, Trash2, Check, X, Flame,
@@ -216,6 +218,33 @@ const ORDEM_ESP = CURSO.reduce((m, a) => {
 }, {});
 const BY_ID = CURRICULUM.reduce((m, s) => { m[s.id] = s; return m; }, {});
 const TOTAL_BONUS = CURRICULUM.reduce((a, s) => a + s.bonus.length, 0);
+
+/* ── currículo ativo ─────────────────────────────────────────────────────
+ * data.cronogramaProprio (fonte/parte9.jsx, Cronograma) substitui o
+ * currículo padrão, no todo ou só numa área — é o que a pessoa monta
+ * subindo o cronograma de outro curso, ou o conteúdo de um ciclo clínico.
+ * Como cada aula tem id fixo e as marcas de progresso ficam presas a esse
+ * id (ver curriculo.js), as aulas do currículo padrão que não aparecem no
+ * currículo próprio simplesmente somem da lista ativa — o progresso
+ * antigo continua gravado em data.marks, sem uso, e reaparece se a pessoa
+ * apagar o currículo próprio e voltar ao padrão. Nada é apagado.
+ *
+ * Monta a lista ativa a partir do currículo próprio (quando existe) mais o
+ * que sobrou do padrão nas áreas que ele não cobre — isso é o que faz um
+ * envio "só a área tal" (ciclo clínico) substituir só aquela área, e um
+ * envio com todas as áreas substituir o currículo inteiro. */
+function montarCurriculo(cronogramaProprio) {
+  const proprio = Array.isArray(cronogramaProprio) ? cronogramaProprio : [];
+  if (proprio.length === 0) return { lista: CURRICULUM, byId: BY_ID, totalBonus: TOTAL_BONUS };
+  const areasProprias = new Set(proprio.map((s) => s.area));
+  const lista = [...proprio, ...CURRICULUM.filter((s) => !areasProprias.has(s.area))];
+  const byId = lista.reduce((m, s) => { m[s.id] = s; return m; }, {});
+  const totalBonus = lista.reduce((a, s) => a + s.bonus.length, 0);
+  return { lista, byId, totalBonus };
+}
+
+const AtivoContext = createContext({ lista: CURRICULUM, byId: BY_ID, totalBonus: TOTAL_BONUS });
+function useAtivo() { return useContext(AtivoContext); }
 
 const SIMULADOS = [
   ["Simulado 1", "2026-04-12", "2026-04-22"], ["Simulado 2", "2026-05-10", "2026-05-20"],
