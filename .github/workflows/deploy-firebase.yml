@@ -28,6 +28,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Sem o segredo, a ação do Firebase morria com um rastro de pilha do
+      # Node — vermelho, mas ilegível. Ficou assim por catorze publicações
+      # seguidas: o Worker subia, as páginas não, e nada dizia por quê.
+      # Aqui o motivo aparece na primeira linha do log.
+      - name: Conferir se há conta de serviço
+        env:
+          TEM: ${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' }}
+        run: |
+          if [ "$TEM" != "true" ]; then
+            echo "::error::Falta o segredo FIREBASE_SERVICE_ACCOUNT em Settings › Secrets and variables › Actions. As páginas do site NÃO foram publicadas — o que está no ar continua sendo a versão anterior."
+            exit 1
+          fi
+
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: '${{ secrets.GITHUB_TOKEN }}'
