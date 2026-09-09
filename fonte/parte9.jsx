@@ -303,7 +303,12 @@ function Cronograma({ data, setData, notify }) {
  * ela já recebeu, um marcador existente merece entrar num cartão — ela não
  * enxerga a imagem em si, só o marcador que aponta pra ela.
  */
-const PDF_JS_VERSAO = "4.0.379";
+/* A partir da versão 4, o pdfjs-dist passou a publicar só como módulo ES
+   (build/pdf.mjs) — sem o build clássico que expõe window.pdfjsLib ao
+   carregar por <script>, do jeito que baixarScript() carrega. A 3.11.174 é
+   a última da série 3.x, e essa ainda tem. Se um dia for preciso subir de
+   versão, troque para o jeito de import() de módulo, não só o número aqui. */
+const PDF_JS_VERSAO = "3.11.174";
 const PDF_JS_CDN = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDF_JS_VERSAO}/pdf.min.js`;
 const PDF_WORKER_CDN = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDF_JS_VERSAO}/pdf.worker.min.js`;
 const MAMMOTH_CDN = "https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.7.0/mammoth.browser.min.js";
