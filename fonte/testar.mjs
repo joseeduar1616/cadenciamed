@@ -192,6 +192,49 @@ if (await linhaAula.count() === 0) {
       if (await imgDepois.count() > 0 && /^data:/.test((await imgDepois.first().getAttribute('src')) || '')) {
         ok('anotação: a imagem volta a aparecer, lida de volta do IndexedDB');
       } else falha('anotação: a imagem não voltou depois de recarregar');
+
+      /* ── gerar flashcards a partir da anotação ─────────────────────── */
+      /* Cartões é recurso do plano completo: só faz sentido conferir que o
+         cartão chegou lá no build de teste, com o plano liberado (o mesmo
+         motivo pelo qual os outros testes de Cartões, mais abaixo, só
+         rodam dentro deste "if (liberado)"). */
+      if (!liberado) {
+        // segue sem testar esta parte no build de produção fechado
+      } else {
+      await pag.route('**/api/flashcards-ia', (rota) => rota.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ baralho: 'Teste', cartoes: [{ frente: 'Pergunta de teste', verso: 'Resposta de teste' }] }),
+      }));
+      const gerarBtn = pag.locator('button:has-text("Gerar flashcards com IA")');
+      if (await gerarBtn.count() === 0) {
+        falha('anotação: não achei o botão de gerar flashcards');
+      } else {
+        await gerarBtn.click();
+        await pag.waitForTimeout(600);
+        await ir('Cartões');
+        const t = await texto();
+        /* a área da aula testada (Epidemiologia, PR) vai para "GO E
+           PREVENTIVA" — PASTA_POR_AREA_NOTA, em parte17.jsx */
+        if (/GO E PREVENTIVA/.test(t)) {
+          ok('anotação: os flashcards gerados caem na pasta grande certa, em Cartões');
+        } else falha('anotação: a pasta "GO E PREVENTIVA" não apareceu em Cartões: ' + t.slice(0, 300));
+
+        /* limpa o que este teste criou: os testes de Cartões, mais abaixo,
+           pressupõem que "Pasta de teste" é a única pasta e usam .first()
+           nos botões — deixar "GO E PREVENTIVA" para trás bagunçaria a
+           ordem e quebraria esses testes por posição, não por defeito. */
+        await pag.evaluate(() => {
+          const bruto = window.localStorage.getItem('cadencia:v3');
+          const d = bruto ? JSON.parse(bruto) : null;
+          if (!d) return;
+          d.flash = (d.flash || []).filter((c) => c.pasta !== 'GO E PREVENTIVA');
+          d.pastas = (d.pastas || []).filter((p) => p !== 'GO E PREVENTIVA');
+          window.localStorage.setItem('cadencia:v3', JSON.stringify(d));
+        });
+        await pag.reload({ waitUntil: 'load' });
+        await pag.waitForTimeout(2200);
+      }
+      }
     }
   }
 }
