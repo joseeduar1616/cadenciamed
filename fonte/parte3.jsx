@@ -594,6 +594,124 @@ function useGoogleAgenda({ data, setData, notify, ladder, today }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
+   6.4 · GOOGLE DRIVE
+   Usado só para enviar a anotação exportada (parte17.jsx) para uma pasta
+   que a pessoa escolhe no Drive dela. Pedido de autorização separado do da
+   Agenda, com um escopo diferente (drive.file) — só na hora em que a
+   pessoa realmente clica em enviar algo, não de saída: quem nunca usa essa
+   função nunca vê essa tela de permissão do Google.
+
+   drive.file é o escopo mínimo: só alcança os arquivos que este app criou
+   ou que a pessoa abriu com ele — nunca o Drive inteiro. É por isso que dá
+   para criar pasta e enviar arquivo aqui, mas não listar tudo que já existe
+   fora do que este app criou (a pasta em si a pessoa escolhe/cria por
+   aqui, então esse limite não atrapalha o fluxo).
+   ═══════════════════════════════════════════════════════════════════ */
+
+const ESCOPO_DRIVE = "https://www.googleapis.com/auth/drive.file";
+const API_DRIVE = "https://www.googleapis.com/drive/v3";
+const API_DRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3";
+
+function useGoogleDrive() {
+  const [pronto, setPronto] = useState(false);
+  const [token, setToken] = useState(null);
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState("");
+  const cliente = useRef(null);
+
+  useEffect(() => {
+    if (!GOOGLE_CFG) return undefined;
+    if (window.google && window.google.accounts) { setPronto(true); return undefined; }
+    const s = document.createElement("script");
+    s.src = "https://accounts.google.com/gsi/client";
+    s.async = true;
+    s.onload = () => setPronto(true);
+    s.onerror = () => setErro("Não consegui carregar o login do Google.");
+    document.head.appendChild(s);
+    return undefined;
+  }, []);
+
+  const pedirToken = useCallback(() => new Promise((resolve) => {
+    if (!window.google || !window.google.accounts) return resolve(null);
+    try {
+      cliente.current = window.google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CFG.clientId,
+        scope: ESCOPO_DRIVE,
+        callback: (r) => {
+          if (r && r.access_token) { setToken(r.access_token); resolve(r.access_token); return; }
+          const motivo = (r && (r.error_description || r.error)) || "";
+          setErro(motivo ? `O Google recusou a autorização: ${motivo}` : "Autorização não concluída.");
+          resolve(null);
+        },
+        error_callback: () => { setErro("Não consegui autorizar o Google Drive."); resolve(null); },
+      });
+      cliente.current.requestAccessToken();
+    } catch (e) { setErro("Não consegui abrir a autorização do Google."); resolve(null); }
+  }), []);
+
+  const conectar = useCallback(async () => {
+    setErro(""); setOcupado(true);
+    const tk = token || (await pedirToken());
+    setOcupado(false);
+    return !!tk;
+  }, [token, pedirToken]);
+
+  const chamar = useCallback(async (caminho, opts) => {
+    const tk = token || (await pedirToken());
+    if (!tk) return null;
+    return fetch(API_DRIVE + caminho, { ...opts, headers: { Authorization: `Bearer ${tk}`, ...(opts && opts.headers) } });
+  }, [token, pedirToken]);
+
+  const listarPastas = useCallback(async (paiId) => {
+    setErro(""); setOcupado(true);
+    const pai = paiId || "root";
+    const q = encodeURIComponent(`'${pai}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+    const r = await chamar(`/files?q=${q}&fields=files(id,name)&orderBy=name&pageSize=100&spaces=drive`);
+    setOcupado(false);
+    if (!r) return null;
+    if (!r.ok) { setErro("Não consegui listar as pastas do Drive."); return null; }
+    const j = await r.json().catch(() => null);
+    return (j && j.files) || [];
+  }, [chamar]);
+
+  const criarPasta = useCallback(async (nome, paiId) => {
+    setErro(""); setOcupado(true);
+    const r = await chamar("/files?fields=id,name", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: nome, mimeType: "application/vnd.google-apps.folder", parents: [paiId || "root"] }),
+    });
+    setOcupado(false);
+    if (!r) return null;
+    if (!r.ok) { setErro("Não consegui criar a pasta no Drive."); return null; }
+    return r.json().catch(() => null);
+  }, [chamar]);
+
+  const enviarArquivo = useCallback(async (nome, mime, blob, pastaId) => {
+    setErro(""); setOcupado(true);
+    const tk = token || (await pedirToken());
+    if (!tk) { setOcupado(false); return null; }
+    const metadados = { name: nome, parents: [pastaId || "root"] };
+    const boundary = `cadencia-${uid()}`;
+    const cabecalho = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadados)}\r\n--${boundary}\r\nContent-Type: ${mime}\r\n\r\n`;
+    const corpo = new Blob([cabecalho, blob, `\r\n--${boundary}--`]);
+    const r = await fetch(`${API_DRIVE_UPLOAD}/files?uploadType=multipart&fields=id,webViewLink`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${tk}`, "Content-Type": `multipart/related; boundary=${boundary}` },
+      body: corpo,
+    });
+    setOcupado(false);
+    if (!r.ok) { setErro("Não consegui enviar o arquivo para o Drive."); return null; }
+    return r.json().catch(() => null);
+  }, [token, pedirToken]);
+
+  return {
+    disponivel: !!GOOGLE_CFG, pronto, conectado: !!token, ocupado, erro,
+    conectar, listarPastas, criarPasta, enviarArquivo,
+  };
+}
+
+/* ═══════════════════════════════════════════════════════════════════
    6.5 · MENTOR
    Quem resgata o cupom "mentor1612" (rota /api/cupom) ganha esta aba, e
    adiciona alunos pelo e-mail com que eles se cadastraram. Os dados do
