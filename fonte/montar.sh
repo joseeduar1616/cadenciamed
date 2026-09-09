@@ -41,6 +41,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar.mjs index.html
   echo "── funções do servidor ─────────────────────────────"
   node testar-assistente.mjs
+  node testar-flashcards-ia.mjs
   node testar-cupom.mjs
   node testar-acessos.mjs
   node testar-compra.mjs

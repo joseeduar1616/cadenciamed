@@ -497,6 +497,76 @@ export default function Cadencia() {
   const firstName = (data.profile.name || "").trim().split(" ")[0];
   const daysToExam = data.profile.examDate ? diffDays(today, data.profile.examDate) : null;
 
+  /* Os dois grupos de controle do cabeçalho, prontos para entrar tanto na
+     fileira do celular (acima da marca, no fluxo normal) quanto nos cantos
+     flutuantes do computador (position: absolute). Presos só nos cantos, no
+     celular eles caíam por cima da marca — que nunca encolhe abaixo de
+     150px — principalmente com o cronômetro rodando, que é quando o grupo da
+     direita fica mais largo. */
+  const controlesEsquerda = (
+    <>
+      {estreita ? (
+        <button type="button" aria-label="Abrir menu" onClick={() => setMenuAberto(true)}
+          className="flex items-center justify-center rounded-full brilhar"
+          style={{ width: 38, height: 38, background: T.card, border: `1px solid ${T.line}`, color: T.ink, cursor: "pointer" }}>
+          <Menu size={17} />
+        </button>
+      ) : null}
+      <span className="hidden sm:block" style={{ marginTop: 4 }}>
+        <Mini>{greet}{firstName ? `, ${firstName}` : ""}</Mini>
+      </span>
+    </>
+  );
+
+  const controlesDireita = (
+    <>
+      {P.running || (P.modo === "corrido" ? P.corrido > 0 : P.left !== P.total) ? (
+        <div className="flex items-center rounded-full brilhar"
+          style={{
+            background: soft(P.modo === "corrido" || P.phase === "foco" ? data.pomo.corFoco : data.pomo.corPausa, 18),
+            border: `1px solid ${T.line}`, paddingLeft: 4, paddingRight: 4,
+          }}>
+          <button type="button" aria-label={P.running ? "Pausar cronômetro" : "Retomar cronômetro"}
+            onClick={() => P.setRunning(!P.running)} className="flex items-center justify-center rounded-full"
+            style={{ width: 28, height: 28, background: "transparent", border: "none", cursor: "pointer", color: P.modo === "corrido" || P.phase === "foco" ? data.pomo.corFoco : data.pomo.corPausa }}>
+            {P.running ? <Pause size={14} /> : <Play size={14} />}
+          </button>
+          <button type="button" onClick={() => setTab("foco")} title="Abrir o foco"
+            style={{ background: "transparent", border: "none", cursor: "pointer", padding: "0 9px 0 2px" }}>
+            <Num size={14} weight={700} color={P.modo === "corrido" || P.phase === "foco" ? data.pomo.corFoco : data.pomo.corPausa}>
+              {P.modo === "corrido" ? fmtRelogio(P.corrido) : fmtClock(P.left)}
+            </Num>
+          </button>
+        </div>
+      ) : null}
+      {daysToExam !== null && daysToExam >= 0 ? (
+        <div className="rounded-full px-3 py-1.5 hidden sm:flex items-center gap-2" style={{ border: `1px solid ${T.line}` }}>
+          <Zap size={12} style={{ color: T.warn }} />
+          <Num size={12} weight={700}>{daysToExam}</Num>
+          <Mini style={{ fontSize: 10.5 }}>dias</Mini>
+        </div>
+      ) : null}
+      {nuvem.ligado ? (
+        <button type="button" onClick={() => setTab("progresso")}
+          aria-label={nuvem.usuario ? "Conta conectada" : "Entrar na conta"}
+          className="flex items-center justify-center brilhar"
+          style={{
+            width: 32, height: 32, borderRadius: 99, cursor: "pointer",
+            background: "transparent", border: `1px solid ${T.line}`,
+            color: nuvem.usuario ? T.ok : T.faint,
+          }}>
+          {nuvem.usuario ? <Cloud size={14} /> : <CloudOff size={14} />}
+        </button>
+      ) : null}
+      <button type="button" aria-label="Alternar tema"
+        onClick={() => setData((p) => ({ ...p, theme: p.theme === "dark" ? "light" : "dark" }))}
+        className="flex items-center justify-center brilhar"
+        style={{ width: 32, height: 32, borderRadius: 99, background: "transparent", border: `1px solid ${T.line}`, color: T.faint, cursor: "pointer" }}>
+        {data.theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
+      </button>
+    </>
+  );
+
   return (
     <div data-theme={data.theme} style={{ background: T.bg, minHeight: "100vh", color: T.ink, fontFamily: F_UI, fontWeight: 500, "--acc": acc }}>
       <style>{`
@@ -661,70 +731,35 @@ export default function Cadencia() {
           <div className="flex-1 min-w-0">
           <header className="px-5 sm:px-8 pt-7 pb-4">
             <div className="mx-auto" style={{ maxWidth: LARGURA }}>
-              {/* Marca ao centro, saudação à esquerda e controles à direita,
-                  em três colunas que se empilham no celular. */}
-              {/* Marca ao centro, controles flutuando nos cantos e a
-                  navegação logo abaixo, também centralizada. */}
+              {/* Com a barra lateral fixa (tela larga), marca ao centro e
+                  controles flutuando nos cantos. Com a barra em gaveta (tela
+                  estreita, o mesmo limiar que já decide isso na barra lateral)
+                  os cantos não sobram largura — a marca nunca encolhe abaixo
+                  de 150px —, então os controles vão numa fileira própria,
+                  acima da marca e no fluxo normal da página, em vez de
+                  flutuar por cima dela. */}
               <div style={{ position: "relative" }}>
-                <div className="flex items-center gap-3" style={{ position: "absolute", left: 0, top: 0 }}>
-                  {estreita ? (
-                    <button type="button" aria-label="Abrir menu" onClick={() => setMenuAberto(true)}
-                      className="flex items-center justify-center rounded-full brilhar"
-                      style={{ width: 38, height: 38, background: T.card, border: `1px solid ${T.line}`, color: T.ink, cursor: "pointer" }}>
-                      <Menu size={17} />
-                    </button>
-                  ) : null}
-                  <span className="hidden sm:block" style={{ marginTop: 4 }}>
-                    <Mini>{greet}{firstName ? `, ${firstName}` : ""}</Mini>
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-2" style={{ position: "absolute", right: 0, top: 0 }}>
-                  {P.running || (P.modo === "corrido" ? P.corrido > 0 : P.left !== P.total) ? (
-                    <div className="flex items-center rounded-full brilhar"
-                      style={{
-                        background: soft(P.modo === "corrido" || P.phase === "foco" ? data.pomo.corFoco : data.pomo.corPausa, 18),
-                        border: `1px solid ${T.line}`, paddingLeft: 4, paddingRight: 4,
-                      }}>
-                      <button type="button" aria-label={P.running ? "Pausar cronômetro" : "Retomar cronômetro"}
-                        onClick={() => P.setRunning(!P.running)} className="flex items-center justify-center rounded-full"
-                        style={{ width: 28, height: 28, background: "transparent", border: "none", cursor: "pointer", color: P.modo === "corrido" || P.phase === "foco" ? data.pomo.corFoco : data.pomo.corPausa }}>
-                        {P.running ? <Pause size={14} /> : <Play size={14} />}
-                      </button>
-                      <button type="button" onClick={() => setTab("foco")} title="Abrir o foco"
-                        style={{ background: "transparent", border: "none", cursor: "pointer", padding: "0 9px 0 2px" }}>
-                        <Num size={14} weight={700} color={P.modo === "corrido" || P.phase === "foco" ? data.pomo.corFoco : data.pomo.corPausa}>
-                          {P.modo === "corrido" ? fmtRelogio(P.corrido) : fmtClock(P.left)}
-                        </Num>
-                      </button>
+                {/* Um grupo só, nunca os dois juntos no HTML: renderizar as
+                   duas versões e esconder uma por CSS deixava a escondida no
+                   documento assim mesmo, e quem busca "o botão de tema" por
+                   ordem do HTML — o próprio teste do navegador incluído —
+                   podia pegar a cópia invisível e travar esperando ela
+                   aparecer. */}
+                {estreita ? (
+                  <div className="flex items-center justify-between" style={{ marginBottom: 16 }}>
+                    <div className="flex items-center gap-3">{controlesEsquerda}</div>
+                    <div className="flex items-center gap-2">{controlesDireita}</div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-3" style={{ position: "absolute", left: 0, top: 0 }}>
+                      {controlesEsquerda}
                     </div>
-                  ) : null}
-                  {daysToExam !== null && daysToExam >= 0 ? (
-                    <div className="rounded-full px-3 py-1.5 hidden sm:flex items-center gap-2" style={{ border: `1px solid ${T.line}` }}>
-                      <Zap size={12} style={{ color: T.warn }} />
-                      <Num size={12} weight={700}>{daysToExam}</Num>
-                      <Mini style={{ fontSize: 10.5 }}>dias</Mini>
+                    <div className="flex items-center gap-2" style={{ position: "absolute", right: 0, top: 0 }}>
+                      {controlesDireita}
                     </div>
-                  ) : null}
-                  {nuvem.ligado ? (
-                    <button type="button" onClick={() => setTab("progresso")}
-                      aria-label={nuvem.usuario ? "Conta conectada" : "Entrar na conta"}
-                      className="flex items-center justify-center brilhar"
-                      style={{
-                        width: 32, height: 32, borderRadius: 99, cursor: "pointer",
-                        background: "transparent", border: `1px solid ${T.line}`,
-                        color: nuvem.usuario ? T.ok : T.faint,
-                      }}>
-                      {nuvem.usuario ? <Cloud size={14} /> : <CloudOff size={14} />}
-                    </button>
-                  ) : null}
-                  <button type="button" aria-label="Alternar tema"
-                    onClick={() => setData((p) => ({ ...p, theme: p.theme === "dark" ? "light" : "dark" }))}
-                    className="flex items-center justify-center brilhar"
-                    style={{ width: 32, height: 32, borderRadius: 99, background: "transparent", border: `1px solid ${T.line}`, color: T.faint, cursor: "pointer" }}>
-                    {data.theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
-                  </button>
-                </div>
+                  </>
+                )}
 
                 {/* A marca é só a onda: o nome vem escrito logo abaixo, então
                     repetir o texto que existe dentro da logo ficaria dobrado. */}

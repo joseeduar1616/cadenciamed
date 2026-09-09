@@ -36,8 +36,8 @@ const pedir = (caminho, metodo = 'POST', cabecalhos = {}) => {
   }), env, {});
 };
 
-/* ── as seis rotas existem e não caem nos arquivos ───────────────────── */
-for (const rota of ['/api/assistente', '/api/cupom', '/api/acessos', '/api/compra', '/api/salas', '/api/baralhos']) {
+/* ── as rotas existem e não caem nos arquivos ────────────────────────── */
+for (const rota of ['/api/assistente', '/api/flashcards-ia', '/api/cupom', '/api/acessos', '/api/compra', '/api/salas', '/api/baralhos']) {
   const r = await pedir(rota);
   if (pedidoAoAssets === null) ok(`${rota} é atendida pelo Worker, não pelos arquivos`);
   else falha(`${rota} caiu nos arquivos estáticos`);

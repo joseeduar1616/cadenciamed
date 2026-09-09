@@ -341,8 +341,12 @@ function Rotina({ data, setData, gcal, today }) {
         </div>
         {gcal && gcal.erro ? <Label style={{ marginTop: 12, color: T.bad }}>{gcal.erro}</Label> : null}
 
-        {/* fita dos sete dias: onde se escolhe o dia e se vê a carga */}
-        <div className="mt-5 flex gap-2" style={{ overflowX: "auto", paddingBottom: 2 }}>
+        {/* fita dos sete dias: onde se escolhe o dia e se vê a carga.
+            Largura mínima de 76px por dia cabia numa tela larga, mas nas
+            estreitas os sete não cabiam: o card do fim da semana ficava
+            cortado ao meio, sem nada dizendo que dava para arrastar. Sem
+            largura mínima, os sete sempre dividem o espaço que existe. */}
+        <div className="mt-5 flex gap-1 sm:gap-2" style={{ paddingBottom: 2 }}>
           {dias.map((iso, i) => {
             const hoje = iso === today;
             const marcado = i === escolhido;
@@ -350,9 +354,9 @@ function Rotina({ data, setData, gcal, today }) {
             const cumpridos = col.filter((b) => feitos[chaveBloco(b, iso)]).length;
             return (
               <button key={iso} type="button" onClick={() => { setEscolhido(i); setVista("dia"); }}
-                className="rounded-2xl px-3 py-3 brilhar"
+                className="rounded-2xl px-1 py-2.5 sm:px-3 sm:py-3 brilhar"
                 style={{
-                  flex: "1 1 0%", minWidth: 76, cursor: "pointer", textAlign: "center",
+                  flex: "1 1 0%", minWidth: 0, cursor: "pointer", textAlign: "center",
                   background: marcado ? soft("var(--a-PE)", 16) : T.card2,
                   border: `1px solid ${marcado ? soft("var(--a-PE)", 42) : "transparent"}`,
                 }}>
