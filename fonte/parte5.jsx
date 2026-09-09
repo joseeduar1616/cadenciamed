@@ -297,7 +297,7 @@ function LogForm({ today, addSession, notify, onDone }) {
   );
 }
 
-function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, done, bonusDone, addSession, delSession, notify, go, blocosHoje, projecao, pro, verPlanos }) {
+function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, done, bonusDone, addSession, delSession, notify, go, blocosHoje, projecao, pro, verPlanos, cartoesHoje }) {
   const [openLog, setOpenLog] = useState(false);
   const [newTask, setNewTask] = useState("");
   const todaySessions = data.sessions.filter((s) => s.date === today);
@@ -459,6 +459,19 @@ function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, do
             <H color="var(--a-GO)" icon={<ListChecks size={16} />}>Pendências</H>
             <Label>{openTasks} aberta{openTasks === 1 ? "" : "s"}</Label>
           </div>
+
+          {cartoesHoje ? (
+            <button type="button" onClick={() => go("cartoes")}
+              className="mt-4 flex items-center gap-3 rounded-2xl px-4 py-3 w-full brilhar"
+              style={{ background: soft("var(--neon)", 12), border: `1px solid ${soft("var(--neon)", 30)}`, cursor: "pointer", textAlign: "left" }}>
+              <Layers size={16} style={{ color: "var(--neon)", flexShrink: 0 }} />
+              <span className="flex-1 min-w-0" style={{ fontSize: 14.5, fontWeight: 600, color: T.ink }}>
+                {cartoesHoje} flashcard{cartoesHoje === 1 ? "" : "s"} para hoje
+              </span>
+              <ChevronRight size={15} style={{ color: T.faint, flexShrink: 0 }} />
+            </button>
+          ) : null}
+
           <div className="mt-4 flex gap-2">
             <TextInput value={newTask} placeholder="Anotar" onChange={(e) => setNewTask(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") addTask(); }} />

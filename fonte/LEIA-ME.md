@@ -185,10 +185,10 @@ Variáveis de ambiente: `FIREBASE_API_KEY`, `FIREBASE_SERVICE_ACCOUNT`,
 `WEBHOOK_SEGREDO`, `CUPONS`, a chave da IA e, para o Notion,
 `NOTION_CLIENT_ID`, `NOTION_CLIENT_SECRET` e `NOTION_REDIRECT`.
 
-### Ligar o Notion (MEDPlanner)
+### Ligar o Notion
 
 A rota `/api/notion` liga a conta de quem usa o site à conta do Notion dela e
-lê de lá o MEDPlanner. Enquanto as variáveis não existirem, o painel na aba
+lê de lá o cronograma. Enquanto as variáveis não existirem, o painel na aba
 Assistente diz isso na tela em vez de mandar a pessoa para uma página de erro
 do Notion — e nada mais acontece.
 
@@ -552,6 +552,33 @@ O teto de saída é 4000 tokens. Estava em 1400, e um plano de semana passava
 disso: a resposta chegava cortada no meio da frase sem nada dizendo por quê.
 Quando ainda assim bater no teto, o servidor devolve `cortado: true` e a
 bolha avisa, em vez de parecer travamento.
+
+### Contar o que acabou de estudar
+
+Além de tarefa, "preciso rever" e bloco de rotina, o bloco `<acoes>` aceita
+`{"tipo":"sessao",...}`: a pessoa conta o que acabou de fazer ("30 questões
+de febre reumática, acertei 27, em 45 min") e o assistente registra a sessão
+sozinho, sem passar pelo formulário de lançar à mão.
+
+`acharMateriaPorNome` (`parte9.jsx`) acha a aula do currículo mais parecida
+com o nome que a pessoa escreveu, reaproveitando o mesmo casamento por
+palavras que o cronograma do Notion já usa (`palavras`/`parecenca`, em
+`parte15.jsx`) — só que com um limiar mais solto (`LIMIAR_SESSAO_CHAT`),
+porque texto de chat digitado rápido tem menos sobreposição de palavras que
+um planner escrito com calma. Achando a aula, ela é marcada como estudada do
+mesmo jeito que o checkbox de Matérias marca — só grava a data na primeira
+vez, para não apagar uma data antiga se a pessoa mencionar de novo depois.
+Minutos são opcionais de propósito: a instrução da IA pede para não inventar
+número que a pessoa não disse.
+
+### Escolher o tipo da sessão, ao terminar o cronômetro
+
+O cronômetro do Foco sempre gravava a sessão como "Aula". Agora, ao terminar
+(ou parar o tempo corrido), um modal pergunta o tipo de verdade — Aula,
+Apostila, Questões, Revisão, Flashcards, Prática clínica — e, se for
+Questões, quantas e quantos acertos. A sessão já entra gravada como Aula
+antes do modal aparecer, para não perder o tempo registrado se a pessoa
+ignorar a pergunta; o modal só corrige o que já foi salvo.
 
 ## Salas de amigos
 

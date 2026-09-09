@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════════════════════════
-   29 · CRONOGRAMA DO NOTION (MEDPlanner)
+   29 · CRONOGRAMA DO NOTION
 
-   Quem já organiza o ano num MEDPlanner do Notion não deveria ter de
+   Quem já organiza o ano num planner do Notion não deveria ter de
    marcar tudo de novo aqui. Esta parte liga a conta do Notion, lê o
    planner e traz para o app o que já foi feito: a aula, as questões, os
    cartões, o desempenho e quais revisões foram cumpridas.
@@ -349,7 +349,7 @@ function Notion({ nuvem, subjects, data, setData, notify }) {
       <Card className="px-6 py-6">
         <H color="var(--neon2)" icon={<BookMarked size={16} />}>Cronograma do Notion</H>
         <Texto style={{ marginTop: 10 }}>
-          Entre na sua conta em Progresso para ligar o seu MEDPlanner do Notion.
+          Entre na sua conta em Progresso para ligar o seu planner do Notion.
         </Texto>
       </Card>
     );
@@ -359,7 +359,7 @@ function Notion({ nuvem, subjects, data, setData, notify }) {
     <Card className="px-6 py-6" brilho="var(--neon2)">
       <H color="var(--neon2)" icon={<BookMarked size={16} />}>Cronograma do Notion</H>
       <Texto style={{ marginTop: 10 }}>
-        Se você organiza o ano num MEDPlanner do Notion, dá para trazer de lá o
+        Se você organiza o ano num planner do Notion, dá para trazer de lá o
         que já foi feito: a aula, as questões, os cartões, o desempenho e as
         revisões marcadas. Nada é escrito por cima — a importação só acrescenta
         o que ainda não está marcado aqui.
@@ -387,7 +387,7 @@ function Notion({ nuvem, subjects, data, setData, notify }) {
               escolher o cronograma
             </Btn>
             <Btn size="sm" tone="primary" onClick={ler} disabled={!!ocupado}>
-              {ocupado === "lendo" ? "lendo…" : "ler o MEDPlanner"}
+              {ocupado === "lendo" ? "lendo…" : "ler o cronograma"}
             </Btn>
             <Btn size="sm" tone="danger" onClick={desligar} disabled={!!ocupado}>desligar</Btn>
           </>
@@ -411,7 +411,7 @@ function Notion({ nuvem, subjects, data, setData, notify }) {
           </Field>
           {bancos.length === 0 ? (
             <Mini style={{ marginTop: 8, lineHeight: 1.7 }}>
-              Nenhum cronograma apareceu. No Notion, abra o seu MEDPlanner, clique
+              Nenhum cronograma apareceu. No Notion, abra a página do seu cronograma, clique
               nos três pontinhos e compartilhe a página com o Cadência Med.
             </Mini>
           ) : null}
