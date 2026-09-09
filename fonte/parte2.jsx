@@ -31,7 +31,7 @@ const DEFAULTS = {
   },
   pomoLog: [],
   simulados: {}, provas: [], habits: HABITS_SEED, habitLog: {},
-  rever: [], notes: {}, googleCal: { id: "", ultima: 0 },
+  rever: [], notes: {}, googleCal: { id: "", ultima: 0, autoSync: false },
   /* Cronograma que a pessoa recebeu do curso dela, em texto, para o
      assistente organizar a rotina em cima do que ela realmente tem. */
   cronograma: { nome: "", texto: "" },
@@ -119,6 +119,7 @@ function normalize(raw) {
     googleCal: {
       id: typeof gc.id === "string" ? gc.id : "",
       ultima: Number(gc.ultima) || 0,
+      autoSync: !!gc.autoSync,
     },
     /* Os cartões precisam sobreviver ao recarregar a página: como tudo passa
        por aqui na volta do disco e da nuvem, o que não for copiado se perde. */

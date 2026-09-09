@@ -339,6 +339,13 @@ function Rotina({ data, setData, gcal, today }) {
             ) : null}
           </div>
         </div>
+        {gcal && gcal.autoSync ? (
+          <Mini style={{ marginTop: 10 }}>
+            sincronizando sozinho a cada 30 min{gcal.ultima
+              ? ` · última vez às ${pad(new Date(gcal.ultima).getHours())}:${pad(new Date(gcal.ultima).getMinutes())}`
+              : ""}
+          </Mini>
+        ) : null}
         {gcal && gcal.erro ? <Label style={{ marginTop: 12, color: T.bad }}>{gcal.erro}</Label> : null}
 
         {/* fita dos sete dias: onde se escolhe o dia e se vê a carga.

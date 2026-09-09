@@ -435,73 +435,91 @@ function useGoogleAgenda({ data, setData, notify, ladder, today }) {
     data.profile.examDate, ladder, today, chamar, setData, notify]);
 
   /* Lê os compromissos com horário marcado da semana pedida e grava com a
-     data exata. O identificador do Google evita duplicar ao puxar de novo. */
-  const importarRotina = useCallback(async (inicioSemana) => {
-    setErro(""); setOcupado(true);
-    try {
-      const tk = token || (await pedirToken());
-      if (!tk) { setOcupado(false); return; }
-      const de = inicioSemana || weekStart(today);
-      const ini = new Date(`${de}T00:00:00`).toISOString();
-      const fim = new Date(`${addDays(de, 7)}T00:00:00`).toISOString();
-      const r = await chamar(tk,
-        `/calendars/primary/events?timeMin=${encodeURIComponent(ini)}`
-        + `&timeMax=${encodeURIComponent(fim)}&singleEvents=true&orderBy=startTime&maxResults=250`);
-      if (!r.ok || !r.dados || !r.dados.items) throw new Error("busca");
+     data exata. O identificador do Google evita duplicar ao puxar de novo.
+     Separada do clique do botão (importarRotina) para poder ser chamada
+     também pela sincronização automática, já com o token em mãos — assim
+     ela nunca dispara um pedido de autorização sozinha. */
+  const executarImportacao = useCallback(async (tk, inicioSemana, silencioso) => {
+    const de = inicioSemana || weekStart(today);
+    const ini = new Date(`${de}T00:00:00`).toISOString();
+    const fim = new Date(`${addDays(de, 7)}T00:00:00`).toISOString();
+    const r = await chamar(tk,
+      `/calendars/primary/events?timeMin=${encodeURIComponent(ini)}`
+      + `&timeMax=${encodeURIComponent(fim)}&singleEvents=true&orderBy=startTime&maxResults=250`);
+    if (!r.ok || !r.dados || !r.dados.items) throw new Error("busca");
 
-      const tipoDe = (txt) => {
-        const s = (txt || "").toLowerCase();
-        if (/plant[ãa]o/.test(s)) return "Plantão";
-        if (/enferm|visita|ambulat|amb\b|consult|parecer|sess[ãa]o/.test(s)) return "Enfermaria";
-        if (/aula|reuni[ãa]o|semin[áa]rio|palestra/.test(s)) return "Aula";
-        if (/quest|banco/.test(s)) return "Questões";
-        if (/estud|revis/.test(s)) return "Estudo";
-        if (/almo[çc]o|descans|folga|academia|treino/.test(s)) return "Descanso";
-        return "Pessoal";
-      };
+    const tipoDe = (txt) => {
+      const s = (txt || "").toLowerCase();
+      if (/plant[ãa]o/.test(s)) return "Plantão";
+      if (/enferm|visita|ambulat|amb\b|consult|parecer|sess[ãa]o/.test(s)) return "Enfermaria";
+      if (/aula|reuni[ãa]o|semin[áa]rio|palestra/.test(s)) return "Aula";
+      if (/quest|banco/.test(s)) return "Questões";
+      if (/estud|revis/.test(s)) return "Estudo";
+      if (/almo[çc]o|descans|folga|academia|treino/.test(s)) return "Descanso";
+      return "Pessoal";
+    };
 
-      const novos = [];
-      for (const ev of r.dados.items) {
-        if (ev.status === "cancelled") continue;
-        if (!ev.start || !ev.start.dateTime || !ev.end || !ev.end.dateTime) continue;
-        if ((ev.attendees || []).some((a) => a.self && a.responseStatus === "declined")) continue;
-        const a = new Date(ev.start.dateTime), b = new Date(ev.end.dateTime);
-        if (toISO(a) !== toISO(b)) continue;
-        novos.push({
-          id: uid(), gid: ev.id || null, date: toISO(a),
-          label: (ev.summary || "Sem título").slice(0, 60),
-          type: tipoDe(ev.summary),
-          start: `${pad(a.getHours())}:${pad(a.getMinutes())}`,
-          end: `${pad(b.getHours())}:${pad(b.getMinutes())}`,
-        });
-      }
-      if (novos.length === 0) { notify("Nenhum compromisso com horário marcado nesta semana."); return; }
-
-      let somados = 0, atualizados = 0;
-      setData((p) => {
-        const atual = (p.agenda || []).slice();
-        const chave = (x) => (x.gid ? `g:${x.gid}` : `m:${x.date}|${x.start}|${x.end}|${(x.label || "").toLowerCase()}`);
-        const idx = new Map(atual.map((x, i) => [chave(x), i]));
-        for (const n of novos) {
-          const k = chave(n);
-          if (idx.has(k)) {
-            const i = idx.get(k);
-            atual[i] = { ...atual[i], date: n.date, label: n.label, start: n.start, end: n.end };
-            atualizados += 1;
-          } else { atual.push(n); idx.set(k, atual.length - 1); somados += 1; }
-        }
-        return { ...p, agenda: atual };
+    const novos = [];
+    for (const ev of r.dados.items) {
+      if (ev.status === "cancelled") continue;
+      if (!ev.start || !ev.start.dateTime || !ev.end || !ev.end.dateTime) continue;
+      if ((ev.attendees || []).some((a) => a.self && a.responseStatus === "declined")) continue;
+      const a = new Date(ev.start.dateTime), b = new Date(ev.end.dateTime);
+      if (toISO(a) !== toISO(b)) continue;
+      novos.push({
+        id: uid(), gid: ev.id || null, date: toISO(a),
+        label: (ev.summary || "Sem título").slice(0, 60),
+        type: tipoDe(ev.summary),
+        start: `${pad(a.getHours())}:${pad(a.getMinutes())}`,
+        end: `${pad(b.getHours())}:${pad(b.getMinutes())}`,
       });
+    }
+
+    /* Chegou até aqui com a leitura ok: conta como sincronização válida,
+       tenha ou não achado compromisso novo — é o que liga o "sozinho daqui
+       pra frente" na primeira vez que a pessoa clica em Puxar do Google. */
+    setData((p) => ({ ...p, googleCal: { ...(p.googleCal || {}), autoSync: true, ultima: Date.now() } }));
+
+    if (novos.length === 0) {
+      if (!silencioso) notify("Nenhum compromisso com horário marcado nesta semana.");
+      return;
+    }
+
+    let somados = 0, atualizados = 0;
+    setData((p) => {
+      const atual = (p.agenda || []).slice();
+      const chave = (x) => (x.gid ? `g:${x.gid}` : `m:${x.date}|${x.start}|${x.end}|${(x.label || "").toLowerCase()}`);
+      const idx = new Map(atual.map((x, i) => [chave(x), i]));
+      for (const n of novos) {
+        const k = chave(n);
+        if (idx.has(k)) {
+          const i = idx.get(k);
+          atual[i] = { ...atual[i], date: n.date, label: n.label, start: n.start, end: n.end };
+          atualizados += 1;
+        } else { atual.push(n); idx.set(k, atual.length - 1); somados += 1; }
+      }
+      return { ...p, agenda: atual };
+    });
+    if (!silencioso) {
       window.setTimeout(() => {
         const partes = [];
         if (somados) partes.push(`${somados} novo${somados === 1 ? "" : "s"}`);
         if (atualizados) partes.push(`${atualizados} atualizado${atualizados === 1 ? "" : "s"}`);
         notify(`Compromissos da semana: ${partes.join(" e ")}.`);
       }, 60);
+    }
+  }, [today, chamar, setData, notify]);
+
+  const importarRotina = useCallback(async (inicioSemana) => {
+    setErro(""); setOcupado(true);
+    try {
+      const tk = token || (await pedirToken());
+      if (!tk) { setOcupado(false); return; }
+      await executarImportacao(tk, inicioSemana, false);
     } catch (e) {
       setErro("Não consegui ler a agenda. Talvez falte autorizar a leitura.");
     } finally { setOcupado(false); }
-  }, [token, pedirToken, chamar, today, setData, notify]);
+  }, [token, pedirToken, executarImportacao]);
 
   const desconectar = useCallback(() => {
     try {
@@ -510,12 +528,67 @@ function useGoogleAgenda({ data, setData, notify, ladder, today }) {
       }
     } catch (e) { /* noop */ }
     setToken(null);
+    setData((p) => ({ ...p, googleCal: { ...(p.googleCal || {}), autoSync: false } }));
     notify("Desconectado do Google Agenda.");
-  }, [token, notify]);
+  }, [token, notify, setData]);
+
+  /* Sincronização sozinha: depois que a pessoa puxa do Google uma vez
+     (importarRotina acima liga autoSync), tenta pegar um token sem abrir
+     janela nenhuma (prompt vazio só funciona se o navegador já concedeu
+     acesso antes) e, conseguindo, relê a semana atual a cada 30 minutos
+     com a aba aberta, e de novo sempre que a aba volta a ficar visível
+     depois de ficar 15 minutos ou mais em segundo plano. Não existe jeito
+     de sincronizar com o site fechado sem um servidor guardando um token
+     de atualização do Google — fora do alcance de um site estático. */
+  const autoSync = !!(data.googleCal && data.googleCal.autoSync);
+  const ultimaAutoRef = useRef(0);
+  useEffect(() => {
+    if (!GOOGLE_CFG || !autoSync || !pronto) return undefined;
+    let cancelado = false;
+
+    const tentarSilencioso = () => new Promise((resolve) => {
+      if (!window.google || !window.google.accounts) return resolve(null);
+      try {
+        const c = window.google.accounts.oauth2.initTokenClient({
+          client_id: GOOGLE_CFG.clientId,
+          scope: ESCOPO_GC,
+          callback: (r) => resolve(r && r.access_token ? r.access_token : null),
+          error_callback: () => resolve(null),
+        });
+        c.requestAccessToken({ prompt: "" });
+      } catch (e) { resolve(null); }
+    });
+
+    const rodar = async () => {
+      if (cancelado) return;
+      let tk = token;
+      if (!tk) tk = await tentarSilencioso();
+      if (!tk || cancelado) return;
+      if (!token) setToken(tk);
+      ultimaAutoRef.current = Date.now();
+      try { await executarImportacao(tk, weekStart(today), true); } catch (e) { /* tentativa silenciosa, ignora */ }
+    };
+
+    const primeira = window.setTimeout(rodar, 1500);
+    const intervalo = window.setInterval(rodar, 30 * 60 * 1000);
+    const aoVoltar = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - ultimaAutoRef.current < 15 * 60 * 1000) return;
+      rodar();
+    };
+    document.addEventListener("visibilitychange", aoVoltar);
+
+    return () => {
+      cancelado = true;
+      window.clearTimeout(primeira);
+      window.clearInterval(intervalo);
+      document.removeEventListener("visibilitychange", aoVoltar);
+    };
+  }, [autoSync, pronto, token, executarImportacao, today]);
 
   return {
     disponivel: !!GOOGLE_CFG, pronto, conectado: !!token, ocupado, progresso, erro,
-    sincronizar, importarRotina, desconectar,
+    sincronizar, importarRotina, desconectar, autoSync,
     ultima: (data.googleCal && data.googleCal.ultima) || 0,
   };
 }
