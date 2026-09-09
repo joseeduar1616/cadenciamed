@@ -1,7 +1,7 @@
 /* Cronograma do Notion · rota /api/notion
  *
  * Liga a conta de quem usa o site à conta do Notion dela, e lê de lá o
- * MEDPlanner: uma linha por semana, com o tema, a data, o que já foi feito
+ * O cronograma do Notion: uma linha por semana, com o tema, a data, o que já foi feito
  * e quais revisões foram cumpridas.
  *
  * A troca do código pelo token acontece aqui, no servidor, porque ela exige
@@ -25,13 +25,13 @@ const NOTION = "https://api.notion.com/v1";
    aviso. */
 const VERSAO_NOTION = "2022-06-28";
 
-/* Uma cópia do MEDPlanner tem cerca de 45 linhas, uma por semana. O limite
+/* Uma cópia do cronograma tem cerca de 45 linhas, uma por semana. O limite
    existe para o caso de alguém apontar para um banco enorme por engano. */
 const MAX_LINHAS = 400;
 
 const texto = (v) => (v && v.stringValue) || "";
 
-/* ── o que cada coluna do MEDPlanner vira aqui ─────────────────────────
+/* ── o que cada coluna do cronograma vira aqui ─────────────────────────
  *
  * A busca é pelo nome da coluna sem acento e sem caixa, porque cada cópia
  * do planner é editada à mão e "1 MÊS" acaba virando "1 mes" na de alguém.

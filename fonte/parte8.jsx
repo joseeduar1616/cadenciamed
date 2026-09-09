@@ -396,18 +396,46 @@ export default function Cadencia() {
   const pomoSubjRef = useRef(null);
   pomoSubjRef.current = pomoSubject;
 
+  /* Depois que o cronômetro termina, a sessão já entra gravada — como
+     "Aula", para não perder o tempo registrado se a pessoa ignorar a
+     pergunta —, e o modal abaixo pergunta o tipo de verdade. Sem isso, todo
+     minuto de foco virava "Aula" mesmo quando era revisão, flashcards ou
+     questões, e as questões nunca tinham como registrar o acerto. */
+  const [classificar, setClassificar] = useState(null); // { id, minutes }
+  const [tipoSessao, setTipoSessao] = useState(KINDS[0]);
+  const [qtdQuestoes, setQtdQuestoes] = useState("");
+  const [qtdAcertos, setQtdAcertos] = useState("");
+
   const onFocusDone = useCallback((mins, origem) => {
     const sid = pomoSubjRef.current, s = sid ? BY_ID[sid] : null;
+    const id = uid();
     setData((p) => ({
       ...p,
       sessions: [{
-        id: uid(), date: todayISO(), subjectId: sid, area: s ? s.area : null,
+        id, date: todayISO(), subjectId: sid, area: s ? s.area : null,
         topic: s ? s.title : "Foco livre", kind: "Aula", minutes: mins,
         questions: 0, correct: 0, notes: origem || "pomodoro", createdAt: Date.now(),
       }, ...p.sessions],
       pomoLog: [{ date: todayISO(), mins }, ...p.pomoLog].slice(0, 500),
     }));
+    if (mins > 0) {
+      setTipoSessao(KINDS[0]); setQtdQuestoes(""); setQtdAcertos("");
+      setClassificar({ id, minutes: mins });
+    }
   }, []);
+
+  const salvarClassificacao = useCallback(() => {
+    if (!classificar) return;
+    const q = Math.max(0, Math.floor(Number(qtdQuestoes) || 0));
+    const c = Math.min(q, Math.max(0, Math.floor(Number(qtdAcertos) || 0)));
+    setData((p) => ({
+      ...p,
+      sessions: p.sessions.map((s) => (
+        s.id === classificar.id ? { ...s, kind: tipoSessao, questions: q, correct: c } : s
+      )),
+    }));
+    setClassificar(null);
+  }, [classificar, tipoSessao, qtdQuestoes, qtdAcertos]);
 
   const P = usePomodoro({ pomo: data.pomo, onFocusDone, notify, pronto: ready });
   const [proAtivo, setProAtivo] = useState(false);
@@ -791,7 +819,7 @@ export default function Cadencia() {
 
           <main className="px-5 sm:px-8 pb-16">
             <div className="mx-auto rise" style={{ maxWidth: LARGURA }} key={tab}>
-              {tab === "hoje" && <Hoje {...{ data, setData, today, minToday, minWeek, qWeek, streak, late, done, bonusDone, addSession, delSession, notify, go: setTab, blocosHoje, projecao: pro ? projecao : null, pro, verPlanos: () => setTab("planos") }} />}
+              {tab === "hoje" && <Hoje {...{ data, setData, today, minToday, minWeek, qWeek, streak, late, done, bonusDone, addSession, delSession, notify, go: setTab, blocosHoje, projecao: pro ? projecao : null, pro, verPlanos: () => setTab("planos"), cartoesHoje }} />}
               {tab === "foco" && <Foco {...{ data, setData, today, P, subjectId: pomoSubject, setSubjectId: setPomoSubject }} />}
               {tab === "materias" && <Materias {...{ subjects, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone }} />}
               {tab === "temas" && !pro && <Bloqueado recurso={RECURSOS_PRO.temas} onVerPlanos={() => setTab("planos")} />}
@@ -805,7 +833,7 @@ export default function Cadencia() {
               {tab === "assistente" && (souDono || pro) && (
                 <div className="flex flex-col gap-5">
                   <Assistente {...{ data, setData, subjects, ladder, today, totals, minWeek, qWeek, notify, nuvem }} />
-                  {/* O MEDPlanner fica junto do assistente porque é ele quem
+                  {/* O cronograma do Notion fica junto do assistente porque é ele quem
                       usa o cronograma importado para organizar a rotina. */}
                   <Notion {...{ nuvem, subjects, data, setData, notify }} />
                 </div>
@@ -863,6 +891,45 @@ export default function Cadencia() {
                   <Label>{v}</Label>
                 </div>
               ))}
+            </div>
+          </Card>
+        </div>
+      ) : null}
+
+      {classificar ? (
+        <div className="fixed flex items-center justify-center px-6"
+          style={{ inset: 0, background: soft("var(--bg)", 82), backdropFilter: "blur(6px)", zIndex: 70 }}
+          onClick={() => setClassificar(null)}>
+          <Card className="px-7 py-6" style={{ maxWidth: 380, boxShadow: T.shadow }} onClick={(e) => e.stopPropagation()}>
+            <H size={17} color="var(--a-PR)" icon={<Coffee size={15} />}>Essa sessão foi de quê?</H>
+            <Mini style={{ marginTop: 6, lineHeight: 1.6 }}>
+              {classificar.minutes} min registrados como Aula. Escolha o tipo certo, ou deixe assim.
+            </Mini>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {KINDS.map((k) => (
+                <button key={k} type="button" onClick={() => setTipoSessao(k)}
+                  className="rounded-full px-4 py-2"
+                  style={{
+                    background: tipoSessao === k ? T.card3 : T.card2, border: `1px solid ${tipoSessao === k ? T.line2 : T.line}`,
+                    color: tipoSessao === k ? T.ink : T.dim, fontSize: 13.5, fontWeight: tipoSessao === k ? 700 : 500, cursor: "pointer",
+                  }}>{k}</button>
+              ))}
+            </div>
+            {tipoSessao === "Questões" ? (
+              <div className="mt-4 flex gap-3">
+                <Field label="Quantas questões">
+                  <TextInput type="number" min="0" value={qtdQuestoes}
+                    onChange={(e) => setQtdQuestoes(e.target.value)} style={{ padding: "8px 11px", fontSize: 14 }} />
+                </Field>
+                <Field label="Quantos acertos">
+                  <TextInput type="number" min="0" value={qtdAcertos}
+                    onChange={(e) => setQtdAcertos(e.target.value)} style={{ padding: "8px 11px", fontSize: 14 }} />
+                </Field>
+              </div>
+            ) : null}
+            <div className="mt-5 flex gap-2">
+              <Btn tone="primary" onClick={salvarClassificacao}>Salvar</Btn>
+              <Btn tone="outline" onClick={() => setClassificar(null)}>deixar como Aula</Btn>
             </div>
           </Card>
         </div>
