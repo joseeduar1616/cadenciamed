@@ -95,6 +95,7 @@ some calada quando falta uma linha no `normalize()`.
 | `testar-flashcards-ia.mjs` | teste do montador de flashcards a partir de PDF/Word, mesma técnica de servidor falso |
 | `testar-cronograma-ia.mjs` | teste de organizar o cronograma de outro curso (ou ciclo clínico) em matérias, mesma técnica |
 | `testar-curriculo.mjs` | teste de substituir o currículo padrão, no todo ou só numa área |
+| `testar-cores.mjs` | teste da cor própria: ajuste de legibilidade e sugestão de combinação |
 | `testar-recorte-pdf.mjs` | teste da matemática que acha o retângulo de cada figura num PDF, com objetos falsos, sem abrir PDF nenhum |
 | `testar-compra.mjs` | teste do aviso de compra: segredo, planos e estorno |
 | `testar-cupom.mjs` | teste do resgate de cupom, com Firebase falso |
@@ -129,6 +130,14 @@ tela larga.
 
 - As cores de acento são `--neon` e `--neon2`. As cinco cores de área
   (`--a-CL`, `--a-CI`, `--a-GO`, `--a-PE`, `--a-PR`) não mudam nunca.
+- `--neon`/`--neon2` valem para os dois temas (claro e escuro) — a troca de
+  tema não as toca, só as outras variáveis. Escolhendo uma cor própria (em
+  vez de uma das prontas, `CORES_TEMA`), `corLegivel` (`base.jsx`) ajusta a
+  saturação e a claridade para a cor continuar legível nos dois fundos —
+  sem isso uma cor clara demais sumiria no fundo claro, e o oposto no
+  escuro. A segunda cor nasce sugerida a partir da primeira, girando o
+  matiz (`corCombinando`), para nunca ser um palpite solto sem relação com
+  a primeira — a pessoa continua livre para trocar as duas depois.
 - As fontes são `--f-ui`, `--f-serif` e `--f-mono`. Por isso `F_UI`, `F_SERIF`
   e `F_MONO`, no `base.jsx`, são `var(...)` e não o nome da fonte.
 - Quem escreve essas variáveis no `<html>` é o componente raiz, no

@@ -82,6 +82,63 @@ const CORES_TEMA = [
   { id: "gelo", nome: "Gelo", neon: "#8FB6FF", neon2: "#5C7CFA" },
 ];
 
+/* ── cor de acento própria: legível nos dois temas, e combinando ────────
+ *
+ * --neon/--neon2 valem para os dois fundos (claro e escuro — a troca de
+ * tema não muda essas duas variáveis, só as outras, ver THEME_CSS acima),
+ * então uma cor escolhida clara demais some no fundo claro, e uma escura
+ * demais some no escuro. As cores prontas, em CORES_TEMA, já nasceram
+ * dentro dessa faixa seguro; corLegivel força a mesma faixa em qualquer
+ * cor que a pessoa escolha, e corCombinando sugere uma segunda cor a
+ * partir da primeira, girando o matiz — para a "segunda cor" nunca ser um
+ * palpite solto, sem relação nenhuma com a primeira. */
+function hexParaHsl(hex) {
+  const limpo = String(hex || "000000").replace("#", "");
+  const cheio = limpo.length === 3 ? limpo.split("").map((c) => c + c).join("") : limpo;
+  const r = parseInt(cheio.slice(0, 2), 16) / 255;
+  const g = parseInt(cheio.slice(2, 4), 16) / 255;
+  const b = parseInt(cheio.slice(4, 6), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  let h = 0, s = 0;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+  }
+  return { h, s: s * 100, l: l * 100 };
+}
+function hslParaHex(h, s, l) {
+  const hh = ((h % 360) + 360) % 360, ss = s / 100, ll = l / 100;
+  const c = (1 - Math.abs(2 * ll - 1)) * ss;
+  const x = c * (1 - Math.abs(((hh / 60) % 2) - 1));
+  const m = ll - c / 2;
+  let r = 0, g = 0, b = 0;
+  if (hh < 60) [r, g, b] = [c, x, 0];
+  else if (hh < 120) [r, g, b] = [x, c, 0];
+  else if (hh < 180) [r, g, b] = [0, c, x];
+  else if (hh < 240) [r, g, b] = [0, x, c];
+  else if (hh < 300) [r, g, b] = [x, 0, c];
+  else [r, g, b] = [c, 0, x];
+  const paraHex = (v) => Math.round((v + m) * 255).toString(16).padStart(2, "0");
+  return `#${paraHex(r)}${paraHex(g)}${paraHex(b)}`.toUpperCase();
+}
+function corLegivel(hex) {
+  const { h, s, l } = hexParaHsl(hex);
+  /* só um piso na saturação — uma cor bem saturada não atrapalha a
+     leitura, é a cor apagada (acinzentada) que soma no fundo e no texto
+     ao redor. As cores prontas (CORES_TEMA) chegam a 100% de saturação de
+     propósito, então não faz sentido baixar quem escolher algo parecido. */
+  return hslParaHex(h, Math.max(50, s), Math.min(72, Math.max(45, l)));
+}
+function corCombinando(hex) {
+  const { h } = hexParaHsl(corLegivel(hex));
+  return hslParaHex(h + 48, 78, 58);
+}
+
 const T = {
   bg: "var(--bg)", bg2: "var(--bg2)", card: "var(--card)", card2: "var(--card2)",
   card3: "var(--card3)", line: "var(--line)", line2: "var(--line2)",

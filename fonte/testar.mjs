@@ -494,6 +494,26 @@ if (liberado) {
   if (depois && depois !== antes) ok(`cor de acento mudou de ${antes} para ${depois}`);
   else falha(`a cor de acento não mudou (antes ${antes}, depois ${depois})`);
 
+  /* ── cor própria: ajustada para continuar legível, e a segunda combinando ── */
+  await pag.locator('button:has-text("Escolher")').first().click();
+  await pag.waitForTimeout(300);
+  const coresProprias = pag.locator('input[type="color"]');
+  if (await coresProprias.count() < 2) {
+    falha('cor própria: não achei os dois seletores de cor');
+  } else {
+    /* amarelo bem claro, quase invisível no fundo claro — corLegivel
+       (base.jsx) precisa escurecer sem perder o matiz. */
+    await coresProprias.nth(0).fill('#fff9c4');
+    await pag.waitForTimeout(300);
+    const aplicada = await pag.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--neon').trim());
+    if (aplicada && aplicada.toUpperCase() !== '#FFF9C4') {
+      ok(`cor própria clara demais foi ajustada (ficou ${aplicada}, não a cor crua)`);
+    } else falha(`a cor clara não foi ajustada: ${aplicada}`);
+    const segunda = await pag.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--neon2').trim());
+    if (segunda) ok(`a segunda cor já nasceu preenchida, combinando (${segunda})`);
+    else falha('a segunda cor não foi sugerida automaticamente');
+  }
+
   await pag.locator('button:has-text("Space Grotesk")').first().click();
   await pag.waitForTimeout(300);
   const fonte = await pag.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--f-ui'));

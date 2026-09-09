@@ -653,19 +653,43 @@ function Aparencia({ data, setData }) {
         </div>
 
         {propria ? (
-          <div className="flex flex-wrap gap-4 mt-4">
-            {[["neon", "Primeira cor"], ["neon2", "Segunda cor"]].map(([k, lb]) => (
-              <label key={k} className="flex items-center gap-3 rounded-2xl px-4 py-3"
+          <div className="mt-4">
+            <div className="flex flex-wrap gap-4 items-center">
+              <label className="flex items-center gap-3 rounded-2xl px-4 py-3"
                 style={{ background: T.card2, border: `1px solid ${T.line}`, cursor: "pointer" }}>
-                <input type="color" value={tema[k] || "#A855F7"}
-                  onChange={(e) => mudar({ [k]: e.target.value })}
+                <input type="color" value={tema.neon || "#A855F7"}
+                  onChange={(e) => {
+                    const nova = corLegivel(e.target.value);
+                    /* a segunda cor só é preenchida sozinha na primeira vez —
+                       depois que a pessoa mexeu nela, trocar a primeira não
+                       apaga a escolha dela. */
+                    mudar({ neon: nova, neon2: tema.neon2 || corCombinando(nova) });
+                  }}
                   style={{ width: 30, height: 30, border: "none", background: "none", padding: 0, cursor: "pointer" }} />
                 <span>
-                  <Label>{lb}</Label>
-                  <Mini style={{ fontFamily: F_MONO, marginTop: 2 }}>{tema[k] || "—"}</Mini>
+                  <Label>Primeira cor</Label>
+                  <Mini style={{ fontFamily: F_MONO, marginTop: 2 }}>{tema.neon || "—"}</Mini>
                 </span>
               </label>
-            ))}
+              <label className="flex items-center gap-3 rounded-2xl px-4 py-3"
+                style={{ background: T.card2, border: `1px solid ${T.line}`, cursor: "pointer" }}>
+                <input type="color" value={tema.neon2 || "#A855F7"}
+                  onChange={(e) => mudar({ neon2: corLegivel(e.target.value) })}
+                  style={{ width: 30, height: 30, border: "none", background: "none", padding: 0, cursor: "pointer" }} />
+                <span>
+                  <Label>Segunda cor</Label>
+                  <Mini style={{ fontFamily: F_MONO, marginTop: 2 }}>{tema.neon2 || "—"}</Mini>
+                </span>
+              </label>
+              <Btn size="sm" tone="outline" onClick={() => mudar({ neon2: corCombinando(tema.neon || "#A855F7") })}>
+                <Palette size={14} /> sugerir combinação
+              </Btn>
+            </div>
+            <Mini style={{ marginTop: 10, lineHeight: 1.5, maxWidth: 420 }}>
+              A cor escolhida é ajustada para continuar legível tanto no fundo
+              escuro quanto no claro, e a segunda cor já nasce combinando com a
+              primeira — dá para trocar as duas à vontade depois.
+            </Mini>
           </div>
         ) : null}
       </div>

@@ -184,7 +184,11 @@ function normalize(raw) {
     },
     tema: {
       cor: CORES_TEMA.some((c) => c.id === tm.cor) || tm.cor === "propria" ? tm.cor : "cadencia",
-      neon: hex(tm.neon), neon2: hex(tm.neon2),
+      /* corLegivel mantém a cor dentro de uma faixa legível nos dois temas
+         (claro e escuro), mesmo se vier de um dispositivo antigo ou de uma
+         cópia de segurança de antes dessa faixa existir. */
+      neon: hex(tm.neon) ? corLegivel(hex(tm.neon)) : "",
+      neon2: hex(tm.neon2) ? corLegivel(hex(tm.neon2)) : "",
       fonte: FONTES.some((f) => f.id === tm.fonte) ? tm.fonte : "inter",
       tamanho: Number(tm.tamanho) >= 0.85 && Number(tm.tamanho) <= 1.3 ? Number(tm.tamanho) : 1,
     },
