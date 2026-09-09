@@ -177,6 +177,46 @@ const textoEnviado = ultimoPedido.corpo.contents[0].parts[0].text;
 if (textoEnviado.length < 60000) ok('o texto que sai daqui já vem cortado no limite, antes de chegar à IA');
 else falha('texto não foi cortado antes de enviar: ' + textoEnviado.length);
 
+/* ── 6b. "cobrir tudo": teto maior e instrução extra ─────────────────── */
+responder = () => ({
+  status: 200,
+  corpo: { candidates: [{ content: { parts: [{ text: JSON.stringify({ baralho: 'X', cartoes: [{ frente: 'a', verso: 'b' }] }) }] }, finishReason: 'STOP' }] },
+});
+r = await pedir(await carregar(), { ...PEDIDO, cobrirTudo: true });
+if (r.status === 200) ok('cobrirTudo: pedido aceito normalmente');
+else falha('cobrirTudo aceito: ' + JSON.stringify(r));
+if (ultimoPedido.corpo.generationConfig.maxOutputTokens >= 12000) {
+  ok('cobrirTudo: teto de saída sobe para caber muito mais cartão');
+} else falha('cobrirTudo maxOutputTokens: ' + JSON.stringify(ultimoPedido.corpo.generationConfig));
+if (/TODOS os cartões possíveis/.test(ultimoPedido.corpo.system_instruction.parts[0].text)) {
+  ok('cobrirTudo: instrução extra de cobertura completa entra no pedido');
+} else falha('cobrirTudo instrução ausente');
+
+/* sem marcar, nem o teto maior nem a instrução extra entram */
+r = await pedir(await carregar(), PEDIDO);
+if (ultimoPedido.corpo.generationConfig.maxOutputTokens < 12000) ok('sem cobrirTudo: teto de saída continua o padrão');
+else falha('teto subiu sem pedir: ' + JSON.stringify(ultimoPedido.corpo.generationConfig));
+if (!/TODOS os cartões possíveis/.test(ultimoPedido.corpo.system_instruction.parts[0].text)) {
+  ok('sem cobrirTudo: instrução de cobertura completa fica de fora');
+} else falha('instrução de cobrirTudo vazou sem ser pedida');
+
+/* ── 6c. resposta cortada no meio do array: salva os cartões completos ── */
+const doisCompletos = '{"baralho":"Cardio","cartoes":[{"frente":"Pergunta 1","verso":"Resposta 1"},'
+  + '{"frente":"Pergunta 2","verso":"Resposta 2"},{"frente":"Pergunta 3 incomple';
+responder = () => ({
+  status: 200,
+  corpo: { candidates: [{ content: { parts: [{ text: doisCompletos }] }, finishReason: 'MAX_TOKENS' }] },
+});
+r = await pedir(await carregar(), { ...PEDIDO, cobrirTudo: true });
+if (r.status === 200 && r.corpo.cartoes.length === 2) {
+  ok('JSON cortado no meio do array: os cartões completos antes do corte são salvos');
+} else falha('recuperação parcial: ' + JSON.stringify(r));
+if (r.corpo.cartoes[1].frente === 'Pergunta 2' && r.corpo.cartoes[1].verso === 'Resposta 2') {
+  ok('recuperação parcial: o conteúdo dos cartões salvos vem certo, não truncado');
+} else falha('conteúdo da recuperação parcial: ' + JSON.stringify(r.corpo.cartoes));
+if (r.corpo.cortado === true) ok('recuperação parcial: o painel sabe que o material foi cortado');
+else falha('recuperação parcial não avisada: ' + JSON.stringify(r));
+
 /* ── 7. quem pode usar: mesma regra do assistente ────────────────────── */
 r = await pedir(await carregar(), { ...PEDIDO, token: '' });
 if (r.status === 403 && /Entre na sua conta/.test(r.corpo.erro)) ok('sem token: recusado antes de gastar cota');

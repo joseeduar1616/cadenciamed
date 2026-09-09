@@ -342,6 +342,27 @@ do navegador do celular cobre os botões justamente na hora de responder.
 A resposta aparece **abaixo** da pergunta, não no lugar dela: some a pergunta
 e a pessoa responde sem lembrar o que foi perguntado.
 
+A pergunta começa **no topo** do espaço disponível, não centralizada nele:
+centralizada, uma pergunta curta numa tela alta de celular sobrava um vazio
+grande acima dela.
+
+**A tela de estudo é um portal, direto para `document.body`, e não pode
+deixar de ser.** O conteúdo de cada aba mora dentro de uma `.rise`, a div que
+anima a entrada em cascata (`animation: rise .38s ... both`, em `parte8.jsx`).
+Terminada a animação, o navegador continua enxergando um `transform` de
+verdade ali — o `fill-mode: both` segura o valor final da animação (que é
+`transform: none`, mas o computed style aparece como a matriz identidade, não
+como a palavra "none") —, e qualquer `transform` que não seja `none`, mesmo
+sem efeito visual nenhum, vira um novo referencial para os descendentes com
+`position: fixed`. Sem o portal, "tela cheia" parava de significar a tela
+inteira e passava a significar "do tamanho da `.rise`, a partir de onde ela
+começa" — o cartão nascia empurrado para baixo da altura do cabeçalho, e o
+botão "ver a resposta" saía da parte visível sem nada para rolar até lá. Foi
+esse o motivo real por trás do "tá cortando" no celular, não só o
+`justify-content`. Qualquer outra tela cheia que nasça dentro de uma aba
+precisa do mesmo tratamento — a `.rise` pega qualquer descendente, não só
+este.
+
 Cada baralho tem ajustes próprios em `data.baralhoCfg`, com a pasta na chave —
 dois baralhos de mesmo nome em pastas diferentes são baralhos diferentes.
 Renomear, mover ou apagar um baralho muda essa chave, então o ajuste vai junto
@@ -369,10 +390,22 @@ agendamento de quem publicou também fica de fora: quem copia começa do zero.
 
 ### Montar com IA, a partir de PDF ou Word
 
-Fica na aba Assistente, em `MontarFlashcardsIA` (`parte9.jsx`), porque é lá
-que a pessoa já espera uma função de IA — mas os cartões entram nos mesmos
-`data.flash` e `data.pastas` de sempre, e aparecem na aba Cartões que nem os
-criados à mão.
+Fica na própria aba Cartões, em `MontarFlashcardsIA` (`parte12.jsx`), logo no
+topo — não escondida atrás do botão "Trazer baralho". Chegou a morar na aba
+Assistente, mas o resultado é cartão: faz mais sentido ficar onde os cartões
+já vivem, junto do resto da importação.
+
+Por padrão a IA escolhe os pontos que valem a pena virar cartão. Marcando
+"quero todos os cartões possíveis", o pedido muda: `cobrirTudo` vai junto
+para `worker/api/flashcards-ia.js`, que troca a instrução (cobrir cada fato,
+não só os principais) e sobe o teto de saída e o limite de cartões. Pedir
+tudo aumenta a chance da resposta da IA bater no teto no meio do array de
+cartões — por isso o servidor tenta ler o JSON inteiro primeiro e, se não
+fechar direito, cai para `recuperarCartoesParciais`: salva por regex cada
+cartão que já veio completo antes do corte, em vez de jogar tudo fora porque
+o JSON como um todo não fechou. A pessoa recebe os cartões que deram certo,
+marcados como cortado, do jeito que já acontecia quando o texto de entrada é
+maior que o limite.
 
 O PDF e o Word são lidos **no navegador**, com bibliotecas buscadas de um CDN
 só quando alguém usa a função — o mesmo esquema do leitor de `.apkg` do Anki,
