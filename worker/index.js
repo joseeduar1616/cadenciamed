@@ -8,6 +8,7 @@
  * o arquivo e citá-lo na tabela abaixo.
  */
 import { onRequest as assistente } from "./api/assistente.js";
+import { onRequest as flashcardsIa } from "./api/flashcards-ia.js";
 import { onRequest as cupom } from "./api/cupom.js";
 import { onRequest as acessos } from "./api/acessos.js";
 import { onRequest as compra } from "./api/compra.js";
@@ -18,6 +19,7 @@ import { onRequest as plano } from "./api/plano.js";
 
 const ROTAS = {
   "/api/assistente": assistente,
+  "/api/flashcards-ia": flashcardsIa,
   "/api/cupom": cupom,
   "/api/acessos": acessos,
   "/api/compra": compra,

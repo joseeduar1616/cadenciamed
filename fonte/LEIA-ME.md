@@ -47,6 +47,7 @@ python3 montar_teste.py         # gera teste.html, igual ao site mas com o plano
 node testar.mjs                 # abre no Chromium e confere tudo
 node testar.mjs index.html      # confere o arquivo de produção
 node testar-assistente.mjs      # confere a função da IA, sem gastar cota
+node testar-flashcards-ia.mjs   # confere o montador de flashcards a partir de PDF/Word
 node testar-compra.mjs          # confere o aviso de compra: segredo, plano e estorno
 node testar-salas.mjs           # confere as salas de amigos, com banco de mentira
 node testar-baralhos.mjs        # confere os baralhos publicados: quem publica e quem baixa
@@ -88,6 +89,7 @@ some calada quando falta uma linha no `normalize()`.
 | `publicar.py` | monta a pasta `publicar/`, que é o que vai ao ar |
 | `testar.mjs` | teste de fumaça no Chromium |
 | `testar-assistente.mjs` | teste da função da IA, com servidor falso no lugar da API |
+| `testar-flashcards-ia.mjs` | teste do montador de flashcards a partir de PDF/Word, mesma técnica de servidor falso |
 | `testar-compra.mjs` | teste do aviso de compra: segredo, planos e estorno |
 | `testar-cupom.mjs` | teste do resgate de cupom, com Firebase falso |
 | `testar-acessos.mjs` | teste do painel de acessos do dono |
@@ -136,12 +138,14 @@ problema que existia quando as funções moravam dentro do que ia ao ar.
 | Arquivo | Conteúdo |
 |---|---|
 | `worker/index.js` | entrada: decide o que é `/api/...` e o que é arquivo |
-| `worker/api/assistente.js` | conversa com a IA; só o administrador pode usar |
+| `worker/api/assistente.js` | conversa com a IA; o dono e quem assina podem usar |
+| `worker/api/flashcards-ia.js` | monta flashcards a partir do texto extraído de um PDF/Word |
 | `worker/api/cupom.js` | confere o cupom e libera o plano |
 | `worker/api/compra.js` | recebe o aviso de compra da Kiwify ou Hotmart |
 | `worker/api/acessos.js` | painel do dono, libera e revoga acessos |
 | `worker/api/salas.js` | salas de amigos: cria, entra, sai e monta o ranking |
 | `worker/api/baralhos.js` | baralhos que o dono publica, e a cópia para quem assina |
+| `worker/api/_ia.js` | fala com o Gemini e a Anthropic; compartilhado entre o assistente e o montador de flashcards |
 | `worker/api/_comum.js` | JWT, Firestore e identidade |
 
 Acrescentar um endereço é escrever o arquivo em `worker/api/` e citá-lo na
@@ -285,8 +289,10 @@ Para apontar `cadenciamed.com.br` do Firebase para o Cloudflare:
 
 ### Qual IA o assistente usa
 
-O `worker/api/assistente.js` fala com os dois provedores. Quem decide é a
-variável de ambiente cadastrada no Cloudflare:
+`worker/api/assistente.js` e `worker/api/flashcards-ia.js` falam com os dois
+provedores através do mesmo `worker/api/_ia.js`, e valem as mesmas variáveis
+para os dois — não tem uma chave para o assistente e outra para os
+flashcards. Quem decide é a variável de ambiente cadastrada no Cloudflare:
 
 | Variável | Provedor | Custo |
 |---|---|---|
@@ -361,6 +367,43 @@ As imagens não viajam — elas moram no IndexedDB de cada aparelho, então o qu
 iria junto seria um nome de arquivo que não existe do outro lado. O
 agendamento de quem publicou também fica de fora: quem copia começa do zero.
 
+### Montar com IA, a partir de PDF ou Word
+
+Fica na aba Assistente, em `MontarFlashcardsIA` (`parte9.jsx`), porque é lá
+que a pessoa já espera uma função de IA — mas os cartões entram nos mesmos
+`data.flash` e `data.pastas` de sempre, e aparecem na aba Cartões que nem os
+criados à mão.
+
+O PDF e o Word são lidos **no navegador**, com bibliotecas buscadas de um CDN
+só quando alguém usa a função — o mesmo esquema do leitor de `.apkg` do Anki,
+em `parte13.jsx`, que também baixa o `sql.js` sob demanda. Só o texto
+extraído vai para o servidor; o arquivo original nunca sai do aparelho.
+
+- **PDF** (`lerPdfParaTexto`, com `pdf.js`): o texto sai por `getTextContent`,
+  página por página. Uma página que tenha alguma imagem embutida (checado por
+  `getOperatorList`, sem precisar decodificar nada) é desenhada inteira num
+  `<canvas>` e guardada como se fosse uma foto do Anki — a página vira a
+  "imagem" do cartão, e não só a figura recortada. Recortar só a figura
+  depende de como cada PDF guarda a imagem por dentro, e falha de um jeito
+  diferente a cada gerador; desenhar a página usa o mesmo `page.render` que
+  qualquer PDF sabe responder.
+- **Word** (`lerDocxParaTexto`, com `mammoth`): o `.docx` já entrega as
+  imagens embutidas como `data:` no HTML da conversão; cada uma vira uma
+  entrada no depósito.
+
+Nos dois casos, cada imagem some no texto como um marcador `[[img:nome]]` —
+o mesmo formato que o leitor do Anki já usa e que `LadoDoCartao`, em
+`parte13.jsx`, já sabe desenhar. A IA (`worker/api/flashcards-ia.js`) só
+enxerga esse texto com marcadores, nunca a imagem em si; a instrução pede pra
+ela copiar um marcador existente para dentro do cartão quando a figura for
+necessária ali, e não inventar marcador que não estava no texto. O JSON que a
+IA devolve é conferido e limpo no servidor — tamanho de cada campo, quantos
+cartões no máximo — antes de chegar ao navegador.
+
+Um PDF sem `.docx` antigo (`.doc`) não abre: é formato fechado, sem leitor
+que caiba no navegador. Um PDF só de imagem escaneada, sem texto por trás,
+também não funciona — não há OCR aqui.
+
 ## Primeira tela
 
 Abre pedindo conta, não o nome. Pedir só o nome deixava a pessoa estudar e
@@ -383,6 +426,31 @@ Botões abaixo de 32px são chute num aparelho de dedo. As classes `.toque` e
 `(pointer: coarse)` — no computador o cursor acerta qualquer coisa, e engordar
 tudo lá só ocuparia espaço à toa. Elas estão na lista `DO_APP` do
 `gerar_css.py`, porque não são utilitárias.
+
+## Cabeçalho, no celular
+
+Com a barra lateral fixa, o cabeçalho põe a marca ao centro e os controles
+(menu, cronômetro, tema) flutuando nos cantos, em `position: absolute`. Isso
+só cabe porque sobra largura dos dois lados da marca — que nunca encolhe
+abaixo de 150px. Com a barra em gaveta (tela estreita, o `estreita` de
+`parte8.jsx`, o mesmo limiar de 1024px que já decide gaveta ou barra fixa),
+os controles vão para uma fileira própria, no fluxo normal, **acima** da
+marca, em vez de flutuar por cima dela. Sem essa troca, o cronômetro rodando
+— que é quando o grupo de controles fica mais largo — ficava por cima do
+desenho da marca.
+
+A escolha entre as duas fileiras é feita **uma vez, em React** (`estreita ?
+... : ...`), e não escondendo uma com CSS: renderizar as duas e esconder uma
+por `display:none` deixava a escondida no HTML assim mesmo, e qualquer coisa
+que busque "o botão de tema" pela ordem do documento — inclusive o teste do
+navegador (`testar.mjs`) — podia pegar a cópia escondida e nunca conseguir
+clicar nela.
+
+Na aba Rotina, a fita dos sete dias da semana (`parte4.jsx`) tinha uma
+largura mínima de 76px por dia; numa tela estreita os sete não cabiam, e o
+card do fim da semana ficava cortado ao meio, sem nada dizendo que dava para
+arrastar. Sem largura mínima (`flex: "1 1 0%", minWidth: 0`), os sete sempre
+dividem o espaço que existe.
 
 ## Assistente
 
