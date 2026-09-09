@@ -34,7 +34,7 @@ function SubjectRow({ s, open, minutes, onToggleOpen, setMark, toggleBonus }) {
       </div>
 
       {open ? (
-        <div className="px-5 pb-5 pt-4 grid sm:grid-cols-2 gap-5" style={{ borderTop: `1px solid ${T.line}` }}>
+        <div className="px-5 pb-5 pt-4 grid grid-cols-1 sm:grid-cols-2 gap-5" style={{ borderTop: `1px solid ${T.line}` }}>
           <div className="flex flex-col gap-3">
             <Label>Etapas</Label>
             {[["aula", "Aula assistida"], ["qts", "Questões pós-aula"], ["cards", "Flashcards prontos"]].map(([k, lb]) => (
@@ -60,7 +60,7 @@ function SubjectRow({ s, open, minutes, onToggleOpen, setMark, toggleBonus }) {
                 <Label>Tópicos relacionados</Label>
                 <Num size={12} color={T.faint} weight={500}>{s.bonusCount}/{s.bonus.length}</Num>
               </div>
-              <div className="grid sm:grid-cols-2 gap-x-6 gap-y-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5">
                 {s.bonus.map((b, i) => {
                   const star = b.charAt(0) === "*";
                   const nm = star ? b.slice(1) : b;
@@ -265,7 +265,7 @@ function EsquemaRevisao({ data, setData, degraus, notify }) {
 
       {aberto ? (
         <>
-          <div className="mt-5 grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+          <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
             {ESQUEMAS.map((e) => {
               const on = e.id === cfg.esquema;
               const dias = e.id === "personalizado"

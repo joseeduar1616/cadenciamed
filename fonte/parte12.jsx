@@ -635,12 +635,17 @@ function MontarFlashcardsIA({ setData, notify, nuvem }) {
     } finally { setLendo(""); }
   };
 
+  /* O botão nunca quebra linha por dentro (é assim que Btn é desenhado, de
+     propósito, para rótulo curto de botão), então um texto de status
+     comprido — "a IA está montando todos os cartões (pode demorar um
+     pouco)" — estourava a largura no celular. O rótulo do botão fica curto
+     sempre; o status detalhado vai numa linha à parte, que quebra normal. */
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-2 flex-wrap">
         <Btn tone="primary" size="sm" disabled={!!lendo}
           onClick={() => arquivoRef.current && arquivoRef.current.click()}>
-          <Upload size={14} /> {lendo ? `${lendo}…` : "Jogue seu documento e faça os flashcards com IA"}
+          <Upload size={14} /> {lendo ? "Um momento…" : "Jogue seu documento aqui"}
         </Btn>
         <input ref={arquivoRef} type="file" accept=".pdf,.docx"
           onChange={(e) => {
@@ -654,14 +659,18 @@ function MontarFlashcardsIA({ setData, notify, nuvem }) {
           style={{ padding: "6px 10px", fontSize: 13, maxWidth: 220 }} />
       </div>
 
-      <label className="flex items-center gap-2.5" style={{ cursor: lendo ? "default" : "pointer" }}>
-        <input type="checkbox" checked={cobrirTudo} disabled={!!lendo}
-          onChange={(e) => setCobrirTudo(e.target.checked)} />
-        <span style={{ fontSize: 13.5, color: T.dim }}>
-          Quero todos os cartões possíveis, cobrindo tudo do documento
-          <span style={{ color: T.ghost }}> · sem marcar, a IA escolhe só os pontos principais</span>
-        </span>
-      </label>
+      {lendo ? (
+        <Mini style={{ lineHeight: 1.6 }}>{lendo}…</Mini>
+      ) : (
+        <label className="flex items-center gap-2.5" style={{ cursor: "pointer" }}>
+          <input type="checkbox" checked={cobrirTudo}
+            onChange={(e) => setCobrirTudo(e.target.checked)} />
+          <span style={{ fontSize: 13.5, color: T.dim }}>
+            Quero todos os cartões possíveis, cobrindo tudo do documento
+            <span style={{ color: T.ghost }}> · sem marcar, a IA escolhe só os pontos principais</span>
+          </span>
+        </label>
+      )}
 
       <Mini style={{ maxWidth: 480, lineHeight: 1.6 }}>
         Funciona melhor com PDF que tem texto de verdade (não uma foto escaneada)
@@ -1547,7 +1556,7 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
         <Card className="px-6 py-6" brilho="var(--neon2)">
           <H size={18} color="var(--neon2)" icon={<Plus size={16} />}>Criar cartão</H>
           <div className="mt-5 flex flex-col gap-4">
-            <div className="grid sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Pasta">
                 <TextInput value={novo.pasta || ""} placeholder="Ex.: Clínica"
                   onChange={(e) => setNovo((p) => ({ ...p, pasta: e.target.value }))} />

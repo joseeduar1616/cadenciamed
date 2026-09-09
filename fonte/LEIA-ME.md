@@ -511,6 +511,36 @@ card do fim da semana ficava cortado ao meio, sem nada dizendo que dava para
 arrastar. Sem largura mínima (`flex: "1 1 0%", minWidth: 0`), os sete sempre
 dividem o espaço que existe.
 
+### O `grid` sem `grid-cols-N` na base é uma armadilha
+
+Várias telas usam `grid sm:grid-cols-2` ou `grid lg:grid-cols-5` — colunas só
+a partir de um certo tamanho de tela, empilhado antes disso. Sem uma classe
+`grid-cols-N` **sem prefixo**, por baixo do limiar o `<div>` continua sendo
+`display:grid`, só que sem nenhuma coluna explícita — e um grid sem colunas
+explícitas cria uma coluna implícita do tamanho `auto`, que **não** encolhe
+para caber no que tem dentro, ao contrário de `minmax(0,1fr)` (a régua que
+`grid-cols-N` usa, em `gerar_css.py`). Do lado de fora os dois casos parecem
+idênticos — uma coluna só, empilhada —, mas só o primeiro estoura a largura
+da tela quando algum filho tem texto livre comprido: a pendência anotada à
+mão, o nome de uma matéria atrasada. O texto não quebra, e a tela — não só
+aquele cartão — passa da borda do celular. A régua é sempre pôr um
+`grid-cols-N` sem prefixo antes do `sm:`/`lg:`, mesmo que o número pareça
+óbvio (quase sempre `grid-cols-1`).
+
+Duas peças achadas pelo mesmo motivo, num `<span className="flex-1">` sem o
+`min-w-0` de sempre: a pendência anotada à mão (`parte5.jsx`) e os hábitos e
+itens de "preciso rever" (`parte7.jsx`). Sem `min-w-0`, um item de `flex` não
+aceita ficar menor que o próprio conteúdo — a regra é sempre grudar
+`min-w-0` (ou `min-width:0`) em quem carrega texto livre dentro de um `flex`
+ou `grid`, e não só nos que já tinham.
+
+O botão de "Montar flashcards com IA" (`parte12.jsx`) tinha o mesmo problema
+por um motivo diferente: `Btn` nunca quebra linha por dentro (é assim que um
+rótulo de botão deve se comportar), mas o texto de status ("a IA está
+montando todos os cartões...") ia dentro do próprio botão, e ficava comprido
+demais. Rótulo de botão fica sempre curto; o status detalhado vai numa linha
+à parte, fora do `Btn`, que aí quebra normal.
+
 ## Assistente
 
 A resposta chega em markdown e é desenhada pelo `Markdown`, no `parte9.jsx` —
