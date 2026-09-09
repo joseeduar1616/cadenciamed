@@ -155,7 +155,11 @@ function BarraLateral({ abas, atual, onEscolher, estreita, aberta, onFechar, abe
 export default function Cadencia() {
   const [data, setData] = useState(DEFAULTS);
   const [ready, setReady] = useState(false);
-  const [tab, setTab] = useState("hoje");
+  /* Quem volta da autorização do Notion cai em /notion, com o código na
+     barra de endereço. Abrir direto no Assistente é o que faz o painel
+     montar e trocar esse código pelo token — sem isso a pessoa voltaria
+     para a tela de Hoje e a ligação simplesmente não aconteceria. */
+  const [tab, setTab] = useState(() => (voltandoDoNotion() ? "assistente" : "hoje"));
   const [toast, setToast] = useState(null);
   const [showKeys, setShowKeys] = useState(false);
   const [avisoDisco, setAvisoDisco] = useState("");

@@ -116,17 +116,35 @@ async function falarComNotion(nuvem, corpo) {
   return erro ? { erro } : dados;
 }
 
+/* O endereço para onde o Notion devolve quem autorizou. Precisa ser o mesmo
+   cadastrado na integração, e é ele que o app reconhece na volta. */
+const CAMINHO_NOTION = "/notion";
+
+/* Estamos voltando da autorização?
+ *
+ * Confere o caminho, e não só o "code": um endereço com code pode vir de
+ * outra coisa, e consumir esse código aqui o gastaria à toa. */
+function voltandoDoNotion() {
+  try {
+    const u = new URL(window.location.href);
+    return u.pathname.replace(/\/+$/, "") === CAMINHO_NOTION && !!u.searchParams.get("code");
+  } catch (e) { return false; }
+}
+
 /* O código que o Notion devolve chega na barra de endereço, na volta da
    autorização. Ler e limpar logo: um código de autorização no endereço
    fica no histórico do navegador e vaza em qualquer captura de tela. */
 function pegarCodigoDaUrl() {
+  if (!voltandoDoNotion()) return "";
   try {
     const u = new URL(window.location.href);
     const codigo = u.searchParams.get("code");
     if (!codigo) return "";
     u.searchParams.delete("code");
     u.searchParams.delete("state");
-    window.history.replaceState({}, "", u.pathname + u.search + u.hash);
+    /* Volta para a raiz: deixar o endereço em /notion faria um F5 parecer
+       uma nova autorização, agora sem código nenhum. */
+    window.history.replaceState({}, "", "/" + u.search + u.hash);
     return codigo;
   } catch (e) { return ""; }
 }
