@@ -16,6 +16,7 @@ import { onRequest as salas } from "./api/salas.js";
 import { onRequest as baralhos } from "./api/baralhos.js";
 import { onRequest as notion } from "./api/notion.js";
 import { onRequest as plano } from "./api/plano.js";
+import { onRequest as mentor } from "./api/mentor.js";
 
 const ROTAS = {
   "/api/assistente": assistente,
@@ -27,6 +28,7 @@ const ROTAS = {
   "/api/baralhos": baralhos,
   "/api/notion": notion,
   "/api/plano": plano,
+  "/api/mentor": mentor,
 };
 
 /* ── quem pode chamar de outro endereço ────────────────────────────────

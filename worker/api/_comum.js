@@ -132,3 +132,30 @@ export async function validoAte(token, uid) {
   const j = await r.json().catch(() => null);
   return Number((((j || {}).fields || {}).validoAte || {}).doubleValue || 0);
 }
+
+/* Descobre o uid de alguém pelo e-mail, usando a coleção emails/{uid} que
+   cada pessoa grava de si mesma ao entrar (F.setDoc em "emails", no
+   parte3.jsx). Usada pelo aviso de compra e pela aba Mentor, que só sabem
+   o e-mail de quem procuram, nunca o uid. */
+export async function uidPeloEmail(token, email) {
+  const r = await fetch(`${BASE_FIRESTORE}:runQuery`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      structuredQuery: {
+        from: [{ collectionId: "emails" }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath: "email" }, op: "EQUAL",
+            value: { stringValue: String(email).toLowerCase().trim() },
+          },
+        },
+        limit: 1,
+      },
+    }),
+  });
+  if (!r.ok) return null;
+  const j = await r.json().catch(() => null);
+  const doc = (j || []).find((x) => x.document);
+  return doc ? doc.document.name.split("/").pop() : null;
+}

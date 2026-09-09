@@ -25,6 +25,7 @@ let QUEM = { email: 'aluna@email.com', localId: 'uid-aluna' };
 let PLANO_ATUAL = null;          // o que o banco já tem para esse uid
 let GRAVADO = null;              // o que a função tentou gravar
 let FALHAR_GRAVACAO = false;
+let MENTORES = {};               // uid -> { fields }, para o cupom mentor1612
 
 const json = (corpo, status = 200) => new Response(JSON.stringify(corpo),
   { status, headers: { 'Content-Type': 'application/json' } });
@@ -36,6 +37,13 @@ globalThis.fetch = async (url, opcoes = {}) => {
   }
   if (u.includes('oauth2.googleapis.com/token')) {
     return json({ access_token: 'token-falso' });
+  }
+  const m = /\/documents\/mentores\/([^/?]+)(?:\?|$)/.exec(u);
+  if (m) {
+    const uid = m[1];
+    if ((opcoes.method || 'GET') === 'GET') return MENTORES[uid] ? json(MENTORES[uid]) : json({ error: {} }, 404);
+    MENTORES[uid] = JSON.parse(opcoes.body);
+    return json({ name: uid });
   }
   if (u.includes('firestore.googleapis.com')) {
     if ((opcoes.method || 'GET') === 'GET') {
@@ -155,6 +163,26 @@ r = await pedir({ token: 't', codigo: 'secdamocada' });
 if (r.status === 500 && !r.corpo.ok) ok('falha ao gravar não vira falso positivo');
 else falha('falha de gravação: ' + JSON.stringify(r));
 FALHAR_GRAVACAO = false;
+
+/* ── cupom de mentor não é cupom de plano ─────────────────────────────── */
+GRAVADO = null; MENTORES = {};
+r = await pedir({ token: 't', codigo: 'mentor1612' });
+if (r.corpo.ok && r.corpo.mentor === true) ok('"mentor1612" concede o papel de mentor');
+else falha('mentor1612: ' + JSON.stringify(r));
+if (GRAVADO === null) ok('mentor1612 não grava nada em assinaturas, só em mentores');
+else falha('mentor1612 mexeu na assinatura: ' + JSON.stringify(GRAVADO));
+if (MENTORES['uid-aluna'] && MENTORES['uid-aluna'].fields.email.stringValue === 'aluna@email.com') {
+  ok('o documento do mentor guarda o e-mail de quem resgatou');
+} else falha('documento do mentor: ' + JSON.stringify(MENTORES));
+
+/* resgatar de novo não apaga a lista de alunos que a pessoa já tinha */
+MENTORES['uid-aluna'].fields.alunos = { arrayValue: { values: [{ mapValue: { fields: { uid: { stringValue: 'x' }, email: { stringValue: 'x@x.com' }, adicionadoEm: { doubleValue: 1 } } } }] } };
+r = await pedir({ token: 't', codigo: 'MENTOR1612' });
+if (r.corpo.ok && r.corpo.mentor === true) ok('resgatar de novo (maiúsculas incluído) não dá erro');
+else falha('resgatar mentor de novo: ' + JSON.stringify(r));
+if ((MENTORES['uid-aluna'].fields.alunos.arrayValue.values || []).length === 1) {
+  ok('resgatar o cupom de novo preserva a lista de alunos já adicionados');
+} else falha('resgatar de novo apagou os alunos: ' + JSON.stringify(MENTORES['uid-aluna']));
 
 console.log(passos.join('\n'));
 console.log('\n' + (erros.length ? `${erros.length} PROBLEMA(S):\n` + erros.join('\n') : 'nenhum erro'));

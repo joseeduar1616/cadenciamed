@@ -66,5 +66,13 @@ service cloud.firestore {
     match /notion/{uid} {
       allow read, write: if false;
     }
+
+    // Papel de mentor e a lista de alunos de cada mentor (por uid, vindo
+    // de emails/{uid}). Só o servidor mexe aqui: /api/cupom concede o
+    // papel ao resgatar "mentor1612", e /api/mentor adiciona, remove e lê
+    // a lista — as duas com a conta de serviço.
+    match /mentores/{uid} {
+      allow read, write: if false;
+    }
   }
 }
