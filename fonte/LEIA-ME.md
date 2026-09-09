@@ -573,6 +573,39 @@ como o pedido original já descrevia. Se a pessoa tiver nomeado essas pastas
 com um nome diferente do esperado, os cartões criam uma pasta nova com o
 nome padrão em vez de entrar na pasta dela.
 
+### Baixar em Word ou PDF, e enviar para o Google Drive
+
+**Word.** Nenhuma biblioteca: um `.docx` de verdade é um zip de XML, e não
+vale a complicação para uma anotação. Em vez disso, `notaParaWordBlob`
+(`parte17.jsx`) gera HTML com os namespaces do Word (`xmlns:w`) e extensão
+`.doc` — o Word abre pelo **conteúdo**, não pela extensão, e preserva
+negrito, cor, alinhamento e imagem porque é HTML de verdade com estilo
+inline. Truque antigo, ainda válido.
+
+**PDF.** Aqui sim entra biblioteca: [jsPDF](https://github.com/parallax/jsPDF)
+e [html2canvas](https://html2canvas.hertzen.com), carregadas de um CDN só
+quando a pessoa pede (mesmo padrão do `carregarPdfJs`/`carregarMammoth`, em
+`parte12.jsx`). `doc.html()` tira uma "foto" do HTML formatado da anotação
+e embute como PDF — sem elas, um PDF de verdade exigiria escrever o layout
+de texto rico (negrito, cor, grifo, alinhamento, imagem) à mão, com a API
+de desenho do jsPDF. A troca: o texto do PDF gerado assim não é
+selecionável (é imagem), mas o visual bate exatamente com o que está na
+tela — para uma anotação de estudo, isso importa mais que texto buscável.
+
+**Google Drive.** `useGoogleDrive` (`parte3.jsx`) pede um token separado do
+da Agenda, com um escopo diferente: `drive.file`, o mínimo que existe — só
+alcança arquivos que este app criou ou que a pessoa abriu através dele,
+nunca o Drive inteiro. E só pede essa autorização na hora em que a pessoa
+clica em "Enviar para o Drive", nunca de saída: quem nunca usa a função
+nunca vê essa tela de permissão. `ModalDrive` deixa navegar pelas pastas
+(a partir de "Meu Drive"), criar uma pasta nova, e manda o arquivo (Word ou
+PDF, a pessoa escolhe) com `multipart/related`, o formato que a API do
+Drive espera para metadado + conteúdo numa chamada só. Como o resto de
+`parte17.jsx`, o modal usa `createPortal` — sem isso ficaria preso dentro
+da `.rise` que anima a troca de aba, que vira um "containing block" para
+`position:fixed` (o mesmo motivo documentado para o estudo de cartões em
+tela cheia, em `parte12.jsx`).
+
 ## Primeira tela
 
 Abre pedindo conta, não o nome. Pedir só o nome deixava a pessoa estudar e

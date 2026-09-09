@@ -23,6 +23,101 @@ const CORES_GRIFO_NOTA = ["#FFF59D", "#A5D6A7", "#90CAF9", "#F48FB1", "#FFCC80"]
    perguntar: a área da aula já diz qual é, sem ambiguidade nenhuma. */
 const PASTA_POR_AREA_NOTA = { CI: "CIRURGIA", CL: "CLINICA MÉDICA", PE: "PEDIATRIA", GO: "GO E PREVENTIVA", PR: "GO E PREVENTIVA" };
 
+/* ── exportar em Word e em PDF ──────────────────────────────────────────
+ *
+ * Word: nenhuma biblioteca. Um .doc de verdade (OOXML) é um zip de XML, e
+ * não vale a complicação para uma anotação. Em vez disso, HTML com os
+ * namespaces do Word (xmlns:w) e extensão .doc — o Word abre pelo
+ * conteúdo, não pela extensão, e preserva negrito, cor, alinhamento etc.,
+ * porque é HTML de verdade com estilo inline. Truque antigo e ainda válido.
+ *
+ * PDF: aqui sim entra biblioteca (jsPDF + html2canvas, via CDN, carregadas
+ * só quando a pessoa pede). Sem elas, um PDF de verdade exigiria escrever
+ * o layout de texto rico (negrito, cor, grifo, alinhamento, imagem) à mão
+ * com a API de desenho do jsPDF — muito código para algo que a própria
+ * biblioteca já resolve tirando uma "foto" do HTML formatado.
+ */
+const JSPDF_CDN = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+const HTML2CANVAS_CDN = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+
+let jsPdfPromessa = null;
+function carregarJsPdf() {
+  if (jsPdfPromessa) return jsPdfPromessa;
+  jsPdfPromessa = (async () => {
+    if (!window.jspdf) {
+      try { await baixarScript(JSPDF_CDN); }
+      catch (e) { throw new Error("Não consegui carregar o gerador de PDF. Confira sua conexão."); }
+    }
+    if (!window.jspdf || !window.jspdf.jsPDF) throw new Error("O gerador de PDF não iniciou.");
+    return window.jspdf.jsPDF;
+  })();
+  return jsPdfPromessa;
+}
+
+let html2canvasPromessa = null;
+function carregarHtml2Canvas() {
+  if (html2canvasPromessa) return html2canvasPromessa;
+  html2canvasPromessa = (async () => {
+    if (!window.html2canvas) {
+      try { await baixarScript(HTML2CANVAS_CDN); }
+      catch (e) { throw new Error("Não consegui carregar o desenhador de PDF. Confira sua conexão."); }
+    }
+    if (!window.html2canvas) throw new Error("O desenhador de PDF não iniciou.");
+    return window.html2canvas;
+  })();
+  return html2canvasPromessa;
+}
+
+function escaparHtml(s) {
+  const d = document.createElement("div");
+  d.textContent = String(s || "");
+  return d.innerHTML;
+}
+
+function notaParaWordBlob(tituloAula, htmlCorpo) {
+  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8"><title>${escaparHtml(tituloAula)}</title>
+<style>body{font-family:Calibri,Arial,sans-serif;font-size:12pt;color:#1a1a1a}</style></head>
+<body><h2>${escaparHtml(tituloAula)}</h2>${htmlCorpo}</body></html>`;
+  return new Blob([html], { type: "application/msword" });
+}
+
+async function notaParaPdfBlob(tituloAula, htmlCorpo) {
+  const JsPDF = await carregarJsPdf();
+  const html2canvas = await carregarHtml2Canvas();
+  const container = document.createElement("div");
+  container.style.cssText = "position:fixed;left:-9999px;top:0;width:700px;padding:0;background:#fff;color:#111;"
+    + "font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5;";
+  container.innerHTML = `<h2 style="margin:0 0 14px">${escaparHtml(tituloAula)}</h2>${htmlCorpo}`;
+  document.body.appendChild(container);
+  try {
+    const doc = new JsPDF({ unit: "pt", format: "a4" });
+    await new Promise((resolve, reject) => {
+      try {
+        doc.html(container, {
+          callback: () => resolve(),
+          html2canvas: { scale: 1.6, backgroundColor: "#ffffff", useCORS: true, windowWidth: 700 },
+          x: 30, y: 30, width: 535, windowWidth: 700,
+        });
+      } catch (e) { reject(e); }
+    });
+    return doc.output("blob");
+  } finally {
+    document.body.removeChild(container);
+  }
+}
+
+function baixarBlob(nome, blob) {
+  try {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = nome;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return true;
+  } catch (e) { return false; }
+}
+
 /* Tira script, iframe e atributos de evento (onerror, onclick...) de HTML
    colado de fora. A nota é só do próprio dono e nunca é mostrada para outra
    pessoa (nem o mentor a alcança — ver worker/api/mentor.js), mas colar um
@@ -78,6 +173,129 @@ function TiraDeCores({ cores, onEscolher, comBranco }) {
   );
 }
 
+/* Escolher a pasta do Drive: navega por pastas (a "raiz" aqui é sempre "Meu
+   Drive", nunca o Drive inteiro — drive.file só alcança o que este app criou
+   ou que a pessoa escolheu através dele), pode criar uma pasta nova, e
+   envia a exportação (Word ou PDF) para onde a pessoa escolher. Sem
+   createPortal o modal fica preso dentro da .rise que anima a troca de
+   aba, que vira um "containing block" para position:fixed — o mesmo motivo
+   pelo qual o estudo de cartões em tela cheia usa portal (parte12.jsx). */
+function ModalDrive({ tituloAula, gerarBlob, sugestaoNome, notify, onFechar }) {
+  const drive = useGoogleDrive();
+  const [caminho, setCaminho] = useState([{ id: "root", nome: "Meu Drive" }]);
+  const [pastas, setPastas] = useState(null);
+  const [novaPasta, setNovaPasta] = useState("");
+  const [formato, setFormato] = useState("pdf");
+  const [enviando, setEnviando] = useState(false);
+  const pastaAtual = caminho[caminho.length - 1];
+
+  const carregar = async (id) => setPastas(await drive.listarPastas(id));
+
+  useEffect(() => {
+    if (drive.conectado) carregar(pastaAtual.id);
+  }, [drive.conectado]);
+
+  const conectar = async () => { if (await drive.conectar()) carregar(pastaAtual.id); };
+  const entrar = (p) => { const novo = [...caminho, { id: p.id, nome: p.name }]; setCaminho(novo); carregar(p.id); };
+  const voltarPara = (i) => { const novo = caminho.slice(0, i + 1); setCaminho(novo); carregar(novo[novo.length - 1].id); };
+  const criar = async () => {
+    const nome = novaPasta.trim();
+    if (!nome) return;
+    const p = await drive.criarPasta(nome, pastaAtual.id);
+    if (p) { setNovaPasta(""); carregar(pastaAtual.id); }
+  };
+
+  const enviar = async () => {
+    setEnviando(true);
+    const blob = await gerarBlob(formato);
+    if (!blob) { setEnviando(false); notify("Não consegui preparar o arquivo para enviar."); return; }
+    const nome = `${sugestaoNome}.${formato === "pdf" ? "pdf" : "doc"}`;
+    const mime = formato === "pdf" ? "application/pdf" : "application/msword";
+    const r = await drive.enviarArquivo(nome, mime, blob, pastaAtual.id);
+    setEnviando(false);
+    if (r) { notify(`Enviado para "${pastaAtual.nome}" no seu Google Drive.`); onFechar(); }
+    else if (drive.erro) notify(drive.erro);
+  };
+
+  return createPortal((
+    <div className="fixed flex items-center justify-center px-4"
+      style={{ inset: 0, zIndex: 75, background: soft("var(--bg)", 82), backdropFilter: "blur(6px)" }}
+      onClick={onFechar}>
+      <Card className="px-6 py-6 w-full" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <H color="var(--neon2)" icon={<FolderInput size={16} />}>Enviar para o Drive</H>
+          <button type="button" onClick={onFechar} aria-label="Fechar"
+            className="flex items-center justify-center rounded-full" style={{ width: 28, height: 28, color: T.faint, background: "none", border: "none", cursor: "pointer" }}>
+            <X size={16} />
+          </button>
+        </div>
+
+        {!drive.disponivel ? (
+          <Texto style={{ marginTop: 12 }}>O login do Google não está configurado neste site.</Texto>
+        ) : !drive.conectado ? (
+          <div className="mt-4">
+            <Texto>Escolha uma pasta no seu Google Drive para guardar "{tituloAula}".</Texto>
+            <Btn tone="primary" className="mt-4" disabled={drive.ocupado} onClick={conectar}>
+              {drive.ocupado ? "Conectando…" : "Conectar ao Google Drive"}
+            </Btn>
+          </div>
+        ) : (
+          <div className="mt-4 flex flex-col gap-3">
+            <div className="flex items-center gap-1 flex-wrap" style={{ fontSize: 13 }}>
+              {caminho.map((p, i) => (
+                <span key={p.id} className="flex items-center gap-1">
+                  {i > 0 ? <ChevronRight size={12} style={{ color: T.faint }} /> : null}
+                  <button type="button" onClick={() => voltarPara(i)}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: i === caminho.length - 1 ? T.ink : T.dim, fontWeight: i === caminho.length - 1 ? 700 : 500 }}>
+                    {p.nome}
+                  </button>
+                </span>
+              ))}
+            </div>
+
+            <div className="flex flex-col gap-1" style={{ maxHeight: 220, overflowY: "auto" }}>
+              {pastas === null ? <Mini>carregando…</Mini> : pastas.length === 0 ? <Mini>nenhuma subpasta aqui</Mini> : pastas.map((p) => (
+                <button key={p.id} type="button" onClick={() => entrar(p)}
+                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-2"
+                  style={{ background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>
+                  <Folder size={15} style={{ color: T.faint, flexShrink: 0 }} />
+                  <span style={{ fontSize: 13.5, color: T.ink }}>{p.name}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <TextInput value={novaPasta} placeholder="nova pasta aqui dentro"
+                onChange={(e) => setNovaPasta(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") criar(); }}
+                style={{ padding: "6px 10px", fontSize: 13 }} />
+              <Btn size="sm" tone="outline" onClick={criar}><FolderPlus size={14} /></Btn>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2" style={{ borderTop: `1px solid ${T.line}` }}>
+              {[["pdf", "PDF"], ["doc", "Word"]].map(([id, lb]) => (
+                <button key={id} type="button" onClick={() => setFormato(id)}
+                  className="rounded-full px-3.5 py-1.5"
+                  style={{
+                    fontSize: 13, fontWeight: 600, cursor: "pointer",
+                    background: formato === id ? soft("var(--neon2)", 20) : T.card2,
+                    color: formato === id ? "var(--neon2)" : T.dim,
+                    border: `1px solid ${formato === id ? soft("var(--neon2)", 40) : T.line}`,
+                  }}>{lb}</button>
+              ))}
+            </div>
+
+            <Btn tone="primary" disabled={enviando} onClick={enviar}>
+              {enviando ? "Enviando…" : `Enviar aqui: "${pastaAtual.nome}"`}
+            </Btn>
+          </div>
+        )}
+        {drive.erro ? <Label style={{ marginTop: 12, color: T.bad, textTransform: "none", letterSpacing: 0, fontSize: 14 }}>{drive.erro}</Label> : null}
+      </Card>
+    </div>
+  ), document.body);
+}
+
 function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, notify, setData, nuvem }) {
   const [aberto, setAberto] = useState(false);
   const [pronto, setPronto] = useState(false);
@@ -110,6 +328,34 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
     setData((p) => ({ ...p, flash: [...novos, ...(p.flash || [])], pastas: registrarPasta(p.pastas, pasta) }));
     notify(`${novos.length} cartõe${novos.length === 1 ? "" : "s"} gerado${novos.length === 1 ? "" : "s"} em "${pasta}".`
       + (dados.cortado ? " O texto era grande e foi cortado antes do fim." : ""));
+  };
+
+  const [baixando, setBaixando] = useState("");    // "" | "doc" | "pdf"
+  const [modalDrive, setModalDrive] = useState(false);
+  const nomeArquivo = (titulo || "anotacao").trim().slice(0, 60).replace(/[\\/:*?"<>|]+/g, "-") || "anotacao";
+
+  const conteudoAtual = () => (editorRef.current ? editorRef.current.innerHTML : "");
+
+  const baixarDoc = () => {
+    if (!conteudoAtual().trim()) { notify("Escreva alguma coisa antes de baixar."); return; }
+    baixarBlob(`${nomeArquivo}.doc`, notaParaWordBlob(titulo, conteudoAtual()));
+  };
+
+  const baixarPdf = async () => {
+    if (!conteudoAtual().trim()) { notify("Escreva alguma coisa antes de baixar."); return; }
+    setBaixando("pdf");
+    try {
+      const blob = await notaParaPdfBlob(titulo, conteudoAtual());
+      baixarBlob(`${nomeArquivo}.pdf`, blob);
+    } catch (e) { notify((e && e.message) || "Não consegui gerar o PDF."); }
+    finally { setBaixando(""); }
+  };
+
+  const gerarParaDrive = async (formato) => {
+    const html = conteudoAtual();
+    if (!html.trim()) return null;
+    try { return formato === "pdf" ? await notaParaPdfBlob(titulo, html) : notaParaWordBlob(titulo, html); }
+    catch (e) { return null; }
   };
 
   useEffect(() => {
@@ -270,6 +516,23 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
         </Btn>
         <Mini>vão para a pasta "{PASTA_POR_AREA_NOTA[area] || PASTA_SOLTA}", em Cartões</Mini>
       </div>
+
+      <div className="flex items-center gap-2 flex-wrap pt-2" style={{ borderTop: `1px solid ${T.line}` }}>
+        <Btn size="sm" tone="outline" onClick={baixarDoc}>
+          <FileDown size={14} /> Baixar em Word
+        </Btn>
+        <Btn size="sm" tone="outline" disabled={baixando === "pdf"} onClick={baixarPdf}>
+          <FileDown size={14} /> {baixando === "pdf" ? "Gerando…" : "Baixar em PDF"}
+        </Btn>
+        <Btn size="sm" tone="outline" onClick={() => setModalDrive(true)}>
+          <FolderInput size={14} /> Enviar para o Drive
+        </Btn>
+      </div>
+
+      {modalDrive ? (
+        <ModalDrive tituloAula={titulo} sugestaoNome={nomeArquivo} gerarBlob={gerarParaDrive}
+          notify={notify} onFechar={() => setModalDrive(false)} />
+      ) : null}
     </div>
   );
 }

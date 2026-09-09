@@ -193,6 +193,43 @@ if (await linhaAula.count() === 0) {
         ok('anotação: a imagem volta a aparecer, lida de volta do IndexedDB');
       } else falha('anotação: a imagem não voltou depois de recarregar');
 
+      /* ── baixar em Word: não depende de rede nenhuma ─────────────────── */
+      const baixarDocBtn = pag.locator('button:has-text("Baixar em Word")');
+      if (await baixarDocBtn.count() === 0) {
+        falha('anotação: não achei o botão de baixar em Word');
+      } else {
+        const espera = pag.waitForEvent('download', { timeout: 5000 }).catch(() => null);
+        await baixarDocBtn.click();
+        const download = await espera;
+        if (download) ok(`anotação: baixar em Word dispara o download (${download.suggestedFilename()})`);
+        else falha('anotação: baixar em Word não disparou download nenhum');
+      }
+
+      /* ── baixar em PDF: o botão existe. Não força o clique — depende do
+         jsPDF/html2canvas vindo de um CDN externo, que pode não estar
+         acessível neste ambiente de teste (sem rede geral, só o
+         localhost do teste), e uma falha de rede aí já vira um aviso
+         tratado, não uma tela quebrada. */
+      if (await pag.locator('button:has-text("Baixar em PDF")').count() > 0) {
+        ok('anotação: o botão de baixar em PDF existe');
+      } else falha('anotação: não achei o botão de baixar em PDF');
+
+      /* ── enviar para o Drive: o botão abre o modal ───────────────────── */
+      const enviarDriveBtn = pag.locator('button:has-text("Enviar para o Drive")');
+      if (await enviarDriveBtn.count() === 0) {
+        falha('anotação: não achei o botão de enviar para o Drive');
+      } else {
+        await enviarDriveBtn.click();
+        await pag.waitForTimeout(400);
+        const abriu = (await pag.locator('text=Conectar ao Google Drive').count()) > 0
+          || (await pag.locator('text=não está configurado').count()) > 0;
+        if (abriu) ok('anotação: o modal de enviar para o Drive abre');
+        else falha('anotação: o modal do Drive não abriu como esperado');
+        const fechar = pag.locator('button[aria-label="Fechar"]');
+        if (await fechar.count() > 0) await fechar.first().click();
+        await pag.waitForTimeout(200);
+      }
+
       /* ── gerar flashcards a partir da anotação ─────────────────────── */
       /* Cartões é recurso do plano completo: só faz sentido conferir que o
          cartão chegou lá no build de teste, com o plano liberado (o mesmo
