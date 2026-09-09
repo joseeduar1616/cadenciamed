@@ -141,12 +141,16 @@ if (r.corpo.ok && r.corpo.encontrado === false) ok('aluno sem plano/nuvem ainda 
 else falha('aluno sem dados: ' + JSON.stringify(r));
 
 /* ── lê os dados do aluno ─────────────────────────────────────────────── */
-USUARIOS['uid-aluno'] = { fields: { ...dadosAluno({ marks: { m1: { aula: true, date: '2026-01-01' } } }) } };
+const CRONOGRAMA_PROPRIO_ALUNO = [{ id: 'pp-1', week: 1, area: 'CI', title: 'Fraturas', esp: 'Ortopedia', bonus: [] }];
+USUARIOS['uid-aluno'] = { fields: { ...dadosAluno({ marks: { m1: { aula: true, date: '2026-01-01' } }, cronogramaProprio: CRONOGRAMA_PROPRIO_ALUNO }) } };
 r = await pedir({ acao: 'aluno', uid: 'uid-aluno' });
 if (r.corpo.ok && r.corpo.encontrado && r.corpo.aluno.nome === 'Aluno Um') ok('lê nome, prova, currículo, rotina e metas do aluno');
 else falha('ler aluno: ' + JSON.stringify(r));
 if (r.corpo.aluno.marks.m1.aula === true) ok('o currículo (marks) vem junto');
 else falha('marks não veio: ' + JSON.stringify(r.corpo));
+if (Array.isArray(r.corpo.aluno.cronogramaProprio) && r.corpo.aluno.cronogramaProprio.length === 1) {
+  ok('o currículo próprio do aluno (se ele tiver substituído o padrão) vem junto');
+} else falha('cronogramaProprio não veio: ' + JSON.stringify(r.corpo.aluno));
 
 /* ── grava rotina ─────────────────────────────────────────────────────── */
 r = await pedir({

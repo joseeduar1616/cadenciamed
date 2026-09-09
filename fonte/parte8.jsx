@@ -244,7 +244,8 @@ export default function Cadencia() {
 
   const LARGURA = data.layout === "movel" ? 470 : 1120;
   const today = todayISO();
-  const subjects = useMemo(() => CURRICULUM.map((s) => subjectState(s, data.marks)), [data.marks]);
+  const ativo = useMemo(() => montarCurriculo(data.cronogramaProprio), [data.cronogramaProprio]);
+  const subjects = useMemo(() => ativo.lista.map((s) => subjectState(s, data.marks)), [ativo, data.marks]);
 
   /* A escada de revisão sai do esquema escolhido em Revisões. Trocar de
      esquema muda os prazos na hora, sem mexer no que já foi marcado: cada
@@ -407,7 +408,7 @@ export default function Cadencia() {
   const [qtdAcertos, setQtdAcertos] = useState("");
 
   const onFocusDone = useCallback((mins, origem) => {
-    const sid = pomoSubjRef.current, s = sid ? BY_ID[sid] : null;
+    const sid = pomoSubjRef.current, s = sid ? ativo.byId[sid] : null;
     const id = uid();
     setData((p) => ({
       ...p,
@@ -422,7 +423,7 @@ export default function Cadencia() {
       setTipoSessao(KINDS[0]); setQtdQuestoes(""); setQtdAcertos("");
       setClassificar({ id, minutes: mins });
     }
-  }, []);
+  }, [ativo]);
 
   const salvarClassificacao = useCallback(() => {
     if (!classificar) return;
@@ -598,6 +599,7 @@ export default function Cadencia() {
   );
 
   return (
+    <AtivoContext.Provider value={ativo}>
     <div data-theme={data.theme} style={{ background: T.bg, minHeight: "100vh", color: T.ink, fontFamily: F_UI, fontWeight: 500, "--acc": acc }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Instrument+Serif&family=JetBrains+Mono:wght@400;500;600;700&family=Sora:wght@300;400;500;600;700&family=Manrope:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
@@ -945,5 +947,6 @@ export default function Cadencia() {
         </div>
       ) : null}
     </div>
+    </AtivoContext.Provider>
   );
 }

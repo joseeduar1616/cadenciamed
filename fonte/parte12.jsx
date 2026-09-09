@@ -683,6 +683,7 @@ function MontarFlashcardsIA({ setData, notify, nuvem }) {
 }
 
 function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
+  const ativo = useAtivo();
   const [modo, setModo] = useState("painel");   // painel | estudo | criar
   const [fila, setFila] = useState([]);
   const [virado, setVirado] = useState(false);
@@ -1025,7 +1026,7 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
       );
     }
 
-    const aula = atual.subjectId ? BY_ID[atual.subjectId] : null;
+    const aula = atual.subjectId ? ativo.byId[atual.subjectId] : null;
 
     /* Tela cheia de verdade: por cima de tudo, sem o cabeçalho, o menu e o
        rodapé disputando espaço com o cartão. Era isso que deixava uma coisa
@@ -1168,7 +1169,7 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
     if (filtro !== "todos" && estagio(c) !== filtro) return false;
     const t = busca.trim().toLowerCase();
     if (!t) return true;
-    const aula = c.subjectId ? BY_ID[c.subjectId] : null;
+    const aula = c.subjectId ? ativo.byId[c.subjectId] : null;
     return c.frente.toLowerCase().includes(t) || c.verso.toLowerCase().includes(t)
       || (aula && aula.title.toLowerCase().includes(t));
   });
@@ -1614,7 +1615,7 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
 
           <div className="flex flex-col gap-2">
             {lista.map((c) => {
-              const aula = c.subjectId ? BY_ID[c.subjectId] : null;
+              const aula = c.subjectId ? ativo.byId[c.subjectId] : null;
               const venceu = (c.prox || today) <= today;
               const e = estagio(c);
               return (

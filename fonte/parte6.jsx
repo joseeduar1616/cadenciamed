@@ -89,6 +89,7 @@ function Materias({ subjects, setMark, toggleBonus, minutes, done, bonusDone }) 
   const [q, setQ] = useState("");
   const [openId, setOpenId] = useState(null);
   const [grouped, setGrouped] = useState(true);
+  const ativo = useAtivo();
 
   const list = useMemo(() => {
     const t = q.trim().toLowerCase();
@@ -137,7 +138,7 @@ function Materias({ subjects, setMark, toggleBonus, minutes, done, bonusDone }) 
           </div>
           <div className="flex items-baseline gap-3">
             <Num size={24} color={T.dim}>{bonusDone}</Num>
-            <Label>de {TOTAL_BONUS} tópicos</Label>
+            <Label>de {ativo.totalBonus} tópicos</Label>
           </div>
         </div>
         <div className="mt-6 grid grid-cols-1 sm:grid-cols-5 gap-4">
@@ -326,6 +327,7 @@ function Revisoes({ rows, toggleStep, resetCycle, data, setData, degraus, notify
   const [onlyLate, setOnlyLate] = useState(false);
   const list = onlyLate ? rows.filter((r) => r.late.length > 0) : rows;
   const colunas = { gridTemplateColumns: `repeat(${Math.max(1, degraus.length)}, minmax(0, 1fr))` };
+  const ativo = useAtivo();
 
   return (
     <div className="flex flex-col gap-4">
@@ -354,7 +356,7 @@ function Revisoes({ rows, toggleStep, resetCycle, data, setData, degraus, notify
                 <div className="flex-1 min-w-0">
                   <div style={{ fontSize: 16, fontWeight: 600, lineHeight: 1.35 }}>{r.title}</div>
                   <Mini style={{ marginTop: 3 }}>
-                    {BY_ID[r.id] ? BY_ID[r.id].esp : ""} · âncora em {brDate(r.anchor)}{r.minutes ? ` · ${fmtMin(r.minutes)} registrados` : ""}
+                    {ativo.byId[r.id] ? ativo.byId[r.id].esp : ""} · âncora em {brDate(r.anchor)}{r.minutes ? ` · ${fmtMin(r.minutes)} registrados` : ""}
                   </Mini>
                 </div>
                 <Btn size="sm" tone="outline" onClick={() => resetCycle(r.id)} title="Recomeça a contagem hoje">

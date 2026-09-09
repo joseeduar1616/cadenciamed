@@ -9,7 +9,7 @@ const ROTA_IA = "/api/assistente";
 
 /* Resumo do estado do estudo, enviado junto com a pergunta para o modelo
    ter contexto real em vez de responder no vácuo. */
-function resumoParaIA({ subjects, ladder, data, today, totals, minWeek, qWeek }) {
+function resumoParaIA({ subjects, ladder, data, today, totals, minWeek, qWeek, totalBonus }) {
   const porEsp = new Map();
   for (const s of subjects) {
     const k = `${aLabel(s.area)} · ${s.esp}`;
@@ -61,7 +61,7 @@ PROVA: ${prova}
 
 PROGRESSO GERAL
 Aulas principais: ${subjects.filter((s) => s.aula).length} de ${subjects.length}
-Aulas tópicos: ${subjects.reduce((a, s) => a + s.bonusCount, 0)} de ${TOTAL_BONUS}
+Aulas tópicos: ${subjects.reduce((a, s) => a + s.bonusCount, 0)} de ${totalBonus}
 Tempo total registrado: ${fmtMin(totals.min)} em ${data.sessions.length} sessões
 Nesta semana: ${fmtMin(minWeek)} e ${qWeek} questões (metas: ${fmtMin(data.goals.weekly)} e ${data.goals.questions} questões)
 Acerto geral: ${totals.pct === null ? "sem questões lançadas" : totals.pct + "%"}
@@ -188,19 +188,93 @@ function Markdown({ texto }) {
  * assistente continua enxergando o cronograma nas conversas seguintes, sem
  * a pessoa ter que anexar de novo toda vez.
  *
- * Só texto. PDF e Word são formatos binários, e ler os dois no navegador
- * exigiria uma biblioteca pesada dentro do arquivo do site — para um
- * resultado que erra bastante em PDF de curso, que costuma ser tabela ou
- * imagem. Copiar e colar dá menos trabalho e não erra.
+ * PDF e Word passam pelos mesmos leitores do montador de flashcards
+ * (carregarPdfJs/carregarMammoth, em parte12.jsx), só que sem capturar
+ * imagem — aqui interessa só o texto, para a IA separar em matérias.
  */
 const LIMITE_CRONOGRAMA = 20000;
+const LIMITE_ORGANIZAR = 45000;
 
-function Cronograma({ data, setData, notify }) {
+async function lerPdfSoTexto(arquivo, aviso) {
+  aviso("carregando o leitor de PDF");
+  const pdfjsLib = await carregarPdfJs();
+  aviso("abrindo o arquivo");
+  const bytes = new Uint8Array(await arquivo.arrayBuffer());
+  const doc = await pdfjsLib.getDocument({ data: bytes }).promise;
+  const totalPaginas = Math.min(doc.numPages, LIMITE_PAGINAS_PDF);
+  const blocos = [];
+  for (let n = 1; n <= totalPaginas; n++) {
+    aviso(`lendo página ${n} de ${totalPaginas}`);
+    const page = await doc.getPage(n);
+    const conteudo = await page.getTextContent();
+    const texto = conteudo.items.map((it) => it.str || "").join(" ").replace(/\s+/g, " ").trim();
+    if (texto) blocos.push(texto);
+  }
+  if (doc.numPages > totalPaginas) {
+    blocos.push(`[o documento tem ${doc.numPages} páginas; só as ${totalPaginas} primeiras foram lidas]`);
+  }
+  return blocos.join("\n\n");
+}
+
+async function lerDocxSoTexto(arquivo, aviso) {
+  aviso("carregando o leitor de Word");
+  const mammoth = await carregarMammoth();
+  aviso("lendo o arquivo");
+  const r = await mammoth.extractRawText({ arrayBuffer: await arquivo.arrayBuffer() });
+  return String(r.value || "").trim();
+}
+
+async function pegarTokenDaConta(nuvem) {
+  try {
+    if (nuvem && nuvem.sdk && nuvem.sdk.auth && nuvem.sdk.auth.currentUser) {
+      return await nuvem.sdk.auth.currentUser.getIdToken();
+    }
+  } catch (e) { /* segue sem token, o servidor recusa */ }
+  return "";
+}
+
+async function organizarComIA(nuvem, texto) {
+  const token = await pegarTokenDaConta(nuvem);
+  if (!token) return { erro: "Entre na sua conta para usar esta função." };
+  const { dados, erro } = await chamarApi(
+    "/api/cronograma-ia", { token, texto: texto.slice(0, LIMITE_ORGANIZAR) }, "Organizar o cronograma");
+  return erro ? { erro } : dados;
+}
+
+/* Vira item de currículo, no mesmo formato de curriculo.js — "pp-" na
+   frente do id garante que nunca bate com o id de uma aula padrão (essas
+   nunca começam por "pp-"), então o progresso de uma nunca se confunde com
+   o da outra se a pessoa voltar ao currículo padrão depois. */
+function materiaParaAula(m, semana) {
+  return {
+    id: `pp-${uid()}`, week: semana, area: m.area, title: m.titulo, esp: m.esp,
+    bonus: Array.isArray(m.topicos) ? m.topicos : [],
+  };
+}
+
+/* Junta o que a pessoa acabou de organizar ao currículo próprio que já
+   existia, substituindo só as áreas que vieram nesta leva — é o que faz um
+   envio "só a área tal" (ciclo clínico) trocar só aquele pedaço, e um envio
+   com as 5 áreas trocar o currículo inteiro, sem duplicar entre uma leva e
+   outra. */
+function aplicarNoCronogramaProprio(anterior, materias) {
+  const novasAreas = new Set(materias.map((m) => m.area));
+  const mantido = (anterior || []).filter((s) => !novasAreas.has(s.area));
+  const novas = materias.map((m, i) => materiaParaAula(m, mantido.length + i + 1));
+  return [...mantido, ...novas];
+}
+
+function Cronograma({ data, setData, notify, nuvem }) {
   const atual = data.cronograma || { nome: "", texto: "" };
-  const [abrindo, setAbrindo] = useState(false);
+  const proprio = data.cronogramaProprio || [];
+  const [fase, setFase] = useState("fechado");   // fechado | editar | revisar
   const [rascunho, setRascunho] = useState("");
   const [nome, setNome] = useState("");
   const [erro, setErro] = useState("");
+  const [progresso, setProgresso] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+  const [materias, setMaterias] = useState([]);
+  const [areasOn, setAreasOn] = useState(() => new Set());
   const arquivoRef = useRef(null);
 
   const guardar = (texto, comoSeChama) => {
@@ -213,18 +287,33 @@ function Cronograma({ data, setData, notify }) {
         texto: limpo.slice(0, LIMITE_CRONOGRAMA),
       },
     }));
-    setAbrindo(false); setRascunho(""); setNome(""); setErro("");
+    setFase("fechado"); setRascunho(""); setNome(""); setErro("");
     notify(limpo.length > LIMITE_CRONOGRAMA
       ? "Cronograma guardado. Era grande e foi cortado no limite."
       : "Cronograma guardado. O assistente já enxerga ele.");
   };
 
-  const escolher = (e) => {
+  const escolher = async (e) => {
     const f = e.target.files && e.target.files[0];
     e.target.value = "";
     if (!f) return;
-    if (/\.(pdf|docx?|pptx?|xlsx?)$/i.test(f.name)) {
-      setErro(`${f.name} é um arquivo de formato fechado. Abra ele, copie o texto e cole aqui.`);
+    setErro(""); setProgresso("");
+    if (/\.pdf$/i.test(f.name)) {
+      setOcupado(true);
+      try { setRascunho(await lerPdfSoTexto(f, setProgresso)); setNome(f.name); }
+      catch (err) { setErro((err && err.message) || "Não consegui ler o PDF."); }
+      finally { setOcupado(false); setProgresso(""); }
+      return;
+    }
+    if (/\.docx$/i.test(f.name)) {
+      setOcupado(true);
+      try { setRascunho(await lerDocxSoTexto(f, setProgresso)); setNome(f.name); }
+      catch (err) { setErro((err && err.message) || "Não consegui ler o Word."); }
+      finally { setOcupado(false); setProgresso(""); }
+      return;
+    }
+    if (/\.(docm?|pptx?|xlsx?)$/i.test(f.name)) {
+      setErro(`${f.name} é um formato fechado que ainda não leio. Abra, copie o texto e cole aqui.`);
       return;
     }
     const rd = new FileReader();
@@ -233,57 +322,138 @@ function Cronograma({ data, setData, notify }) {
     rd.readAsText(f);
   };
 
-  if (!abrindo) {
-    return atual.texto ? (
-      <div className="flex items-center gap-3 flex-wrap">
-        <span className="inline-flex items-center gap-2 rounded-full px-3 py-1.5"
-          style={{ background: soft("var(--ok)", 14), color: T.ok, fontSize: 13, fontWeight: 600 }}>
-          <FileText size={13} /> {atual.nome || "cronograma anexado"}
-        </span>
-        <Mini>{atual.texto.length.toLocaleString("pt-BR")} caracteres</Mini>
-        <Btn size="sm" tone="outline" onClick={() => { setAbrindo(true); setRascunho(atual.texto); setNome(atual.nome); }}>
-          trocar
-        </Btn>
-        <Btn size="sm" tone="danger"
-          onClick={() => { setData((p) => ({ ...p, cronograma: { nome: "", texto: "" } })); notify("Cronograma removido."); }}>
-          remover
-        </Btn>
-      </div>
-    ) : (
-      <div className="flex items-center gap-3 flex-wrap">
-        <Btn size="sm" tone="outline" onClick={() => setAbrindo(true)}>
-          <Upload size={14} /> Anexar meu cronograma
-        </Btn>
-        <Mini style={{ maxWidth: 420, lineHeight: 1.6 }}>
-          Cole o cronograma do seu curso e ele passa a montar a rotina em cima
-          do que você realmente tem para cumprir.
+  const organizar = async () => {
+    const texto = rascunho.trim();
+    if (!texto) { setErro("Cole o texto ou escolha um arquivo antes de organizar."); return; }
+    setOcupado(true); setErro(""); setProgresso("conversando com a IA…");
+    const r = await organizarComIA(nuvem, texto);
+    setOcupado(false); setProgresso("");
+    if (r.erro) { setErro(r.erro); return; }
+    setMaterias(r.materias);
+    setAreasOn(new Set(r.materias.map((m) => m.area)));
+    setFase("revisar");
+    if (r.cortado) notify("O material era grande e foi cortado antes de organizar.");
+  };
+
+  const substituir = () => {
+    const escolhidas = materias.filter((m) => areasOn.has(m.area));
+    if (escolhidas.length === 0) { setErro("Marque pelo menos uma área para substituir."); return; }
+    setData((p) => ({ ...p, cronogramaProprio: aplicarNoCronogramaProprio(p.cronogramaProprio, escolhidas) }));
+    const areas = [...new Set(escolhidas.map((m) => AREAS[m.area] || m.area))].join(", ");
+    setFase("fechado"); setRascunho(""); setNome(""); setErro(""); setMaterias([]);
+    notify(`Currículo atualizado em ${areas}: ${escolhidas.length} aula${escolhidas.length === 1 ? "" : "s"}.`);
+  };
+
+  const voltarAoPadrao = () => {
+    setData((p) => ({ ...p, cronogramaProprio: [] }));
+    notify("Voltou ao currículo padrão. O que você tinha marcado nele continua guardado.");
+  };
+
+  if (fase === "revisar") {
+    const porArea = AREA_IDS
+      .map((a) => ({ a, itens: materias.filter((m) => m.area === a) }))
+      .filter((g) => g.itens.length > 0);
+    return (
+      <div className="flex flex-col gap-3">
+        <Mini style={{ lineHeight: 1.6 }}>
+          A IA separou {materias.length} matéria{materias.length === 1 ? "" : "s"}. Desmarque uma área
+          para não mexer nela — só as marcadas substituem o currículo daquela área.
         </Mini>
+        <div className="flex flex-col gap-3" style={{ maxHeight: 320, overflowY: "auto" }}>
+          {porArea.map((g) => (
+            <label key={g.a} className="flex items-start gap-2.5 rounded-xl px-3 py-2.5" style={{ background: T.card2, border: `1px solid ${T.line}`, cursor: "pointer" }}>
+              <input type="checkbox" checked={areasOn.has(g.a)} style={{ marginTop: 2 }}
+                onChange={() => setAreasOn((prev) => {
+                  const n = new Set(prev);
+                  if (n.has(g.a)) n.delete(g.a); else n.add(g.a);
+                  return n;
+                })} />
+              <span className="flex-1 min-w-0">
+                <div style={{ fontSize: 14, fontWeight: 600, color: T.ink }}>{AREAS[g.a] || g.a} · {g.itens.length} aula{g.itens.length === 1 ? "" : "s"}</div>
+                <Mini style={{ marginTop: 2, lineHeight: 1.5 }}>{g.itens.map((m) => m.titulo).join(" · ")}</Mini>
+              </span>
+            </label>
+          ))}
+        </div>
+        {erro ? <Label style={{ color: T.bad, textTransform: "none", letterSpacing: 0, fontSize: 14 }}>{erro}</Label> : null}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Btn tone="primary" size="sm" onClick={substituir}>Substituir currículo</Btn>
+          <Btn tone="outline" size="sm" onClick={() => { setFase("editar"); setErro(""); }}>voltar</Btn>
+        </div>
+      </div>
+    );
+  }
+
+  if (fase !== "editar") {
+    return (
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          {atual.texto ? (
+            <>
+              <span className="inline-flex items-center gap-2 rounded-full px-3 py-1.5"
+                style={{ background: soft("var(--ok)", 14), color: T.ok, fontSize: 13, fontWeight: 600 }}>
+                <FileText size={13} /> {atual.nome || "cronograma anexado"}
+              </span>
+              <Mini>{atual.texto.length.toLocaleString("pt-BR")} caracteres</Mini>
+              <Btn size="sm" tone="outline" onClick={() => { setFase("editar"); setRascunho(atual.texto); setNome(atual.nome); }}>
+                trocar
+              </Btn>
+              <Btn size="sm" tone="danger"
+                onClick={() => { setData((p) => ({ ...p, cronograma: { nome: "", texto: "" } })); notify("Cronograma removido."); }}>
+                remover
+              </Btn>
+            </>
+          ) : (
+            <>
+              <Btn size="sm" tone="outline" onClick={() => setFase("editar")}>
+                <Upload size={14} /> Anexar meu cronograma
+              </Btn>
+              <Mini style={{ maxWidth: 420, lineHeight: 1.6 }}>
+                Cole ou envie (PDF, Word ou texto) o cronograma do seu curso, ou o
+                conteúdo do ciclo clínico que você está cursando agora — a IA organiza
+                em matérias e pode substituir seu currículo por elas.
+              </Mini>
+            </>
+          )}
+        </div>
+        {proprio.length > 0 ? (
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="inline-flex items-center gap-2 rounded-full px-3 py-1.5"
+              style={{ background: soft("var(--neon)", 14), color: "var(--neon)", fontSize: 13, fontWeight: 600 }}>
+              <GraduationCap size={13} /> currículo próprio: {proprio.length} aula{proprio.length === 1 ? "" : "s"}
+            </span>
+            <Btn size="sm" tone="outline" onClick={voltarAoPadrao}>voltar ao currículo padrão</Btn>
+          </div>
+        ) : null}
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-3">
-      <Field label="Cronograma do seu curso">
+      <Field label="Cronograma do seu curso, ou conteúdo do ciclo clínico">
         <Area value={rascunho} placeholder={"Cole aqui o cronograma.\n\nEx.: Semana 1 — Cardiologia: valvopatias, arritmias\nSemana 2 — Nefrologia: glomerulopatias"}
           onChange={(e) => setRascunho(e.target.value)}
           style={{ minHeight: 160, fontSize: 14 }} />
       </Field>
       <div className="flex items-center gap-2 flex-wrap">
-        <Btn size="sm" tone="outline" onClick={() => arquivoRef.current && arquivoRef.current.click()}>
-          <Upload size={14} /> escolher arquivo de texto
+        <Btn size="sm" tone="outline" disabled={ocupado} onClick={() => arquivoRef.current && arquivoRef.current.click()}>
+          <Upload size={14} /> escolher arquivo
         </Btn>
-        <input ref={arquivoRef} type="file" accept=".txt,.md,.csv,.tsv,text/plain"
+        <input ref={arquivoRef} type="file" accept=".txt,.md,.csv,.tsv,.pdf,.docx,text/plain,application/pdf"
           onChange={escolher} style={{ display: "none" }} />
         <TextInput value={nome} placeholder="nome (opcional)"
           onChange={(e) => setNome(e.target.value)}
           style={{ padding: "6px 10px", fontSize: 13, maxWidth: 220 }} />
+        {progresso ? <Mini>{progresso}</Mini> : null}
       </div>
       {erro ? <Label style={{ color: T.bad, textTransform: "none", letterSpacing: 0, fontSize: 14 }}>{erro}</Label> : null}
       <div className="flex items-center gap-2 flex-wrap">
-        <Btn tone="primary" size="sm" onClick={() => guardar(rascunho, nome)}>Guardar</Btn>
-        <Btn tone="outline" size="sm" onClick={() => { setAbrindo(false); setErro(""); }}>cancelar</Btn>
-        <Mini>PDF e Word não dão: abra, copie o texto e cole acima.</Mini>
+        <Btn tone="primary" size="sm" disabled={ocupado} onClick={organizar}>
+          {ocupado ? "Organizando…" : "Organizar com IA e usar como currículo"}
+        </Btn>
+        <Btn size="sm" tone="outline" disabled={ocupado} onClick={() => guardar(rascunho, nome)}>guardar só como referência</Btn>
+        <Btn tone="outline" size="sm" onClick={() => { setFase("fechado"); setErro(""); }}>cancelar</Btn>
       </div>
     </div>
   );
@@ -314,6 +484,7 @@ function Assistente({ data, setData, subjects, ladder, today, totals, minWeek, q
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState("");
   const fim = useRef(null);
+  const ativo = useAtivo();
 
   useEffect(() => {
     if (fim.current && fim.current.scrollIntoView) {
@@ -395,7 +566,7 @@ function Assistente({ data, setData, subjects, ladder, today, totals, minWeek, q
       } catch (e) { /* segue sem token, o servidor decide */ }
       const { dados: j, erro: falha } = await chamarApi(ROTA_IA, {
         token: tokenFirebase,
-        contexto: resumoParaIA({ subjects, ladder, data, today, totals, minWeek, qWeek }),
+        contexto: resumoParaIA({ subjects, ladder, data, today, totals, minWeek, qWeek, totalBonus: ativo.totalBonus }),
         instrucoes: INSTRUCOES_IA,
         mensagens: historico.slice(-14).map((m) => ({
           role: m.papel === "user" ? "user" : "assistant",
@@ -433,7 +604,7 @@ function Assistente({ data, setData, subjects, ladder, today, totals, minWeek, q
         </Texto>
 
         <div className="mt-5 pt-5" style={{ borderTop: `1px solid ${T.line}` }}>
-          <Cronograma data={data} setData={setData} notify={notify} />
+          <Cronograma data={data} setData={setData} notify={notify} nuvem={nuvem} />
         </div>
       </Card>
 

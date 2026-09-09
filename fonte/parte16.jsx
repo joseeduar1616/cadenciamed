@@ -153,27 +153,33 @@ function TarefasEditor({ tarefas, setTarefas }) {
   );
 }
 
-function CurriculoDoAluno({ marks, buscaMateria, setBuscaMateria, onMarcar }) {
+function CurriculoDoAluno({ cronogramaProprio, marks, buscaMateria, setBuscaMateria, onMarcar }) {
   const filtro = chaveTexto(buscaMateria);
+  /* O currículo ativo é do ALUNO, não do mentor: cada um pode ter subido o
+     seu próprio (parte9.jsx, Cronograma), então usa a mesma função pura de
+     montar o currículo (base.jsx) direto com o que veio na resposta de
+     /api/mentor, em vez do useAtivo() — esse reflete o currículo do mentor,
+     que aqui não tem nada a ver com o que se está editando. */
+  const lista = useMemo(() => montarCurriculo(cronogramaProprio).lista, [cronogramaProprio]);
   const porArea = useMemo(() => {
     const m = new Map();
-    for (const s of CURRICULUM) {
+    for (const s of lista) {
       if (filtro && !chaveTexto(s.title).includes(filtro) && !chaveTexto(s.area).includes(filtro)) continue;
       if (!m.has(s.area)) m.set(s.area, []);
       m.get(s.area).push(s);
     }
     return m;
-  }, [filtro]);
+  }, [lista, filtro]);
 
   return (
     <div className="flex flex-col gap-3">
       <TextInput value={buscaMateria} placeholder="buscar matéria ou área…" onChange={(e) => setBuscaMateria(e.target.value)} />
       <div className="flex flex-col gap-4" style={{ maxHeight: 360, overflowY: "auto" }}>
-        {[...porArea.entries()].map(([area, lista]) => (
+        {[...porArea.entries()].map(([area, itens]) => (
           <div key={area}>
-            <Mini style={{ marginBottom: 6 }}>{area}</Mini>
+            <Mini style={{ marginBottom: 6 }}>{AREAS[area] || area}</Mini>
             <div className="flex flex-col gap-1.5">
-              {lista.map((s) => {
+              {itens.map((s) => {
                 const feito = !!(marks[s.id] && marks[s.id].aula);
                 return (
                   <label key={s.id} className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5" style={{ cursor: "pointer" }}>
@@ -253,7 +259,7 @@ function PainelAluno({ mentorInfo, uid, notify }) {
   if (!aluno) return null;
 
   const resumo = resumoSessoesAluno(aluno.sessions, today);
-  const total = CURRICULUM.length;
+  const total = montarCurriculo(aluno.cronogramaProprio).lista.length;
   const concluidas = Object.values(aluno.marks || {}).filter((m) => m && m.aula).length;
 
   return (
@@ -289,7 +295,7 @@ function PainelAluno({ mentorInfo, uid, notify }) {
         <H color="var(--a-GO)" icon={<BookMarked size={16} />}>Currículo</H>
         <Texto style={{ marginTop: 6 }}>marcar aqui é o mesmo que o aluno marcar em Matérias — grava na hora, sem precisar salvar</Texto>
         <div className="mt-4">
-          <CurriculoDoAluno marks={aluno.marks} buscaMateria={buscaMateria} setBuscaMateria={setBuscaMateria} onMarcar={marcar} />
+          <CurriculoDoAluno cronogramaProprio={aluno.cronogramaProprio} marks={aluno.marks} buscaMateria={buscaMateria} setBuscaMateria={setBuscaMateria} onMarcar={marcar} />
         </div>
       </Card>
     </div>
