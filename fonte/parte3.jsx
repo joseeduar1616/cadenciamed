@@ -594,6 +594,75 @@ function useGoogleAgenda({ data, setData, notify, ladder, today }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
+   6.5 · MENTOR
+   Quem resgata o cupom "mentor1612" (rota /api/cupom) ganha esta aba, e
+   adiciona alunos pelo e-mail com que eles se cadastraram. Os dados do
+   aluno ficam inteiros na nuvem dele — o hook só chama o servidor, nunca
+   mexe direto no Firestore, porque as regras não deixam ninguém ler o
+   documento de outra pessoa. Isso é papel da rota /api/mentor, com a
+   conta de serviço.
+   ═══════════════════════════════════════════════════════════════════ */
+
+const ROTA_MENTOR = "/api/mentor";
+
+async function chamarMentor(nuvem, corpo) {
+  let token = "";
+  try {
+    if (nuvem && nuvem.sdk && nuvem.sdk.auth && nuvem.sdk.auth.currentUser) {
+      token = await nuvem.sdk.auth.currentUser.getIdToken();
+    }
+  } catch (e) { /* segue sem token, o servidor recusa */ }
+  if (!token) return { erro: "Entre na sua conta para usar a aba Mentor." };
+  const { dados, erro } = await chamarApi(ROTA_MENTOR, { ...corpo, token }, "A aba Mentor");
+  return erro ? { erro } : dados;
+}
+
+function useMentor(nuvem) {
+  const [mentor, setMentor] = useState(false);
+  const [alunos, setAlunos] = useState([]);
+  const [carregado, setCarregado] = useState(false);
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState("");
+
+  const atualizar = useCallback(async () => {
+    if (!nuvem.usuario) { setMentor(false); setAlunos([]); setCarregado(true); return; }
+    const r = await chamarMentor(nuvem, { acao: "status" });
+    if (r.erro) { setErro(r.erro); setCarregado(true); return; }
+    setMentor(!!r.mentor); setAlunos(r.alunos || []); setErro(""); setCarregado(true);
+  }, [nuvem]);
+
+  useEffect(() => { atualizar(); }, [nuvem.usuario, atualizar]);
+
+  const adicionar = useCallback(async (email) => {
+    setOcupado(true); setErro("");
+    const r = await chamarMentor(nuvem, { acao: "adicionar", email });
+    setOcupado(false);
+    if (r.erro) { setErro(r.erro); return r; }
+    setAlunos(r.alunos || []);
+    return r;
+  }, [nuvem]);
+
+  const remover = useCallback(async (uid) => {
+    setOcupado(true); setErro("");
+    const r = await chamarMentor(nuvem, { acao: "remover", uid });
+    setOcupado(false);
+    if (r.erro) { setErro(r.erro); return r; }
+    setAlunos(r.alunos || []);
+    return r;
+  }, [nuvem]);
+
+  const buscarAluno = useCallback((uid) => chamarMentor(nuvem, { acao: "aluno", uid }), [nuvem]);
+  const salvarRotina = useCallback((uid, rotina) => chamarMentor(nuvem, { acao: "rotina", uid, rotina }), [nuvem]);
+  const salvarTarefas = useCallback((uid, tarefas) => chamarMentor(nuvem, { acao: "tarefas", uid, tarefas }), [nuvem]);
+  const marcar = useCallback((uid, materiaId, feito) => chamarMentor(nuvem, { acao: "marcar", uid, materiaId, feito }), [nuvem]);
+
+  return {
+    mentor, alunos, carregado, ocupado, erro, atualizar,
+    adicionar, remover, buscarAluno, salvarRotina, salvarTarefas, marcar,
+  };
+}
+
+/* ═══════════════════════════════════════════════════════════════════
    7 · CRONÔMETRO
    O estado vive em disco como instantes absolutos, então continua
    correndo com o site fechado.

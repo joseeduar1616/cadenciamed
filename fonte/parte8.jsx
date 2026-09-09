@@ -441,6 +441,7 @@ export default function Cadencia() {
   const [proAtivo, setProAtivo] = useState(false);
   const nuvem = useNuvem(data, setData, notify, ready, proAtivo);
   const gcal = useGoogleAgenda({ data, setData, notify, ladder, today });
+  const mentorInfo = useMentor(nuvem);
   const assinatura = useAssinatura(nuvem.sdk, nuvem.usuario);
   const pro = assinatura.pro;
   useEffect(() => { setProAtivo(pro); }, [pro]);
@@ -478,6 +479,7 @@ export default function Cadencia() {
     { id: "revisoes", label: "Revisões", acc: "var(--ok)", badge: late.length },
     { id: "rotina", label: "Rotina", acc: "var(--a-PE)" },
     { id: "amigos", label: "Amigos", acc: "var(--neon2)" },
+    ...(mentorInfo.mentor ? [{ id: "mentor", label: "Mentor", acc: "var(--neon2)" }] : []),
     { id: "metas", label: "Metas", acc: "var(--warn)" },
     { id: "progresso", label: "Progresso", acc: "var(--a-CI)" },
     { id: "planos", label: pro ? "Plano" : "Assinar", acc: "var(--neon2)" },
@@ -490,9 +492,9 @@ export default function Cadencia() {
      para Hoje aqui expulsaria de imediato quem abriu o site direto numa aba
      paga — inclusive quem volta da autorização do Notion. */
   useEffect(() => {
-    if (assinatura.carregando) return;
+    if (assinatura.carregando || !mentorInfo.carregado) return;
     if (!TABS.some((t) => t.id === tab)) setTab("hoje");
-  }, [souDono, pro, tab, assinatura.carregando]);
+  }, [souDono, pro, tab, assinatura.carregando, mentorInfo.mentor, mentorInfo.carregado]);
 
   useEffect(() => {
     const h = (e) => {
@@ -843,6 +845,7 @@ export default function Cadencia() {
               {tab === "amigos" && !pro && <Bloqueado recurso={RECURSOS_PRO.amigos} onVerPlanos={() => setTab("planos")} />}
               {tab === "amigos" && pro && <Amigos {...{ nuvem, notify, data, setData }} />}
               {tab === "metas" && pro && <Metas {...{ data, setData, today, qWeek, notify, ladder, gcal }} />}
+              {tab === "mentor" && mentorInfo.mentor && <Mentor {...{ nuvem, notify, mentorInfo }} />}
               {tab === "progresso" && <Progresso {...{ data, setData, byDay, today, totals, subjects, notify, nuvem, pro, aoLiberar: assinatura.recarregar }} />}
             </div>
           </main>

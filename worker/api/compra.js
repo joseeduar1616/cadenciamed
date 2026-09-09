@@ -10,31 +10,8 @@
  * assinaturas/{uid}.
  */
 import {
-  contaDeServico, tokenDeAcesso, gravarAssinatura, BASE_FIRESTORE, DIAS,
+  contaDeServico, tokenDeAcesso, gravarAssinatura, uidPeloEmail, BASE_FIRESTORE, DIAS,
 } from "./_comum.js";
-
-async function uidPeloEmail(token, email) {
-  const r = await fetch(`${BASE_FIRESTORE}:runQuery`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      structuredQuery: {
-        from: [{ collectionId: "emails" }],
-        where: {
-          fieldFilter: {
-            field: { fieldPath: "email" }, op: "EQUAL",
-            value: { stringValue: String(email).toLowerCase().trim() },
-          },
-        },
-        limit: 1,
-      },
-    }),
-  });
-  if (!r.ok) return null;
-  const j = await r.json();
-  const doc = (j || []).find((x) => x.document);
-  return doc ? doc.document.name.split("/").pop() : null;
-}
 
 /* ── lê o aviso nos formatos da Kiwify e da Hotmart ────────────────────── */
 function interpretar(corpo) {

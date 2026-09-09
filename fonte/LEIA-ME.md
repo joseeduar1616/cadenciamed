@@ -80,6 +80,7 @@ some calada quando falta uma linha no `normalize()`.
 | `parte7.jsx` | Metas, Progresso, aparência, painel de conta |
 | `parte9.jsx` | assistente que conversa com a API |
 | `parte14.jsx` | salas de amigos, ranking e envio do perfil público |
+| `parte16.jsx` | aba Mentor: lista de alunos e o painel de cada um |
 | `parte8.jsx` | componente raiz, cabeçalho, barra lateral, rodapé |
 | `curriculo.js` | cronograma próprio: 90 aulas em 34 blocos de especialidade |
 | `gerar_css.py` | varre o `app.jsx` e gera só as regras das classes usadas |
@@ -95,6 +96,7 @@ some calada quando falta uma linha no `normalize()`.
 | `testar-cupom.mjs` | teste do resgate de cupom, com Firebase falso |
 | `testar-acessos.mjs` | teste do painel de acessos do dono |
 | `testar-salas.mjs` | teste das salas de amigos e dos recortes do ranking |
+| `testar-mentor.mjs` | teste da aba Mentor: papel, alunos, rotina, metas e currículo |
 | `testar-baralhos.mjs` | teste dos baralhos publicados: quem publica e quem baixa |
 | `testar-api.mjs` | teste de como o app acha o servidor das rotas `/api` |
 | `testar-worker.mjs` | teste do roteamento: o que é API e o que é arquivo |
@@ -332,6 +334,14 @@ Os códigos ficam no `worker/api/cupom.js`, no servidor, e nunca no navegador.
 Para trocá-los sem mexer no código, cadastre `CUPONS` no Cloudflare, no formato
 `codigo:plano,codigo:plano` (planos: mensal, anual, vitalicio). Enquanto essa
 variável não existir, valem os dois cupons escritos no arquivo.
+
+O cupom `mentor1612` é especial: fica fora dessa lista (não dá para trocar
+pela variável `CUPONS`) e não libera plano nenhum — concede o papel de
+mentor, gravando `mentores/{uid}` em vez de `assinaturas/{uid}`. Resgatar de
+novo não faz nada de errado, e não apaga a lista de alunos que a pessoa já
+tinha. O dono (`joseeduardo1616@gmail.com`, em `DONOS`, no `_comum.js`) já é
+mentor sem precisar resgatar nada — é a mesma lista que já dá acesso completo
+sem pagar.
 
 ## Cartões
 
@@ -641,6 +651,45 @@ aparecem, já que a pessoa não pediu essa tentativa. O botão "Puxar do Google"
 continua funcionando a qualquer momento para puxar na hora. Desconectar
 (`gcal.desconectar`) desliga o `autoSync` — só liga de novo puxando manualmente
 uma vez.
+
+## Mentor
+
+Quem resgata o cupom `mentor1612` (veja "Cupons", acima) ganha a aba Mentor
+e adiciona alunos pelo e-mail com que eles se cadastraram — nunca pelo uid,
+que o mentor não tem como saber. A ligação usa a coleção `emails/{uid}` que
+cada pessoa já grava de si mesma ao entrar (é a mesma que o aviso de compra
+usa para achar quem pagou); `uidPeloEmail`, em `_comum.js`, faz essa busca.
+
+Tudo mora em `worker/api/mentor.js`, com a conta de serviço, pelo mesmo
+motivo de sempre: as regras do Firestore não deixam ninguém ler o documento
+de outra pessoa, então só o servidor alcança os dados de um aluno. Cada ação
+confere primeiro que o aluno pedido está na lista `mentores/{uid}.alunos`
+deste mentor — sem essa conferência, bastaria saber o uid de alguém para
+mexer nos dados dela.
+
+**Só funciona com aluno que tem o plano pago e a nuvem ligada.** Os dados de
+estudo de cada pessoa só chegam ao Firestore (`usuarios/{uid}`) quando ela é
+`pro` — é como o `useNuvem` já funciona, e o mentor não muda isso. Um aluno
+sem plano aparece na lista, mas a rota devolve "ainda não tem dados na
+nuvem" em vez de erro.
+
+O mentor grava rotina, metas (`tasks`) e currículo (`marks`, a mesma marca
+`aula` que o checkbox de Matérias usa) direto no documento inteiro do aluno
+— lê `usuarios/{uid}.dados` (um texto JSON, o mesmo formato do
+`localStorage`), troca só os campos da ação, e grava de volta o documento
+inteiro com `dispositivo: "mentor"`. Esse `dispositivo` nunca bate com o de
+aparelho nenhum (`idDispositivo`, em `parte3.jsx`), então se o aluno estiver
+com a aba aberta, o `onSnapshot` dele aceita a mudança na hora, pelo mesmo
+caminho que já sincroniza entre os aparelhos da própria pessoa — não foi
+preciso mudar nada do lado do aluno.
+
+O que a aba **não** faz, de propósito, para não expor mais do que o
+combinado: não manda anotações, flashcards nem o histórico do Assistente do
+aluno para o mentor — só nome, prova marcada, currículo, rotina, metas e as
+sessões (para o resumo de minutos/questões/acerto). Também não existe
+consentimento do aluno para ser adicionado: quem resgata o cupom e sabe o
+e-mail de alguém já consegue montar a rotina e o currículo dessa pessoa. Se
+isso for um problema no seu uso, vale avisar quem for adicionado antes.
 
 ## Domínio
 
