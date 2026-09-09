@@ -141,7 +141,11 @@ if (liberado) {
   await ir('Cartões');
   await pag.locator('button:has-text("Novo cartão")').first().click();
   await pag.waitForTimeout(300);
-  await pag.locator('input').filter({ hasNot: pag.locator('[type=file]') }).nth(0).fill('Pasta de teste');
+  /* pelo placeholder, e não pela posição: a aba Cartões agora tem outro
+     campo de texto sempre visível (o nome do baralho do "montar com IA",
+     antes do painel de criar cartão no HTML), então o primeiro input da
+     página deixou de ser a Pasta deste formulário. */
+  await pag.locator('input[placeholder="Ex.: Clínica"]').fill('Pasta de teste');
   const areas = pag.locator('textarea');
   await pag.locator('input[placeholder="Ex.: Cardiologia"]').fill('Baralho de teste');
   await areas.nth(0).fill('Tríade da síndrome nefrítica');

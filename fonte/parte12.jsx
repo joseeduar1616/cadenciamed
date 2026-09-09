@@ -346,6 +346,269 @@ function registrarPasta(lista, nome) {
   return [...new Set([...(lista || []), nome])].slice(0, 60);
 }
 
+/* ── montar flashcards a partir de PDF ou Word ────────────────────────
+ *
+ * Fica aqui, e não numa aba à parte, porque o resultado é cartão: entra em
+ * data.flash igualzinho ao que se escreve à mão ou ao que vem do Anki.
+ *
+ * O leitor de PDF e o de Word só chegam ao navegador quando alguém usa esta
+ * função, do jeito que o leitor de banco do Anki já funciona logo abaixo —
+ * e reaproveita o mesmo depósito de imagens (IndexedDB) e o mesmo formato
+ * de marcador, [[img:nome]], que o cartão já sabe desenhar.
+ *
+ * O texto vai para a IA; as imagens não. A IA só decide ONDE, no texto que
+ * ela já recebeu, um marcador existente merece entrar num cartão — ela não
+ * enxerga a imagem em si, só o marcador que aponta pra ela.
+ */
+/* A partir da versão 4, o pdfjs-dist passou a publicar só como módulo ES
+   (build/pdf.mjs) — sem o build clássico que expõe window.pdfjsLib ao
+   carregar por <script>, do jeito que baixarScript() carrega. A 3.11.174 é
+   a última da série 3.x, e essa ainda tem. Se um dia for preciso subir de
+   versão, troque para o jeito de import() de módulo, não só o número aqui. */
+const PDF_JS_VERSAO = "3.11.174";
+const PDF_JS_CDN = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDF_JS_VERSAO}/pdf.min.js`;
+const PDF_WORKER_CDN = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDF_JS_VERSAO}/pdf.worker.min.js`;
+const MAMMOTH_CDN = "https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.7.0/mammoth.browser.min.js";
+
+let pdfJsPromessa = null;
+function carregarPdfJs() {
+  if (pdfJsPromessa) return pdfJsPromessa;
+  pdfJsPromessa = (async () => {
+    if (!window.pdfjsLib) {
+      try { await baixarScript(PDF_JS_CDN); }
+      catch (e) { throw new Error("Não consegui carregar o leitor de PDF. Confira sua conexão."); }
+    }
+    if (!window.pdfjsLib) throw new Error("O leitor de PDF não iniciou.");
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER_CDN;
+    return window.pdfjsLib;
+  })();
+  return pdfJsPromessa;
+}
+
+let mammothPromessa = null;
+function carregarMammoth() {
+  if (mammothPromessa) return mammothPromessa;
+  mammothPromessa = (async () => {
+    if (!window.mammoth) {
+      try { await baixarScript(MAMMOTH_CDN); }
+      catch (e) { throw new Error("Não consegui carregar o leitor de Word. Confira sua conexão."); }
+    }
+    if (!window.mammoth) throw new Error("O leitor de Word não iniciou.");
+    return window.mammoth;
+  })();
+  return mammothPromessa;
+}
+
+/* Prefixo único por importação, para as imagens de um arquivo não colidirem
+   com as de outro já guardado. */
+const prefixoImagem = () => `doc-${Date.now().toString(36)}-${Math.floor(Math.random() * 46656).toString(36)}`;
+
+const LIMITE_PAGINAS_PDF = 60;
+const LIMITE_IMAGENS_DOC = 20;
+
+async function paginaTemImagem(pdfjsLib, page) {
+  try {
+    const opList = await page.getOperatorList();
+    const alvo = [pdfjsLib.OPS.paintImageXObject, pdfjsLib.OPS.paintJpegXObject, pdfjsLib.OPS.paintInlineImageXObject];
+    return opList.fnArray.some((fn) => alvo.indexOf(fn) >= 0);
+  } catch (e) { return false; }
+}
+
+/* A página inteira vira a "imagem" do cartão, em vez de recortar só a
+   figura: separar cada figura embutida do resto do desenho da página muda
+   de formato conforme o PDF foi gerado, e falha de um jeito diferente em
+   cada um. Desenhar a página inteira usa o mesmo caminho — page.render —
+   testado para qualquer PDF, ao custo de a imagem trazer o texto ao redor
+   junto. */
+async function renderizarPagina(page) {
+  const vp1 = page.getViewport({ scale: 1 });
+  const escala = Math.min(2, Math.max(0.6, 1400 / Math.max(vp1.width, vp1.height)));
+  const viewport = page.getViewport({ scale: escala });
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.ceil(viewport.width);
+  canvas.height = Math.ceil(viewport.height);
+  const ctx = canvas.getContext("2d");
+  await page.render({ canvasContext: ctx, viewport }).promise;
+  return canvas.toDataURL("image/jpeg", 0.82);
+}
+
+async function lerPdfParaTexto(arquivo, aviso) {
+  aviso("carregando o leitor de PDF");
+  const pdfjsLib = await carregarPdfJs();
+  aviso("abrindo o arquivo");
+  const bytes = new Uint8Array(await arquivo.arrayBuffer());
+  const doc = await pdfjsLib.getDocument({ data: bytes }).promise;
+
+  const prefixo = prefixoImagem();
+  const totalPaginas = Math.min(doc.numPages, LIMITE_PAGINAS_PDF);
+  const blocos = [];
+  let imagens = 0;
+
+  for (let n = 1; n <= totalPaginas; n++) {
+    aviso(`lendo página ${n} de ${totalPaginas}`);
+    const page = await doc.getPage(n);
+    const conteudo = await page.getTextContent();
+    const texto = conteudo.items.map((it) => it.str || "").join(" ").replace(/\s+/g, " ").trim();
+
+    let marcador = "";
+    if (imagens < LIMITE_IMAGENS_DOC && await paginaTemImagem(pdfjsLib, page)) {
+      try {
+        const dataUri = await renderizarPagina(page);
+        const nome = `${prefixo}-${n}.jpg`;
+        await guardarMidia(nome, dataUri);
+        imagens += 1;
+        marcador = ` [[img:${nome}]]`;
+      } catch (e) { /* essa página não deu para desenhar, segue só com o texto */ }
+    }
+
+    if (texto || marcador) blocos.push(`--- página ${n} ---\n${texto}${marcador}`);
+  }
+  if (doc.numPages > totalPaginas) {
+    blocos.push(`[o documento tem ${doc.numPages} páginas; só as ${totalPaginas} primeiras foram lidas]`);
+  }
+  return { texto: blocos.join("\n\n"), imagens };
+}
+
+/* Mesma ideia de limparCampo, um pouco acima, mas para imagens que chegam
+   como data URI (do Word) em vez de nome de arquivo (do Anki). */
+function limparHtmlComImagens(html, prefixo) {
+  let s = String(html || "");
+  const imagens = [];
+  let cont = 0;
+  s = s.replace(/<img[^>]*src\s*=\s*"(data:[^"]+)"[^>]*>/gi, (m, uri) => {
+    cont += 1;
+    const tipo = /^data:image\/(png|jpe?g|gif|webp)/i.exec(uri);
+    const ext = tipo ? tipo[1].replace("jpeg", "jpg") : "png";
+    const nome = `${prefixo}-${cont}.${ext}`;
+    imagens.push({ nome, dataUri: uri });
+    return ` [[img:${nome}]] `;
+  });
+  s = s.replace(/<\/(p|h[1-6]|li|tr|div)>/gi, "\n");
+  s = s.replace(/<br\s*\/?>/gi, "\n");
+  s = s.replace(/<[^>]+>/g, "");
+  s = s.replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  s = s.replace(/\n{3,}/g, "\n\n").trim();
+  return { texto: s, imagens };
+}
+
+async function lerDocxParaTexto(arquivo, aviso) {
+  aviso("carregando o leitor de Word");
+  const mammoth = await carregarMammoth();
+  aviso("lendo o arquivo");
+  const arrayBuffer = await arquivo.arrayBuffer();
+  const r = await mammoth.convertToHtml({ arrayBuffer });
+  const { texto, imagens } = limparHtmlComImagens(r.value, prefixoImagem());
+
+  let salvas = 0;
+  for (const { nome, dataUri } of imagens.slice(0, LIMITE_IMAGENS_DOC)) {
+    if (dataUri.length > 6 * 1024 * 1024) continue;   // imagem grande demais, pula
+    try { await guardarMidia(nome, dataUri); salvas += 1; } catch (e) { /* segue sem essa imagem */ }
+  }
+  return { texto, imagens: salvas };
+}
+
+const ROTA_FLASHCARDS_IA = "/api/flashcards-ia";
+
+async function gerarFlashcardsComIA({ texto, baralho, cobrirTudo, nuvem }) {
+  let token = "";
+  try {
+    if (nuvem && nuvem.sdk && nuvem.sdk.auth && nuvem.sdk.auth.currentUser) {
+      token = await nuvem.sdk.auth.currentUser.getIdToken();
+    }
+  } catch (e) { /* o servidor decide sem token */ }
+  return chamarApi(ROTA_FLASHCARDS_IA, { token, texto, baralho, cobrirTudo: !!cobrirTudo }, "O montador de flashcards");
+}
+
+function MontarFlashcardsIA({ setData, notify, nuvem }) {
+  const [nomeBaralho, setNomeBaralho] = useState("");
+  const [cobrirTudo, setCobrirTudo] = useState(false);
+  const [lendo, setLendo] = useState("");
+  const [erro, setErro] = useState("");
+  const arquivoRef = useRef(null);
+
+  const processar = async (f) => {
+    setErro("");
+    if (!/\.(pdf|docx)$/i.test(f.name)) {
+      setErro("Envie um PDF ou um Word (.docx). O .doc antigo não abre no navegador — salve como .docx e tente de novo.");
+      return;
+    }
+    const baralho = (nomeBaralho || f.name.replace(/\.[^.]+$/, "")).trim().slice(0, 40) || "Assunto importado";
+    try {
+      setLendo("lendo o arquivo");
+      const extraido = /\.pdf$/i.test(f.name)
+        ? await lerPdfParaTexto(f, setLendo)
+        : await lerDocxParaTexto(f, setLendo);
+
+      if (!extraido.texto.trim()) {
+        setErro("Não encontrei texto nesse arquivo. Se for um PDF escaneado (só imagem, sem texto por trás), ele não dá para ler assim.");
+        return;
+      }
+
+      setLendo(cobrirTudo ? "a IA está montando todos os cartões (pode demorar um pouco)" : "a IA está organizando os cartões");
+      const { dados, erro: falha } = await gerarFlashcardsComIA({ texto: extraido.texto, baralho, cobrirTudo, nuvem });
+      if (falha) { setErro(falha); return; }
+      if (!dados || !Array.isArray(dados.cartoes) || dados.cartoes.length === 0) {
+        setErro("A IA não conseguiu montar cartões a partir desse conteúdo.");
+        return;
+      }
+
+      const nomeFinal = (dados.baralho || baralho).slice(0, 40);
+      const novos = dados.cartoes.map((c) => novoCartao(c.frente, c.verso, null, nomeFinal, nomeFinal));
+      setData((p) => ({
+        ...p,
+        flash: [...novos, ...(p.flash || [])],
+        pastas: registrarPasta(p.pastas, nomeFinal),
+      }));
+
+      const comImg = extraido.imagens || 0;
+      notify(`${novos.length} cartõe${novos.length === 1 ? "" : "s"} montados em "${nomeFinal}"`
+        + (comImg ? `, com ${comImg} imagem${comImg === 1 ? "" : "ns"} guardada${comImg === 1 ? "" : "s"}` : "")
+        + (dados.cortado ? ". O material era grande e foi cortado antes do fim." : "."));
+      setNomeBaralho("");
+    } catch (e) {
+      setErro((e && e.message) || "Não consegui processar esse arquivo.");
+    } finally { setLendo(""); }
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <Btn tone="primary" size="sm" disabled={!!lendo}
+          onClick={() => arquivoRef.current && arquivoRef.current.click()}>
+          <Upload size={14} /> {lendo ? `${lendo}…` : "Jogue seu documento e faça os flashcards com IA"}
+        </Btn>
+        <input ref={arquivoRef} type="file" accept=".pdf,.docx"
+          onChange={(e) => {
+            const f = e.target.files && e.target.files[0];
+            e.target.value = "";
+            if (f) processar(f);
+          }}
+          style={{ display: "none" }} disabled={!!lendo} />
+        <TextInput value={nomeBaralho} placeholder="nome do baralho (opcional)" disabled={!!lendo}
+          onChange={(e) => setNomeBaralho(e.target.value)}
+          style={{ padding: "6px 10px", fontSize: 13, maxWidth: 220 }} />
+      </div>
+
+      <label className="flex items-center gap-2.5" style={{ cursor: lendo ? "default" : "pointer" }}>
+        <input type="checkbox" checked={cobrirTudo} disabled={!!lendo}
+          onChange={(e) => setCobrirTudo(e.target.checked)} />
+        <span style={{ fontSize: 13.5, color: T.dim }}>
+          Quero todos os cartões possíveis, cobrindo tudo do documento
+          <span style={{ color: T.ghost }}> · sem marcar, a IA escolhe só os pontos principais</span>
+        </span>
+      </label>
+
+      <Mini style={{ maxWidth: 480, lineHeight: 1.6 }}>
+        Funciona melhor com PDF que tem texto de verdade (não uma foto escaneada)
+        ou um Word exportado do próprio material. As imagens do documento entram
+        junto, nos cartões que precisarem delas.
+      </Mini>
+      {erro ? <Label style={{ color: T.bad, textTransform: "none", letterSpacing: 0, fontSize: 14, lineHeight: 1.6 }}>{erro}</Label> : null}
+    </div>
+  );
+}
+
 function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
   const [modo, setModo] = useState("painel");   // painel | estudo | criar
   const [fila, setFila] = useState([]);
@@ -697,8 +960,19 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
 
        A altura usa dvh, e não vh: no celular a barra do navegador some e
        aparece durante a rolagem, e com vh o rodapé de botões ficava
-       escondido atrás dela justamente na hora de responder. */
-    return (
+       escondido atrás dela justamente na hora de responder.
+
+       E precisa ser um portal, direto no <body>: o conteúdo da aba mora
+       dentro da .rise, que anima a entrada com transform. A animação some
+       rápido, mas o transform que ela deixa (ainda que vire "none" no fim)
+       continua contando como um transform de verdade para o navegador, e
+       isso faz qualquer descendente com position:fixed passar a se
+       posicionar relativo a essa div, em vez da tela — o cartão em tela
+       cheia nascia empurrado para baixo da altura do cabeçalho, cortando o
+       "ver a resposta" fora da parte visível, sem nada para rolar até lá.
+       Um portal escapa da .rise de vez, então position:fixed volta a
+       significar a tela inteira. */
+    return createPortal((
       <div style={{
         position: "fixed", inset: 0, zIndex: 60,
         background: T.bg, display: "flex", flexDirection: "column",
@@ -735,12 +1009,17 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
           <Track pct={(feitos / Math.max(1, feitos + fila.length)) * 100} color="var(--neon)" height={3} />
         </div>
 
-        {/* ── o cartão ──────────────────────────────────────────────── */}
+        {/* ── o cartão ──────────────────────────────────────────────── *
+         * Centralizado na vertical, a pergunta ficava boiando no meio de um
+         * vazio enorme numa tela alta de celular — muito espaço morto acima
+         * e o botão "ver a resposta" perdido lá embaixo. Começando do topo,
+         * a pergunta some para logo abaixo da barra, e sobra espaço embaixo
+         * para a resposta aparecer quando o cartão for virado. */}
         <div onClick={() => setVirado((v) => !v)}
           style={{
             flex: 1, minHeight: 0, overflowY: "auto", cursor: "pointer",
             display: "flex", flexDirection: "column",
-            alignItems: "center", justifyContent: "center",
+            alignItems: "center", justifyContent: "flex-start",
             padding: "28px 20px",
           }}>
           <div style={{ width: "100%", maxWidth: 760, textAlign: "center" }}>
@@ -808,7 +1087,7 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
           )}
         </div>
       </div>
-    );
+    ), document.body);
   }
 
   /* ── painel ─────────────────────────────────────────────────────── */
@@ -1128,6 +1407,18 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
             </div>
           </div>
         ) : null}
+      </Card>
+
+      <Card className="px-6 py-6" brilho="var(--neon2)">
+        <H size={18} color="var(--neon2)" icon={<Sparkles size={16} />}>Montar flashcards com IA</H>
+        <Texto style={{ marginTop: 10 }}>
+          Jogue o PDF ou o Word de um assunto aqui e a IA separa o conteúdo em
+          perguntas e respostas prontas para estudar, com as imagens do
+          documento incluídas nos cartões que precisarem delas.
+        </Texto>
+        <div className="mt-5">
+          <MontarFlashcardsIA setData={setData} notify={notify} nuvem={nuvem} />
+        </div>
       </Card>
 
       <Publicados nuvem={nuvem} souDono={souDono} setData={setData}

@@ -14,9 +14,13 @@ import { podeUsar, escolherProvedor, modeloAtual, chamarIA } from "./_ia.js";
    pessoa é avisada disso na resposta. */
 const LIMITE_ENTRADA = 45000;
 /* Um baralho grande tem muitos cartões curtos, e cada um gasta tokens de
-   JSON (chaves, aspas, vírgulas) além do texto em si. */
+   JSON (chaves, aspas, vírgulas) além do texto em si.
+   Quando a pessoa marca "cobrir tudo", o teto sobe: são mais cartões, e cada
+   um também pode ficar mais longo por não ter sido pré-selecionado. */
 const MAX_SAIDA = 8000;
+const MAX_SAIDA_TUDO = 16000;
 const MAX_CARTOES = 150;
+const MAX_CARTOES_TUDO = 400;
 
 const INSTRUCOES = `Você organiza material de estudo em flashcards de pergunta e resposta, para um estudante brasileiro de residência médica.
 
@@ -24,7 +28,7 @@ O texto abaixo, delimitado por """, foi extraído de um PDF ou Word que o estuda
 
 Sua tarefa:
 1. Identifique o assunto principal do material, num nome curto (até 40 caracteres) para o baralho.
-2. Separe o conteúdo em cartões de pergunta e resposta, cobrindo os pontos que valem a pena decorar ou revisar — definições, valores, tríades, critérios, condutas, diferenciais. Não crie cartão para introdução, sumário ou texto decorativo.
+2. Separe o conteúdo em cartões de pergunta e resposta. Não crie cartão para introdução, sumário ou texto decorativo.
 3. Quando um marcador [[img:algumnome]] estiver perto de um trecho que virou cartão, e a imagem for necessária para responder ou entender aquele cartão (um exame, um gráfico, uma lesão, um fluxograma), copie o marcador, exatamente como está escrito, dentro do texto da frente ou do verso desse cartão. Não invente marcadores que não estejam no texto original, e não repita o mesmo marcador em vários cartões.
 4. Frente objetiva (uma pergunta ou um enunciado curto); verso direto (a resposta, sem enrolação). Português do Brasil.
 
@@ -32,6 +36,13 @@ Responda SOMENTE com um JSON válido, sem markdown, sem texto antes ou depois, n
 {"baralho":"nome do assunto","cartoes":[{"frente":"...","verso":"..."}]}
 
 Se não houver conteúdo aproveitável, responda {"baralho":"","cartoes":[]}.`;
+
+/* Só entra quando a pessoa pede explicitamente: por padrão o modelo escolhe
+   os pontos que valem a pena, senão um material grande vira uma enxurrada de
+   cartão repetido ou óbvio demais. */
+const INSTRUCAO_COBRIR_TUDO = `
+
+O estudante marcou que quer TODOS os cartões possíveis deste material, não uma seleção dos pontos principais: cubra cada fato, número, definição, critério, valor e conduta do texto, mesmo que pareça repetitivo, óbvio ou secundário. Não resuma nem escolha só o que parece mais importante — quanto mais completo, melhor. Ainda assim, um cartão por fato: não junte vários fatos num cartão só para economizar espaço.`;
 
 /* O modelo às vezes embrulha o JSON em \`\`\`json apesar do pedido. Tenta
    cru primeiro, e só depois descasca a cerca de código. */
@@ -42,6 +53,23 @@ function lerJson(texto) {
   const m = String(texto || "").match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
   if (m) j = tentar(m[1].trim());
   return j;
+}
+
+/* Pedindo muitos cartões, a resposta às vezes bate no teto de saída no meio
+   do array — o JSON fica cortado, e um JSON.parse comum não devolve nada,
+   descartando até os cartões que já vieram completos. Aqui cada objeto
+   {"frente":...,"verso":...} é lido um a um com regex, e o que estiver
+   inteiro é aproveitado; o que ficou pela metade no corte é só ignorado. */
+function recuperarCartoesParciais(texto) {
+  const cartoes = [];
+  const regex = /\{\s*"frente"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*"verso"\s*:\s*"((?:[^"\\]|\\.)*)"\s*\}/g;
+  let m;
+  while ((m = regex.exec(String(texto || "")))) {
+    try {
+      cartoes.push({ frente: JSON.parse(`"${m[1]}"`), verso: JSON.parse(`"${m[2]}"`) });
+    } catch (e) { /* esse cartão veio malformado, pula */ }
+  }
+  return cartoes;
 }
 
 export async function onRequest({ request, env }) {
@@ -74,8 +102,12 @@ export async function onRequest({ request, env }) {
   const cortado = bruto.length > LIMITE_ENTRADA;
   const material = bruto.slice(0, LIMITE_ENTRADA);
 
+  const cobrirTudo = !!corpo.cobrirTudo;
+  const maxSaida = cobrirTudo ? MAX_SAIDA_TUDO : MAX_SAIDA;
+  const maxCartoes = cobrirTudo ? MAX_CARTOES_TUDO : MAX_CARTOES;
+
   const pedido = String(corpo.baralho || "").trim().slice(0, 40);
-  const sistema = INSTRUCOES;
+  const sistema = INSTRUCOES + (cobrirTudo ? INSTRUCAO_COBRIR_TUDO : "");
   const mensagens = [{
     role: "user",
     content: `"""\n${material}\n"""${pedido ? `\n\nSe fizer sentido, chame o baralho de algo parecido com "${pedido}".` : ""}`,
@@ -84,21 +116,31 @@ export async function onRequest({ request, env }) {
   const modelo = modeloAtual(provedor, env);
   let r;
   try {
-    r = await chamarIA(provedor, modelo, { sistema, mensagens, maxSaida: MAX_SAIDA });
+    r = await chamarIA(provedor, modelo, { sistema, mensagens, maxSaida });
   } catch (e) {
     console.error("falha", provedor.nome, e && e.message);
     return json({ erro: "Não consegui alcançar o serviço da IA." }, 502);
   }
   if (r.erro) return json({ erro: r.erro }, 502);
 
-  const j = lerJson(r.texto);
+  let j = lerJson(r.texto);
+  let recuperado = false;
   if (!j || !Array.isArray(j.cartoes)) {
-    return json({ erro: "A IA não devolveu os cartões num formato que eu conseguisse ler. Tente de novo, ou com um texto mais curto." }, 502);
+    /* O JSON não fechou direito — bem mais comum pedindo muitos cartões,
+       porque a resposta é mais fácil de bater no teto de saída no meio do
+       array. Em vez de devolver erro e perder tudo, salva os cartões que
+       já vieram completos antes do corte. */
+    const parciais = recuperarCartoesParciais(r.texto);
+    if (parciais.length === 0) {
+      return json({ erro: "A IA não devolveu os cartões num formato que eu conseguisse ler. Tente de novo, ou com um texto mais curto." }, 502);
+    }
+    j = { baralho: "", cartoes: parciais };
+    recuperado = true;
   }
 
   const cartoes = j.cartoes
     .filter((c) => c && typeof c.frente === "string" && typeof c.verso === "string" && c.frente.trim() && c.verso.trim())
-    .slice(0, MAX_CARTOES)
+    .slice(0, maxCartoes)
     .map((c) => ({ frente: c.frente.trim().slice(0, 400), verso: c.verso.trim().slice(0, 800) }));
 
   if (cartoes.length === 0) {
@@ -108,6 +150,6 @@ export async function onRequest({ request, env }) {
   return json({
     baralho: String(j.baralho || pedido || "").trim().slice(0, 40),
     cartoes,
-    cortado: !!(cortado || r.cortado),
+    cortado: !!(cortado || r.cortado || recuperado),
   });
 }
