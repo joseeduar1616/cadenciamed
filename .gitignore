@@ -19,3 +19,4 @@ __pycache__/
 # derivado de publicar/, refeito por fonte/publicar.py
 cadenciamed-publicar.zip
 fonte/_leitor.mjs
+fonte/_recorte.mjs

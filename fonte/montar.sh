@@ -34,6 +34,7 @@ python3 montar.py
 
 if [ "${1:-}" != "--sem-teste" ]; then
   python3 extrair_leitor.py
+  python3 extrair_recorte.py
   echo "── teste no navegador ──────────────────────────────"
   python3 montar_teste.py > /dev/null
   node testar.mjs
@@ -42,6 +43,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   echo "── funções do servidor ─────────────────────────────"
   node testar-assistente.mjs
   node testar-flashcards-ia.mjs
+  node testar-recorte-pdf.mjs
   node testar-cupom.mjs
   node testar-acessos.mjs
   node testar-compra.mjs

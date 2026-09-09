@@ -276,6 +276,19 @@ function Figura({ nome, altura = 260 }) {
   );
 }
 
+/* **termo** vira negrito de verdade, e não os asteriscos crus na tela — o
+   mesmo pedaço pequeno de markdown que a resposta do assistente já usa, em
+   parte9.jsx. É o jeito de destacar o termo que decide a resposta, do jeito
+   que um cartão de Anki bem feito grifa em <b>. */
+function comNegrito(texto, chave) {
+  const partes = String(texto).split(/(\*\*[^*]+\*\*)/g);
+  return partes.map((t, i) => (
+    /^\*\*[^*]+\*\*$/.test(t)
+      ? <strong key={`${chave}-${i}`} style={{ fontWeight: 800 }}>{t.slice(2, -2)}</strong>
+      : <span key={`${chave}-${i}`}>{t}</span>
+  ));
+}
+
 /* Texto de um lado do cartão, com as imagens no lugar dos marcadores */
 function LadoDoCartao({ texto, imagens, tamanho, peso, altura }) {
   const partes = String(texto || "").split(/(\[\[img:[^\]]+\]\])/g);
@@ -292,7 +305,7 @@ function LadoDoCartao({ texto, imagens, tamanho, peso, altura }) {
           <span key={i} style={{
             display: "block", fontSize: tamanho, fontWeight: peso,
             lineHeight: 1.5, color: T.ink, whiteSpace: "pre-wrap",
-          }}>{p}</span>
+          }}>{comNegrito(p, `n${i}`)}</span>
         );
       })}
       {soltas.map((n) => <Figura key={n} nome={n} altura={altura} />)}

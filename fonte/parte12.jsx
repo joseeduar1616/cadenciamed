@@ -405,31 +405,92 @@ const prefixoImagem = () => `doc-${Date.now().toString(36)}-${Math.floor(Math.ra
 
 const LIMITE_PAGINAS_PDF = 60;
 const LIMITE_IMAGENS_DOC = 20;
+/* Figura menor que isso, já na escala em que a página foi desenhada, é
+   decoração — um filete, um marcador de lista, um ícone de rodapé —, não a
+   foto ou o esquema que vale virar cartão. */
+const FIGURA_MIN_PX = 40;
 
-async function paginaTemImagem(pdfjsLib, page) {
-  try {
-    const opList = await page.getOperatorList();
-    const alvo = [pdfjsLib.OPS.paintImageXObject, pdfjsLib.OPS.paintJpegXObject, pdfjsLib.OPS.paintInlineImageXObject];
-    return opList.fnArray.some((fn) => alvo.indexOf(fn) >= 0);
-  } catch (e) { return false; }
+const aplicarMatriz = (m, x, y) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
+
+/* Compõe uma matriz do PDF [a b c d e f] com a CTM atual — a mesma conta que
+   o operador "cm" faz. Usada tanto para o cm de verdade quanto para o
+   começo de um Form XObject, que também carrega uma matriz própria. */
+const combinarMatriz = ([a, b, c, d, e, f], ctm) => [
+  a * ctm[0] + b * ctm[2], a * ctm[1] + b * ctm[3],
+  c * ctm[0] + d * ctm[2], c * ctm[1] + d * ctm[3],
+  e * ctm[0] + f * ctm[2] + ctm[4], e * ctm[1] + f * ctm[3] + ctm[5],
+];
+
+/* Cada figura embutida no PDF é desenhada com uma matriz (o operador "cm")
+   que mapeia o quadrado unitário [0,1]x[0,1] — o espaço da própria imagem —
+   para o retângulo da página onde ela aparece. Percorrendo a lista de
+   operadores do jeito que o page.render também percorre (acompanhando
+   save/restore/transform, e o Form XObject, que empilha a matriz própria
+   dele do mesmo jeito que um save/transform), dá para calcular exatamente
+   esse retângulo em pixels do canvas, sem precisar decodificar o formato de
+   cada imagem por dentro — o que muda de PDF para PDF e falha de um jeito
+   diferente a cada gerador. */
+async function retangulosDeImagem(pdfjsLib, page, viewport) {
+  const OPS = pdfjsLib.OPS;
+  const opList = await page.getOperatorList();
+  let ctm = [1, 0, 0, 1, 0, 0];
+  const pilha = [];
+  const caixas = [];
+
+  for (let i = 0; i < opList.fnArray.length; i++) {
+    const fn = opList.fnArray[i], args = opList.argsArray[i];
+    if (fn === OPS.save || fn === OPS.paintFormXObjectBegin) {
+      pilha.push(ctm);
+      const matriz = fn === OPS.paintFormXObjectBegin && args && args[0];
+      if (Array.isArray(matriz) && matriz.length === 6) ctm = combinarMatriz(matriz, ctm);
+    } else if (fn === OPS.restore || fn === OPS.paintFormXObjectEnd) {
+      ctm = pilha.pop() || [1, 0, 0, 1, 0, 0];
+    } else if (fn === OPS.transform) {
+      ctm = combinarMatriz(args, ctm);
+    } else if (fn === OPS.paintImageXObject || fn === OPS.paintJpegXObject || fn === OPS.paintInlineImageXObject) {
+      const cantos = [[0, 0], [1, 0], [0, 1], [1, 1]]
+        .map(([x, y]) => aplicarMatriz(ctm, x, y))
+        .map(([x, y]) => aplicarMatriz(viewport.transform, x, y));
+      const xs = cantos.map((p) => p[0]), ys = cantos.map((p) => p[1]);
+      const x = Math.min(...xs), y = Math.min(...ys);
+      const w = Math.max(...xs) - x, h = Math.max(...ys) - y;
+      if (w >= FIGURA_MIN_PX && h >= FIGURA_MIN_PX) caixas.push({ x, y, w, h });
+    }
+  }
+  return caixas;
 }
 
-/* A página inteira vira a "imagem" do cartão, em vez de recortar só a
-   figura: separar cada figura embutida do resto do desenho da página muda
-   de formato conforme o PDF foi gerado, e falha de um jeito diferente em
-   cada um. Desenhar a página inteira usa o mesmo caminho — page.render —
-   testado para qualquer PDF, ao custo de a imagem trazer o texto ao redor
-   junto. */
-async function renderizarPagina(page) {
+/* Recorta só as figuras da página — não a página inteira. Desenha a página
+   uma vez só, numa resolução alta o bastante para o recorte não sair
+   borrado (o recorte é menor que a página, então precisa de mais pixels por
+   ponto do que bastaria para a página toda), e tira cada retângulo dali. */
+async function figurasDaPagina(pdfjsLib, page) {
   const vp1 = page.getViewport({ scale: 1 });
-  const escala = Math.min(2, Math.max(0.6, 1400 / Math.max(vp1.width, vp1.height)));
+  const escala = Math.min(3, Math.max(1, 1900 / Math.max(vp1.width, vp1.height)));
   const viewport = page.getViewport({ scale: escala });
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.ceil(viewport.width);
-  canvas.height = Math.ceil(viewport.height);
-  const ctx = canvas.getContext("2d");
-  await page.render({ canvasContext: ctx, viewport }).promise;
-  return canvas.toDataURL("image/jpeg", 0.82);
+
+  const caixas = await retangulosDeImagem(pdfjsLib, page, viewport);
+  if (caixas.length === 0) return [];
+
+  const paginaCanvas = document.createElement("canvas");
+  paginaCanvas.width = Math.ceil(viewport.width);
+  paginaCanvas.height = Math.ceil(viewport.height);
+  await page.render({ canvasContext: paginaCanvas.getContext("2d"), viewport }).promise;
+
+  return caixas.map(({ x, y, w, h }) => {
+    const sx = Math.max(0, Math.min(paginaCanvas.width - 1, x));
+    const sy = Math.max(0, Math.min(paginaCanvas.height - 1, y));
+    const sw = Math.max(1, Math.min(paginaCanvas.width - sx, w));
+    const sh = Math.max(1, Math.min(paginaCanvas.height - sy, h));
+    /* o lado maior do recorte tem um teto, para uma figura ocupando a
+       página quase inteira não virar um arquivo enorme à toa */
+    const fator = Math.min(1, 1400 / Math.max(sw, sh));
+    const alvo = document.createElement("canvas");
+    alvo.width = Math.max(1, Math.round(sw * fator));
+    alvo.height = Math.max(1, Math.round(sh * fator));
+    alvo.getContext("2d").drawImage(paginaCanvas, sx, sy, sw, sh, 0, 0, alvo.width, alvo.height);
+    return alvo.toDataURL("image/jpeg", 0.86);
+  });
 }
 
 async function lerPdfParaTexto(arquivo, aviso) {
@@ -450,18 +511,21 @@ async function lerPdfParaTexto(arquivo, aviso) {
     const conteudo = await page.getTextContent();
     const texto = conteudo.items.map((it) => it.str || "").join(" ").replace(/\s+/g, " ").trim();
 
-    let marcador = "";
-    if (imagens < LIMITE_IMAGENS_DOC && await paginaTemImagem(pdfjsLib, page)) {
+    let marcadores = "";
+    if (imagens < LIMITE_IMAGENS_DOC) {
       try {
-        const dataUri = await renderizarPagina(page);
-        const nome = `${prefixo}-${n}.jpg`;
-        await guardarMidia(nome, dataUri);
-        imagens += 1;
-        marcador = ` [[img:${nome}]]`;
-      } catch (e) { /* essa página não deu para desenhar, segue só com o texto */ }
+        const figuras = await figurasDaPagina(pdfjsLib, page);
+        for (const dataUri of figuras) {
+          if (imagens >= LIMITE_IMAGENS_DOC) break;
+          const nome = `${prefixo}-${n}-${imagens + 1}.jpg`;
+          await guardarMidia(nome, dataUri);
+          imagens += 1;
+          marcadores += ` [[img:${nome}]]`;
+        }
+      } catch (e) { /* essa página não deu para recortar figura, segue só com o texto */ }
     }
 
-    if (texto || marcador) blocos.push(`--- página ${n} ---\n${texto}${marcador}`);
+    if (texto || marcadores) blocos.push(`--- página ${n} ---\n${texto}${marcadores}`);
   }
   if (doc.numPages > totalPaginas) {
     blocos.push(`[o documento tem ${doc.numPages} páginas; só as ${totalPaginas} primeiras foram lidas]`);
