@@ -355,7 +355,7 @@ async function resgatarCupom(nuvem, codigo) {
 }
 
 /* Caixa avulsa, para quem já tem conta criada. */
-function Cupom({ nuvem, notify }) {
+function Cupom({ nuvem, notify, aoLiberar }) {
   const [codigo, setCodigo] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [msg, setMsg] = useState("");
@@ -368,7 +368,13 @@ function Cupom({ nuvem, notify }) {
     setOcupado(false);
     setBom(!!j.ok);
     setMsg(j.erro || j.mensagem || "");
-    if (j.ok) { setCodigo(""); notify(j.mensagem || "Acesso liberado."); }
+    if (j.ok) {
+      setCodigo(""); notify(j.mensagem || "Acesso liberado.");
+      /* A assinatura acabou de ser gravada pelo servidor. Perguntar de novo
+         agora é o que abre as abas na hora, sem depender de o navegador
+         conseguir ler a coleção por conta própria. */
+      if (aoLiberar) aoLiberar();
+    }
   };
 
   return (
@@ -493,7 +499,10 @@ function ContaNuvem({ nuvem, notify }) {
     setOcupado(true);
     const j = await resgatarCupom(nuvem, cod);
     setOcupado(false);
-    if (j.ok) { setMsg(j.mensagem || "Cupom aceito."); notify(j.mensagem || "Acesso liberado."); }
+    if (j.ok) {
+      setMsg(j.mensagem || "Cupom aceito."); notify(j.mensagem || "Acesso liberado.");
+      if (aoLiberar) aoLiberar();
+    }
     else setMsg(`Conta criada, mas o cupom não passou: ${j.erro}`);
   };
 
@@ -718,7 +727,7 @@ function Aparencia({ data, setData }) {
   );
 }
 
-function Progresso({ data, setData, byDay, today, totals, subjects, notify, nuvem, pro }) {
+function Progresso({ data, setData, byDay, today, totals, subjects, notify, nuvem, pro, aoLiberar }) {
   const [confirm, setConfirm] = useState(false);
   const fileRef = useRef(null);
 
@@ -785,7 +794,7 @@ function Progresso({ data, setData, byDay, today, totals, subjects, notify, nuve
   return (
     <div className="flex flex-col gap-5">
       <ContaNuvem nuvem={nuvem} notify={notify} />
-      {nuvem.usuario && !pro ? <Cupom nuvem={nuvem} notify={notify} /> : null}
+      {nuvem.usuario && !pro ? <Cupom nuvem={nuvem} notify={notify} aoLiberar={aoLiberar} /> : null}
       {ehDono(nuvem.usuario) ? <PainelDono nuvem={nuvem} notify={notify} /> : null}
       <Aparencia data={data} setData={setData} />
 
@@ -915,7 +924,7 @@ function Progresso({ data, setData, byDay, today, totals, subjects, notify, nuve
    17 · ONBOARDING
    ═══════════════════════════════════════════════════════════════════ */
 
-function Onboarding({ onDone, theme, toggleTheme, nuvem }) {
+function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar }) {
   /* A primeira tela pede conta, não nome.
    *
    * Pedir só o nome deixava a pessoa entrar sem conta, estudar, e descobrir

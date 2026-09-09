@@ -37,30 +37,82 @@ const ABAS_DONO = ["assistente"];
 const DONOS = ["joseeduardo1616@gmail.com"];
 const ehDono = (u) => !!(u && u.email && DONOS.indexOf(String(u.email).toLowerCase()) >= 0);
 
+const ROTA_PLANO = "/api/plano";
+
+/* Qual é o plano de quem está logado.
+ *
+ * São duas fontes, e isso é de propósito.
+ *
+ * A leitura direta do Firestore é a que avisa na hora, sem precisar
+ * perguntar de novo: assim que a assinatura é gravada, a tela muda. Mas ela
+ * depende das regras publicadas liberarem a leitura do próprio documento.
+ * Quando não liberam, o Firestore recusa calado — e o resultado era o cupom
+ * ser aceito, a assinatura existir, e o site continuar mostrando a tela de
+ * pagamento sem uma palavra de explicação.
+ *
+ * Por isso quem decide é o servidor, em /api/plano, que lê com a conta de
+ * serviço e responde certo mesmo com as regras erradas. O Firestore fica
+ * como aviso de que algo mudou: quando ele fala, o servidor é consultado
+ * de novo.
+ *
+ * Nada disso é o que protege o conteúdo pago — cada rota confere o acesso
+ * por conta própria. Aqui é só o que a tela mostra. */
 function useAssinatura(sdk, usuario) {
   const [plano, setPlano] = useState(null);
   const [carregando, setCarregando] = useState(true);
+  const [aviso, setAviso] = useState("");
 
-  useEffect(() => {
-    if (!sdk || !usuario) { setPlano(null); setCarregando(false); return undefined; }
-    if (ehDono(usuario)) {
-      setPlano({ tipo: "dono", ate: Infinity });
-      setCarregando(false);
-      return undefined;
+  const refSdk = useRef(sdk);
+  refSdk.current = sdk;
+  const quem = usuario ? usuario.uid : "";
+  const dono = ehDono(usuario);
+
+  const perguntar = useCallback(async () => {
+    const s = refSdk.current;
+    if (!s || !quem) { setPlano(null); setCarregando(false); return; }
+    if (dono) { setPlano({ tipo: "dono", ate: Infinity }); setCarregando(false); return; }
+
+    let token = "";
+    try {
+      if (s.auth && s.auth.currentUser) token = await s.auth.currentUser.getIdToken();
+    } catch (e) { /* sem token o servidor recusa, e o aviso aparece abaixo */ }
+    if (!token) { setCarregando(false); return; }
+
+    const { dados, erro } = await chamarApi(ROTA_PLANO, { token }, "A conferência do plano");
+    setCarregando(false);
+    if (erro) {
+      /* Não derruba o que já estava valendo: uma falha de rede não pode
+         trancar quem já estava com o acesso aberto nesta sessão. */
+      setAviso(erro);
+      return;
     }
-    setCarregando(true);
-    const ref = sdk.F.doc(sdk.db, "assinaturas", usuario.uid);
-    const parar = sdk.F.onSnapshot(ref, (snap) => {
-      setCarregando(false);
-      if (!snap.exists()) { setPlano(null); return; }
-      const d = snap.data() || {};
-      const ate = Number(d.validoAte || 0);
-      setPlano(ate > Date.now() ? { tipo: d.plano || "mensal", ate } : null);
-    }, () => setCarregando(false));
-    return parar;
-  }, [sdk, usuario]);
+    setAviso("");
+    setPlano(dados && dados.pro
+      ? { tipo: dados.plano || "mensal", ate: Number(dados.validoAte) || Infinity }
+      : null);
+  }, [quem, dono]);
 
-  return { pro: !!plano, plano, carregando };
+  useEffect(() => { setCarregando(true); perguntar(); }, [perguntar]);
+
+  /* O Firestore só avisa que mudou; quem responde o que mudou é o servidor.
+     Se a leitura for recusada pelas regras, o erro fica registrado em vez de
+     virar silêncio — mas o plano continua vindo do servidor. */
+  useEffect(() => {
+    if (!sdk || !quem || dono) return undefined;
+    const ref = sdk.F.doc(sdk.db, "assinaturas", quem);
+    let primeira = true;
+    return sdk.F.onSnapshot(ref, () => {
+      if (primeira) { primeira = false; return; }
+      perguntar();
+    }, (e) => {
+      setAviso(`O navegador não conseguiu ler sua assinatura direto do banco${
+        e && e.code === "permission-denied"
+          ? " (as regras do Firestore não liberam essa leitura)" : ""
+      }. O plano continua sendo conferido no servidor.`);
+    });
+  }, [sdk, quem, dono, perguntar]);
+
+  return { pro: !!plano, plano, carregando, aviso, recarregar: perguntar };
 }
 
 function Cadeado({ tamanho = 15 }) {
@@ -73,7 +125,7 @@ function Cadeado({ tamanho = 15 }) {
   );
 }
 
-function Precos({ compacto, onFechar, usuario, plano }) {
+function Precos({ compacto, onFechar, usuario, plano, aviso }) {
   const abrir = (tipo) => {
     const url = CHECKOUT[tipo];
     if (!url) return;
@@ -84,6 +136,15 @@ function Precos({ compacto, onFechar, usuario, plano }) {
 
   return (
     <div className="flex flex-col gap-5">
+      {/* Quando a conferência do plano falha, quem já pagou vê a tela de
+          pagamento e não entende. Dizer o motivo é melhor do que deixar a
+          pessoa achando que o cupom não valeu. */}
+      {aviso ? (
+        <div className="rounded-2xl px-4 py-3"
+          style={{ background: soft("var(--warn)", 12), border: `1px solid ${soft("var(--warn)", 28)}` }}>
+          <Mini style={{ color: T.warn, lineHeight: 1.7 }}>{aviso}</Mini>
+        </div>
+      ) : null}
       {!compacto ? (
         <div style={{ padding: "48px 0 40px", position: "relative" }}>
           <img src={MARCA} alt="" width="176" height="86" className="marca"

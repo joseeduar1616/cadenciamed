@@ -457,10 +457,14 @@ export default function Cadencia() {
   const acc = (TABS.find((t) => t.id === tab) || TABS[0]).acc;
 
   /* Sair da conta, ou a assinatura vencer, com o Assistente aberto deixaria uma
-     não existe mais na barra, e a tela ficaria em branco. */
+     aba escolhida que não existe mais na barra, e a tela ficaria em branco.
+     Mas enquanto o plano está sendo conferido ninguém é pro ainda: mandar
+     para Hoje aqui expulsaria de imediato quem abriu o site direto numa aba
+     paga — inclusive quem volta da autorização do Notion. */
   useEffect(() => {
+    if (assinatura.carregando) return;
     if (!TABS.some((t) => t.id === tab)) setTab("hoje");
-  }, [souDono, pro, tab]);
+  }, [souDono, pro, tab, assinatura.carregando]);
 
   useEffect(() => {
     const h = (e) => {
@@ -642,7 +646,7 @@ export default function Cadencia() {
       ) : null}
 
       {needsOnboarding ? (
-        <Onboarding nuvem={nuvem}
+        <Onboarding nuvem={nuvem} aoLiberar={assinatura.recarregar}
           onDone={(name) => setData((p) => ({ ...p, profile: { ...p.profile, name, onboarded: true } }))}
           theme={data.theme} toggleTheme={() => setData((p) => ({ ...p, theme: p.theme === "dark" ? "light" : "dark" }))} />
       ) : (
@@ -761,7 +765,7 @@ export default function Cadencia() {
               {tab === "cartoes" && pro && <Cartoes {...{ data, setData, subjects, today, notify, nuvem, souDono }} />}
               {tab === "revisoes" && !pro && <Bloqueado recurso={RECURSOS_PRO.revisoes} onVerPlanos={() => setTab("planos")} />}
               {tab === "metas" && !pro && <Bloqueado recurso={RECURSOS_PRO.metas} onVerPlanos={() => setTab("planos")} />}
-              {tab === "planos" && <Precos usuario={nuvem.usuario} plano={assinatura.plano} />}
+              {tab === "planos" && <Precos usuario={nuvem.usuario} plano={assinatura.plano} aviso={assinatura.aviso} />}
               {tab === "temas" && pro && <Temas {...{ subjects, setMark, minutos: minutesBySubject, sessoes: data.sessions, today }} />}
               {tab === "assistente" && (souDono || pro) && (
                 <div className="flex flex-col gap-5">
@@ -776,7 +780,7 @@ export default function Cadencia() {
               {tab === "amigos" && !pro && <Bloqueado recurso={RECURSOS_PRO.amigos} onVerPlanos={() => setTab("planos")} />}
               {tab === "amigos" && pro && <Amigos {...{ nuvem, notify, data, setData }} />}
               {tab === "metas" && pro && <Metas {...{ data, setData, today, qWeek, notify, ladder, gcal }} />}
-              {tab === "progresso" && <Progresso {...{ data, setData, byDay, today, totals, subjects, notify, nuvem, pro }} />}
+              {tab === "progresso" && <Progresso {...{ data, setData, byDay, today, totals, subjects, notify, nuvem, pro, aoLiberar: assinatura.recarregar }} />}
             </div>
           </main>
 

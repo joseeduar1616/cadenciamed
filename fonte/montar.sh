@@ -46,6 +46,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-compra.mjs
   node testar-salas.mjs
   node testar-notion.mjs
+  node testar-plano.mjs
   node testar-baralhos.mjs
   node testar-worker.mjs
   node testar-api.mjs

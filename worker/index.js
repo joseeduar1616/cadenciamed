@@ -14,6 +14,7 @@ import { onRequest as compra } from "./api/compra.js";
 import { onRequest as salas } from "./api/salas.js";
 import { onRequest as baralhos } from "./api/baralhos.js";
 import { onRequest as notion } from "./api/notion.js";
+import { onRequest as plano } from "./api/plano.js";
 
 const ROTAS = {
   "/api/assistente": assistente,
@@ -23,6 +24,7 @@ const ROTAS = {
   "/api/salas": salas,
   "/api/baralhos": baralhos,
   "/api/notion": notion,
+  "/api/plano": plano,
 };
 
 /* ── quem pode chamar de outro endereço ────────────────────────────────
