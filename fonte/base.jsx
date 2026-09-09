@@ -10,6 +10,8 @@ import {
   Smartphone, Monitor, Cloud, CloudOff, LogOut, User, RefreshCw, Stethoscope,
   Sparkles, Menu, PanelLeft, Users, Trophy, Clock, Lock,
   MessageCircle, Send, GraduationCap,
+  Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify,
+  Palette, Highlighter, ImagePlus, NotebookPen, FileDown, FolderInput,
 } from "lucide-react";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip,

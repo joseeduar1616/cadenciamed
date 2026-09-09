@@ -38,6 +38,8 @@ const DEFAULTS = {
   /* Currículo próprio, que substitui o padrão no todo ou por área — ver
      normalize(), logo abaixo. */
   cronogramaProprio: [],
+  /* Anotação rica por matéria (parte17.jsx), por id de aula. */
+  anotacoes: {},
   /* Se os números desta pessoa aparecem no ranking das salas de amigos.
      Começa ligado, que é o motivo de entrar numa sala; desligar mantém a
      pessoa na sala, sem os números dela à mostra. */
@@ -135,6 +137,19 @@ function normalize(raw) {
       esp: String(s.esp || "").trim().slice(0, 40) || String(s.title).trim().slice(0, 40),
       bonus: arr(s.bonus, []).filter((t) => typeof t === "string" && t.trim()).slice(0, 10).map((t) => String(t).trim().slice(0, 80)),
     })),
+    /* Anotação rica por matéria (parte17.jsx). O HTML passa de novo por
+       limparHtmlColado aqui — não só no colar — porque este é o ponto por
+       onde entra tudo que vem de fora: outro aparelho, a nuvem, uma cópia
+       de segurança restaurada. */
+    anotacoes: Object.entries(obj(d.anotacoes)).slice(0, 500).reduce((m, [id, v]) => {
+      const html = String(obj(v).html || "").slice(0, 60000);
+      if (!html.trim()) return m;
+      m[String(id).slice(0, 60)] = {
+        html: typeof limparHtmlColado === "function" ? limparHtmlColado(html) : html,
+        atualizadoEm: Number(obj(v).atualizadoEm) || 0,
+      };
+      return m;
+    }, {}),
     googleCal: {
       id: typeof gc.id === "string" ? gc.id : "",
       ultima: Number(gc.ultima) || 0,
