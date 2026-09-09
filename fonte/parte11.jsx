@@ -177,7 +177,7 @@ function Precos({ compacto, onFechar, usuario, plano, aviso }) {
         </Card>
       ) : null}
 
-      <div className="grid sm:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
         {["mensal", "anual"].map((k) => {
           const p = PRECOS[k];
           const destaque = k === "anual";
@@ -363,7 +363,7 @@ function PainelDono({ nuvem, notify }) {
         criado a conta no site antes, com o mesmo e-mail.
       </Texto>
 
-      <div className="mt-5 grid sm:grid-cols-3 gap-3 items-end">
+      <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
         <div className="sm:col-span-2">
           <Field label="E-mail da pessoa">
             <TextInput type="email" value={email} placeholder="pessoa@email.com"

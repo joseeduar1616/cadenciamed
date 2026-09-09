@@ -49,7 +49,7 @@ function Metas({ data, setData, today, qWeek, notify, ladder, gcal }) {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="grid lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <Card className="px-6 py-6">
           <H color="var(--warn)" icon={<Target size={16} />}>Simulados</H>
           <Label style={{ marginTop: 4 }}>janelas oficiais do cronograma</Label>
@@ -98,7 +98,7 @@ function Metas({ data, setData, today, qWeek, notify, ladder, gcal }) {
               {data.provas.map((x) => (
                 <div key={x.id} className="flex items-center gap-3 rounded-2xl px-4 py-2.5" style={{ background: T.card2 }}>
                   <BookMarked size={14} style={{ color: T.faint, flexShrink: 0 }} />
-                  <span className="flex-1" style={{ fontSize: 14.5 }}>{x.text}</span>
+                  <span className="flex-1 min-w-0" style={{ fontSize: 14.5 }}>{x.text}</span>
                   <Mini>{brDate(x.date)}</Mini>
                   <button type="button" aria-label="Excluir" className="toque"
                     onClick={() => setData((p) => ({ ...p, provas: p.provas.filter((y) => y.id !== x.id) }))}
@@ -113,7 +113,7 @@ function Metas({ data, setData, today, qWeek, notify, ladder, gcal }) {
         </Card>
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <Card className="px-6 py-6">
           <H color="var(--ok)" icon={<Flame size={16} />}>Hábitos da semana</H>
           <Label style={{ marginTop: 4 }}>zera toda segunda-feira</Label>
@@ -129,7 +129,7 @@ function Metas({ data, setData, today, qWeek, notify, ladder, gcal }) {
             {data.habits.map((h) => (
               <div key={h.id} className="flex items-center gap-3 rounded-2xl px-4 py-3" style={{ background: T.card2 }}>
                 <Tick on={!!habitsOn[h.id]} size={20} color={T.ok} label={h.text} onClick={() => toggleHabit(h.id)} />
-                <span className="flex-1" style={{ fontSize: 14.5, color: habitsOn[h.id] ? T.dim : T.ink, textDecoration: habitsOn[h.id] ? "line-through" : "none" }}>{h.text}</span>
+                <span className="flex-1 min-w-0" style={{ fontSize: 14.5, color: habitsOn[h.id] ? T.dim : T.ink, textDecoration: habitsOn[h.id] ? "line-through" : "none" }}>{h.text}</span>
                 <button type="button" aria-label="Excluir" className="toque"
                   onClick={() => setData((p) => ({ ...p, habits: p.habits.filter((y) => y.id !== h.id) }))}
                   style={{ background: "none", border: "none", color: T.ghost, cursor: "pointer" }}><Trash2 size={13} /></button>
@@ -175,7 +175,7 @@ function Metas({ data, setData, today, qWeek, notify, ladder, gcal }) {
                 <div key={x.id} className="flex items-center gap-3 rounded-2xl px-3.5 py-2.5" style={{ background: T.card2 }}>
                   <Tick on={x.done} size={19} label="Concluir"
                     onClick={() => setData((p) => ({ ...p, rever: p.rever.map((y) => y.id === x.id ? { ...y, done: !y.done } : y) }))} />
-                  <span className="flex-1" style={{ fontSize: 14.5, color: x.done ? T.ghost : T.ink, textDecoration: x.done ? "line-through" : "none" }}>{x.text}</span>
+                  <span className="flex-1 min-w-0" style={{ fontSize: 14.5, color: x.done ? T.ghost : T.ink, textDecoration: x.done ? "line-through" : "none" }}>{x.text}</span>
                   <button type="button" aria-label="Excluir" className="toque"
                     onClick={() => setData((p) => ({ ...p, rever: p.rever.filter((y) => y.id !== x.id) }))}
                     style={{ background: "none", border: "none", color: T.ghost, cursor: "pointer" }}><Trash2 size={13} /></button>
@@ -192,7 +192,7 @@ function Metas({ data, setData, today, qWeek, notify, ladder, gcal }) {
           Manda o cronograma para a sua agenda. Sincronizar de novo atualiza os
           mesmos eventos em vez de criar cópias.
         </Label>
-        <div className="mt-5 grid sm:grid-cols-2 gap-3">
+        <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
           {[
             ["rotina", "Rotina e compromissos", contagem.rotina, "os fixos viram evento semanal"],
             ["revisoes", "Revisões pendentes", contagem.revisoes, "dia inteiro, próximos 8 meses"],
@@ -266,7 +266,7 @@ function Metas({ data, setData, today, qWeek, notify, ladder, gcal }) {
 
       <Card className="px-6 py-6">
         <H color="var(--a-CI)" icon={<Zap size={16} />}>Metas e data da prova</H>
-        <div className="mt-5 grid sm:grid-cols-4 gap-4">
+        <div className="mt-5 grid grid-cols-1 sm:grid-cols-4 gap-4">
           <NumField label="Meta diária (min)" value={data.goals.daily} min={5} max={1440}
             onCommit={(v) => setData((p) => ({ ...p, goals: { ...p.goals, daily: v } }))} />
           <NumField label="Meta semanal (min)" value={data.goals.weekly} min={10} max={10080}
@@ -523,7 +523,7 @@ function ContaNuvem({ nuvem, notify }) {
             }}>{lb}</button>
         ))}
       </div>
-      <div className="mt-5 grid sm:grid-cols-2 gap-4">
+      <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
         {modo === "criar" ? (
           <Field label="Seu nome"><TextInput value={f.nome} placeholder="Como quer ser chamado" onChange={(e) => set("nome", e.target.value)} /></Field>
         ) : null}
@@ -673,7 +673,7 @@ function Aparencia({ data, setData }) {
       {/* ── fonte ───────────────────────────────────────────────────── */}
       <div className="mt-6 pt-5" style={{ borderTop: `1px solid ${T.line}` }}>
         <Label>Fonte da interface</Label>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5 mt-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 mt-3">
           {FONTES.map((f) => {
             const on = tema.fonte === f.id;
             return (
@@ -833,7 +833,7 @@ function Progresso({ data, setData, byDay, today, totals, subjects, notify, nuve
         </div>
       </Card>
 
-      <div className="grid lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <Card className="px-6 py-6">
           <H size={18} color="var(--a-GO)" icon={<Layers size={16} />}>Onde o tempo foi</H>
           {areaMin.length === 0 ? (

@@ -211,7 +211,7 @@ function Foco({ data, setData, today, P, subjectId, setSubjectId }) {
               <Btn size="sm" onClick={() => setData((p) => ({ ...p, pomo: { ...p.pomo, focus: 90, short: 20, long: 30, cycle: 2 } }))}>90/20</Btn>
             </div>
             <div className="col-span-2 lg:col-span-4 pt-5" style={{ borderTop: `1px solid ${T.line}` }}>
-              <div className="grid sm:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <Paleta titulo="Cor do foco" valor={data.pomo.corFoco} onPick={(c) => set("corFoco", c)} />
                 <Paleta titulo="Cor das pausas" valor={data.pomo.corPausa} onPick={(c) => set("corPausa", c)} />
               </div>
@@ -359,7 +359,7 @@ function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, do
       {projecao ? (
         <Card className="px-6 py-6" brilho="var(--neon2)" tilt>
           <H color="var(--neon2)" icon={<Zap size={16} />}>Ritmo e projeção</H>
-          <div className="mt-5 grid sm:grid-cols-3 gap-5">
+          <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-5">
             <div className="flex items-center gap-3.5">
               <Medidor pct={projecao.pctCurso} cor="var(--neon2)" tamanho={84} largura={7}>
                 <span style={{ fontFamily: F_MONO, fontSize: 15, fontWeight: 700, color: "var(--neon2)" }}>
@@ -429,7 +429,7 @@ function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, do
         </Card>
       ) : null}
 
-      <div className="grid lg:grid-cols-5 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
         <Card className="px-6 py-6 lg:col-span-3">
           <div className="flex items-center justify-between">
             <H color="var(--warn)" icon={<RotateCcw size={16} />}>Revisões pedindo passagem</H>
@@ -472,7 +472,7 @@ function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, do
                 <div key={t.id} className="flex items-center gap-3 rounded-2xl px-3.5 py-2.5" style={{ background: T.card2 }}>
                   <Tick on={t.done} size={19} label={t.done ? "Reabrir" : "Concluir"}
                     onClick={() => setData((p) => ({ ...p, tasks: p.tasks.map((x) => x.id === t.id ? { ...x, done: !x.done } : x) }))} />
-                  <span className="flex-1" style={{ fontSize: 14.5, color: t.done ? T.ghost : T.ink, textDecoration: t.done ? "line-through" : "none" }}>{t.text}</span>
+                  <span className="flex-1 min-w-0" style={{ fontSize: 14.5, color: t.done ? T.ghost : T.ink, textDecoration: t.done ? "line-through" : "none" }}>{t.text}</span>
                   <button type="button" aria-label="Excluir" className="toque"
                     onClick={() => setData((p) => ({ ...p, tasks: p.tasks.filter((x) => x.id !== t.id) }))}
                     style={{ background: "none", border: "none", color: T.ghost, cursor: "pointer" }}><Trash2 size={13} /></button>

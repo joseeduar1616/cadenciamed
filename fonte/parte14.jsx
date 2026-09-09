@@ -518,7 +518,7 @@ function Amigos({ nuvem, notify, data, setData }) {
             ))}
           </div>
 
-          <div className="mt-4 grid sm:grid-cols-2 gap-3">
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Nome da sala">
               <TextInput value={form.nome} placeholder="Ex.: plantão da madrugada"
                 onChange={(e) => setForm((p) => ({ ...p, nome: e.target.value }))}
