@@ -617,6 +617,31 @@ Quem publica o perfil é o `usePerfilPublico`, chamado no componente raiz e
 não dentro da aba. Fosse dentro da aba, o ranking mostraria zero para quem
 estudou e simplesmente não a tinha aberto.
 
+### Google Agenda: sincronizar sozinho
+
+O login do Google (`google.accounts.oauth2`) entrega um token de acesso que
+expira em cerca de uma hora e não vem com token de atualização — não dá para
+guardar isso em disco e continuar puxando a agenda com o site fechado sem um
+servidor por trás, fora do alcance de um site estático. O que o `useGoogleAgenda`
+(`parte3.jsx`) faz em vez disso: assim que a pessoa clica em "Puxar do Google"
+pela primeira vez e a leitura dá certo, `data.googleCal.autoSync` vira `true`
+(persistido, então sobrevive a recarregar a página). Dali em diante, enquanto
+a aba estiver aberta:
+
+- tenta pegar um novo token **sem abrir janela nenhuma** (`requestAccessToken({prompt: ""})`
+  — só funciona se o navegador já tiver concedido acesso antes; se falhar,
+  não mostra erro, só não sincroniza dessa vez);
+- conseguindo o token, relê a semana atual a cada 30 minutos;
+- e de novo sempre que a aba volta a ficar visível depois de passar 15 minutos
+  ou mais em segundo plano (`visibilitychange`).
+
+Essas leituras automáticas são silenciosas (sem toast de "compromissos
+sincronizados" a cada 30 minutos) para não incomodar; erros também não
+aparecem, já que a pessoa não pediu essa tentativa. O botão "Puxar do Google"
+continua funcionando a qualquer momento para puxar na hora. Desconectar
+(`gcal.desconectar`) desliga o `autoSync` — só liga de novo puxando manualmente
+uma vez.
+
 ## Domínio
 
 Ao acrescentar ou trocar de domínio, três lugares precisam saber, não só a
