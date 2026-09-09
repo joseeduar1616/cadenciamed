@@ -2,7 +2,7 @@
    12 · MATÉRIAS
    ═══════════════════════════════════════════════════════════════════ */
 
-function SubjectRow({ s, open, minutes, onToggleOpen, setMark, toggleBonus, anotacao, salvarAnotacao, notify }) {
+function SubjectRow({ s, open, minutes, onToggleOpen, setMark, toggleBonus, anotacao, salvarAnotacao, notify, setData, nuvem }) {
   return (
     <Card className="overflow-hidden">
       <div className="flex items-center gap-3.5 px-5 py-4">
@@ -79,7 +79,7 @@ function SubjectRow({ s, open, minutes, onToggleOpen, setMark, toggleBonus, anot
           ) : null}
           <div className="sm:col-span-2 pt-4" style={{ borderTop: `1px solid ${T.line}` }}>
             <AnotacaoMateria subjectId={s.id} area={s.area} titulo={s.title}
-              anotacao={anotacao} salvarAnotacao={salvarAnotacao} notify={notify} />
+              anotacao={anotacao} salvarAnotacao={salvarAnotacao} notify={notify} setData={setData} nuvem={nuvem} />
           </div>
         </div>
       ) : null}
@@ -87,7 +87,7 @@ function SubjectRow({ s, open, minutes, onToggleOpen, setMark, toggleBonus, anot
   );
 }
 
-function Materias({ subjects, setMark, toggleBonus, minutes, done, bonusDone, anotacoes, salvarAnotacao, notify }) {
+function Materias({ subjects, setMark, toggleBonus, minutes, done, bonusDone, anotacoes, salvarAnotacao, notify, setData, nuvem }) {
   const [area, setArea] = useState("todas");
   const [status, setStatus] = useState("todas");
   const [q, setQ] = useState("");
@@ -130,7 +130,7 @@ function Materias({ subjects, setMark, toggleBonus, minutes, done, bonusDone, an
   const row = (s) => (
     <SubjectRow key={s.id} s={s} open={openId === s.id} minutes={minutes[s.id] || 0}
       onToggleOpen={() => setOpenId(openId === s.id ? null : s.id)} setMark={setMark} toggleBonus={toggleBonus}
-      anotacao={(anotacoes || {})[s.id]} salvarAnotacao={salvarAnotacao} notify={notify} />
+      anotacao={(anotacoes || {})[s.id]} salvarAnotacao={salvarAnotacao} notify={notify} setData={setData} nuvem={nuvem} />
   );
 
   return (

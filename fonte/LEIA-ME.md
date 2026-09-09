@@ -555,6 +555,24 @@ anotação nunca é mostrada para outra pessoa — nem o mentor a alcança (ver
 "Mentor", acima) —, mas colar um trecho de uma página maliciosa não pode
 virar código rodando na própria conta de quem colou.
 
+### Gerar flashcards a partir da anotação
+
+O botão "Gerar flashcards com IA", dentro do editor, manda o texto puro da
+anotação (`editorRef.current.innerText` — sem marcação; as imagens não
+ajudam a IA a escrever pergunta e resposta) para a **mesma** rota
+`/api/flashcards-ia` que já monta cartão a partir de PDF/Word — mesmas
+regras de estilo (negrito no que decide a resposta, achado→diagnóstico, "se
+a prova disser"...), então esta função não precisa de instrução própria nem
+de rota nova.
+
+Os cartões caem direto numa das 4 pastas grandes que já existem em Cartões,
+sem perguntar: `PASTA_POR_AREA_NOTA`, em `parte17.jsx`, mapeia a área da
+aula (`CL`/`CI`/`GO`/`PE`/`PR`, as mesmas do currículo) para o nome exato da
+pasta — GO e Preventiva (`PR`) dividem a mesma pasta, "GO E PREVENTIVA",
+como o pedido original já descrevia. Se a pessoa tiver nomeado essas pastas
+com um nome diferente do esperado, os cartões criam uma pasta nova com o
+nome padrão em vez de entrar na pasta dela.
+
 ## Primeira tela
 
 Abre pedindo conta, não o nome. Pedir só o nome deixava a pessoa estudar e

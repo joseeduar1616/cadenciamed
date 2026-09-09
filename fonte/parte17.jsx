@@ -17,6 +17,12 @@
 const CORES_TEXTO_NOTA = ["#1a1a1a", "#B23B3B", "#2E7D32", "#1565C0", "#6A1B9A", "#E65100", "#FFFFFF"];
 const CORES_GRIFO_NOTA = ["#FFF59D", "#A5D6A7", "#90CAF9", "#F48FB1", "#FFCC80"];
 
+/* As 4 pastas grandes que já existem na aba Cartões, uma por área do
+   currículo — GO e Preventiva dividem a mesma, como já é feito lá. Os
+   flashcards gerados a partir de uma anotação caem direto numa destas, sem
+   perguntar: a área da aula já diz qual é, sem ambiguidade nenhuma. */
+const PASTA_POR_AREA_NOTA = { CI: "CIRURGIA", CL: "CLINICA MÉDICA", PE: "PEDIATRIA", GO: "GO E PREVENTIVA", PR: "GO E PREVENTIVA" };
+
 /* Tira script, iframe e atributos de evento (onerror, onclick...) de HTML
    colado de fora. A nota é só do próprio dono e nunca é mostrada para outra
    pessoa (nem o mentor a alcança — ver worker/api/mentor.js), mas colar um
@@ -72,15 +78,39 @@ function TiraDeCores({ cores, onEscolher, comBranco }) {
   );
 }
 
-function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, notify }) {
+function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, notify, setData, nuvem }) {
   const [aberto, setAberto] = useState(false);
   const [pronto, setPronto] = useState(false);
   const [sujo, setSujo] = useState(false);
   const [corAberta, setCorAberta] = useState(false);
   const [grifoAberto, setGrifoAberto] = useState(false);
+  const [gerando, setGerando] = useState(false);
   const editorRef = useRef(null);
   const salvarRef = useRef(null);
   const arquivoRef = useRef(null);
+
+  /* Manda o texto puro da anotação (sem marcação, as imagens não ajudam a
+     IA a escrever pergunta e resposta) para a mesma rota que já monta
+     flashcard a partir de PDF/Word — mesmas regras de estilo (negrito no
+     que decide a resposta, achado→diagnóstico, "se a prova disser"...),
+     então gerar a partir de uma anotação não precisa de instrução própria. */
+  const gerarFlashcards = async () => {
+    const texto = (editorRef.current && editorRef.current.innerText || "").trim();
+    if (!texto) { notify("Escreva alguma coisa na anotação antes de gerar cartões."); return; }
+    setGerando(true);
+    const { dados, erro: falha } = await gerarFlashcardsComIA({ texto, baralho: titulo, cobrirTudo: false, nuvem });
+    setGerando(false);
+    if (falha) { notify(falha); return; }
+    if (!dados || !Array.isArray(dados.cartoes) || dados.cartoes.length === 0) {
+      notify("A IA não conseguiu montar cartões a partir dessa anotação.");
+      return;
+    }
+    const pasta = PASTA_POR_AREA_NOTA[area] || PASTA_SOLTA;
+    const novos = dados.cartoes.map((c) => novoCartao(c.frente, c.verso, subjectId, titulo, pasta));
+    setData((p) => ({ ...p, flash: [...novos, ...(p.flash || [])], pastas: registrarPasta(p.pastas, pasta) }));
+    notify(`${novos.length} cartõe${novos.length === 1 ? "" : "s"} gerado${novos.length === 1 ? "" : "s"} em "${pasta}".`
+      + (dados.cortado ? " O texto era grande e foi cortado antes do fim." : ""));
+  };
 
   useEffect(() => {
     if (!aberto) return undefined;
@@ -233,6 +263,13 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
           color: T.ink, background: T.bg, border: `1px solid ${T.line}`, outline: "none",
         }} />
       {!pronto ? <Mini>carregando…</Mini> : null}
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <Btn size="sm" tone="outline" disabled={gerando} onClick={gerarFlashcards}>
+          <Sparkles size={14} /> {gerando ? "Gerando…" : "Gerar flashcards com IA"}
+        </Btn>
+        <Mini>vão para a pasta "{PASTA_POR_AREA_NOTA[area] || PASTA_SOLTA}", em Cartões</Mini>
+      </div>
     </div>
   );
 }
