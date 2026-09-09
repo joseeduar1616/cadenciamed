@@ -10,6 +10,7 @@
 import { chromium } from 'playwright';
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 
 const alvo = path.resolve(process.argv[2] || 'teste.html');
 if (!fs.existsSync(alvo)) { console.error('não achei', alvo); process.exit(1); }
@@ -110,6 +111,89 @@ for (const aba of ABAS) {
   if (t.length < 20) falha(`aba ${aba} renderizou vazia`);
   else if (liberado && /Recurso do plano completo/.test(t)) falha(`aba ${aba} ficou bloqueada no build de teste`);
   else ok(`aba ${aba}: ${t.length} caracteres`);
+}
+
+/* ── anotação rica por matéria ────────────────────────────────────────
+   Não depende do plano: dá para testar nos dois builds. Escreve, aplica
+   negrito, anexa uma imagem (1x1, gerada na hora, sem arquivo no repo) e
+   confere que as duas coisas sobrevivem a recarregar a página — a
+   imagem é a parte arriscada, porque mora no IndexedDB, não no HTML
+   guardado (parte17.jsx). */
+await ir('Matérias');
+const linhaAula = pag.locator('[data-teste="titulo-materia"]').first();
+if (await linhaAula.count() === 0) {
+  falha('anotação: não achei nenhuma aula em Matérias para abrir');
+} else {
+  await linhaAula.click();
+  await pag.waitForTimeout(300);
+  const abrirNota = pag.locator('text=Escrever ou colar uma anotação');
+  if (await abrirNota.count() === 0) {
+    falha('anotação: não achei o botão de escrever a anotação');
+  } else {
+    await abrirNota.click();
+    await pag.waitForTimeout(300);
+    const editor = pag.locator('[contenteditable="true"]').first();
+    await editor.click();
+    await editor.type('Anotação de teste.');
+    await pag.keyboard.press('Control+A');
+    await pag.locator('button[title="Negrito"]').click();
+    await pag.waitForTimeout(300);
+    const htmlNaHora = await editor.innerHTML();
+    if (/<b>|<strong>/i.test(htmlNaHora)) ok('anotação: negrito aplica na hora');
+    else falha('anotação: negrito não aplicou: ' + htmlNaHora.slice(0, 120));
+
+    /* solta a seleção antes de inserir a imagem: com o texto ainda todo
+       selecionado, o navegador troca o texto pela imagem em vez de só
+       acrescentar — o mesmo comportamento do Word e do Google Docs. */
+    await pag.keyboard.press('End');
+
+    /* imagem 1x1 em base64, para não depender de nenhum arquivo do repo */
+    const pixelB64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    const caminhoPixel = path.join(os.tmpdir(), `cadencia-teste-pixel-${Date.now()}.png`);
+    fs.writeFileSync(caminhoPixel, Buffer.from(pixelB64, 'base64'));
+    const escolhaArquivo = pag.waitForEvent('filechooser');
+    await pag.locator('button[title="Inserir imagem"]').click();
+    const seletor = await escolhaArquivo;
+    await seletor.setFiles(caminhoPixel);
+    await pag.waitForTimeout(500);
+    fs.unlinkSync(caminhoPixel);
+    if (await editor.locator('img').count() > 0) ok('anotação: a imagem aparece no editor assim que é inserida');
+    else falha('anotação: a imagem não apareceu depois de inserida');
+
+    /* debounce do salvamento da anotação (1200ms) + do salvamento geral */
+    await pag.waitForTimeout(4000);
+    const salvouSemImagemEmbutida = await pag.evaluate(() => {
+      const bruto = window.localStorage.getItem('cadencia:v3');
+      const dados = bruto ? JSON.parse(bruto) : null;
+      const notas = (dados && dados.anotacoes) || {};
+      const html = Object.values(notas).map((n) => n.html).join('');
+      return { temDataNome: /data-nome="/.test(html), temSrcData: /src="data:/.test(html), temNegrito: /<b>|<strong>/i.test(html) };
+    });
+    if (salvouSemImagemEmbutida.temDataNome && !salvouSemImagemEmbutida.temSrcData) {
+      ok('anotação: a imagem fica só no IndexedDB, sem inflar o que é guardado em disco/nuvem');
+    } else falha('anotação: a imagem vazou para o HTML guardado, ou não guardou nada: ' + JSON.stringify(salvouSemImagemEmbutida));
+    if (salvouSemImagemEmbutida.temNegrito) ok('anotação: a formatação (negrito) é salva');
+    else falha('anotação: o negrito não foi salvo');
+
+    await pag.reload({ waitUntil: 'load' });
+    await pag.waitForTimeout(2200);
+    await ir('Matérias');
+    await pag.locator('[data-teste="titulo-materia"]').first().click();
+    await pag.waitForTimeout(300);
+    const verNota = pag.locator('text=Ver ou editar anotação');
+    if (await verNota.count() === 0) {
+      falha('anotação: sumiu depois de recarregar a página');
+    } else {
+      ok('anotação: continua lá depois de recarregar a página');
+      await verNota.click();
+      await pag.waitForTimeout(700);   // ler a imagem do IndexedDB é assíncrono
+      const editorDepois = pag.locator('[contenteditable="true"]').first();
+      const imgDepois = editorDepois.locator('img');
+      if (await imgDepois.count() > 0 && /^data:/.test((await imgDepois.first().getAttribute('src')) || '')) {
+        ok('anotação: a imagem volta a aparecer, lida de volta do IndexedDB');
+      } else falha('anotação: a imagem não voltou depois de recarregar');
+    }
+  }
 }
 
 if (liberado) {

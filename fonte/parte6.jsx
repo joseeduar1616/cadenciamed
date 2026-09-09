@@ -2,7 +2,7 @@
    12 · MATÉRIAS
    ═══════════════════════════════════════════════════════════════════ */
 
-function SubjectRow({ s, open, minutes, onToggleOpen, setMark, toggleBonus }) {
+function SubjectRow({ s, open, minutes, onToggleOpen, setMark, toggleBonus, anotacao, salvarAnotacao, notify }) {
   return (
     <Card className="overflow-hidden">
       <div className="flex items-center gap-3.5 px-5 py-4">
@@ -12,7 +12,7 @@ function SubjectRow({ s, open, minutes, onToggleOpen, setMark, toggleBonus }) {
           style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
           <span style={{ fontFamily: F_MONO, fontSize: 12, color: T.ghost, width: 24, flexShrink: 0 }}>{pad(s.week)}</span>
           <span className="flex-1 min-w-0">
-            <span style={{ display: "block", fontSize: 15, fontWeight: 600, color: s.aula ? T.dim : T.ink, lineHeight: 1.35 }}>{s.title}</span>
+            <span data-teste="titulo-materia" style={{ display: "block", fontSize: 15, fontWeight: 600, color: s.aula ? T.dim : T.ink, lineHeight: 1.35 }}>{s.title}</span>
             <Mini style={{ marginTop: 2 }}>
               {s.esp}{s.date ? ` · ${brDate(s.date)}` : ""}{minutes ? ` · ${fmtMin(minutes)}` : ""}
             </Mini>
@@ -77,13 +77,17 @@ function SubjectRow({ s, open, minutes, onToggleOpen, setMark, toggleBonus }) {
               </div>
             </div>
           ) : null}
+          <div className="sm:col-span-2 pt-4" style={{ borderTop: `1px solid ${T.line}` }}>
+            <AnotacaoMateria subjectId={s.id} area={s.area} titulo={s.title}
+              anotacao={anotacao} salvarAnotacao={salvarAnotacao} notify={notify} />
+          </div>
         </div>
       ) : null}
     </Card>
   );
 }
 
-function Materias({ subjects, setMark, toggleBonus, minutes, done, bonusDone }) {
+function Materias({ subjects, setMark, toggleBonus, minutes, done, bonusDone, anotacoes, salvarAnotacao, notify }) {
   const [area, setArea] = useState("todas");
   const [status, setStatus] = useState("todas");
   const [q, setQ] = useState("");
@@ -125,7 +129,8 @@ function Materias({ subjects, setMark, toggleBonus, minutes, done, bonusDone }) 
 
   const row = (s) => (
     <SubjectRow key={s.id} s={s} open={openId === s.id} minutes={minutes[s.id] || 0}
-      onToggleOpen={() => setOpenId(openId === s.id ? null : s.id)} setMark={setMark} toggleBonus={toggleBonus} />
+      onToggleOpen={() => setOpenId(openId === s.id ? null : s.id)} setMark={setMark} toggleBonus={toggleBonus}
+      anotacao={(anotacoes || {})[s.id]} salvarAnotacao={salvarAnotacao} notify={notify} />
   );
 
   return (

@@ -24,8 +24,8 @@ Passo a passo, se preferir na mão:
 python3 gerar_icones.py         # ícones, favicon e a marca embutida no base.jsx
 
 cat base.jsx parte2.jsx parte3.jsx parte10.jsx parte11.jsx parte13.jsx \
-    parte12.jsx parte4.jsx parte5.jsx parte6.jsx parte7.jsx parte9.jsx \
-    parte14.jsx parte8.jsx > app.jsx
+    parte12.jsx parte17.jsx parte4.jsx parte5.jsx parte6.jsx parte7.jsx parte9.jsx \
+    parte14.jsx parte15.jsx parte16.jsx parte8.jsx > app.jsx
 
 npx esbuild main.jsx --bundle --minify --format=iife --loader:.jsx=jsx \
   --define:process.env.NODE_ENV='"production"' \
@@ -38,7 +38,8 @@ python3 publicar.py             # copia o que vai ao ar para ../publicar
 ```
 
 A ordem da concatenação importa: `parte8.jsx` tem o componente raiz e vai por
-último; `parte13.jsx` precisa vir antes de `parte12.jsx`.
+último; `parte13.jsx` precisa vir antes de `parte12.jsx` e de `parte17.jsx`,
+que guardam imagem no mesmo IndexedDB.
 
 ## Testar
 
@@ -74,6 +75,7 @@ some calada quando falta uma linha no `normalize()`.
 | `parte11.jsx` | assinatura, tela de planos, painel do dono |
 | `parte13.jsx` | leitor de `.apkg` do Anki e imagens no IndexedDB |
 | `parte12.jsx` | flashcards, pastas, repetição espaçada |
+| `parte17.jsx` | anotação rica por matéria, com imagem no IndexedDB |
 | `parte4.jsx` | agenda da Rotina (semana e dia) e aba Temas |
 | `parte5.jsx` | aba Foco e aba Hoje |
 | `parte6.jsx` | Matérias, Revisões, escolha do esquema, exportação `.ics` |
@@ -523,6 +525,35 @@ o desenho é o mesmo para qualquer cartão, não só os que vêm da IA.
 Um PDF sem `.docx` antigo (`.doc`) não abre: é formato fechado, sem leitor
 que caiba no navegador. Um PDF só de imagem escaneada, sem texto por trás,
 também não funciona — não há OCR aqui.
+
+## Anotações
+
+Em Matérias, abrir uma aula mostra um botão de anotação — clicar escreve, ou
+cola o que a pessoa já tinha escrito noutro lugar. `parte17.jsx` monta o
+editor, com `document.execCommand` (negrito, itálico, sublinhado, alinhar —
+inclusive justificado —, cor da letra, grifo, imagem): obsoleto na
+especificação, mas ainda funciona em todo navegador atual, e evita trazer
+uma biblioteca de editor inteira para o que foi pedido, bem mais simples que
+um Word completo. O HTML fica em `data.anotacoes[id]`, pelo id da aula — o
+mesmo id fixo do currículo (ou do currículo próprio, parte9.jsx), então a
+anotação segue a aula mesmo se o currículo próprio substituir o padrão.
+
+**As imagens não moram no HTML guardado.** Ficam no mesmo IndexedDB dos
+cartões e do Anki (`guardarMidia`/`lerMidia`, `parte13.jsx`): ao salvar, cada
+`<img>` recém-colada vira um nome ali dentro, e o HTML guardado fica só com
+`data-nome="..."`, sem o `src`. Ao abrir a anotação de novo, cada `data-nome`
+é resolvido de volta para uma imagem de verdade. Sem essa separação, cada
+foto colada iria inteira, em base64, para dentro de `data.anotacoes` — e
+isso sincroniza com a nuvem e passa pelo `localStorage`; algumas fotos de
+caderno já bastariam para estourar os dois.
+
+HTML colado de fora passa por `limparHtmlColado` — tira `<script>`,
+`<iframe>` e atributos de evento (`onerror`, `onclick`...) — tanto no colar
+quanto de novo dentro do `normalize()`, que é o ponto por onde entra tudo
+que vem de fora (outro aparelho, a nuvem, uma cópia de segurança). A
+anotação nunca é mostrada para outra pessoa — nem o mentor a alcança (ver
+"Mentor", acima) —, mas colar um trecho de uma página maliciosa não pode
+virar código rodando na própria conta de quem colou.
 
 ## Primeira tela
 
