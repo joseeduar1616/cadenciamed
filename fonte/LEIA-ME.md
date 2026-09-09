@@ -90,6 +90,7 @@ some calada quando falta uma linha no `normalize()`.
 | `testar.mjs` | teste de fumaça no Chromium |
 | `testar-assistente.mjs` | teste da função da IA, com servidor falso no lugar da API |
 | `testar-flashcards-ia.mjs` | teste do montador de flashcards a partir de PDF/Word, mesma técnica de servidor falso |
+| `testar-recorte-pdf.mjs` | teste da matemática que acha o retângulo de cada figura num PDF, com objetos falsos, sem abrir PDF nenhum |
 | `testar-compra.mjs` | teste do aviso de compra: segredo, planos e estorno |
 | `testar-cupom.mjs` | teste do resgate de cupom, com Firebase falso |
 | `testar-acessos.mjs` | teste do painel de acessos do dono |
@@ -413,16 +414,24 @@ em `parte13.jsx`, que também baixa o `sql.js` sob demanda. Só o texto
 extraído vai para o servidor; o arquivo original nunca sai do aparelho.
 
 - **PDF** (`lerPdfParaTexto`, com `pdf.js`): o texto sai por `getTextContent`,
-  página por página. Uma página que tenha alguma imagem embutida (checado por
-  `getOperatorList`, sem precisar decodificar nada) é desenhada inteira num
-  `<canvas>` e guardada como se fosse uma foto do Anki — a página vira a
-  "imagem" do cartão, e não só a figura recortada. Recortar só a figura
-  depende de como cada PDF guarda a imagem por dentro, e falha de um jeito
-  diferente a cada gerador; desenhar a página usa o mesmo `page.render` que
-  qualquer PDF sabe responder.
+  página por página. As figuras vêm **recortadas**, não a página inteira:
+  `retangulosDeImagem` percorre a lista de operadores da página do mesmo
+  jeito que `page.render` percorre por dentro — acompanhando os
+  `save`/`restore`/`transform` (o operador `cm` do PDF) — e, ao chegar num
+  `paintImageXObject`/`paintJpegXObject`/`paintInlineImageXObject`, aplica a
+  matriz acumulada nos quatro cantos do quadrado unitário para achar
+  exatamente o retângulo daquela figura em pixels do canvas. A página é
+  desenhada **uma vez**, numa resolução alta o bastante para o recorte não
+  sair borrado, e `figurasDaPagina` recorta cada retângulo dali —
+  `drawImage` com os oito argumentos, retângulo de origem e de destino. Essa
+  volta é o que permite recortar sem decodificar o formato de cada imagem
+  por dentro (JPEG, cor indexada, CMYK...), que muda de gerador para gerador
+  e é exatamente onde uma extração "direto dos bytes" costuma quebrar.
+  Retângulo menor que `FIGURA_MIN_PX` é descartado — é decoração, não
+  figura.
 - **Word** (`lerDocxParaTexto`, com `mammoth`): o `.docx` já entrega as
   imagens embutidas como `data:` no HTML da conversão; cada uma vira uma
-  entrada no depósito.
+  entrada no depósito, sem precisar recortar nada.
 
 Nos dois casos, cada imagem some no texto como um marcador `[[img:nome]]` —
 o mesmo formato que o leitor do Anki já usa e que `LadoDoCartao`, em
@@ -432,6 +441,23 @@ ela copiar um marcador existente para dentro do cartão quando a figura for
 necessária ali, e não inventar marcador que não estava no texto. O JSON que a
 IA devolve é conferido e limpo no servidor — tamanho de cada campo, quantos
 cartões no máximo — antes de chegar ao navegador.
+
+### O estilo dos cartões
+
+A instrução da IA (`INSTRUCOES`, em `worker/api/flashcards-ia.js`) pede um
+estilo específico, o de um baralho de Anki bem feito e comum entre
+estudantes de residência: pergunta direta, resposta sem enrolação, e o termo
+que decide a resposta em **negrito**. Três formatos, o que fizer sentido
+para cada trecho — fato direto; reconhecimento de imagem, ligando achado a
+diagnóstico com uma seta; e "Se a prova disser: [vinheta] → Pense em...",
+para quando o material tiver a cara de uma associação clássica de prova.
+
+O `**negrito**` só funciona porque `LadoDoCartao`, em `parte13.jsx`, passa
+cada trecho de texto por `comNegrito` antes de desenhar — o mesmo truque
+pequeno de markdown que a resposta do assistente já usa em `parte9.jsx`,
+adaptado para não brigar com o marcador `[[img:nome]]`, que continua sendo
+resolvido primeiro. Cartão criado à mão também pode usar `**assim**`, já que
+o desenho é o mesmo para qualquer cartão, não só os que vêm da IA.
 
 Um PDF sem `.docx` antigo (`.doc`) não abre: é formato fechado, sem leitor
 que caiba no navegador. Um PDF só de imagem escaneada, sem texto por trás,
