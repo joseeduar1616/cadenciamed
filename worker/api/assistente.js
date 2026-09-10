@@ -19,6 +19,38 @@ const LIMITE_ENTRADA = 24000;   // caracteres, para conter o custo por chamada
    o que apertava ainda mais o que sobrava para o texto. */
 const MAX_SAIDA = 4000;
 
+/* Os modelos que a chave do Gemini alcança, do jeito que o Google os
+   descreve. Só os que geram texto entram: a lista crua traz também os de
+   embedding e os de imagem, que não servem para nada daqui. */
+async function listarModelos(env) {
+  if (!env.GEMINI_API_KEY) {
+    return json({ erro: "Sem GEMINI_API_KEY não dá para perguntar ao Google quais modelos existem." }, 400);
+  }
+  let r;
+  try {
+    r = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", {
+      headers: { "x-goog-api-key": env.GEMINI_API_KEY },
+    });
+  } catch (e) {
+    return json({ erro: "Não consegui alcançar o Google para listar os modelos." }, 502);
+  }
+  const j = await r.json().catch(() => null);
+  if (!r.ok) {
+    const real = (j && j.error && j.error.message) || `resposta ${r.status}`;
+    return json({ erro: `O Google recusou a lista de modelos: ${real}` }, 502);
+  }
+  const modelos = ((j && j.models) || [])
+    .filter((m) => (m.supportedGenerationMethods || []).includes("generateContent"))
+    .map((m) => ({
+      nome: String(m.name || "").replace(/^models\//, ""),
+      rotulo: m.displayName || "",
+      entrada: m.inputTokenLimit || 0,
+      saida: m.outputTokenLimit || 0,
+    }))
+    .sort((a, b) => a.nome.localeCompare(b.nome));
+  return json({ emUso: modeloAtual(escolherProvedor(env), env), quantos: modelos.length, modelos });
+}
+
 export async function onRequest({ request, env }) {
   const provedor = escolherProvedor(env);
   const modelo = modeloAtual(provedor, env);
@@ -27,6 +59,16 @@ export async function onRequest({ request, env }) {
      conferir, depois de publicar, se a chave chegou até aqui. Nenhuma chave
      é mostrada, só o nome do provedor e do modelo. */
   if (request.method === "GET") {
+    /* ...e com ?modelos=1, quais modelos ESTA chave aceita hoje.
+     *
+     * O Google aposenta e lança modelo sem aviso, e o nome que servia mês
+     * passado pode não existir mais. Chutar pela memória é como o
+     * gemini-1.5-flash foi parar no código depois de já ter saído de
+     * circulação para chave nova. Aqui quem responde é o próprio provedor.
+     * Nome de modelo não é segredo, e a chave continua sem sair daqui. */
+    if (new URL(request.url).searchParams.get("modelos")) {
+      return listarModelos(env);
+    }
     return json({
       provedor: provedor ? provedor.nome : "nenhum",
       modelo: provedor ? modelo : null,
