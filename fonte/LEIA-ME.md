@@ -356,18 +356,26 @@ Com as duas cadastradas o Gemini é o escolhido. Para forçar um deles,
 cadastre `IA_PROVEDOR` com `gemini` ou `anthropic`. O modelo também dá para
 trocar sem mexer no código, por `GEMINI_MODELO` e `ANTHROPIC_MODELO`.
 
-O padrão é o **`gemini-1.5-flash`**: é o corte rápido e barato, que é o que
-estas rotas pedem. Responder uma dúvida de estudo, separar um cronograma em
-aulas e transcrever a foto de um calendário não precisam do modelo grande, e
-o grande custa algumas vezes mais por pedido.
+O padrão é o **`gemini-3.6-flash`** (`GEMINI_PADRAO`, em
+`worker/api/_ia.js`): o Flash é o corte rápido e barato, que é o que estas
+rotas pedem. Responder uma dúvida de estudo, separar um cronograma em aulas e
+transcrever a foto de um calendário não precisam do modelo grande, e o grande
+custa algumas vezes mais por pedido.
 
-**O Google aposenta modelo sem aviso.** O `gemini-2.5-flash` parou de aceitar
-conta nova e o assistente passou a devolver a recusa da própria API. O mesmo
-pode valer para o 1.5, que é de uma geração anterior: se a chave for de um
-projeto novo, ele pode não estar liberado. Quando acontecer, não é preciso
-recompilar nem publicar: cadastre `GEMINI_MODELO` no Worker com o nome que a
-mensagem de erro indicar. A mensagem na tela já diz isso, e repete o
-substituto que o provedor sugeriu.
+**O Google aposenta modelo sem aviso**, e já aconteceu duas vezes aqui: o
+`gemini-2.5-flash` parou de aceitar conta nova, e depois o `gemini-1.5-flash`
+deixou de ser reconhecido para chave de projeto novo. Quando acontecer de
+novo, não é preciso recompilar nem publicar na hora: cadastre `GEMINI_MODELO`
+no Worker com o nome que a mensagem de erro indicar, e ela ganha do padrão. A
+mensagem na tela já diz isso, e repete o substituto que o provedor sugeriu.
+
+Só que a variável **ganha em silêncio**: com um `GEMINI_MODELO` cadastrado, o
+site roda aquele modelo, não o do código, e os dois podem discordar por meses
+sem ninguém notar. `GET /api/assistente` responde qual está no ar de verdade
+(`{"provedor":"gemini","modelo":"..."}`) — vale conferir depois de mexer. E,
+passado o aperto, traga o nome novo para o `GEMINI_PADRAO` e apague a
+variável, para o padrão voltar a ser verdade. O teste do assistente importa
+`GEMINI_PADRAO` em vez de repetir o nome, então ele acompanha sozinho.
 
 A assinatura do Gemini Advanced e a do Claude **não** dão acesso às APIs: são
 cobranças separadas. A camada gratuita do Gemini vem da chave do AI Studio,

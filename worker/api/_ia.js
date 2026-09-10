@@ -16,12 +16,15 @@ import { contaDeServico, tokenDeAcesso, validoAte, ehDono } from "./_comum.js";
  * transcrever a foto de um calendário. Nenhuma delas precisa do modelo
  * grande, e o grande custa algumas vezes mais por pedido.
  *
- * O Google aposenta modelo sem aviso: o gemini-2.5-flash parou de aceitar
- * conta nova e o assistente passou a devolver a recusa da própria API. Se
- * acontecer de novo, não precisa recompilar nem publicar: cadastre
- * GEMINI_MODELO nas variáveis do Worker com o nome que a mensagem de erro
- * indicar, e ela ganha deste padrão. */
-export const GEMINI_PADRAO = "gemini-1.5-flash";
+ * O Google aposenta modelo sem aviso, e já aconteceu duas vezes aqui: o
+ * gemini-2.5-flash parou de aceitar conta nova, e depois o gemini-1.5-flash
+ * deixou de ser reconhecido para chave de projeto novo. Por isso o padrão
+ * anda junto com o que está no ar: quando o Google aposentar este também,
+ * não precisa recompilar nem publicar na hora — cadastre GEMINI_MODELO nas
+ * variáveis do Worker com o nome que a mensagem de erro indicar, e ela ganha
+ * deste padrão. Depois vale trazer o nome novo para cá, senão o código e o
+ * site passam a discordar em silêncio. */
+export const GEMINI_PADRAO = "gemini-3.6-flash";
 
 /* Quem pode usar a IA: o dono e quem tem plano em dia.
  *
