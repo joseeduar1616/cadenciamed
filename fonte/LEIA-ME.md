@@ -752,6 +752,28 @@ conta, só http(s), só resposta que é imagem, com teto de 8MB e sem nomes que
 apontem para dentro da rede — é um caminho para trazer figura, não um proxy
 aberto, e o `testar-buscar-imagem.mjs` cobre cada uma dessas recusas.
 
+**"É imagem" não pode ser lido no cabeçalho.** A ponte recusava tudo que não
+viesse com um `Content-Type` de imagem conhecido — e o depósito do Notion
+manda a figura como `application/octet-stream`, bytes sem nome. Resultado:
+colar uma página inteira nunca trazia figura nenhuma, enquanto copiar a
+imagem sozinha (que põe os bytes na área de transferência, sem passar por
+aqui) funcionava. Era exatamente essa a queixa. Agora o cabeçalho vale
+quando diz um tipo conhecido, e senão quem decide são os **primeiros bytes**
+(`tipoPelosBytes`: PNG, JPEG, GIF, BMP, WEBP, AVIF/HEIC e SVG). HTML continua
+recusado de cara, sem baixar a página inteira.
+
+Duas outras coisas faziam a mesma figura voltar 403:
+
+- **O pedido não parecia um navegador.** CDN com proteção contra link de fora
+  recusa `User-Agent: CadenciaMed/1.0`. A ponte manda um `User-Agent` de
+  navegador e um `Referer` do próprio site da imagem.
+- **O endereço do Notion vem embrulhado**: `notion.so/image/<endereço real
+  codificado>`, e esse embrulho só abre com a sessão de quem copiou. O
+  `desembrulhar` tira o endereço de dentro — o do depósito, assinado e aberto
+  para quem tem o link — e é ele que é buscado. O desembrulhado passa pela
+  mesma checagem de endereço, senão viraria um jeito de contornar a lista de
+  nomes proibidos.
+
 **O bloco de destaque do Notion** (`<aside>`) chega de dois jeitos: como
 elemento, e aí aparecia sem destaque nenhum; ou com a tag escrita como texto,
 e aí `</aside>` aparecia escrito na anotação e ia parar no PDF. `virarDestaque`
@@ -821,6 +843,22 @@ Os cartões caem direto na pasta grande da área da aula, sem perguntar:
 `pastaDaArea` (`parte12.jsx`) traduz a sigla do currículo (`CL`/`CI`/`GO`/
 `PE`/`PR`) na pasta certa. É a mesma função que o montador por documento
 usa — ver "A pasta grande de cada área", acima.
+
+### O tamanho de cada figura
+
+Uma figura colada chega do tamanho que era no site de origem, e não havia
+como mexer: ou cabia, ou ficava enorme. Clicar numa imagem dentro do editor
+seleciona ela (contorno na cor do tema) e abre uma régua na barra de
+ferramentas: P, M, G, Cheia, Original e "tirar".
+
+A largura vai em **porcentagem**, nunca em pixels. A mesma anotação é lida no
+computador e no celular, e uma figura de "420px" que fica boa numa tela
+estoura a outra. "Original" apaga a largura escrita e devolve a figura ao
+tamanho natural, com o `max-width: 100%` que ela já tinha.
+
+O contorno da seleção é escrito no `style` da própria imagem, então sai em
+dois lugares: na troca de seleção e no clone que vai para o salvamento
+(`prepararParaSalvar`). Senão ficaria gravado na anotação e sairia no PDF.
 
 ### Baixar em Word ou PDF, e enviar para o Google Drive
 
@@ -1159,6 +1197,28 @@ Duas armadilhas que o código já trata:
 2. Quando a pessoa revoga o acesso pela conta Google, a renovação passa a
    responder `invalid_grant`. O token guardado é apagado na hora, senão o app
    ficaria tentando com ele a cada abertura, para sempre.
+
+**Uma autorização, dois usos.** A ligação permanente pede
+`ESCOPO_PERMANENTE`, que é o da agenda **mais** o `drive.file`. Autorizar é o
+passo chato; fazer isso duas vezes, uma para a agenda e outra para o Drive,
+era chato em dobro por nada — e era o que fazia "enviar para o Drive" abrir
+janela toda vez, mesmo com a conta já ligada. O `useGoogleDrive` agora pede o
+token ao servidor antes de pensar em janela.
+
+Quem ligou a conta **antes** desta mudança tem uma autorização só da agenda,
+e o Drive responde 401/403 a esse token. Nesse caso o hook marca o servidor
+como "não serve para o Drive" nesta sessão, abre a janela uma vez e refaz o
+envio — em vez de devolver um erro que a pessoa não teria como entender.
+Religar a conta de vez passa a valer para os dois.
+
+**Quando a sincronização sozinha para, ela diz.** A tentativa silenciosa
+falhando era muda: a linha continuava dizendo "sincronizando sozinho a cada
+30 min" com uma hora velha embaixo, e a pessoa só descobria puxando na mão.
+Agora o hook devolve `autoParou`, e a aba Rotina troca a linha por um aviso
+com o botão de ligar a conta de vez do lado. A linha normal também passou a
+dizer a verdade inteira: "a cada 30 min, **com o site aberto**" — não há
+sincronização com o app fechado, e prometer isso seria pior do que não
+prometer nada.
 
 ## Mentor
 

@@ -298,6 +298,67 @@ if (await linhaAula.count() === 0) {
     if (quantasFiguras >= 2) ok('anotação: colar a imagem direto da área de transferência funciona');
     else falha('anotação: colar a imagem em si não inseriu nada (' + quantasFiguras + ' figura(s))');
 
+    /* ── régua de tamanho da figura ─────────────────────────────────────
+       Uma figura colada chega do tamanho que era na origem, e antes disto
+       não havia como mexer. Clicar nela abre a régua. */
+    /* clique disparado no elemento, e não pelo ponteiro: a figura do teste
+       tem 1x1 pixel e fica atrás do texto, então o ponteiro nunca a
+       alcançaria — o que se quer testar aqui é o que o editor faz com um
+       clique NA figura. */
+    await pag.evaluate(() => {
+      document.querySelector('[contenteditable="true"] img')
+        .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await pag.waitForTimeout(350);
+    const temRegua = await pag.locator('text=tamanho da figura').count();
+    if (temRegua > 0) ok('anotação: clicar numa figura abre a régua de tamanho');
+    else falha('anotação: a régua de tamanho não apareceu ao clicar na figura');
+
+    const contornou = await pag.evaluate(
+      () => !!(document.querySelector('[contenteditable="true"] img') || {}).style?.outline);
+    if (contornou) ok('anotação: a figura escolhida fica marcada na tela');
+    else falha('anotação: nada indica qual figura está escolhida');
+
+    if (temRegua > 0) {
+      await pag.locator('button:has-text("Cheia")').first().click();
+      await pag.waitForTimeout(300);
+      const larguraCheia = await pag.evaluate(
+        () => document.querySelector('[contenteditable="true"] img').style.width);
+      if (larguraCheia === '100%') ok('anotação: a figura vai para a largura escolhida');
+      else falha('anotação: a largura não foi aplicada: ' + larguraCheia);
+
+      /* a largura vai em porcentagem, não em pixels: a mesma anotação é
+         lida no computador e no celular */
+      await pag.locator('div:has-text("tamanho da figura") > button:has-text("M")').first().click();
+      await pag.waitForTimeout(300);
+      const larguraM = await pag.evaluate(
+        () => document.querySelector('[contenteditable="true"] img').style.width);
+      if (larguraM === '50%') ok('anotação: dá para trocar o tamanho de novo, sempre em porcentagem');
+      else falha('anotação: o segundo tamanho não pegou: ' + larguraM);
+
+      await pag.locator('button:has-text("Original")').first().click();
+      await pag.waitForTimeout(300);
+      const semLargura = await pag.evaluate(() => {
+        const im = document.querySelector('[contenteditable="true"] img');
+        return { w: im.style.width, teto: im.style.maxWidth };
+      });
+      if (!semLargura.w && semLargura.teto === '100%') ok('anotação: "original" tira a largura escrita e mantém o teto da caixa');
+      else falha('anotação: o original não limpou a largura: ' + JSON.stringify(semLargura));
+
+      /* clicar no texto solta a figura, e a régua fecha */
+      await pag.evaluate(() => {
+        const ed = document.querySelector('[contenteditable="true"]');
+        ed.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      });
+      await pag.waitForTimeout(350);
+      if (await pag.locator('text=tamanho da figura').count() === 0) ok('anotação: clicar fora da figura fecha a régua');
+      else falha('anotação: a régua ficou aberta depois de clicar fora');
+      const semContorno = await pag.evaluate(
+        () => [...document.querySelectorAll('[contenteditable="true"] img')].every((im) => !im.style.outline));
+      if (semContorno) ok('anotação: a marca da figura escolhida sai junto');
+      else falha('anotação: o contorno ficou grudado na figura');
+    }
+
     /* Texto copiado de site escuro chega com a cor dele grudada: um branco
        acinzentado que, no papel claro, some. Cor sem cor sai; cor que quer
        dizer alguma coisa fica, só ajustada para dar para ler nos dois. */

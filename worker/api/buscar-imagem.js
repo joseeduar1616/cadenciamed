@@ -23,6 +23,57 @@ import { json, quemPede, corpoJson } from "./_comum.js";
 const MAX_BYTES = 8 * 1024 * 1024;
 const TIPOS = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/avif", "image/svg+xml"];
 
+/* O mesmo tipo escrito de outro jeito. Não é frescura: "image/jpg" não
+   existe no padrão e mesmo assim é o que muitos servidores mandam. */
+const APELIDOS = {
+  "image/jpg": "image/jpeg", "image/pjpeg": "image/jpeg",
+  "image/x-png": "image/png", "image/heic": "image/avif", "image/heif": "image/avif",
+  "image/svg": "image/svg+xml",
+};
+
+/* O que o arquivo É, lido dos primeiros bytes.
+ *
+ * Isto existe porque o S3 do Notion (e vários outros depósitos) devolve a
+ * figura como "application/octet-stream": bytes sem nome. A regra antiga
+ * olhava só o cabeçalho e recusava tudo isso com "esse endereço não
+ * devolveu uma imagem" — ou seja, colar uma página do Notion nunca trazia
+ * figura nenhuma, enquanto colar a imagem sozinha funcionava. O que o
+ * cabeçalho diz é um palpite do servidor; os bytes são o fato. */
+function tipoPelosBytes(b) {
+  const eh = (...bytes) => bytes.every((v, i) => b[i] === v);
+  if (eh(0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)) return "image/png";
+  if (eh(0xFF, 0xD8, 0xFF)) return "image/jpeg";
+  if (eh(0x47, 0x49, 0x46, 0x38)) return "image/gif";
+  if (eh(0x42, 0x4D)) return "image/bmp";
+  /* RIFF....WEBP */
+  if (eh(0x52, 0x49, 0x46, 0x46) && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return "image/webp";
+  /* caixa ftyp: avif, heic e heif começam iguais e mudam a marca */
+  if (b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70) {
+    const marca = String.fromCharCode(b[8], b[9], b[10], b[11]).toLowerCase();
+    if (marca.startsWith("avi")) return "image/avif";
+    if (marca.startsWith("hei") || marca.startsWith("mif") || marca.startsWith("msf")) return "image/avif";
+  }
+  /* SVG é texto: procura a abertura nas primeiras centenas de bytes */
+  const inicio = String.fromCharCode.apply(null, b.subarray(0, Math.min(b.length, 300))).toLowerCase();
+  if (inicio.includes("<svg")) return "image/svg+xml";
+  return "";
+}
+
+/* O Notion embrulha a figura num endereço próprio,
+   notion.so/image/<endereço-de-verdade-codificado>, que só abre com a
+   sessão de quem copiou. O endereço de dentro é o do depósito, assinado e
+   aberto para quem tiver o link — é esse que a ponte consegue buscar. */
+function desembrulhar(u) {
+  if (!/(^|\.)notion\.so$/i.test(u.hostname)) return u;
+  const m = u.pathname.match(/^\/image\/(.+)$/);
+  if (!m) return u;
+  try {
+    const dentro = new URL(decodeURIComponent(m[1]));
+    if (dentro.protocol === "https:" || dentro.protocol === "http:") return dentro;
+  } catch (e) { /* não era endereço embrulhado, segue com o de fora */ }
+  return u;
+}
+
 /* Nomes que não devem ser buscados. O Worker não alcança rede interna, mas
    a regra fica escrita: é o tipo de coisa que muda de ambiente sem avisar. */
 const PROIBIDOS = [
@@ -52,7 +103,9 @@ export async function onRequest({ request, env }) {
   const pessoa = await quemPede(corpo.token, env.FIREBASE_API_KEY);
   if (!pessoa) return json({ erro: "Sua sessão expirou. Entre de novo." }, 403);
 
-  const alvo = enderecoOk(corpo.url);
+  const pedido = enderecoOk(corpo.url);
+  if (!pedido) return json({ erro: "Endereço de imagem inválido." }, 400);
+  const alvo = enderecoOk(desembrulhar(pedido).toString());
   if (!alvo) return json({ erro: "Endereço de imagem inválido." }, 400);
 
   let r;
@@ -60,9 +113,15 @@ export async function onRequest({ request, env }) {
     r = await fetch(alvo.toString(), {
       headers: {
         /* Alguns servidores recusam pedido sem Accept de imagem, e outros
-           mandam a versão em HTML quando não sabem quem está pedindo. */
-        Accept: "image/*,*/*;q=0.8",
-        "User-Agent": "CadenciaMed/1.0 (+https://cadenciamed.com.br)",
+           mandam a versão em HTML quando não sabem quem está pedindo. E há
+           os que recusam de cara quem não parece navegador: com o
+           User-Agent do próprio app, a resposta vinha 403. */
+        Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+          + " (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        /* CDN com proteção contra link de fora costuma exigir que o pedido
+           venha do próprio site da imagem. */
+        Referer: `${alvo.origin}/`,
       },
       redirect: "follow",
     });
@@ -79,16 +138,22 @@ export async function onRequest({ request, env }) {
     return json({ erro: `O servidor da imagem respondeu ${r.status}.` }, 200);
   }
 
-  const tipo = String(r.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
-  if (TIPOS.indexOf(tipo) < 0) {
-    return json({ erro: "Esse endereço não devolveu uma imagem." }, 200);
-  }
+  const cabecalho = String(r.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+  const dito = APELIDOS[cabecalho] || cabecalho;
+  /* Página de erro em HTML não vale a pena baixar inteira. Qualquer outra
+     coisa segue: o tipo de verdade sai dos bytes, logo abaixo. */
+  if (dito === "text/html") return json({ erro: "Esse endereço devolveu uma página, não uma imagem." }, 200);
 
   const declarado = Number(r.headers.get("content-length") || 0);
   if (declarado > MAX_BYTES) return json({ erro: "A imagem é grande demais." }, 200);
 
   const bytes = new Uint8Array(await r.arrayBuffer());
   if (bytes.length > MAX_BYTES) return json({ erro: "A imagem é grande demais." }, 200);
+
+  /* O cabeçalho vale quando diz um tipo de imagem conhecido; senão, quem
+     decide são os bytes. */
+  const tipo = TIPOS.indexOf(dito) >= 0 ? dito : tipoPelosBytes(bytes);
+  if (!tipo) return json({ erro: "Esse endereço não devolveu uma imagem." }, 200);
 
   /* base64 em pedaços: String.fromCharCode com milhões de argumentos de uma
      vez estoura a pilha. */

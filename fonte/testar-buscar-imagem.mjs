@@ -42,6 +42,11 @@ globalThis.fetch = (url, opcoes) => {
   if (u.startsWith('https://imagens.exemplo/')) {
     return fetchReal(u.replace('https://imagens.exemplo', `http://127.0.0.1:${porta}`), opcoes);
   }
+  /* O embrulho do Notion nunca deveria ser buscado: se chegar aqui, é
+     porque não foi desembrulhado, e o teste precisa ver isso. */
+  if (u.startsWith('https://www.notion.so/')) {
+    return Promise.resolve(new Response('sessão exigida', { status: 403 }));
+  }
   return fetchReal(url, opcoes);
 };
 
@@ -94,8 +99,65 @@ for (const [alvo, oQue] of [
 /* ── 4. o que volta precisa ser imagem ────────────────────────────────── */
 responder = () => ({ status: 200, tipo: 'text/html', corpo: '<html>não sou imagem</html>' });
 r = await pedir({ token: 't', url: URL_BOA });
-if (/não devolveu uma imagem/.test(r.corpo.erro || '')) ok('página HTML disfarçada de imagem é recusada');
+if (/devolveu uma página/.test(r.corpo.erro || '')) ok('página HTML disfarçada de imagem é recusada');
 else falha('HTML passou: ' + JSON.stringify(r));
+
+/* ── 4b. bytes sem nome: o caso do Notion ─────────────────────────────
+   O depósito do Notion manda a figura como "application/octet-stream". A
+   regra antiga olhava só o cabeçalho e recusava tudo isso, então colar uma
+   página do Notion nunca trazia figura nenhuma — enquanto colar a imagem
+   sozinha funcionava, que era exatamente a queixa. Agora quem decide são
+   os bytes. */
+const GIF = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+const WEBP = Buffer.concat([
+  Buffer.from('RIFF'), Buffer.from([0x1a, 0, 0, 0]), Buffer.from('WEBPVP8 '), Buffer.alloc(12, 0),
+]);
+const JPEG = Buffer.concat([Buffer.from([0xFF, 0xD8, 0xFF, 0xE0]), Buffer.alloc(16, 0)]);
+
+for (const [tipo, bytes, esperado, oQue] of [
+  ['application/octet-stream', PIXEL, 'image/png', 'PNG sem nome de tipo'],
+  ['binary/octet-stream', JPEG, 'image/jpeg', 'JPEG mandado como binário cru'],
+  ['application/octet-stream', GIF, 'image/gif', 'GIF sem nome de tipo'],
+  ['application/octet-stream', WEBP, 'image/webp', 'WEBP sem nome de tipo'],
+  [null, PIXEL, 'image/png', 'resposta sem Content-Type nenhum'],
+  ['image/jpg', JPEG, 'image/jpeg', 'o "image/jpg", que nem existe no padrão'],
+]) {
+  responder = () => ({ status: 200, tipo, corpo: bytes });
+  r = await pedir({ token: 't', url: URL_BOA });
+  if (String(r.corpo.dados || '').startsWith(`data:${esperado};base64,`)) ok(`${oQue} é reconhecido como ${esperado}`);
+  else falha(`${oQue}: ` + JSON.stringify(r).slice(0, 160));
+}
+
+responder = () => ({ status: 200, tipo: 'application/octet-stream', corpo: Buffer.from('isto aqui não é imagem nenhuma') });
+r = await pedir({ token: 't', url: URL_BOA });
+if (/não devolveu uma imagem/.test(r.corpo.erro || '')) ok('bytes que não são imagem continuam recusados');
+else falha('bytes quaisquer passaram: ' + JSON.stringify(r).slice(0, 160));
+
+/* ── 4c. o pedido tem de parecer um navegador ─────────────────────────
+   CDN com proteção contra link de fora responde 403 para quem não parece
+   navegador, e a figura sumia sem explicação. */
+responder = () => ({ status: 200, tipo: 'image/png', corpo: PIXEL });
+r = await pedir({ token: 't', url: URL_BOA });
+if (/Mozilla\/5\.0/.test(ultimoPedido.headers['user-agent'] || '')) ok('o pedido sai com User-Agent de navegador');
+else falha('User-Agent: ' + ultimoPedido.headers['user-agent']);
+if ((ultimoPedido.headers.referer || '').startsWith('https://imagens.exemplo')) ok('o pedido sai com Referer do próprio site da imagem');
+else falha('Referer: ' + ultimoPedido.headers.referer);
+
+/* ── 4d. o embrulho do Notion ─────────────────────────────────────────
+   O endereço que vem colado é notion.so/image/<endereço-de-verdade>, e
+   esse só abre com a sessão de quem copiou. O de dentro é o do depósito,
+   assinado e aberto para quem tem o link. */
+const dentro = `${URL_BOA}?X-Amz-Signature=abc`;
+r = await pedir({ token: 't', url: `https://www.notion.so/image/${encodeURIComponent(dentro)}?table=block&id=1` });
+if (String(r.corpo.dados || '').startsWith('data:image/png;base64,')) ok('endereço embrulhado pelo Notion é desembrulhado e buscado');
+else falha('embrulho do Notion: ' + JSON.stringify(r).slice(0, 160));
+if ((ultimoPedido.url || '').includes('X-Amz-Signature=abc')) ok('quem é buscado é o endereço de dentro, com a assinatura');
+else falha('buscou o endereço errado: ' + ultimoPedido.url);
+
+/* embrulho apontando para dentro da rede continua recusado */
+r = await pedir({ token: 't', url: `https://www.notion.so/image/${encodeURIComponent('http://169.254.169.254/x.png')}` });
+if (r.status === 400 && /inválido/i.test(r.corpo.erro || '')) ok('embrulho que aponta para a rede interna é recusado');
+else falha('embrulho perigoso passou: ' + JSON.stringify(r).slice(0, 160));
 
 /* ── 5. endereço vencido, que é o caso do Notion ──────────────────────── */
 responder = () => ({ status: 403, tipo: 'text/plain', corpo: 'expired' });

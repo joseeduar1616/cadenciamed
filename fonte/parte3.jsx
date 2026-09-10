@@ -232,6 +232,14 @@ function useNuvem(data, setData, notify, pronto, pro) {
 const GOOGLE_CFG = (typeof window !== "undefined" && window.CADENCIA_GOOGLE) || null;
 const ESCOPO_GC = "https://www.googleapis.com/auth/calendar.app.created"
   + " https://www.googleapis.com/auth/calendar.events.readonly";
+/* drive.file dá acesso só ao que o próprio app criou no Drive: as
+   anotações enviadas daqui, e nada mais do que a pessoa tem lá. */
+const ESCOPO_DRIVE = "https://www.googleapis.com/auth/drive.file";
+/* A ligação permanente pede os dois de uma vez. Autorizar é o passo chato;
+   fazer isso duas vezes, uma para a agenda e outra para o Drive, é chato em
+   dobro por nada — e é o que fazia "enviar para o Drive" abrir janela toda
+   vez, mesmo com a conta já ligada. */
+const ESCOPO_PERMANENTE = `${ESCOPO_GC} ${ESCOPO_DRIVE}`;
 const API_GC = "https://www.googleapis.com/calendar/v3";
 const FUSO = "America/Sao_Paulo";
 const NOME_AGENDA = "Cadência · Estudos";
@@ -422,7 +430,7 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
       try {
         const c = window.google.accounts.oauth2.initCodeClient({
           client_id: GOOGLE_CFG.clientId,
-          scope: ESCOPO_GC,
+          scope: ESCOPO_PERMANENTE,
           ux_mode: "popup",
           /* Sem isto, quem já tinha autorizado antes recebe um código que o
              Google troca só por token de acesso, sem o de atualização, e a
@@ -656,6 +664,12 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
      autorização voltava a aparecer a cada abertura. */
   const autoSync = !!(data.googleCal && data.googleCal.autoSync);
   const ultimaAutoRef = useRef(0);
+  /* A tentativa silenciosa falhou: sem a conta ligada de vez, o token do
+     navegador vale uma hora e renovar sem janela depende de cookie de
+     terceiros, que celular e modo aplicativo barram. Antes isso era mudo —
+     a linha continuava dizendo "sincronizando sozinho a cada 30 min" com
+     uma hora velha embaixo, e a pessoa só descobria puxando na mão. */
+  const [autoParou, setAutoParou] = useState(false);
   useEffect(() => {
     if (!GOOGLE_CFG || !autoSync || !pronto) return undefined;
     let cancelado = false;
@@ -677,7 +691,9 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
       if (cancelado) return;
       let tk = await garantirToken(true);
       if (!tk) tk = await tentarSilencioso();
-      if (!tk || cancelado) return;
+      if (cancelado) return;
+      if (!tk) { setAutoParou(true); return; }
+      setAutoParou(false);
       if (!token) setToken(tk);
       ultimaAutoRef.current = Date.now();
       try { await executarImportacao(tk, weekStart(today), true); } catch (e) { /* tentativa silenciosa, ignora */ }
@@ -702,7 +718,7 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
 
   return {
     disponivel: !!GOOGLE_CFG, pronto, conectado: !!token, ocupado, progresso, erro,
-    sincronizar, importarRotina, desconectar, autoSync,
+    sincronizar, importarRotina, desconectar, autoSync, autoParou,
     /* permanente: true já ligado de vez, false não dá (ou foi desligado),
        null ainda não perguntei ao servidor. */
     permanente, ligarDeVez, podeLigarDeVez: logado && permanente !== false,
@@ -725,16 +741,20 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
    aqui, então esse limite não atrapalha o fluxo).
    ═══════════════════════════════════════════════════════════════════ */
 
-const ESCOPO_DRIVE = "https://www.googleapis.com/auth/drive.file";
 const API_DRIVE = "https://www.googleapis.com/drive/v3";
 const API_DRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3";
 
-function useGoogleDrive() {
+function useGoogleDrive(nuvem) {
   const [pronto, setPronto] = useState(false);
   const [token, setToken] = useState(null);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState("");
   const cliente = useRef(null);
+  /* Se o token do servidor serve para o Drive. Começa "não sei"; vira
+     false quando o servidor não tem ligação guardada, ou quando a ligação
+     é antiga e foi autorizada só para a agenda (aí o Drive responde 403 e
+     não adianta insistir nesta sessão). */
+  const servidorServe = useRef(null);
 
   useEffect(() => {
     if (!GOOGLE_CFG) return undefined;
@@ -777,10 +797,32 @@ function useGoogleDrive() {
     } catch (e) { const msg = "Não consegui abrir a autorização do Google."; setErro(msg); resolve({ token: null, erro: msg }); }
   }), []);
 
-  const conseguirToken = useCallback(
-    () => (token ? Promise.resolve({ token, erro: "" }) : pedirToken()),
-    [token, pedirToken],
-  );
+  /* Token sem abrir janela nenhuma, vindo da conta ligada de vez. É o que
+     faz "enviar para o Drive" parar de pedir autorização toda vez. */
+  const tokenDoServidor = useCallback(async () => {
+    if (!nuvem || servidorServe.current === false) return null;
+    const r = await falarComGoogle(nuvem, { acao: "token" });
+    if (r.acesso) { setToken(r.acesso); return r.acesso; }
+    servidorServe.current = false;
+    return null;
+  }, [nuvem]);
+
+  const conseguirToken = useCallback(async () => {
+    if (token) return { token, erro: "", doServidor: servidorServe.current === true };
+    const doServidor = await tokenDoServidor();
+    if (doServidor) { servidorServe.current = true; return { token: doServidor, erro: "", doServidor: true }; }
+    return pedirToken();
+  }, [token, tokenDoServidor, pedirToken]);
+
+  /* O Google recusou o token do servidor: quase sempre é ligação antiga,
+     autorizada quando a permanente ainda não pedia o escopo do Drive. Uma
+     janela só resolve, e desta sessão em diante o servidor não é mais
+     tentado. */
+  const janelaDepoisDoServidor = useCallback(async () => {
+    servidorServe.current = false;
+    setToken(null);
+    return pedirToken();
+  }, [pedirToken]);
 
   const conectar = useCallback(async () => {
     setErro(""); setOcupado(true);
@@ -790,10 +832,14 @@ function useGoogleDrive() {
   }, [conseguirToken]);
 
   const chamar = useCallback(async (caminho, opts) => {
-    const { token: tk } = await conseguirToken();
+    const { token: tk, doServidor } = await conseguirToken();
     if (!tk) return null;
-    return fetch(API_DRIVE + caminho, { ...opts, headers: { Authorization: `Bearer ${tk}`, ...(opts && opts.headers) } });
-  }, [conseguirToken]);
+    const ir = (t) => fetch(API_DRIVE + caminho, { ...opts, headers: { Authorization: `Bearer ${t}`, ...(opts && opts.headers) } });
+    const r = await ir(tk);
+    if (r.ok || !doServidor || (r.status !== 401 && r.status !== 403)) return r;
+    const outro = await janelaDepoisDoServidor();
+    return outro.token ? ir(outro.token) : r;
+  }, [conseguirToken, janelaDepoisDoServidor]);
 
   const listarPastas = useCallback(async (paiId) => {
     setErro(""); setOcupado(true);
@@ -827,19 +873,28 @@ function useGoogleDrive() {
      sido atualizado ainda quando o await volta). */
   const enviarArquivo = useCallback(async (nome, mime, blob, pastaId) => {
     setErro(""); setOcupado(true);
-    const { token: tk, erro: motivoToken } = await conseguirToken();
+    const { token: tk, erro: motivoToken, doServidor } = await conseguirToken();
     if (!tk) { setOcupado(false); return { ok: false, erro: motivoToken || "Não consegui autorizar o Google Drive." }; }
     const metadados = { name: nome, parents: [pastaId || "root"] };
     const boundary = `cadencia-${uid()}`;
     const cabecalho = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadados)}\r\n--${boundary}\r\nContent-Type: ${mime}\r\n\r\n`;
     const corpo = new Blob([cabecalho, blob, `\r\n--${boundary}--`]);
+    const subir = (t) => fetch(`${API_DRIVE_UPLOAD}/files?uploadType=multipart&fields=id,webViewLink`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${t}`, "Content-Type": `multipart/related; boundary=${boundary}` },
+      body: corpo,
+    });
     let r;
     try {
-      r = await fetch(`${API_DRIVE_UPLOAD}/files?uploadType=multipart&fields=id,webViewLink`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${tk}`, "Content-Type": `multipart/related; boundary=${boundary}` },
-        body: corpo,
-      });
+      r = await subir(tk);
+      /* Token do servidor recusado: ligação autorizada antes de a
+         permanente pedir o escopo do Drive. Abre a janela uma vez e sobe
+         de novo, em vez de devolver um erro que a pessoa não tem como
+         entender. */
+      if (!r.ok && doServidor && (r.status === 401 || r.status === 403)) {
+        const outro = await janelaDepoisDoServidor();
+        if (outro.token) r = await subir(outro.token);
+      }
     } catch (e) {
       setOcupado(false);
       const msg = "Sem conexão para enviar ao Drive. Confira a internet e tente de novo.";
@@ -860,7 +915,7 @@ function useGoogleDrive() {
     }
     const dados = await r.json().catch(() => null);
     return { ok: true, dados };
-  }, [conseguirToken]);
+  }, [conseguirToken, janelaDepoisDoServidor]);
 
   return {
     disponivel: !!GOOGLE_CFG, pronto, conectado: !!token, ocupado, erro,

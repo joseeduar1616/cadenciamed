@@ -21,6 +21,27 @@ const CORES_GRIFO_NOTA = ["#FFF59D", "#A5D6A7", "#90CAF9", "#F48FB1", "#FFCC80"]
    só aceita os 7 tamanhos históricos do HTML (1 a 7), então o truque de
    sempre é pedir o maior (7) e depois trocar cada <font size="7"> criado
    pelo px exato que a pessoa escolheu — aplicarTamanhoFonte, abaixo. */
+/* ── o tamanho de cada figura ─────────────────────────────────────────
+ *
+ * Uma imagem colada chega do tamanho que era no site de origem, e antes
+ * disto não havia como mexer: ou cabia, ou ficava enorme. Clicar na figura
+ * dentro da anotação seleciona ela e abre esta régua.
+ *
+ * A largura vai em PORCENTAGEM, e não em pixels, de propósito: a mesma
+ * anotação é lida no computador e no celular, e uma figura de "420px" que
+ * fica boa numa tela estoura a outra. O "original" tira a largura escrita e
+ * devolve a figura ao tamanho natural, com o teto de 100% que ela já tinha.
+ */
+const LARGURAS_FIGURA = [
+  { id: "p", nome: "P", largura: "25%" },
+  { id: "m", nome: "M", largura: "50%" },
+  { id: "g", nome: "G", largura: "75%" },
+  { id: "gg", nome: "Cheia", largura: "100%" },
+  { id: "orig", nome: "Original", largura: "" },
+];
+
+const CONTORNO_FIGURA = "2px solid var(--neon)";
+
 const TAMANHOS_FONTE_NOTA = [
   { id: "pq", nome: "Pequena", px: 12 },
   { id: "normal", nome: "Normal", px: 14.5 },
@@ -553,8 +574,8 @@ function TiraDeCores({ cores, onEscolher, comBranco }) {
    createPortal o modal fica preso dentro da .rise que anima a troca de
    aba, que vira um "containing block" para position:fixed — o mesmo motivo
    pelo qual o estudo de cartões em tela cheia usa portal (parte12.jsx). */
-function ModalDrive({ tituloAula, gerarBlob, sugestaoNome, notify, onFechar }) {
-  const drive = useGoogleDrive();
+function ModalDrive({ tituloAula, gerarBlob, sugestaoNome, notify, nuvem, onFechar }) {
+  const drive = useGoogleDrive(nuvem);
   const [caminho, setCaminho] = useState([{ id: "root", nome: "Meu Drive" }]);
   const [pastas, setPastas] = useState(null);
   const [novaPasta, setNovaPasta] = useState("");
@@ -684,6 +705,10 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
   const [gerando, setGerando] = useState(false);
   /* "trazendo figura 2 de 5…", enquanto o colar busca as imagens */
   const [statusImagem, setStatusImagem] = useState("");
+  /* A figura que a pessoa clicou dentro da anotação, para a régua de
+     tamanho saber em quem mexer. É o elemento em si, não um índice: o
+     conteúdo do editor muda o tempo todo por baixo. */
+  const [figura, setFigura] = useState(null);
   const tema = useTemaNota();
   const papel = PAPEL_NOTA[tema.efetivo === "light" ? "light" : "dark"];
   const editorRef = useRef(null);
@@ -757,7 +782,11 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
       }
       if (vivo) setPronto(true);
     })();
-    return () => { vivo = false; if (salvarRef.current) window.clearTimeout(salvarRef.current); };
+    return () => {
+      vivo = false;
+      setFigura(null);
+      if (salvarRef.current) window.clearTimeout(salvarRef.current);
+    };
   }, [aberto]);
 
   const prepararParaSalvar = async () => {
@@ -799,6 +828,9 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
        não virou data-nome (endereço externo que não deu para trazer para
        cá) mantém o src: apagar o dela também jogaria a imagem fora à toa. */
     clone.querySelectorAll("img[data-nome]").forEach((img) => img.removeAttribute("src"));
+    /* o contorno é só a marca de "esta figura está escolhida agora" — não
+       pode ficar gravado na anotação nem sair no PDF */
+    clone.querySelectorAll("img").forEach((img) => { img.style.outline = ""; });
     if (falhouImagem) {
       notify("Uma figura colada não pôde ser trazida para dentro da anotação e "
         + "continua dependendo do site de origem. Se ela sumir, copie de novo de lá.");
@@ -908,6 +940,43 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
     if (await inserirArquivoDeImagem(f)) aoMudar();
   };
 
+  /* Clicar numa figura seleciona ela; clicar em qualquer outro lugar
+     solta. O contorno é escrito no style da própria imagem, então tem de
+     sair de novo na troca — e sai também no clone que vai para o
+     salvamento (prepararParaSalvar), para não ficar gravado. */
+  const escolherFigura = (el) => {
+    setFigura((antiga) => {
+      if (antiga && antiga !== el) antiga.style.outline = "";
+      if (el) el.style.outline = CONTORNO_FIGURA;
+      return el;
+    });
+  };
+
+  const aoClicarNoEditor = (e) => {
+    const alvo = e.target;
+    escolherFigura(alvo && alvo.tagName === "IMG" ? alvo : null);
+  };
+
+  const larguraDaFigura = (largura) => {
+    if (!figura) return;
+    if (largura) {
+      figura.style.width = largura;
+      figura.style.height = "auto";
+    } else {
+      figura.style.width = "";
+      figura.style.height = "";
+    }
+    figura.style.maxWidth = "100%";
+    aoMudar();
+  };
+
+  const tirarFigura = () => {
+    if (!figura) return;
+    figura.remove();
+    setFigura(null);
+    aoMudar();
+  };
+
   if (!aberto) {
     const temTexto = temAnotacao(anotacao);
     return (
@@ -961,6 +1030,26 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
           onClick={() => arquivoRef.current && arquivoRef.current.click()} />
         <input ref={arquivoRef} type="file" accept="image/*" onChange={inserirImagem} style={{ display: "none" }} />
 
+        {/* Só aparece com uma figura escolhida: é uma régua para aquela
+            imagem, não uma ferramenta do texto. */}
+        {figura ? (
+          <div className="mt-2 w-full pt-2 flex items-center gap-1.5 flex-wrap" style={{ borderTop: `1px solid ${T.line}` }}>
+            <Mini style={{ marginRight: 4 }}>tamanho da figura</Mini>
+            {LARGURAS_FIGURA.map((t) => (
+              <button key={t.id} type="button" onMouseDown={(e) => { e.preventDefault(); larguraDaFigura(t.largura); }}
+                className="rounded-lg px-2.5 py-1"
+                style={{ background: T.card3, border: `1px solid ${T.line}`, color: T.ink, cursor: "pointer", fontSize: 13 }}>
+                {t.nome}
+              </button>
+            ))}
+            <button type="button" onMouseDown={(e) => { e.preventDefault(); tirarFigura(); }}
+              className="rounded-lg px-2.5 py-1"
+              style={{ background: soft("var(--bad)", 12), border: `1px solid ${soft("var(--bad)", 34)}`, color: T.bad, cursor: "pointer", fontSize: 13 }}>
+              tirar
+            </button>
+          </div>
+        ) : null}
+
         {tamanhoAberto ? (
           <div className="mt-2 w-full pt-2 flex items-center gap-1.5 flex-wrap" style={{ borderTop: `1px solid ${T.line}` }}>
             {TAMANHOS_FONTE_NOTA.map((t) => (
@@ -984,7 +1073,7 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
       </div>
 
       <div ref={editorRef} contentEditable suppressContentEditableWarning
-        onInput={aoMudar} onPaste={aoColar}
+        onInput={aoMudar} onPaste={aoColar} onClick={aoClicarNoEditor}
         className="rounded-xl px-4 py-3"
         style={{
           fontSize: 14.5, lineHeight: 1.6, overflowY: "auto", outline: "none",
@@ -1016,7 +1105,7 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
 
       {modalDrive ? (
         <ModalDrive tituloAula={titulo} sugestaoNome={nomeArquivo} gerarBlob={gerarParaDrive}
-          notify={notify} onFechar={() => setModalDrive(false)} />
+          notify={notify} nuvem={nuvem} onFechar={() => setModalDrive(false)} />
       ) : null}
     </div>
   );
