@@ -310,13 +310,40 @@ function eventosGoogle({ routine, agenda, ladder, simulados, examDate, today, op
   return ev;
 }
 
-function useGoogleAgenda({ data, setData, notify, ladder, today }) {
+/* ── a ligação que não vence ───────────────────────────────────────────
+ *
+ * O token que o navegador consegue sozinho vale cerca de uma hora e some
+ * quando o aplicativo fecha. Renovar sem janela depende de cookie de
+ * terceiros, que celular e modo aplicativo costumam barrar, e aí volta a
+ * aparecer a tela de autorizar toda vez que a pessoa abre o site.
+ *
+ * Com a rota /api/google isso muda: a autorização é feita uma vez, pelo
+ * fluxo de código, e o servidor guarda o token de atualização. Daí em diante
+ * o navegador pede um token de acesso ao próprio site, sem janela nenhuma e
+ * sem depender de cookie de terceiros. */
+async function falarComGoogle(nuvem, corpo) {
+  let token = "";
+  try {
+    if (nuvem && nuvem.sdk && nuvem.sdk.auth && nuvem.sdk.auth.currentUser) {
+      token = await nuvem.sdk.auth.currentUser.getIdToken();
+    }
+  } catch (e) { /* sem conta, a rota recusa */ }
+  if (!token) return { erro: "Entre na sua conta para ligar o Google." };
+  const { dados, erro } = await chamarApi("/api/google", { ...corpo, token }, "A ligação com o Google");
+  return erro ? { erro } : (dados || {});
+}
+
+function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
   const [pronto, setPronto] = useState(false);
   const [token, setToken] = useState(null);
   const [ocupado, setOcupado] = useState(false);
   const [progresso, setProgresso] = useState(null);
   const [erro, setErro] = useState("");
   const cliente = useRef(null);
+  /* null = ainda não perguntei; false = o site não tem isso configurado */
+  const [permanente, setPermanente] = useState(null);
+  const validade = useRef(0);
+  const logado = !!(nuvem && nuvem.usuario);
 
   useEffect(() => {
     if (!GOOGLE_CFG) return undefined;
@@ -351,6 +378,73 @@ function useGoogleAgenda({ data, setData, notify, ladder, today }) {
       + "cliente OAuth.";
   };
 
+  /* Já ligado permanentemente? A pergunta é feita uma vez, quando a pessoa
+     entra na conta, e a resposta decide se o botão oferece "ligar de vez" ou
+     o caminho antigo. */
+  useEffect(() => {
+    if (!GOOGLE_CFG || !logado) { setPermanente(null); return undefined; }
+    let vivo = true;
+    (async () => {
+      const r = await falarComGoogle(nuvem, { acao: "estado" });
+      if (!vivo) return;
+      setPermanente(r.disponivel === false ? false : !!r.ligado);
+    })();
+    return () => { vivo = false; };
+  }, [logado, nuvem]);
+
+  /* Um token de acesso vindo do servidor, sem abrir janela. É o caminho que
+     faz a conta continuar ligada depois de fechar o aplicativo. */
+  const tokenDoServidor = useCallback(async () => {
+    if (!logado) return null;
+    const r = await falarComGoogle(nuvem, { acao: "token" });
+    if (r.acesso) {
+      validade.current = Number(r.expiraEm || 0);
+      setToken(r.acesso);
+      setPermanente(true);
+      return r.acesso;
+    }
+    /* disponivel false é site sem a credencial cadastrada; ligado false é
+       autorização que não existe mais. Nos dois casos não adianta perguntar
+       de novo a cada token: cai no caminho antigo, com janela. */
+    if (r.ligado === false || r.disponivel === false) setPermanente(false);
+    return null;
+  }, [logado, nuvem]);
+
+  /* Liga a conta de vez: uma janela só, uma vez. O que volta dela é um
+     código, que o servidor troca por uma autorização que não vence. */
+  const ligarDeVez = useCallback(async () => {
+    if (!window.google || !window.google.accounts || !GOOGLE_CFG) {
+      setErro("O login do Google ainda não carregou. Tente de novo em instantes.");
+      return false;
+    }
+    setErro("");
+    const codigo = await new Promise((resolve) => {
+      try {
+        const c = window.google.accounts.oauth2.initCodeClient({
+          client_id: GOOGLE_CFG.clientId,
+          scope: ESCOPO_GC,
+          ux_mode: "popup",
+          /* Sem isto, quem já tinha autorizado antes recebe um código que o
+             Google troca só por token de acesso, sem o de atualização, e a
+             ligação permanente não sai do lugar. */
+          prompt: "consent",
+          callback: (r) => resolve((r && r.code) || ""),
+          error_callback: (e) => { setErro(porQueFalhou(e)); resolve(""); },
+        });
+        c.requestCode();
+      } catch (e) { setErro("Não consegui abrir a autorização do Google."); resolve(""); }
+    });
+    if (!codigo) return false;
+
+    const r = await falarComGoogle(nuvem, { acao: "ligar", codigo });
+    if (r.erro) { setErro(r.erro); return false; }
+    if (r.acesso) { setToken(r.acesso); validade.current = Number(r.expiraEm || 0); }
+    setPermanente(true);
+    setData((p) => ({ ...p, googleCal: { ...(p.googleCal || {}), autoSync: true } }));
+    notify("Google ligado. Não precisa autorizar de novo.");
+    return true;
+  }, [nuvem, notify, setData]);
+
   const pedirToken = useCallback(() => new Promise((resolve) => {
     if (!window.google || !window.google.accounts) return resolve(null);
     try {
@@ -370,6 +464,19 @@ function useGoogleAgenda({ data, setData, notify, ladder, today }) {
       cliente.current.requestAccessToken();
     } catch (e) { setErro("Não consegui abrir a autorização do Google."); resolve(null); }
   }), []);
+
+  /* O token que vale agora, do jeito menos incômodo possível: o que já está
+     na mão, senão o do servidor (silencioso), e só em último caso a janela
+     do Google. */
+  const garantirToken = useCallback(async (semJanela) => {
+    if (token && (!validade.current || validade.current > Date.now())) return token;
+    if (permanente !== false && logado) {
+      const doServidor = await tokenDoServidor();
+      if (doServidor) return doServidor;
+    }
+    if (semJanela) return null;
+    return pedirToken();
+  }, [token, permanente, logado, tokenDoServidor, pedirToken]);
 
   const chamar = useCallback(async (tk, caminho, metodo, corpo) => {
     const r = await fetch(API_GC + caminho, {
@@ -395,7 +502,7 @@ function useGoogleAgenda({ data, setData, notify, ladder, today }) {
   const sincronizar = useCallback(async (opts) => {
     setErro(""); setOcupado(true); setProgresso({ feito: 0, total: 0 });
     try {
-      const tk = token || (await pedirToken());
+      const tk = await garantirToken();
       if (!tk) { setOcupado(false); setProgresso(null); return; }
       const cal = await garantirAgenda(tk);
       const lista = eventosGoogle({
@@ -513,7 +620,7 @@ function useGoogleAgenda({ data, setData, notify, ladder, today }) {
   const importarRotina = useCallback(async (inicioSemana) => {
     setErro(""); setOcupado(true);
     try {
-      const tk = token || (await pedirToken());
+      const tk = await garantirToken();
       if (!tk) { setOcupado(false); return; }
       await executarImportacao(tk, inicioSemana, false);
     } catch (e) {
@@ -521,25 +628,32 @@ function useGoogleAgenda({ data, setData, notify, ladder, today }) {
     } finally { setOcupado(false); }
   }, [token, pedirToken, executarImportacao]);
 
-  const desconectar = useCallback(() => {
+  const desconectar = useCallback(async () => {
     try {
       if (token && window.google && window.google.accounts) {
         window.google.accounts.oauth2.revoke(token, () => {});
       }
     } catch (e) { /* noop */ }
+    /* Se a conta estava ligada de vez, apagar no servidor é o que desliga de
+       verdade: sem isso o próximo token viria do token de atualização
+       guardado lá e a pessoa continuaria conectada sem entender por quê. */
+    if (permanente) { await falarComGoogle(nuvem, { acao: "desligar" }); setPermanente(false); }
     setToken(null);
+    validade.current = 0;
     setData((p) => ({ ...p, googleCal: { ...(p.googleCal || {}), autoSync: false } }));
     notify("Desconectado do Google Agenda.");
-  }, [token, notify, setData]);
+  }, [token, permanente, nuvem, notify, setData]);
 
   /* Sincronização sozinha: depois que a pessoa puxa do Google uma vez
-     (importarRotina acima liga autoSync), tenta pegar um token sem abrir
-     janela nenhuma (prompt vazio só funciona se o navegador já concedeu
-     acesso antes) e, conseguindo, relê a semana atual a cada 30 minutos
-     com a aba aberta, e de novo sempre que a aba volta a ficar visível
-     depois de ficar 15 minutos ou mais em segundo plano. Não existe jeito
-     de sincronizar com o site fechado sem um servidor guardando um token
-     de atualização do Google — fora do alcance de um site estático. */
+     (importarRotina acima liga autoSync), pega um token sem abrir janela
+     nenhuma e relê a semana atual a cada 30 minutos com a aba aberta, e de
+     novo sempre que a aba volta a ficar visível depois de ficar 15 minutos
+     ou mais em segundo plano.
+     Com a conta ligada de vez, o token vem do servidor e isso funciona
+     sempre. Sem ela, sobra a tentativa do próprio navegador (prompt vazio),
+     que só dá certo se o navegador ainda tiver a sessão do Google e não
+     estiver barrando cookie de terceiros — é por isso que no celular a
+     autorização voltava a aparecer a cada abertura. */
   const autoSync = !!(data.googleCal && data.googleCal.autoSync);
   const ultimaAutoRef = useRef(0);
   useEffect(() => {
@@ -561,7 +675,7 @@ function useGoogleAgenda({ data, setData, notify, ladder, today }) {
 
     const rodar = async () => {
       if (cancelado) return;
-      let tk = token;
+      let tk = await garantirToken(true);
       if (!tk) tk = await tentarSilencioso();
       if (!tk || cancelado) return;
       if (!token) setToken(tk);
@@ -589,6 +703,9 @@ function useGoogleAgenda({ data, setData, notify, ladder, today }) {
   return {
     disponivel: !!GOOGLE_CFG, pronto, conectado: !!token, ocupado, progresso, erro,
     sincronizar, importarRotina, desconectar, autoSync,
+    /* permanente: true já ligado de vez, false não dá (ou foi desligado),
+       null ainda não perguntei ao servidor. */
+    permanente, ligarDeVez, podeLigarDeVez: logado && permanente !== false,
     ultima: (data.googleCal && data.googleCal.ultima) || 0,
   };
 }

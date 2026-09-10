@@ -48,6 +48,8 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-flashcards-ia.mjs
   node testar-cronograma-ia.mjs
   node testar-ler-foto.mjs
+  node testar-buscar-imagem.mjs
+  node testar-google.mjs
   node testar-curriculo.mjs
   node testar-cores.mjs
   node testar-recorte-pdf.mjs

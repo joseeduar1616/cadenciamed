@@ -446,7 +446,7 @@ export default function Cadencia() {
   const P = usePomodoro({ pomo: data.pomo, onFocusDone, notify, pronto: ready });
   const [proAtivo, setProAtivo] = useState(false);
   const nuvem = useNuvem(data, setData, notify, ready, proAtivo);
-  const gcal = useGoogleAgenda({ data, setData, notify, ladder, today });
+  const gcal = useGoogleAgenda({ data, setData, notify, ladder, today, nuvem });
   const mentorInfo = useMentor(nuvem);
   const assinatura = useAssinatura(nuvem.sdk, nuvem.usuario);
   const pro = assinatura.pro;

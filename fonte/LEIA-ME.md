@@ -94,6 +94,9 @@ some calada quando falta uma linha no `normalize()`.
 | `testar-assistente.mjs` | teste da função da IA, com servidor falso no lugar da API |
 | `testar-flashcards-ia.mjs` | teste do montador de flashcards a partir de PDF/Word, mesma técnica de servidor falso |
 | `testar-cronograma-ia.mjs` | teste de organizar o cronograma de outro curso (ou ciclo clínico) em matérias, mesma técnica |
+| `testar-ler-foto.mjs` | teste da transcrição de foto de cronograma, com a IA de mentira |
+| `testar-buscar-imagem.mjs` | teste da ponte que traz figura de fora, incluindo o que ela precisa recusar |
+| `testar-google.mjs` | teste da ligação permanente com o Google, com o OAuth de mentira |
 | `testar-curriculo.mjs` | teste de substituir o currículo padrão, no todo ou só numa área |
 | `testar-cores.mjs` | teste da cor própria: ajuste de legibilidade e sugestão de combinação |
 | `testar-recorte-pdf.mjs` | teste da matemática que acha o retângulo de cada figura num PDF, com objetos falsos, sem abrir PDF nenhum |
@@ -158,6 +161,8 @@ problema que existia quando as funções moravam dentro do que ia ao ar.
 | `worker/api/flashcards-ia.js` | monta flashcards a partir do texto extraído de um PDF/Word |
 | `worker/api/cronograma-ia.js` | organiza o cronograma de outro curso (ou ciclo clínico) em matérias |
 | `worker/api/ler-foto.js` | transcreve o texto da foto de um cronograma, para entrar como se tivesse sido colado |
+| `worker/api/buscar-imagem.js` | busca a figura que o navegador não consegue ler por CORS, para ela ficar dentro da anotação |
+| `worker/api/google.js` | liga a conta do Google de vez: guarda o token de atualização e entrega acesso sem janela |
 | `worker/api/mentor.js` | papel de mentor, alunos, e a rotina/metas/currículo de cada um |
 | `worker/api/cupom.js` | confere o cupom e libera o plano |
 | `worker/api/compra.js` | recebe o aviso de compra da Kiwify ou Hotmart |
@@ -677,10 +682,26 @@ hora de salvar**, achando que já tinha virado `data-nome` quando não tinha.
 Agora ele tenta primeiro trazer a imagem para dentro do IndexedDB também
 nesses dois casos (um `fetch` do endereço, convertido para `data:` do mesmo
 jeito que uma imagem enviada por upload — necessário até para `blob:`, que
-não sobrevive a um recarregar da página) e, se isso falhar (CORS bloqueado,
-por exemplo), mantém o `src` original em vez de apagar. Só quem tem
-`data-nome` (ou seja, quem realmente foi guardado aqui dentro) tem o `src`
-removido ao salvar.
+não sobrevive a um recarregar da página) e, se isso falhar, mantém o `src`
+original em vez de apagar. Só quem tem `data-nome` (ou seja, quem realmente
+foi guardado aqui dentro) tem o `src` removido ao salvar.
+
+**Esse `fetch` direto falha na maioria dos casos que importam**, porque o
+site de origem não libera a leitura dos bytes por outro domínio: Notion,
+Google Docs e quase todo mundo. No caso do Notion isso era grave, porque o
+endereço da figura é assinado e **vence em cerca de uma hora**: pouco depois
+de colar, a imagem sumia e sobrava o texto alternativo. Por isso, quando o
+`fetch` direto é barrado, a `/api/buscar-imagem` busca no servidor e devolve
+em base64 (`trazerImagemDeFora`, em `parte17.jsx`). Só para quem está na
+conta, só http(s), só resposta que é imagem, com teto de 8MB e sem nomes que
+apontem para dentro da rede — é um caminho para trazer figura, não um proxy
+aberto, e o `testar-buscar-imagem.mjs` cobre cada uma dessas recusas.
+
+**O bloco de destaque do Notion** (`<aside>`) chega de dois jeitos: como
+elemento, e aí aparecia sem destaque nenhum; ou com a tag escrita como texto,
+e aí `</aside>` aparecia escrito na anotação e ia parar no PDF. `virarDestaque`
+e `tirarTagsEscritas` resolvem os dois, no colar e também ao abrir uma
+anotação que já estava gravada com o defeito (`limparAnotacaoGravada`).
 
 **Tela cheia e tamanho de fonte.** O botão de tela cheia (`Maximize2`, na
 barra da anotação) usa o mesmo `createPortal` do `ModalDrive` para escapar
@@ -730,12 +751,36 @@ inline. Truque antigo, ainda válido.
 **PDF.** Aqui sim entra biblioteca: [jsPDF](https://github.com/parallax/jsPDF)
 e [html2canvas](https://html2canvas.hertzen.com), carregadas de um CDN só
 quando a pessoa pede (mesmo padrão do `carregarPdfJs`/`carregarMammoth`, em
-`parte12.jsx`). `doc.html()` tira uma "foto" do HTML formatado da anotação
-e embute como PDF — sem elas, um PDF de verdade exigiria escrever o layout
-de texto rico (negrito, cor, grifo, alinhamento, imagem) à mão, com a API
-de desenho do jsPDF. A troca: o texto do PDF gerado assim não é
-selecionável (é imagem), mas o visual bate exatamente com o que está na
-tela — para uma anotação de estudo, isso importa mais que texto buscável.
+`parte12.jsx`). `doc.html()` percorre o HTML formatado da anotação e escreve
+no PDF — sem isso, um PDF de verdade exigiria escrever o layout de texto rico
+(negrito, cor, grifo, alinhamento, imagem) à mão, com a API de desenho do
+jsPDF. O texto sai como texto, dá para selecionar e buscar, e as imagens vão
+junto.
+
+### A fonte do PDF da anotação
+
+O jsPDF escreve com as 14 fontes padrão do PDF, e **todas são de 8 bits**
+(WinAnsi). Acento passa, porque está na tabela. Seta, `≥`, `≤` e emoji não:
+saíam trocados por lixo, e não por um quadradinho — `→` virava `!’`, `≥`
+virava `”e`, `💡` virava `Ø=ÜI`. Numa anotação de medicina, cheia de seta de
+fisiopatologia, isso estragava o arquivo inteiro, e o defeito não aparecia
+em lugar nenhum antes de abrir o PDF.
+
+A saída é embutir uma fonte de verdade: a DejaVu, do jsDelivr, baixada só na
+primeira exportação e guardada pelo navegador depois. **Duas coisas precisam
+acontecer juntas**, e é o pulo do gato aqui:
+
+1. registrar a fonte no jsPDF (`addFileToVFS` + `addFont`), que é quem
+   desenha;
+2. colocar a **mesma** fonte na página, num `@font-face`, porque quem mede a
+   largura de cada palavra para quebrar a linha é o navegador. Medindo com
+   uma fonte e desenhando com outra, as palavras saem grudadas
+   ("DistúrbiosHipertensivosda").
+
+Emoji não existe em fonte de texto nenhuma, então ele é tirado do texto antes
+de exportar — na anotação continua. E se a fonte não baixar (sem rede), o PDF
+sai nas fontes padrão com os símbolos trocados por versões de 8 bits
+(`TROCAS_SEM_FONTE`): um `->` é pior que um `→`, mas é muito melhor que `!’`.
 
 O PDF sempre saía em branco: o elemento temporário usado para "fotografar"
 a anotação (`notaParaPdfBlob`) ficava em `left:-9999px`, fora da área da
@@ -991,6 +1036,46 @@ aparecem, já que a pessoa não pediu essa tentativa. O botão "Puxar do Google"
 continua funcionando a qualquer momento para puxar na hora. Desconectar
 (`gcal.desconectar`) desliga o `autoSync` — só liga de novo puxando manualmente
 uma vez.
+
+### Ligar a conta de vez
+
+A tentativa silenciosa acima depende de o navegador ainda ter a sessão do
+Google e de não estar barrando cookie de terceiros. **No celular e no modo
+aplicativo ela falha quase sempre**, e o resultado é a tela de autorizar
+aparecendo toda vez que a pessoa abre o site. Foi a reclamação que originou
+esta parte.
+
+A rota `/api/google` resolve pelo mesmo caminho do Notion: o navegador faz o
+fluxo de **código** (`initCodeClient`, uma janela, uma vez), manda o código
+para o servidor, e o servidor troca por um **token de atualização** usando o
+segredo da credencial. O token fica em `google/{uid}`, escrito e lido só pela
+conta de serviço, e **nunca volta para a página** — o teste
+`testar-google.mjs` cobre exatamente isso. Dali em diante o navegador pede
+`acao: "token"` e recebe um acesso novo, sem janela e sem depender de cookie
+de terceiros.
+
+Para funcionar, o Worker precisa de duas variáveis:
+
+| Variável | O que é |
+|---|---|
+| `GOOGLE_CLIENT_ID` | o mesmo ID que a página já usa em `CADENCIA_GOOGLE` |
+| `GOOGLE_CLIENT_SECRET` | o segredo da **mesma** credencial, no Google Cloud |
+
+A credencial precisa ser do tipo **Aplicativo da Web**, com o endereço do
+site em Origens JavaScript autorizadas (o que já era necessário antes).
+
+**Sem as duas variáveis nada quebra**: a rota responde `disponivel: false`, a
+página não oferece o botão e tudo continua como era, autorizando por sessão.
+
+Duas armadilhas que o código já trata:
+
+1. O Google só manda o token de atualização na **primeira** autorização de
+   cada conta. Por isso o pedido vai com `prompt: "consent"`: sem ele, quem
+   já tinha autorizado antes recebia um código que virava só token de acesso,
+   e a ligação permanente não saía do lugar sem ninguém entender por quê.
+2. Quando a pessoa revoga o acesso pela conta Google, a renovação passa a
+   responder `invalid_grant`. O token guardado é apagado na hora, senão o app
+   ficaria tentando com ele a cada abertura, para sempre.
 
 ## Mentor
 

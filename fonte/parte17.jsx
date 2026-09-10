@@ -74,6 +74,70 @@ function carregarJsPdf() {
   return jsPdfPromessa;
 }
 
+/* ── a fonte do PDF ───────────────────────────────────────────────────
+ *
+ * O jsPDF desenha o texto com as 14 fontes padrão do PDF, e todas elas são
+ * de 8 bits (WinAnsi). Acento passa, porque está na tabela; seta, ≥, ≤ e
+ * emoji não passam, e saíam trocados por lixo: "→" virava "!’", "≥" virava
+ * "”e", "💡" virava "Ø=ÜI". Numa anotação de medicina, cheia de seta de
+ * fisiopatologia, isso estragava o arquivo inteiro.
+ *
+ * A saída é embutir uma fonte de verdade. A DejaVu cobre seta, matemática,
+ * grego e o resto do que aparece numa anotação; são 1,4MB pelos dois cortes,
+ * baixados só na primeira exportação e guardados pelo navegador depois.
+ *
+ * A MESMA fonte precisa ir para o navegador, num @font-face: quem mede a
+ * largura de cada palavra na hora de quebrar a linha é ele, e quem desenha é
+ * o jsPDF. Medindo com uma fonte e desenhando com outra, as palavras saíam
+ * grudadas umas nas outras ("DistúrbiosHipertensivosda"). */
+const FONTE_PDF = "NotaPDF";
+const FONTE_PDF_CDN = "https://cdn.jsdelivr.net/npm/dejavu-fonts-ttf@2.37.3/ttf/";
+
+let fontePdfPromessa = null;
+function carregarFontePdf() {
+  if (fontePdfPromessa) return fontePdfPromessa;
+  fontePdfPromessa = (async () => {
+    const baixar = async (arquivo) => {
+      const r = await fetch(FONTE_PDF_CDN + arquivo);
+      if (!r.ok) throw new Error(`fonte ${arquivo}: ${r.status}`);
+      const bytes = new Uint8Array(await r.arrayBuffer());
+      /* pedaço a pedaço: String.fromCharCode com 700 mil argumentos de uma
+         vez estoura a pilha de chamadas do navegador */
+      let bruto = "";
+      for (let i = 0; i < bytes.length; i += 8192) {
+        bruto += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+      }
+      return window.btoa(bruto);
+    };
+    const [normal, negrito] = await Promise.all([
+      baixar("DejaVuSans.ttf"), baixar("DejaVuSans-Bold.ttf"),
+    ]);
+    return { normal, negrito };
+  })().catch((e) => { fontePdfPromessa = null; throw e; });
+  return fontePdfPromessa;
+}
+
+/* Sem a fonte (a pessoa está sem rede, por exemplo) o PDF sai nas fontes
+   padrão, e aí é melhor trocar o símbolo por uma versão que a tabela de 8
+   bits tem do que deixar virar lixo. Emoji não tem substituto: sai fora. */
+const TROCAS_SEM_FONTE = [
+  [/[→➡➔]/g, "->"], [/[⇒⟹]/g, "=>"],
+  [/[←⇐]/g, "<-"], [/↔/g, "<->"],
+  [/≥/g, ">="], [/≤/g, "<="], [/≠/g, "!="], [/≈/g, "~"],
+  [/×/g, "x"], [/[–—]/g, "-"], [/…/g, "..."],
+  [/[“”]/g, '"'], [/[‘’]/g, "'"],
+];
+
+function semSimbolosDeFora(texto) {
+  let s = String(texto || "");
+  for (const [de, para] of TROCAS_SEM_FONTE) s = s.replace(de, para);
+  return s;
+}
+
+/* Emoji não existe em fonte de texto nenhuma: com a DejaVu ele viraria um
+   quadradinho vazio. Fora do PDF ele continua na anotação. */
+const EMOJI = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F1E6}-\u{1F1FF}\u{2B00}-\u{2BFF}]/gu;
+
 let html2canvasPromessa = null;
 function carregarHtml2Canvas() {
   if (html2canvasPromessa) return html2canvasPromessa;
@@ -102,9 +166,36 @@ function notaParaWordBlob(tituloAula, htmlCorpo) {
   return new Blob([html], { type: "application/msword" });
 }
 
+/* Troca o texto de dentro do HTML sem tocar nas tags: a mesma limpeza
+   aplicada em cima do innerHTML cru estragaria atributo e endereço de
+   imagem. */
+function mexerNoTexto(html, mudar) {
+  const div = document.createElement("div");
+  div.innerHTML = String(html || "");
+  const passeio = document.createTreeWalker(div, NodeFilter.SHOW_TEXT);
+  const nos = [];
+  for (let n = passeio.nextNode(); n; n = passeio.nextNode()) nos.push(n);
+  for (const n of nos) n.nodeValue = mudar(n.nodeValue);
+  return div.innerHTML;
+}
+
 async function notaParaPdfBlob(tituloAula, htmlCorpo) {
   const JsPDF = await carregarJsPdf();
   const html2canvas = await carregarHtml2Canvas();
+
+  /* A fonte é o que faz seta e ≥ saírem certos. Se ela não vier, o PDF sai
+     assim mesmo, com os símbolos trocados por versões de 8 bits: melhor um
+     "->" do que um "!’". */
+  let fonte = null;
+  try { fonte = await carregarFontePdf(); } catch (e) { fonte = null; }
+
+  let corpo = mexerNoTexto(htmlCorpo, (t) => t.replace(EMOJI, ""));
+  let titulo = String(tituloAula || "").replace(EMOJI, "");
+  if (!fonte) {
+    corpo = mexerNoTexto(corpo, semSimbolosDeFora);
+    titulo = semSimbolosDeFora(titulo);
+  }
+
   const container = document.createElement("div");
   /* Nada de "left:-9999px": um elemento em coordenada negativa nunca chega
      a ser pintado em lugar nenhum (a página começa em 0,0; não dá para
@@ -113,12 +204,44 @@ async function notaParaPdfBlob(tituloAula, htmlCorpo) {
      dentro da área visível (0,0), na frente de tudo por um instante (por
      isso o z-index gigante), o que é um preço bem menor que o PDF nunca
      sair certo. */
+  const familia = fonte ? `${FONTE_PDF},Arial,sans-serif` : "Arial,Helvetica,sans-serif";
   container.style.cssText = "position:fixed;left:0;top:0;z-index:2147483647;width:700px;padding:0;background:#fff;color:#111;"
-    + "font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5;pointer-events:none;";
-  container.innerHTML = `<h2 style="margin:0 0 14px">${escaparHtml(tituloAula)}</h2>${htmlCorpo}`;
+    + `font-family:${familia};font-size:13px;line-height:1.5;pointer-events:none;`;
+  container.innerHTML = `<h2 style="margin:0 0 14px">${escaparHtml(titulo)}</h2>${corpo}`;
+
+  /* A regra da fonte fica na página só enquanto o PDF é montado. */
+  let estilo = null;
+  if (fonte) {
+    estilo = document.createElement("style");
+    estilo.textContent = `@font-face{font-family:${FONTE_PDF};font-weight:400;font-style:normal;`
+      + `src:url(data:font/ttf;base64,${fonte.normal}) format('truetype')}`
+      + `@font-face{font-family:${FONTE_PDF};font-weight:700;font-style:normal;`
+      + `src:url(data:font/ttf;base64,${fonte.negrito}) format('truetype')}`;
+    document.head.appendChild(estilo);
+  }
+
   document.body.appendChild(container);
   try {
+    if (fonte) {
+      /* Sem esperar a fonte ficar pronta, a primeira medição sai na fonte de
+         reserva e as palavras saem grudadas. */
+      try {
+        await Promise.all([
+          document.fonts.load(`13px ${FONTE_PDF}`),
+          document.fonts.load(`bold 13px ${FONTE_PDF}`),
+        ]);
+        await document.fonts.ready;
+      } catch (e) { /* navegador sem a API: segue e aceita o risco */ }
+    }
+
     const doc = new JsPDF({ unit: "pt", format: "a4" });
+    if (fonte) {
+      doc.addFileToVFS(`${FONTE_PDF}.ttf`, fonte.normal);
+      doc.addFont(`${FONTE_PDF}.ttf`, FONTE_PDF, "normal");
+      doc.addFileToVFS(`${FONTE_PDF}-Bold.ttf`, fonte.negrito);
+      doc.addFont(`${FONTE_PDF}-Bold.ttf`, FONTE_PDF, "bold");
+      doc.setFont(FONTE_PDF, "normal");
+    }
     await new Promise((resolve, reject) => {
       try {
         doc.html(container, {
@@ -131,6 +254,7 @@ async function notaParaPdfBlob(tituloAula, htmlCorpo) {
     return doc.output("blob");
   } finally {
     document.body.removeChild(container);
+    if (estilo) document.head.removeChild(estilo);
   }
 }
 
@@ -143,6 +267,69 @@ function baixarBlob(nome, blob) {
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     return true;
   } catch (e) { return false; }
+}
+
+/* Tira script, iframe e atributos de evento (onerror, onclick...) de HTML
+   colado de fora. A nota é só do próprio dono e nunca é mostrada para outra
+   pessoa (nem o mentor a alcança — ver worker/api/mentor.js), mas colar um
+   trecho de uma página maliciosa não pode virar código rodando na conta de
+   quem colou. */
+/* Pede ao servidor os bytes de uma imagem que o navegador não consegue ler
+   por causa do CORS. Devolve o base64, ou vazio se não deu. */
+async function trazerImagemDeFora(nuvem, endereco) {
+  if (!/^https?:/i.test(endereco)) return "";
+  let token = "";
+  try {
+    if (nuvem && nuvem.sdk && nuvem.sdk.auth && nuvem.sdk.auth.currentUser) {
+      token = await nuvem.sdk.auth.currentUser.getIdToken();
+    }
+  } catch (e) { /* sem conta, o servidor recusa e a imagem fica como está */ }
+  if (!token) return "";
+  const { dados } = await chamarApi("/api/buscar-imagem", { token, url: endereco }, "Trazer a imagem");
+  return (dados && dados.dados) || "";
+}
+
+/* ── o destaque do Notion ─────────────────────────────────────────────
+ *
+ * O Notion escreve o bloco de destaque (aquele com a lampadinha) como
+ * <aside>. Copiado de lá, ele chega de dois jeitos: como elemento de
+ * verdade, e aí o editor mostra o conteúdo sem nenhum destaque; ou como as
+ * palavras "<aside>" e "</aside>" escritas no meio do texto, que é o que
+ * acontece quando o que veio na área de transferência foi a versão em
+ * markdown. Nos dois casos o resultado era ruim: no segundo, "</aside>"
+ * aparecia escrito na anotação e ia parar no PDF.
+ *
+ * Aqui os dois viram a mesma coisa: uma caixa com barra na lateral, que é o
+ * que o destaque quer dizer. */
+const ESTILO_DESTAQUE = "border-left:3px solid #A182E6;background:rgba(161,130,230,.10);"
+  + "padding:8px 12px;margin:10px 0;border-radius:0 6px 6px 0";
+
+function virarDestaque(div) {
+  div.querySelectorAll("aside").forEach((el) => {
+    const caixa = document.createElement("div");
+    caixa.setAttribute("style", ESTILO_DESTAQUE);
+    while (el.firstChild) caixa.appendChild(el.firstChild);
+    el.replaceWith(caixa);
+  });
+}
+
+/* As linhas soltas com a tag escrita como texto. Some com elas em vez de
+   tentar reconstruir o bloco: adivinhar onde ele começa e acaba em texto
+   corrido erraria mais do que acertaria, e o que incomoda é a tag à vista. */
+function tirarTagsEscritas(div) {
+  const passeio = document.createTreeWalker(div, NodeFilter.SHOW_TEXT);
+  const nos = [];
+  for (let n = passeio.nextNode(); n; n = passeio.nextNode()) nos.push(n);
+  for (const n of nos) {
+    if (!/<\/?(aside|figure|figcaption|details|summary)>/i.test(n.nodeValue)) continue;
+    n.nodeValue = n.nodeValue
+      .replace(/<\/?(aside|figure|figcaption|details|summary)>/gi, "")
+      .replace(/^[ \t]+|[ \t]+$/g, "");
+  }
+  /* parágrafo que ficou só com a tag dentro sai junto */
+  div.querySelectorAll("p,div,li").forEach((el) => {
+    if (!el.children.length && !el.textContent.trim()) el.remove();
+  });
 }
 
 /* Tira script, iframe e atributos de evento (onerror, onclick...) de HTML
@@ -165,6 +352,21 @@ function limparHtmlColado(html) {
       }
     }
   });
+  virarDestaque(div);
+  tirarTagsEscritas(div);
+  return div.innerHTML;
+}
+
+/* A mesma limpeza, para anotação que já está gravada com a tag à vista de
+   antes desta correção. Roda ao abrir a anotação, e só mexe se houver o que
+   mexer, para não marcar como alterada uma nota que está boa. */
+function limparAnotacaoGravada(html) {
+  const s = String(html || "");
+  if (!/<aside|&lt;\/?aside&gt;|&lt;\/?figcaption&gt;/i.test(s)) return s;
+  const div = document.createElement("div");
+  div.innerHTML = s;
+  virarDestaque(div);
+  tirarTagsEscritas(div);
   return div.innerHTML;
 }
 
@@ -397,7 +599,7 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
     (async () => {
       const raiz = editorRef.current;
       if (!raiz) return;
-      raiz.innerHTML = (anotacao && anotacao.html) || "";
+      raiz.innerHTML = limparAnotacaoGravada((anotacao && anotacao.html) || "");
       const imgs = [...raiz.querySelectorAll("img[data-nome]")];
       for (const img of imgs) {
         try {
@@ -414,6 +616,8 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
     const raiz = editorRef.current;
     if (!raiz) return "";
     const imgs = [...raiz.querySelectorAll("img")];
+    let falhouImagem = 0;
+    let avisouImagem = false;
     for (const img of imgs) {
       if (img.getAttribute("data-nome")) continue;   // já guardada antes
       let src = img.getAttribute("src") || "";
@@ -434,7 +638,16 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
             rd.onerror = () => reject(new Error("leitura falhou"));
             rd.readAsDataURL(blob);
           });
-        } catch (e) { /* fica com o endereço original, guardado abaixo */ }
+        } catch (e) {
+          /* Bloqueado pelo CORS, que é a regra e não a exceção: o Notion, o
+             Google Docs e a maioria dos sites não liberam a leitura dos
+             bytes por outro domínio. O servidor busca no lugar. Sem isso a
+             figura ficava presa ao endereço de origem, e o do Notion vence
+             em cerca de uma hora: pouco depois de colar, sumia. */
+          const trazida = await trazerImagemDeFora(nuvem, src);
+          if (trazida) src = trazida;
+          else if (!avisouImagem) { avisouImagem = true; falhouImagem += 1; }
+        }
       }
       if (src.startsWith("data:")) {
         const nome = `nota-${uid()}`;
@@ -450,6 +663,10 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
        não virou data-nome (endereço externo que não deu para trazer para
        cá) mantém o src: apagar o dela também jogaria a imagem fora à toa. */
     clone.querySelectorAll("img[data-nome]").forEach((img) => img.removeAttribute("src"));
+    if (falhouImagem) {
+      notify("Uma figura colada não pôde ser trazida para dentro da anotação e "
+        + "continua dependendo do site de origem. Se ela sumir, copie de novo de lá.");
+    }
     return clone.innerHTML;
   };
 

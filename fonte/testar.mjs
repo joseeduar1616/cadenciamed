@@ -226,6 +226,26 @@ if (await linhaAula.count() === 0) {
     if (await editor.locator('img').count() > 0) ok('anotação: a imagem aparece no editor assim que é inserida');
     else falha('anotação: a imagem não apareceu depois de inserida');
 
+    /* O bloco de destaque do Notion chega escrito como <aside>, e às vezes
+       com a própria tag escrita como texto. Nos dois casos ele tem que
+       virar uma caixa com barra na lateral, e a tag não pode sobrar à vista
+       nem na anotação nem no PDF. */
+    await pag.evaluate(() => {
+      const ed = document.querySelector('[contenteditable="true"]');
+      ed.innerHTML += '<p>&lt;aside&gt;</p><aside><p>bloco do Notion</p></aside><p>&lt;/aside&gt;</p>';
+      ed.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await pag.waitForTimeout(1800);
+    await pag.locator('button:has-text("fechar")').first().click();
+    await pag.waitForTimeout(500);
+    await pag.locator('text=Ver ou editar anotação').first().click();
+    await pag.waitForTimeout(800);
+    const depoisDoDestaque = await pag.locator('[contenteditable="true"]').first().innerHTML();
+    if (!/&lt;\/?aside&gt;|<\/?aside>/i.test(depoisDoDestaque)) ok('anotação: a tag do destaque do Notion não fica escrita na tela');
+    else falha('anotação: sobrou <aside> à vista: ' + depoisDoDestaque.slice(0, 160));
+    if (/border-left:\s*3px/i.test(depoisDoDestaque)) ok('anotação: o destaque do Notion vira uma caixa com barra na lateral');
+    else falha('anotação: o destaque não virou caixa: ' + depoisDoDestaque.slice(0, 160));
+
     /* debounce do salvamento da anotação (1200ms) + do salvamento geral */
     await pag.waitForTimeout(4000);
     const salvouSemImagemEmbutida = await pag.evaluate(() => {

@@ -224,6 +224,42 @@ function Metas({ data, setData, today, qWeek, notify, ladder, gcal }) {
           </Btn>
           {gcal && gcal.conectado ? <Btn tone="outline" size="sm" onClick={gcal.desconectar}>desconectar</Btn> : null}
         </div>
+
+        {/* A ligação de vez. Sem ela o Google devolve um token que vale cerca
+            de uma hora e some quando o aplicativo fecha, e a autorização
+            volta a aparecer toda vez que a pessoa abre o site. */}
+        {gcal && gcal.disponivel && gcal.podeLigarDeVez ? (
+          <div className="mt-4 rounded-2xl px-4 py-4"
+            style={{
+              background: soft(gcal.permanente ? "var(--ok)" : "var(--a-GO)", 10),
+              border: `1px solid ${soft(gcal.permanente ? "var(--ok)" : "var(--a-GO)", 30)}`,
+            }}>
+            {gcal.permanente ? (
+              <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+                <span style={{ fontSize: 14.5, fontWeight: 600, color: T.ok }}>
+                  Conta do Google ligada de vez
+                </span>
+                <Mini>não precisa autorizar de novo ao abrir o app</Mini>
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: 14.5, fontWeight: 600, color: T.ink }}>
+                  Cansado de autorizar toda vez que abre?
+                </div>
+                <Mini style={{ marginTop: 6, lineHeight: 1.6 }}>
+                  Ligue a conta de vez: você autoriza uma única vez e o site
+                  renova o acesso sozinho daí em diante, sem abrir janela
+                  nenhuma. Dá para desligar quando quiser.
+                </Mini>
+                <div className="mt-4">
+                  <Btn size="sm" tone="primary" disabled={!gcal.pronto} onClick={gcal.ligarDeVez}>
+                    Ligar a conta de vez
+                  </Btn>
+                </div>
+              </>
+            )}
+          </div>
+        ) : null}
         {gcal && gcal.progresso ? (
           <div className="mt-4"><Track pct={(gcal.progresso.feito / Math.max(1, gcal.progresso.total)) * 100} color="var(--a-GO)" /></div>
         ) : null}
