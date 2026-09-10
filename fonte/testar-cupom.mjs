@@ -76,20 +76,31 @@ env.FIREBASE_API_KEY = 'chave-firebase';
 env.FIREBASE_SERVICE_ACCOUNT = JSON.stringify(CONTA);
 delete env.CUPONS;
 
-/* ── os dois cupons combinados funcionam ─────────────────────────────── */
+/* ── os dois cupons combinados funcionam, com planos diferentes ───────── */
+const PLANO_ESPERADO = { secdamocada: 'semanal', medeasysoft: 'anual' };
 for (const cod of ['secdamocada', 'medeasysoft']) {
   GRAVADO = null; PLANO_ATUAL = null;
   const r = await pedir({ token: 't', codigo: cod });
   if (r.status === 200 && r.corpo.ok) ok(`cupom "${cod}" libera o acesso`);
   else falha(`cupom "${cod}": ` + JSON.stringify(r));
   const f = GRAVADO && GRAVADO.fields;
-  if (f && f.plano.stringValue === 'anual') ok(`"${cod}" grava plano anual`);
+  const esperado = PLANO_ESPERADO[cod];
+  if (f && f.plano.stringValue === esperado) ok(`"${cod}" grava plano ${esperado}`);
   else falha(`"${cod}" gravou: ` + JSON.stringify(GRAVADO));
-  /* o anual vence numa data fixa (fim de 2027), não um ano a partir de
-     agora — validadeDoPlano, em _comum.js */
-  const FIM_ANUAL = new Date('2028-01-01T00:00:00-03:00').getTime();
-  if (f && f.validoAte.doubleValue === FIM_ANUAL) ok(`"${cod}" vale até o fim de 2027`);
-  else falha(`"${cod}" prazo errado: ${f && f.validoAte.doubleValue}, esperado ${FIM_ANUAL}`);
+  if (esperado === 'anual') {
+    /* o anual vence numa data fixa (fim de 2027), não um ano a partir de
+       agora — validadeDoPlano, em _comum.js */
+    const FIM_ANUAL = new Date('2028-01-01T00:00:00-03:00').getTime();
+    if (f && f.validoAte.doubleValue === FIM_ANUAL) ok(`"${cod}" vale até o fim de 2027`);
+    else falha(`"${cod}" prazo errado: ${f && f.validoAte.doubleValue}, esperado ${FIM_ANUAL}`);
+  } else {
+    /* os demais planos contam os dias a partir de agora — DIAS, em
+       _comum.js — então o teste confere a janela, não um valor exato. */
+    const dias = 7;
+    const esperadoMs = Date.now() + dias * 86400000;
+    if (f && Math.abs(f.validoAte.doubleValue - esperadoMs) < 5000) ok(`"${cod}" vale por ${dias} dias`);
+    else falha(`"${cod}" prazo errado: ${f && f.validoAte.doubleValue}, esperado perto de ${esperadoMs}`);
+  }
   if (f && f.email.stringValue === 'aluna@email.com') ok(`"${cod}" guarda o e-mail de quem resgatou`);
   else falha(`"${cod}" sem e-mail`);
 }

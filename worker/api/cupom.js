@@ -8,15 +8,16 @@
  * única coisa capaz de escrever nessa coleção.
  *
  * Para trocar os cupons sem mexer no código, cadastre CUPONS nas variáveis
- * do site, no formato "codigo:plano,codigo:plano". Planos: mensal, anual,
- * vitalicio. Enquanto essa variável não existir, valem os dois abaixo.
+ * do site, no formato "codigo:plano,codigo:plano". Planos: semanal, mensal,
+ * anual, vitalicio. Enquanto essa variável não existir, valem os dois
+ * abaixo.
  */
 import {
   json, corpoJson, quemPede, contaDeServico, tokenDeAcesso,
   gravarAssinatura, validoAte, validadeDoPlano, concederMentor, DIAS,
 } from "./_comum.js";
 
-const CUPONS_PADRAO = "secdamocada:anual,medeasysoft:anual";
+const CUPONS_PADRAO = "secdamocada:semanal,medeasysoft:anual";
 
 /* Cupom que não libera plano nenhum: dá o papel de mentor. Fica fora do
    CUPONS de plano de propósito, para não poder ser trocado pela variável de
