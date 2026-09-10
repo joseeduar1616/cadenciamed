@@ -17,6 +17,17 @@
 const CORES_TEXTO_NOTA = ["#1a1a1a", "#B23B3B", "#2E7D32", "#1565C0", "#6A1B9A", "#E65100", "#FFFFFF"];
 const CORES_GRIFO_NOTA = ["#FFF59D", "#A5D6A7", "#90CAF9", "#F48FB1", "#FFCC80"];
 
+/* Tamanho de fonte do trecho selecionado. document.execCommand("fontSize")
+   só aceita os 7 tamanhos históricos do HTML (1 a 7), então o truque de
+   sempre é pedir o maior (7) e depois trocar cada <font size="7"> criado
+   pelo px exato que a pessoa escolheu — aplicarTamanhoFonte, abaixo. */
+const TAMANHOS_FONTE_NOTA = [
+  { id: "pq", nome: "Pequena", px: 12 },
+  { id: "normal", nome: "Normal", px: 14.5 },
+  { id: "grande", nome: "Grande", px: 18 },
+  { id: "enorme", nome: "Enorme", px: 24 },
+];
+
 /* As 4 pastas grandes que já existem na aba Cartões, uma por área do
    currículo — GO e Preventiva dividem a mesma, como já é feito lá. Os
    flashcards gerados a partir de uma anotação caem direto numa destas, sem
@@ -95,8 +106,15 @@ async function notaParaPdfBlob(tituloAula, htmlCorpo) {
   const JsPDF = await carregarJsPdf();
   const html2canvas = await carregarHtml2Canvas();
   const container = document.createElement("div");
-  container.style.cssText = "position:fixed;left:-9999px;top:0;width:700px;padding:0;background:#fff;color:#111;"
-    + "font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5;";
+  /* Nada de "left:-9999px": um elemento em coordenada negativa nunca chega
+     a ser pintado em lugar nenhum (a página começa em 0,0; não dá para
+     rolar para antes disso), e o html2canvas só consegue capturar o que
+     foi de fato pintado — o resultado era sempre um PDF em branco. Fica
+     dentro da área visível (0,0), na frente de tudo por um instante (por
+     isso o z-index gigante), o que é um preço bem menor que o PDF nunca
+     sair certo. */
+  container.style.cssText = "position:fixed;left:0;top:0;z-index:2147483647;width:700px;padding:0;background:#fff;color:#111;"
+    + "font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5;pointer-events:none;";
   container.innerHTML = `<h2 style="margin:0 0 14px">${escaparHtml(tituloAula)}</h2>${htmlCorpo}`;
   document.body.appendChild(container);
   try {
@@ -220,10 +238,14 @@ function ModalDrive({ tituloAula, gerarBlob, sugestaoNome, notify, onFechar }) {
     if (!blob) { setEnviando(false); notify("Não consegui preparar o arquivo para enviar."); return; }
     const nome = `${sugestaoNome}.${formato === "pdf" ? "pdf" : "doc"}`;
     const mime = formato === "pdf" ? "application/pdf" : "application/msword";
+    /* enviarArquivo devolve { ok, erro } sempre (nunca lança), então o
+       resultado aqui é sempre o que de fato aconteceu — não o estado
+       "erro" de um render antigo, que já ficou parado sem mostrar nada
+       quando o envio falhava. */
     const r = await drive.enviarArquivo(nome, mime, blob, pastaAtual.id);
     setEnviando(false);
-    if (r) { notify(`Enviado para "${pastaAtual.nome}" no seu Google Drive.`); onFechar(); }
-    else if (drive.erro) notify(drive.erro);
+    if (r && r.ok) { notify(`Enviado para "${pastaAtual.nome}" no seu Google Drive.`); onFechar(); }
+    else notify((r && r.erro) || "Não consegui enviar para o Drive.");
   };
 
   return createPortal((
@@ -311,6 +333,8 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
   const [sujo, setSujo] = useState(false);
   const [corAberta, setCorAberta] = useState(false);
   const [grifoAberto, setGrifoAberto] = useState(false);
+  const [tamanhoAberto, setTamanhoAberto] = useState(false);
+  const [cheia, setCheia] = useState(false);
   const [gerando, setGerando] = useState(false);
   const editorRef = useRef(null);
   const salvarRef = useRef(null);
@@ -391,16 +415,41 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
     if (!raiz) return "";
     const imgs = [...raiz.querySelectorAll("img")];
     for (const img of imgs) {
-      const jaTem = img.getAttribute("data-nome");
-      const src = img.getAttribute("src") || "";
-      if (!jaTem && src.startsWith("data:")) {
+      if (img.getAttribute("data-nome")) continue;   // já guardada antes
+      let src = img.getAttribute("src") || "";
+      /* Colar um documento (Word, Google Docs, uma página) costuma trazer
+         a imagem por um endereço http(s) ou blob:, não em base64 — tenta
+         trazer para dentro do IndexedDB do mesmo jeito que uma imagem
+         escolhida por upload, para não depender do site de origem
+         continuar no ar (e blob: nem sobrevive a um recarregar da
+         página). Falhando (CORS bloqueado, por exemplo), segue com o
+         endereço original abaixo, em vez de simplesmente apagar. */
+      if (/^(https?:|blob:)/i.test(src)) {
+        try {
+          const resp = await fetch(src);
+          const blob = await resp.blob();
+          src = await new Promise((resolve, reject) => {
+            const rd = new FileReader();
+            rd.onload = () => resolve(String(rd.result || ""));
+            rd.onerror = () => reject(new Error("leitura falhou"));
+            rd.readAsDataURL(blob);
+          });
+        } catch (e) { /* fica com o endereço original, guardado abaixo */ }
+      }
+      if (src.startsWith("data:")) {
         const nome = `nota-${uid()}`;
         try { await guardarMidia(nome, src); img.setAttribute("data-nome", nome); }
         catch (e) { /* não deu para guardar agora; tenta de novo no próximo salvamento */ }
+      } else if (src !== img.getAttribute("src")) {
+        img.setAttribute("src", src);
       }
     }
     const clone = raiz.cloneNode(true);
-    clone.querySelectorAll("img").forEach((img) => img.removeAttribute("src"));
+    /* só tira o src de quem tem data-nome — é a única garantia de que a
+       imagem volta ao reabrir (lerMidia, no efeito acima). Uma imagem que
+       não virou data-nome (endereço externo que não deu para trazer para
+       cá) mantém o src: apagar o dela também jogaria a imagem fora à toa. */
+    clone.querySelectorAll("img[data-nome]").forEach((img) => img.removeAttribute("src"));
     return clone.innerHTML;
   };
 
@@ -417,7 +466,26 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
   const cmd = (nome, valor) => {
     if (editorRef.current) editorRef.current.focus();
     document.execCommand(nome, false, valor);
-    setCorAberta(false); setGrifoAberto(false);
+    setCorAberta(false); setGrifoAberto(false); setTamanhoAberto(false);
+    aoMudar();
+  };
+
+  /* document.execCommand("fontSize") só aceita os 7 tamanhos históricos do
+     HTML (1 a 7, cada um um <font size="N">), sem controle de px — o
+     truque de sempre é pedir sempre o maior (7, o único improvável de já
+     estar em uso no texto) e depois trocar cada <font size="7"> criado
+     pelo tamanho exato escolhido, como span com font-size em px. */
+  const aplicarTamanho = (px) => {
+    if (editorRef.current) editorRef.current.focus();
+    document.execCommand("fontSize", false, "7");
+    const raiz = editorRef.current;
+    if (raiz) {
+      raiz.querySelectorAll('font[size="7"]').forEach((el) => {
+        el.removeAttribute("size");
+        el.style.fontSize = `${px}px`;
+      });
+    }
+    setCorAberta(false); setGrifoAberto(false); setTamanhoAberto(false);
     aoMudar();
   };
 
@@ -466,13 +534,15 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
     );
   }
 
-  return (
-    <div className="flex flex-col gap-2.5">
+  const corpo = (
+    <div className="flex flex-col gap-2.5" style={cheia ? { height: "100%" } : undefined}>
       <div className="flex items-center justify-between">
         <Label>Anotação</Label>
         <div className="flex items-center gap-2">
           {sujo ? <Mini>salvando…</Mini> : null}
-          <Btn size="sm" tone="outline" onClick={() => setAberto(false)}>fechar</Btn>
+          <BotaoFerramenta icon={cheia ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+            title={cheia ? "Sair da tela cheia" : "Tela cheia"} onClick={() => setCheia((v) => !v)} />
+          <Btn size="sm" tone="outline" onClick={() => (cheia ? setCheia(false) : setAberto(false))}>fechar</Btn>
         </div>
       </div>
 
@@ -486,15 +556,27 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
         <BotaoFerramenta icon={<AlignRight size={15} />} title="Alinhar à direita" onClick={() => cmd("justifyRight")} />
         <BotaoFerramenta icon={<AlignJustify size={15} />} title="Justificar" onClick={() => cmd("justifyFull")} />
         <span style={{ width: 1, height: 20, background: T.line, margin: "0 2px" }} />
+        <BotaoFerramenta icon={<ALargeSmall size={15} />} title="Tamanho da fonte" ativo={tamanhoAberto}
+          onClick={() => { setTamanhoAberto((v) => !v); setCorAberta(false); setGrifoAberto(false); }} />
         <BotaoFerramenta icon={<Palette size={15} />} title="Cor da letra" ativo={corAberta}
-          onClick={() => { setCorAberta((v) => !v); setGrifoAberto(false); }} />
+          onClick={() => { setCorAberta((v) => !v); setGrifoAberto(false); setTamanhoAberto(false); }} />
         <BotaoFerramenta icon={<Highlighter size={15} />} title="Grifar" ativo={grifoAberto}
-          onClick={() => { setGrifoAberto((v) => !v); setCorAberta(false); }} />
+          onClick={() => { setGrifoAberto((v) => !v); setCorAberta(false); setTamanhoAberto(false); }} />
         <span style={{ width: 1, height: 20, background: T.line, margin: "0 2px" }} />
         <BotaoFerramenta icon={<ImagePlus size={15} />} title="Inserir imagem"
           onClick={() => arquivoRef.current && arquivoRef.current.click()} />
         <input ref={arquivoRef} type="file" accept="image/*" onChange={inserirImagem} style={{ display: "none" }} />
 
+        {tamanhoAberto ? (
+          <div className="mt-2 w-full pt-2 flex items-center gap-1.5 flex-wrap" style={{ borderTop: `1px solid ${T.line}` }}>
+            {TAMANHOS_FONTE_NOTA.map((t) => (
+              <button key={t.id} type="button" onMouseDown={(e) => { e.preventDefault(); aplicarTamanho(t.px); }}
+                className="rounded-lg px-2.5 py-1" style={{ background: T.card3, border: `1px solid ${T.line}`, color: T.ink, cursor: "pointer", fontSize: 13 }}>
+                <span style={{ fontSize: Math.min(t.px, 18) }}>{t.nome}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
         {corAberta ? (
           <div className="mt-2 w-full pt-2" style={{ borderTop: `1px solid ${T.line}` }}>
             <TiraDeCores cores={CORES_TEXTO_NOTA} comBranco onEscolher={(c) => cmd("foreColor", c)} />
@@ -510,7 +592,10 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
       <div ref={editorRef} contentEditable suppressContentEditableWarning
         onInput={aoMudar} onPaste={aoColar}
         className="rounded-xl px-4 py-3"
-        style={{
+        style={cheia ? {
+          flex: 1, minHeight: 0, overflowY: "auto", fontSize: 14.5, lineHeight: 1.6,
+          color: T.ink, background: T.bg, border: `1px solid ${T.line}`, outline: "none",
+        } : {
           minHeight: 140, maxHeight: 420, overflowY: "auto", fontSize: 14.5, lineHeight: 1.6,
           color: T.ink, background: T.bg, border: `1px solid ${T.line}`, outline: "none",
         }} />
@@ -541,4 +626,17 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
       ) : null}
     </div>
   );
+
+  /* Igual ao ModalDrive, logo acima: sem createPortal a tela cheia fica
+     presa dentro da .rise que anima a troca de aba (containing block para
+     position:fixed) — mesmo motivo do estudo de cartões em tela cheia,
+     parte12.jsx. */
+  if (cheia) {
+    return createPortal((
+      <div className="fixed flex flex-col px-4 sm:px-8 py-6" style={{ inset: 0, zIndex: 80, background: T.bg }}>
+        {corpo}
+      </div>
+    ), document.body);
+  }
+  return corpo;
 }

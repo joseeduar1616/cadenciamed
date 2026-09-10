@@ -604,6 +604,31 @@ foto colada iria inteira, em base64, para dentro de `data.anotacoes` — e
 isso sincroniza com a nuvem e passa pelo `localStorage`; algumas fotos de
 caderno já bastariam para estourar os dois.
 
+**Colar um documento que já tinha imagem fazia elas sumirem.** Uma imagem
+escolhida por upload sempre chega em base64 (`data:`), mas uma colada de um
+documento (Word, Google Docs, uma página) costuma vir com o `src` apontando
+para um endereço `http(s):` ou `blob:` de fora. `prepararParaSalvar`
+(`parte17.jsx`) só sabia converter `data:` para o IndexedDB — para qualquer
+outro tipo de `src`, o código antigo **apagava o `src` de toda imagem na
+hora de salvar**, achando que já tinha virado `data-nome` quando não tinha.
+Agora ele tenta primeiro trazer a imagem para dentro do IndexedDB também
+nesses dois casos (um `fetch` do endereço, convertido para `data:` do mesmo
+jeito que uma imagem enviada por upload — necessário até para `blob:`, que
+não sobrevive a um recarregar da página) e, se isso falhar (CORS bloqueado,
+por exemplo), mantém o `src` original em vez de apagar. Só quem tem
+`data-nome` (ou seja, quem realmente foi guardado aqui dentro) tem o `src`
+removido ao salvar.
+
+**Tela cheia e tamanho de fonte.** O botão de tela cheia (`Maximize2`, na
+barra da anotação) usa o mesmo `createPortal` do `ModalDrive` para escapar
+da `.rise` — o editor cresce para ocupar a tela inteira, útil em anotações
+longas ou no celular. O tamanho de fonte é do trecho selecionado, não da
+página inteira: `document.execCommand("fontSize")` só aceita os 7 tamanhos
+históricos do HTML (1 a 7, sem controle de px), então `aplicarTamanho`
+(`parte17.jsx`) pede sempre o maior (7, o único improvável de já estar em
+uso no texto) e troca cada `<font size="7">` criado por um `<span>` com o
+px exato escolhido.
+
 HTML colado de fora passa por `limparHtmlColado` — tira `<script>`,
 `<iframe>` e atributos de evento (`onerror`, `onclick`...) — tanto no colar
 quanto de novo dentro do `normalize()`, que é o ponto por onde entra tudo
@@ -649,6 +674,16 @@ de desenho do jsPDF. A troca: o texto do PDF gerado assim não é
 selecionável (é imagem), mas o visual bate exatamente com o que está na
 tela — para uma anotação de estudo, isso importa mais que texto buscável.
 
+O PDF sempre saía em branco: o elemento temporário usado para "fotografar"
+a anotação (`notaParaPdfBlob`) ficava em `left:-9999px`, fora da área da
+página — e uma coordenada negativa nunca chega a ser *pintada* em lugar
+nenhum (a página começa em 0,0; não existe "rolar para antes disso"). O
+html2canvas só consegue capturar o que o navegador de fato pintou, então o
+resultado era sempre uma imagem vazia. Agora o elemento fica dentro da área
+visível (0,0), na frente de tudo por um instante — daí o `pointer-events:
+none` e o z-index gigante, para não atrapalhar quem está usando a página
+durante esse instante.
+
 **Google Drive.** `useGoogleDrive` (`parte3.jsx`) pede um token separado do
 da Agenda, com um escopo diferente: `drive.file`, o mínimo que existe — só
 alcança arquivos que este app criou ou que a pessoa abriu através dele,
@@ -662,6 +697,30 @@ Drive espera para metadado + conteúdo numa chamada só. Como o resto de
 da `.rise` que anima a troca de aba, que vira um "containing block" para
 `position:fixed` (o mesmo motivo documentado para o estudo de cartões em
 tela cheia, em `parte12.jsx`).
+
+**"Enviar" ficava mudo quando dava errado.** Duas falhas silenciosas em
+`useGoogleDrive`, ambas de fechamento (*closure*) velho do React:
+
+1. `enviarArquivo` não tinha `try/catch` ao redor do `fetch` de upload. Uma
+   falha de rede lançava uma exceção não tratada, que subia direto pelo
+   `await` em `ModalDrive.enviar` — o `setEnviando(false)` logo depois
+   nunca rodava, e o botão ficava preso em "Enviando…" para sempre, sem
+   nenhum aviso. Agora `enviarArquivo` nunca lança: sempre devolve
+   `{ ok, erro }`.
+2. Ao terminar, `ModalDrive.enviar` conferia `drive.erro` para decidir o
+   que avisar — mas `drive` ali é o valor de um *render* anterior; o
+   `setErro(...)` chamado dentro de `enviarArquivo` só valeria a partir do
+   próximo render, não durante a própria chamada em andamento. Numa falha
+   sem exceção (ex.: o Drive recusou com HTTP 403), o aviso de erro nunca
+   disparava. Agora `enviarArquivo` (e `pedirToken`, pela mesma razão)
+   devolve a mensagem de erro exata como parte do próprio retorno, e quem
+   chama usa esse valor direto, nunca o estado lido depois.
+
+De quebra, o erro do próprio Google (`detalhe.error.message`, quando o
+Drive responde com um motivo, como "API não ativada" ou permissão negada)
+passa a aparecer na mensagem, em vez de um genérico "não consegui enviar" —
+ajuda a saber se o problema é a conta da pessoa ou a configuração do site
+(ex.: a API do Drive não habilitada no projeto do Google Cloud).
 
 ## Primeira tela
 
