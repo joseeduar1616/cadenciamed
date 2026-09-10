@@ -41,6 +41,34 @@ Pelo mesmo motivo o gradiente dos títulos é feito letra a letra, no
 o fundo deixa um retângulo de sobra em volta da palavra ao imprimir. Aparece
 no PDF e não na tela, que foi como passou despercebido.
 
+E pelo mesmo motivo **não há `filter:` nenhum nas páginas de impressão**. O
+`drop-shadow` da marca e o `blur` das auras achatavam camada inteira em
+bitmap. Sem eles o fundo voltou a ser vetorial: uma página de conteúdo agora
+tem duas imagens, a marca e a captura, contra as seis de antes.
+
+## A marca de impressão
+
+**A `fonte/marca.png` não serve para papel.** Ela é feita para a web: 440px
+de largura, reduzida a 128 cores, e aparada em alfa 40 — o que corta o
+brilho no meio e deixa a imagem terminando com alfa 244 na borda. No fundo
+do site aquilo some; no PDF vira uma caixa clara de borda reta em volta da
+onda.
+
+O `marcaImpressao()`, no `molduras.mjs`, recorta a onda de novo do
+`fonte/logo-original.png`, que tem 1024px e todas as cores. Duas coisas
+acontecem ali:
+
+1. **Apara em alfa 2**, não 40, então o brilho inteiro fica dentro da imagem
+   e não sobra borda reta.
+2. **Tira a sombra clara da arte original**, que foi desenhada para fundo
+   branco. O que separa a sombra do brilho de verdade é a saturação: a
+   sombra fica entre 0 e 0,25, o brilho roxo entre 0,54 e 0,75. A regra só
+   toca pixel de alfa baixo, então o corpo da onda nunca é alterado.
+
+A onda ocupa 100% da largura do arquivo mas só **63% da altura** (o resto é
+o brilho). Quem posiciona a marca por altura passa pelo `marcaAltura()`,
+senão o traço sai 37% menor do que o pedido.
+
 ## Onde mexer
 
 | O quê | Arquivo |

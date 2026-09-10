@@ -7,7 +7,7 @@
  * reunidos em CONDICOES, logo abaixo, para serem trocados num lugar só.
  */
 import {
-  COR, esc, cabeca, rodape, tela, fone, passo, numero, marcaBase64, tituloGradiente,
+  COR, esc, cabeca, rodape, tela, fone, passo, numero, marcaBase64, marcaAltura, tituloGradiente,
 } from './comum.mjs';
 
 const MARCA = marcaBase64();
@@ -65,7 +65,7 @@ function capa() {
   </div>
 
   <div class="corpo" style="justify-content:center">
-    <img src="${MARCA}" style="height:13mm;width:auto;filter:drop-shadow(0 0 5mm ${COR.neon2}aa)">
+    <img src="${MARCA}" style="${marcaAltura(13)}">
     <div class="olho" style="margin-top:8mm">Proposta para criadores de conteúdo</div>
     <h1 class="tit" style="margin-top:6mm;max-width:150mm">
       Plano de<br>${tituloGradiente('parceria')}
@@ -327,7 +327,7 @@ function comecar() {
 
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;
         justify-content:center;gap:6mm;padding-top:4mm">
-        <img src="${MARCA}" style="height:14mm;width:auto;filter:drop-shadow(0 0 6mm ${COR.neon2})">
+        <img src="${MARCA}" style="${marcaAltura(14)}">
         <div>
           <div class="rotulo" style="color:${COR.neon}">contato</div>
           <div style="font-family:'JetBrains Mono',monospace;font-size:13pt;color:${COR.tinta};margin-top:3mm">

@@ -5,7 +5,7 @@
  * onde procurar a informação e para de ler o layout a cada virada.
  */
 import {
-  COR, esc, cabeca, rodape, tela, fone, passo, numero, marcaBase64, tituloGradiente,
+  COR, esc, cabeca, rodape, tela, fone, passo, numero, marcaBase64, marcaAltura, tituloGradiente,
 } from './comum.mjs';
 
 const MARCA = marcaBase64();
@@ -33,12 +33,12 @@ function capa() {
       <div class="anel" style="inset:16mm;border-color:${COR.neon}44"></div>
       <div class="esfera" style="position:absolute;inset:30mm"></div>
       <img src="${MARCA}" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-        width:64mm;filter:drop-shadow(0 0 9mm ${COR.neon2})">
+        width:54mm">
     </div>
   </div>
 
   <div class="corpo" style="justify-content:center">
-    <img src="${MARCA}" style="height:13mm;width:auto;filter:drop-shadow(0 0 5mm ${COR.neon2}aa)">
+    <img src="${MARCA}" style="${marcaAltura(13)}">
     <div class="olho" style="margin-top:8mm">Guia de uso · versão 1</div>
     <h1 class="tit" style="margin-top:6mm;max-width:170mm">
       Tudo o que a<br>${tituloGradiente('Cadência Med')} faz
@@ -426,8 +426,7 @@ function fim(p) {
           </div>
         </div>
 
-        <img src="${MARCA}" style="height:10mm;width:auto;align-self:flex-start;
-          filter:drop-shadow(0 0 5mm ${COR.neon2}aa)">
+        <img src="${MARCA}" style="${marcaAltura(10)};align-self:flex-start">
       </div>
     </div>
   </div>

@@ -100,6 +100,100 @@ const corpo = (m) => (m.tipo === 'fone'
        ${m.pe === false ? '' : '<div class="pe"></div>'}
      </div>`);
 
+/* ── a marca, em versão de impressão ──────────────────────────────────
+ *
+ * A fonte/marca.png é feita para a web: 440px de largura e reduzida a 128
+ * cores. Pior, o recorte dela apara em alfa 40, o que corta o brilho no
+ * meio: a imagem termina com alfa 244 na borda direita. Sobre o fundo do
+ * site aquilo some, mas no PDF vira uma caixa clara de borda reta em volta
+ * da onda. Era o que estava estragando as logos.
+ *
+ * Aqui a onda é recortada de novo do logo-original.png, que tem 1024px e
+ * todas as cores, aparando só onde o alfa é praticamente zero. Sem corte no
+ * meio do brilho não há borda, e sem quantização não há faixa de cor.
+ */
+export async function marcaImpressao(nav) {
+  const origem = path.join(AQUI, '..', 'fonte', 'logo-original.png');
+  if (!fs.existsSync(origem)) throw new Error('não achei fonte/logo-original.png');
+
+  const ctx = await nav.newContext();
+  const pag = await ctx.newPage();
+  /* O original entra como data URL, e não como caminho de arquivo: uma
+     imagem vinda de outro endereço contamina o canvas, e o getImageData
+     que mede o recorte passa a ser recusado por segurança. */
+  const dataUrl = 'data:image/png;base64,' + fs.readFileSync(origem).toString('base64');
+  fs.writeFileSync(RASCUNHO,
+    `<!doctype html><meta charset="utf-8"><img id="src" src="${dataUrl}">`);
+  await pag.goto('file://' + RASCUNHO, { waitUntil: 'load' });
+
+  const dados = await pag.evaluate(() => {
+    const img = document.getElementById('src');
+    if (!img.naturalWidth) return null;
+    /* só a onda: o nome escrito embaixo entra separado, como texto */
+    const alt = Math.round(img.naturalHeight * 0.72);
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth; c.height = alt;
+    const cx = c.getContext('2d');
+    cx.drawImage(img, 0, 0);
+    const dados = cx.getImageData(0, 0, c.width, c.height);
+    const px = dados.data;
+
+    /* Tira o véu esbranquiçado.
+     *
+     * A arte original foi desenhada para fundo claro e traz uma sombra
+     * clara em volta da onda: rgb(255,255,255) com alfa 19, rgb(235,216,255)
+     * com alfa 16. Em papel escuro aquilo não some, vira uma mancha atrás do
+     * traço, e era ela que sujava as logos.
+     *
+     * O que separa a sombra do brilho de verdade é a saturação, não o
+     * brilho: a sombra fica em 0 a 0,25 e o brilho roxo em 0,54 a 0,75. A
+     * regra só olha pixel de alfa baixo, que é onde a sombra mora; o corpo
+     * da onda, opaco, nunca é tocado. E a queda é gradual, para não trocar
+     * uma borda por outra. */
+    const SAT_FORA = 0.15;   // abaixo disto é sombra pura
+    const SAT_FICA = 0.45;   // acima disto é brilho da onda
+    for (let k = 0; k < px.length; k += 4) {
+      const a = px[k + 3];
+      if (a === 0 || a > 140) continue;
+      const r = px[k], g = px[k + 1], b = px[k + 2];
+      const alto = Math.max(r, g, b);
+      if (!alto) continue;
+      const sat = (alto - Math.min(r, g, b)) / alto;
+      if (sat >= SAT_FICA) continue;
+      const fica = Math.max(0, (sat - SAT_FORA) / (SAT_FICA - SAT_FORA));
+      px[k + 3] = Math.round(a * fica);
+    }
+    cx.putImageData(dados, 0, 0);
+
+    /* limiar quase zero: apara o vazio de verdade e deixa o brilho inteiro
+       dentro da imagem, que é o que evita a borda reta */
+    let x1 = c.width, y1 = c.height, x2 = 0, y2 = 0;
+    for (let j = 0; j < c.height; j += 1) {
+      for (let i = 0; i < c.width; i += 1) {
+        if (px[(j * c.width + i) * 4 + 3] > 2) {
+          if (i < x1) x1 = i; if (i > x2) x2 = i;
+          if (j < y1) y1 = j; if (j > y2) y2 = j;
+        }
+      }
+    }
+    if (x2 <= x1) return null;
+    const lw = x2 - x1 + 1, lh = y2 - y1 + 1;
+    const o = document.createElement('canvas');
+    o.width = lw; o.height = lh;
+    o.getContext('2d').drawImage(c, x1, y1, lw, lh, 0, 0, lw, lh);
+    return { url: o.toDataURL('image/png'), w: lw, h: lh };
+  });
+
+  await ctx.close();
+  try { fs.unlinkSync(RASCUNHO); } catch (e) { /* já não estava lá */ }
+  if (!dados) throw new Error('não consegui recortar a onda do logo-original.png');
+
+  fs.mkdirSync(PASTA, { recursive: true });
+  fs.writeFileSync(path.join(PASTA, 'marca.png'),
+    Buffer.from(dados.url.split(',')[1], 'base64'));
+  return dados;
+}
+
 /* Renderiza todas e devolve quantas saíram. */
 export async function renderizar(nav) {
   fs.mkdirSync(PASTA, { recursive: true });

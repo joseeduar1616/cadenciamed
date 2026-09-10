@@ -24,8 +24,18 @@ export const COR = {
   vidro: 'rgba(15,12,28,0.62)', vidro2: 'rgba(26,21,44,0.74)',
 };
 
-export const marcaBase64 = () => 'data:image/png;base64,'
-  + fs.readFileSync(path.join(RAIZ, 'fonte/marca.png')).toString('base64');
+/* A marca de impressão, recortada do original pelo molduras.mjs. Não é a
+   fonte/marca.png: aquela é feita para a web e traz um brilho cortado no
+   meio, que no papel vira uma caixa de borda reta em volta da onda. */
+export const marcaBase64 = () => 'molduras/marca.png';
+
+/* Quanto da altura do arquivo é a onda de verdade: o resto, 37%, é o brilho
+   em volta. Ele fica dentro da imagem de propósito, senão o corte cria uma
+   borda reta. Quem pede a marca por altura passa por aqui para o traço sair
+   do tamanho pedido, e não 37% menor. A largura não precisa: a linha do
+   eletro vai de ponta a ponta do arquivo. */
+export const MARCA_ONDA = 0.63;
+export const marcaAltura = (mm) => `height:${(mm / MARCA_ONDA).toFixed(1)}mm;width:auto`;
 
 export const esc = (s) => String(s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -91,7 +101,9 @@ html, body {
   mask-image: radial-gradient(120% 120% at 50% 40%, #000 30%, transparent 78%);
   -webkit-mask-image: radial-gradient(120% 120% at 50% 40%, #000 30%, transparent 78%);
 }
-.aura { position: absolute; border-radius: 50%; filter: blur(38mm); }
+/* Sem blur: um radial-gradient já nasce suave, e o filtro em cima só fazia
+   o Chromium achatar o fundo inteiro em bitmap na hora de imprimir. */
+.aura { position: absolute; border-radius: 50%; }
 .aura-a { width: 150mm; height: 150mm; top: -55mm; left: -35mm;
   background: radial-gradient(circle, ${COR.neon}42, transparent 66%); }
 .aura-b { width: 165mm; height: 165mm; top: -40mm; right: -45mm;
@@ -124,7 +136,12 @@ html, body {
 
 .cabeca { display: flex; align-items: center; justify-content: space-between; gap: 8mm;
   margin-bottom: 7mm; flex-shrink: 0; }
-.cabeca .marca { height: 8mm; width: auto; filter: drop-shadow(0 0 4mm ${COR.neon2}88); }
+/* Sem filter: drop-shadow. Além de rasterizar a camada na impressão, ele
+   punha um segundo halo por cima do que a própria imagem já tem.
+   A altura é 12.7mm e não 8mm porque a onda ocupa 63% da altura do arquivo:
+   o resto é o brilho, que precisa estar dentro da imagem para não virar
+   borda. Ver MARCA_ONDA, no alto deste arquivo. */
+.cabeca .marca { height: 12.7mm; width: auto; }
 
 .olho { font-family: 'JetBrains Mono', monospace; font-size: 7pt; letter-spacing: .34em;
   text-transform: uppercase; color: ${COR.neon}; display: flex; align-items: center; gap: 3mm; }
