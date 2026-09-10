@@ -27,7 +27,7 @@ const DEFAULTS = {
   goals: { daily: 120, weekly: 720, questions: 200 },
   pomo: {
     focus: 25, short: 5, long: 15, cycle: 4, modo: "pomodoro",
-    autoNext: true, sound: true, corFoco: "#A182E6", corPausa: "#45C08A",
+    autoNext: true, sound: true, corFoco: "#A182E6", corPausa: "#45C08A", estilo: "anel",
   },
   pomoLog: [],
   simulados: {}, provas: [], habits: HABITS_SEED, habitLog: {},
@@ -109,6 +109,7 @@ function normalize(raw) {
       autoNext: p.autoNext !== false, sound: p.sound !== false,
       corFoco: /^#[0-9a-fA-F]{6}$/.test(p.corFoco) ? p.corFoco : "#A182E6",
       corPausa: /^#[0-9a-fA-F]{6}$/.test(p.corPausa) ? p.corPausa : "#45C08A",
+      estilo: ["anel", "digitos", "barra", "minimalista"].indexOf(p.estilo) >= 0 ? p.estilo : "anel",
     },
     pomoLog: arr(d.pomoLog, []), simulados: obj(d.simulados), provas: arr(d.provas, []),
     habits: arr(d.habits, HABITS_SEED), habitLog: obj(d.habitLog),

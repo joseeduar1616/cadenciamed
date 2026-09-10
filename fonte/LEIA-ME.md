@@ -421,6 +421,23 @@ cupom `mentor1612` (`concederMentor`, em `_comum.js`), só que iniciado pelo
 dono em vez de digitado pelo aluno. Botão "Tornar mentor(a)", ao lado de
 "Liberar acesso".
 
+## Foco
+
+O cronômetro (anel com os dígitos dentro, por padrão) tem três estilos
+alternativos, escolhidos em Ajustes, dentro da própria aba Foco, e guardados
+em `data.pomo.estilo`: dígitos sozinhos, dígitos com uma barra de progresso
+embaixo, e minimalista (só o número, sem rótulo de fase nem bolinhas de
+ciclo). `Cronometro`, em `parte5.jsx`, é a única coisa que decide qual
+desenhar — o resto do componente `Foco` (contagem, fases, atalhos de
+teclado) não muda com o estilo.
+
+**Só vale na tela normal, não na tela cheia** (o `full` que abre com o
+botão "Tela cheia" ou a tecla F): lá o espaço sobra e a pessoa já está
+comprometida com o bloco, então o layout fixo de sempre (dígitos enormes
+com a barra de progresso embaixo) continua — trocar de estilo ali não
+ganhava nada e só somava mais uma decisão a cada vez que a pessoa entra em
+foco.
+
 ## Cartões
 
 O estudo abre em tela cheia, por cima de tudo. Não é capricho: desenhado

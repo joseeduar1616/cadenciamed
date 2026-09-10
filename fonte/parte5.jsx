@@ -21,6 +21,55 @@ function Ring({ pct, color, size = 240, children }) {
   );
 }
 
+/* Quatro jeitos de mostrar o mesmo estado (fase, cor, relógio, progresso),
+   escolhido em Ajustes e guardado em data.pomo.estilo. Só vale na tela
+   normal — a tela cheia (Foco, if (full)) continua com anel + barra
+   juntos, porque lá o espaço sobra e a pessoa já está comprometida com o
+   bloco; na tela normal, o cronômetro divide espaço com o resto da página,
+   e é aí que o tamanho/peso visual de cada estilo faz diferença. */
+function Cronometro({ estilo, pct, color, name, relogio, corrido, cycle, round, phase, running, temCorrido }) {
+  const rotulo = <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color }}>{name}</div>;
+  const digitos = <div style={{ marginTop: 10 }}><Num size={corrido ? 52 : 62} weight={700} color={color}>{relogio}</Num></div>;
+  const status = corrido
+    ? <Mini style={{ marginTop: 12 }}>{running ? "contando" : temCorrido ? "pausado" : "pronto"}</Mini>
+    : (
+      <div className="flex gap-1.5 mt-5">
+        {Array.from({ length: cycle }).map((_, i) => (
+          <span key={i} style={{
+            width: 7, height: 7, borderRadius: 99,
+            background: i < ((round - 1) % cycle) + (phase === "foco" ? 0 : 1) ? color : T.card3,
+          }} />
+        ))}
+      </div>
+    );
+
+  if (estilo === "digitos") {
+    return (
+      <div className="flex flex-col items-center" style={{ width: 240, flexShrink: 0 }}>
+        {rotulo}{digitos}{status}
+      </div>
+    );
+  }
+  if (estilo === "barra") {
+    return (
+      <div className="flex flex-col items-center" style={{ width: 240, flexShrink: 0 }}>
+        {rotulo}{digitos}
+        <div className="w-full mt-5"><Track pct={pct * 100} color={color} height={8} /></div>
+        {status}
+      </div>
+    );
+  }
+  if (estilo === "minimalista") {
+    return (
+      <div className="flex flex-col items-center justify-center" style={{ width: 240, flexShrink: 0 }}>
+        <Num size={corrido ? 60 : 72} weight={700} color={color}>{relogio}</Num>
+      </div>
+    );
+  }
+  /* "anel", o padrão de sempre */
+  return <Ring pct={pct} color={color}>{rotulo}{digitos}{status}</Ring>;
+}
+
 function Foco({ data, setData, today, P, subjectId, setSubjectId }) {
   const [cfg, setCfg] = useState(false);
   const [full, setFull] = useState(false);
@@ -115,22 +164,8 @@ function Foco({ data, setData, today, P, subjectId, setSubjectId }) {
     <div className="flex flex-col gap-5">
       <Card className="px-6 sm:px-10 py-10" style={{ background: `linear-gradient(180deg, ${soft(color, 9)}, transparent 42%), ${T.card}` }}>
         <div className="flex flex-col lg:flex-row items-center gap-10">
-          <Ring pct={pct} color={color}>
-            <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color }}>{name}</div>
-            <div style={{ marginTop: 10 }}><Num size={corrido ? 52 : 62} weight={700} color={color}>{relogio}</Num></div>
-            {corrido ? (
-              <Mini style={{ marginTop: 12 }}>{P.running ? "contando" : P.corrido > 0 ? "pausado" : "pronto"}</Mini>
-            ) : (
-              <div className="flex gap-1.5 mt-5">
-                {Array.from({ length: data.pomo.cycle }).map((_, i) => (
-                  <span key={i} style={{
-                    width: 7, height: 7, borderRadius: 99,
-                    background: i < ((P.round - 1) % data.pomo.cycle) + (P.phase === "foco" ? 0 : 1) ? color : T.card3,
-                  }} />
-                ))}
-              </div>
-            )}
-          </Ring>
+          <Cronometro estilo={data.pomo.estilo || "anel"} pct={pct} color={color} name={name} relogio={relogio}
+            corrido={corrido} cycle={data.pomo.cycle} round={P.round} phase={P.phase} running={P.running} temCorrido={P.corrido > 0} />
 
           <div className="flex-1 w-full">
             <div className="flex gap-1.5 mb-5 rounded-full p-1" style={{ background: T.card2, border: `1px solid ${T.line}`, width: "fit-content" }}>
@@ -210,6 +245,18 @@ function Foco({ data, setData, today, P, subjectId, setSubjectId }) {
               <Btn size="sm" onClick={() => setData((p) => ({ ...p, pomo: { ...p.pomo, focus: 25, short: 5, long: 15, cycle: 4 } }))}>25/5</Btn>
               <Btn size="sm" onClick={() => setData((p) => ({ ...p, pomo: { ...p.pomo, focus: 50, short: 10, long: 25, cycle: 3 } }))}>50/10</Btn>
               <Btn size="sm" onClick={() => setData((p) => ({ ...p, pomo: { ...p.pomo, focus: 90, short: 20, long: 30, cycle: 2 } }))}>90/20</Btn>
+            </div>
+            <div className="col-span-2 lg:col-span-4 pt-5 flex flex-wrap gap-2 items-center" style={{ borderTop: `1px solid ${T.line}` }}>
+              <Label>Estilo do cronômetro</Label>
+              {[["anel", "Anel"], ["digitos", "Dígitos"], ["barra", "Barra"], ["minimalista", "Minimalista"]].map(([id, lb]) => (
+                <button key={id} type="button" onClick={() => set("estilo", id)} className="toque-larg rounded-full px-4 py-2"
+                  style={{
+                    background: (data.pomo.estilo || "anel") === id ? T.card3 : "transparent",
+                    border: `1px solid ${(data.pomo.estilo || "anel") === id ? "transparent" : T.line}`,
+                    color: (data.pomo.estilo || "anel") === id ? T.ink : T.dim, fontSize: 14,
+                    fontWeight: (data.pomo.estilo || "anel") === id ? 700 : 500, cursor: "pointer",
+                  }}>{lb}</button>
+              ))}
             </div>
             <div className="col-span-2 lg:col-span-4 pt-5" style={{ borderTop: `1px solid ${T.line}` }}>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
