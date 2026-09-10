@@ -5,10 +5,22 @@
    de serviço. Assim ninguém se promove a assinante mexendo no navegador.
    ═══════════════════════════════════════════════════════════════════ */
 
+/* Preço de lançamento. O "de" é o valor cheio, que fica riscado ao lado do
+   que está sendo cobrado agora: uma promoção só quer dizer alguma coisa ao
+   lado do preço que ela substitui. Quando o lançamento acabar, é só apagar
+   o "de" de cada plano — a tela deixa de riscar sozinha. */
+const PROMO = "Promoção de lançamento";
+
 const PRECOS = {
-  mensal: { rotulo: "Mensal", valor: "R$ 30", periodo: "por mês", chave: "mensal" },
-  anual: { rotulo: "Anual", valor: "R$ 250", periodo: "por ano", chave: "anual", economia: "economiza R$ 110" },
+  mensal: { rotulo: "Mensal", de: "R$ 99", valor: "R$ 30", periodo: "por mês", chave: "mensal" },
+  anual: { rotulo: "Anual", de: "R$ 799", valor: "R$ 250", periodo: "por ano", chave: "anual", economia: "economiza R$ 110" },
 };
+
+/* Garantia e suporte. Ficam aqui, junto do preço, porque é ao lado dele que
+   os dois precisam aparecer — na tela de planos dentro do app e na página
+   de entrada, que lê estas mesmas constantes. */
+const GARANTIA_DIAS = 7;
+const EMAIL_SUPORTE = "suporte@cadenciamed.com";
 
 /* Links de checkout da Kiwify ou Hotmart. Trocar pelos seus. */
 const CHECKOUT = (typeof window !== "undefined" && window.CADENCIA_CHECKOUT) || {
@@ -125,6 +137,33 @@ function Cadeado({ tamanho = 15 }) {
   );
 }
 
+/* Garantia e endereço de suporte, num bloco só.
+ *
+ * São duas informações que sempre aparecem juntas e sempre ao lado do preço
+ * — na tela de planos dentro do app e na página de entrada. Escrever o texto
+ * duas vezes é o jeito de um dia mudar o prazo num lugar e esquecer o outro. */
+function Garantia({ className = "px-6 py-6" }) {
+  return (
+    <Card className={className} brilho="var(--ok)">
+      <H size={18} color="var(--ok)" icon={<Check size={16} />}>
+        Garantia de {GARANTIA_DIAS} dias
+      </H>
+      <Texto style={{ marginTop: 10 }}>
+        Assine, use tudo e veja se serve para você. Se não gostar, escreva
+        dentro de {GARANTIA_DIAS} dias e devolvemos <strong style={{ color: T.ink }}>100% do
+        dinheiro</strong>, sem precisar explicar o motivo.
+      </Texto>
+      <div className="mt-4 flex items-center gap-2 flex-wrap">
+        <Mini>Suporte e pedidos de estorno:</Mini>
+        <a href={`mailto:${EMAIL_SUPORTE}`}
+          style={{ fontFamily: F_MONO, fontSize: 13.5, color: "var(--neon)", textDecoration: "none", borderBottom: `1px solid ${soft("var(--neon)", 45)}` }}>
+          {EMAIL_SUPORTE}
+        </a>
+      </div>
+    </Card>
+  );
+}
+
 function Precos({ compacto, onFechar, usuario, plano, aviso }) {
   const abrir = (tipo) => {
     const url = CHECKOUT[tipo];
@@ -192,6 +231,14 @@ function Precos({ compacto, onFechar, usuario, plano, aviso }) {
               ) : null}
               <div style={{ marginTop: destaque ? 14 : 0 }}>
                 <Label>{p.rotulo}</Label>
+                {p.de ? (
+                  <div className="flex items-center gap-2" style={{ marginTop: 6 }}>
+                    <span style={{ fontFamily: F_MONO, fontSize: 15, color: T.ghost, textDecoration: "line-through" }}>{p.de}</span>
+                    <span style={{ fontSize: 11.5, fontWeight: 700, color: T.warn, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+                      {PROMO}
+                    </span>
+                  </div>
+                ) : null}
                 <div className="flex items-baseline gap-2" style={{ marginTop: 6 }}>
                   <Num size={38} weight={700} color={destaque ? "var(--neon2)" : T.ink}>{p.valor}</Num>
                   <Mini>{p.periodo}</Mini>
@@ -220,6 +267,8 @@ function Precos({ compacto, onFechar, usuario, plano, aviso }) {
           );
         })}
       </div>
+
+      <Garantia />
 
       <Card className="px-6 py-6">
         <Label>O que entra no plano</Label>
@@ -293,7 +342,10 @@ function Bloqueado({ recurso, onVerPlanos }) {
       <div className="mt-7 flex justify-center">
         <Btn tone="primary" onClick={onVerPlanos}>Ver planos <ArrowUpRight size={16} /></Btn>
       </div>
-      <Mini style={{ marginTop: 18 }}>R$ 30 por mês ou R$ 250 por ano</Mini>
+      <Mini style={{ marginTop: 18 }}>
+        {PRECOS.mensal.valor} por mês ou {PRECOS.anual.valor} por ano
+        {PRECOS.mensal.de ? ` · ${PROMO.toLowerCase()}` : ""}
+      </Mini>
     </Card>
   );
 }

@@ -22,10 +22,17 @@ for trecho in re.findall(r'className=(?:"([^"]*)"|\{`([^`]*)`\})', fonte):
 DO_APP = {
     'aba', 'aovivo', 'aura', 'aura-a', 'aura-b', 'aura-c', 'aura-d', 'brilhar',
     'breathe', 'marca', 'nota', 'pulso', 'rise', 'vidro',
-    'toque', 'toque-larg',
+    'toque', 'toque-larg', 'pe',
 }
 
-classes = sorted(achadas - DO_APP)
+# A página de entrada tem estilo próprio, escrito no <style> dela, e são
+# classes demais para listar uma a uma aqui. O prefixo é a marca de que a
+# regra mora lá — e continua valendo a garantia do "SEM REGRA": um erro de
+# digitação numa classe utilitária, que não leva prefixo, ainda para a
+# compilação.
+PREFIXOS_DO_APP = ('pe-',)
+
+classes = sorted(c for c in achadas - DO_APP if not c.startswith(PREFIXOS_DO_APP))
 open('classes.txt', 'w', encoding='utf-8').write(' '.join(classes) + '\n')
 
 def rem(v): return f"{float(v)*0.25:g}rem"
