@@ -12,7 +12,6 @@ on:
   push:
     branches:
       - main
-      - claude/seguir-arquivo-prompt-l5s9ed
   workflow_dispatch:
 
 # Se dois pushes chegarem juntos, vale o último: não adianta publicar

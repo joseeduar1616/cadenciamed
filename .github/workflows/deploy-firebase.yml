@@ -14,7 +14,6 @@ on:
   push:
     branches:
       - main
-      - claude/seguir-arquivo-prompt-l5s9ed
   workflow_dispatch:
 
 # Dois pushes seguidos publicavam ao mesmo tempo no canal live, um por cima

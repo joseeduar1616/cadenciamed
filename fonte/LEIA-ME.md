@@ -245,8 +245,16 @@ Como está no ar hoje, em dois lugares:
 | **Firebase Hosting** | `cadenciamed.com.br`, as páginas | `.github/workflows/deploy-firebase.yml` |
 | **Cloudflare Worker** | as rotas `/api/...` | `.github/workflows/publicar.yml` |
 
-Os dois disparam no mesmo push e nenhum dos dois compila nada: mandam a pasta
-`publicar/` como ela está no repositório.
+Os dois disparam no mesmo push para a `main` e nenhum dos dois compila nada:
+mandam a pasta `publicar/` como ela está no repositório.
+
+> Até setembro de 2026 a `main` era outra coisa: um histórico separado, sem
+> ancestral comum com este, guardando um `cadenciamed-publicar.zip` e um
+> workflow `firebase-hosting.yml` que publicava no mesmo projeto do Firebase.
+> O código de verdade morava numa branch de trabalho. Eram duas publicações
+> disputando o mesmo site, e um push na `main` derrubava a versão nova. Agora
+> a `main` é o tronco. Aquele estado antigo ficou guardado na branch
+> `arquivo-main-zip-2026-09`, caso um dia falte alguma coisa de lá.
 
 **Cabeçalhos de cache ficam no `firebase.json`, não no `publicar/_headers`.**
 Aquele arquivo é formato do Netlify e do Cloudflare; o Firebase o ignora em
