@@ -394,8 +394,11 @@ conta (cadastro, plano) — ali não haveria de quem ser o currículo próprio.
 
 Os códigos ficam no `worker/api/cupom.js`, no servidor, e nunca no navegador.
 Para trocá-los sem mexer no código, cadastre `CUPONS` no Cloudflare, no formato
-`codigo:plano,codigo:plano` (planos: mensal, anual, vitalicio). Enquanto essa
-variável não existir, valem os dois cupons escritos no arquivo.
+`codigo:plano,codigo:plano` (planos: semanal, mensal, anual, vitalicio). Enquanto
+essa variável não existir, valem os dois cupons escritos no arquivo — hoje,
+`secdamocada` libera 7 dias (`semanal`) e `medeasysoft` libera o plano anual.
+Cada plano fora do `anual` conta os dias a partir do resgate (`DIAS`, em
+`_comum.js`); só o `anual` vence numa data fixa, veja "Plano anual", abaixo.
 
 O cupom `mentor1612` é especial: fica fora dessa lista (não dá para trocar
 pela variável `CUPONS`) e não libera plano nenhum — concede o papel de

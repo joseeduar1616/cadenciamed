@@ -17,7 +17,7 @@ export const BASE_FIRESTORE =
    com o Google, então não adianta forjar no navegador. */
 export const DONOS = ["joseeduardo1616@gmail.com"];
 
-export const DIAS = { mensal: 31, anual: 366, vitalicio: 36500 };
+export const DIAS = { semanal: 7, mensal: 31, anual: 366, vitalicio: 36500 };
 
 /* O plano anual vence numa data fixa — o fim de 2027 —, não um ano a
    partir da compra. mensal e vitalício continuam contados a partir de
