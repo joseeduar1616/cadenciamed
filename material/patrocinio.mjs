@@ -7,7 +7,7 @@
  * reunidos em CONDICOES, logo abaixo, para serem trocados num lugar só.
  */
 import {
-  COR, esc, cabeca, rodape, tela, fone, passo, numero, marcaBase64,
+  COR, esc, cabeca, rodape, tela, fone, passo, numero, marcaBase64, tituloGradiente,
 } from './comum.mjs';
 
 const MARCA = marcaBase64();
@@ -60,16 +60,15 @@ function capa() {
       <div class="esfera" style="position:absolute;inset:40mm"></div>
     </div>
   </div>
-  <div style="position:absolute;right:14mm;bottom:20mm;z-index:1;
-    transform:perspective(1500px) rotateY(-16deg) rotateX(5deg)">
-    ${tela('entrada.png', { largura: '128mm', pe: false, gira: '' })}
+  <div style="position:absolute;right:6mm;bottom:14mm;z-index:1">
+    ${tela('entrada-capa', '152mm')}
   </div>
 
   <div class="corpo" style="justify-content:center">
     <img src="${MARCA}" style="height:13mm;width:auto;filter:drop-shadow(0 0 5mm ${COR.neon2}aa)">
     <div class="olho" style="margin-top:8mm">Proposta para criadores de conteúdo</div>
     <h1 class="tit" style="margin-top:6mm;max-width:150mm">
-      Plano de<br><span class="cor">parceria</span>
+      Plano de<br>${tituloGradiente('parceria')}
     </h1>
     <p class="txt" style="margin-top:7mm;max-width:100mm">
       A Cadência Med é um painel de estudos para quem se prepara para a residência
@@ -103,7 +102,7 @@ function oQueE() {
           ${passo(4, 'Roda no computador e no celular', 'Mesma conta, mesmos dados, e instala na tela inicial como aplicativo.')}
         </div>
       </div>
-      <div style="flex:1;min-width:0;padding-top:2mm">${tela('hoje.png', { gira: 'gira-r' })}</div>
+      <div style="flex:1;min-width:0;padding-top:2mm">${tela('hoje-d')}</div>
     </div>`, 2);
 }
 
@@ -179,7 +178,7 @@ function publico() {
             usa os dois ao mesmo tempo, e chega no cursinho com o histórico pronto.`)}
         </div>
       </div>
-      <div style="flex:1;min-width:0;padding-top:2mm">${tela('cronograma.png')}</div>
+      <div style="flex:1;min-width:0;padding-top:2mm">${tela('cronograma-e')}</div>
     </div>`, 4);
 }
 
@@ -254,9 +253,8 @@ function parceria() {
      convertem. Usar é opcional: o texto é seu.`)}
         </div>
       </div>
-      <div style="flex:1;min-width:0;display:flex;justify-content:center;padding-top:6mm;
-        transform:perspective(1500px) rotateY(-12deg)">
-        ${fone('celular-hoje.png', '58mm')}
+      <div style="flex:1;min-width:0;display:flex;justify-content:center;padding-top:4mm">
+        ${fone('celular-hoje', '70mm')}
       </div>
     </div>`, 6);
 }

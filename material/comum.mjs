@@ -30,6 +30,22 @@ export const marcaBase64 = () => 'data:image/png;base64,'
 export const esc = (s) => String(s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+/* Escreve o texto com a cor caminhando de uma ponta à outra, uma letra por
+   vez. Substitui o background-clip:text, que não sobrevive à impressão. */
+const hex = (c) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
+export function tituloGradiente(texto, de = COR.neon, ate = COR.neon2) {
+  const letras = [...String(texto)];
+  const passos = Math.max(1, letras.length - 1);
+  const a = hex(de), b = hex(ate);
+  return letras.map((ch, i) => {
+    if (ch === ' ') return ' ';
+    const t = i / passos;
+    const cor = a.map((v, k) => Math.round(v + (b[k] - v) * t))
+      .map((v) => v.toString(16).padStart(2, '0')).join('');
+    return `<span style="color:#${cor}">${esc(ch)}</span>`;
+  }).join('');
+}
+
 /* ── o CSS ────────────────────────────────────────────────────────────
  * Uma página é sempre 297x210mm com sangria total: o Chromium imprime
  * exatamente o que está na caixa, sem margem própria.
@@ -118,8 +134,11 @@ h1.tit { font-family: 'Inter', sans-serif; font-weight: 800; text-transform: upp
   letter-spacing: -.025em; line-height: 1.0; font-size: 34pt; }
 h2.tit { font-family: 'Inter', sans-serif; font-weight: 800; text-transform: uppercase;
   letter-spacing: -.022em; line-height: 1.04; font-size: 21pt; }
-.tit .cor { background: linear-gradient(104deg, ${COR.neon}, ${COR.neon2});
-  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+/* O gradiente do título é feito letra a letra, pelo tituloGradiente() logo
+   abaixo, e não com background-clip:text. Impresso, o recorte no texto
+   deixa um retângulo de sobra em volta da palavra: aparece no PDF e não na
+   tela, que foi como passou despercebido da primeira vez. Letra colorida é
+   texto comum, sai vetorial e não tem o que sobrar. */
 
 p.txt { font-size: 10pt; line-height: 1.62; color: ${COR.meio}; max-width: 105mm; }
 p.txt.larga { max-width: 175mm; }
@@ -141,43 +160,13 @@ strong { color: ${COR.tinta}; font-weight: 700; }
   box-shadow: 0 0 3mm var(--brilho, ${COR.neon}); }
 .vidro .conteudo { position: relative; z-index: 1; }
 
-/* ── relevo: as peças com cara de três dimensões ────────────────────
-   Nada disso é imagem. A moldura de tela ganha profundidade por camadas
-   de gradiente e uma sombra longa; a inclinação vem de perspective(). */
-.palco { perspective: 1400px; perspective-origin: 50% 40%; }
-.tela3d {
-  position: relative; border-radius: 3mm; padding: 1.1mm;
-  background: linear-gradient(150deg, #6b5f8e, #241d3a 28%, #14101f 62%, #4a3f6b);
-  box-shadow:
-    0 1mm 0 #ffffff1a inset,
-    0 26mm 40mm -22mm #000f,
-    0 6mm 14mm -8mm ${COR.neon2}55;
-  transform-style: preserve-3d;
-}
-.tela3d.gira { transform: rotateY(-13deg) rotateX(4deg); }
-.tela3d.gira-r { transform: rotateY(13deg) rotateX(4deg); }
-.tela3d > img { display: block; width: 100%; height: auto; border-radius: 2.1mm; }
-.tela3d .reflexo {
-  position: absolute; inset: 1.1mm; border-radius: 2.1mm; pointer-events: none;
-  background: linear-gradient(122deg, #ffffff1f 0%, #ffffff05 16%, transparent 34%);
-}
-.tela3d .pe {
-  position: absolute; left: 14%; right: 14%; bottom: -3.4mm; height: 3.4mm;
-  background: linear-gradient(180deg, #3b3358, #15111f);
-  border-radius: 0 0 2mm 2mm; box-shadow: 0 4mm 10mm -4mm #000;
-}
-
-/* celular com relevo, para as capturas de bolso */
-.fone3d {
-  position: relative; border-radius: 5mm; padding: .9mm;
-  background: linear-gradient(150deg, #7a6ea3, #211b34 30%, #100d1a 64%, #514576);
-  box-shadow: 0 18mm 30mm -16mm #000f, 0 4mm 12mm -6mm ${COR.neon}44;
-}
-.fone3d > img { display: block; width: 100%; height: auto; border-radius: 4.2mm; }
-.fone3d .entalhe {
-  position: absolute; top: 1.6mm; left: 50%; transform: translateX(-50%);
-  width: 14mm; height: 1.6mm; border-radius: 1mm; background: #0a0812;
-}
+/* ── relevo ─────────────────────────────────────────────────────────
+   As molduras com perspectiva não são desenhadas aqui: elas chegam
+   prontas, em PNG de alta resolução, do molduras.mjs. Transform 3D na
+   folha de impressão faz o Chromium rasterizar a camada na resolução de
+   tela, e era isso que reduzia as capturas de 4200px para 408px dentro do
+   PDF. Imagem plana ele embute inteira. */
+.moldura { display: block; width: 100%; height: auto; }
 
 /* esfera com volume, o "3D" das capas */
 .esfera { position: relative; border-radius: 50%;
@@ -252,21 +241,14 @@ export const cabeca = (marca, olho, direita = '') => `
   <div style="text-align:right">${direita}</div>
 </div>`;
 
-/* Uma captura do app dentro da moldura com relevo. */
-export const tela = (arquivo, { gira = 'gira', largura = '100%', pe = true } = {}) => `
-<div class="palco" style="width:${largura}">
-  <div class="tela3d ${gira}">
-    <img src="capturas/${arquivo}">
-    <div class="reflexo"></div>
-    ${pe ? '<div class="pe"></div>' : ''}
-  </div>
-</div>`;
+/* Uma captura do app dentro da moldura com relevo, já achatada em imagem
+   pelo molduras.mjs. O nome é o da moldura, não o da captura: "hoje-e" é a
+   tela de Hoje virada para a esquerda, "hoje-d" para a direita. */
+export const tela = (nome, largura = '100%') =>
+  `<img class="moldura" src="molduras/${nome}.png" style="width:${largura}">`;
 
-export const fone = (arquivo, largura = '46mm') => `
-<div class="fone3d" style="width:${largura}">
-  <img src="capturas/${arquivo}">
-  <div class="entalhe"></div>
-</div>`;
+export const fone = (nome, largura = '56mm') =>
+  `<img class="moldura" src="molduras/${nome}.png" style="width:${largura}">`;
 
 export const passo = (n, titulo, texto) => `
 <div class="passo">

@@ -27,3 +27,5 @@ fonte/_cores.mjs
 material/capturas/
 material/.fontes/
 material/*.html
+material/molduras/
+material/.moldura-tmp.html

@@ -5,7 +5,7 @@
  * onde procurar a informação e para de ler o layout a cada virada.
  */
 import {
-  COR, esc, cabeca, rodape, pagina, tela, fone, passo, numero, marcaBase64,
+  COR, esc, cabeca, rodape, tela, fone, passo, numero, marcaBase64, tituloGradiente,
 } from './comum.mjs';
 
 const MARCA = marcaBase64();
@@ -41,7 +41,7 @@ function capa() {
     <img src="${MARCA}" style="height:13mm;width:auto;filter:drop-shadow(0 0 5mm ${COR.neon2}aa)">
     <div class="olho" style="margin-top:8mm">Guia de uso · versão 1</div>
     <h1 class="tit" style="margin-top:6mm;max-width:170mm">
-      Tudo o que a<br><span class="cor">Cadência Med</span> faz
+      Tudo o que a<br>${tituloGradiente('Cadência Med')} faz
     </h1>
     <p class="txt" style="margin-top:7mm;max-width:112mm">
       Um passeio por cada aba do painel, na ordem em que você vai usar.
@@ -88,7 +88,7 @@ function linha(it, i) {
 }
 
 /* ── página de função ─────────────────────────────────────────────── */
-function funcao({ n, olho, titulo, texto, passos, captura, gira, selo, pagina: p, extra }) {
+function funcao({ n, olho, titulo, texto, passos, moldura, selo, pagina: p, extra }) {
   return `<section class="pg">
   <div class="fundo"><div class="malha"></div><div class="aura aura-a"></div>
     <div class="aura aura-b"></div><div class="aura aura-c"></div>
@@ -105,7 +105,7 @@ function funcao({ n, olho, titulo, texto, passos, captura, gira, selo, pagina: p
         ${extra || ''}
       </div>
       <div style="flex:1;min-width:0;padding-top:2mm">
-        ${tela(captura, { gira: gira || 'gira' })}
+        ${tela(moldura)}
       </div>
     </div>
   </div>
@@ -127,7 +127,7 @@ const FUNCOES = [
       ['Recebeu um cupom? Escreva no campo', 'Ele libera o plano completo assim que a conta é criada.'],
       ['Pronto: já dá para marcar a primeira aula', 'Nada precisa ser configurado antes.'],
     ],
-    captura: 'entrada-conta.png',
+    moldura: 'entrada-conta-e',
   },
   {
     olho: 'Cronograma', titulo: 'Residência,<br>clínico, ou os dois',
@@ -142,7 +142,7 @@ const FUNCOES = [
       ['Os dois juntos', 'As aulas da residência continuam e as do ciclo clínico entram junto. Nenhuma das listas se perde.'],
       ['A IA organiza o material', 'Cole o texto ou mande o PDF: ela separa em aulas, classifica nas cinco áreas e você confere antes de valer.'],
     ],
-    captura: 'cronograma.png', gira: 'gira-r',
+    moldura: 'cronograma-d',
   },
   {
     olho: 'Hoje', titulo: 'O painel<br>do seu dia',
@@ -156,7 +156,7 @@ const FUNCOES = [
       ['Sua agenda de hoje', 'Os blocos da rotina que caem neste dia, com o que está acontecendo agora em destaque.'],
       ['Registrar sessão', 'Lance o que acabou de estudar: tempo, questões e acertos entram nas estatísticas na hora.'],
     ],
-    captura: 'hoje.png',
+    moldura: 'hoje-e',
   },
   {
     olho: 'Foco', titulo: 'O cronômetro<br>que vira dado',
@@ -170,7 +170,7 @@ const FUNCOES = [
       ['Quatro estilos de relógio', 'Anel, dígitos, barra ou minimalista, com as cores de foco e de pausa que você escolher.'],
       ['Parou, virou estatística', 'Sem digitar nada duas vezes: o que o cronômetro contou já conta no painel.'],
     ],
-    captura: 'foco.png', gira: 'gira-r',
+    moldura: 'foco-d',
   },
   {
     olho: 'Matérias', titulo: 'Marcar aula,<br>tópico e anotação',
@@ -184,7 +184,7 @@ const FUNCOES = [
       ['Classifique o seu desempenho', 'Acima de 80%, entre 61 e 79% ou abaixo de 60%: é isso que pinta o radar em Temas.'],
       ['Anote dentro da aula', 'Negrito, cor, marca-texto, imagem colada e exportação em PDF ou para o Drive.'],
     ],
-    captura: 'materias.png',
+    moldura: 'materias-e',
   },
   {
     olho: 'Revisões', titulo: 'A revisão volta<br>na hora certa',
@@ -198,7 +198,7 @@ const FUNCOES = [
       ['Marque o degrau ao revisar', 'Um toque e ele fica verde. Marcou sem querer? Desmarcar volta atrás.'],
       ['Troque o esquema quando quiser', 'Padrão, enxuto ou os dias que você escrever, de um a oito degraus.'],
     ],
-    captura: 'revisoes.png', gira: 'gira-r',
+    moldura: 'revisoes-d',
   },
   {
     olho: 'Cartões', titulo: 'Flashcards com<br>repetição espaçada',
@@ -212,7 +212,7 @@ const FUNCOES = [
       ['Importe o que você já tem', 'Arquivo .apkg do Anki, com as imagens que vierem junto.'],
       ['Responda e o prazo se ajusta', 'Errei, difícil, bom ou fácil: o intervalo cresce ou encolhe conforme a sua resposta.'],
     ],
-    captura: 'cartoes.png',
+    moldura: 'cartoes-e',
   },
   {
     olho: 'Temas', titulo: 'O radar das<br>suas cinco áreas',
@@ -226,7 +226,7 @@ const FUNCOES = [
       ['As aulas fracas em destaque', 'As que você classificou abaixo de 60% aparecem contadas, para virarem prioridade.'],
       ['Marque direto daqui', 'Dá para atualizar a aula sem sair da visão geral.'],
     ],
-    captura: 'temas.png', gira: 'gira-r',
+    moldura: 'temas-d',
   },
   {
     olho: 'Rotina', titulo: 'A semana que<br>você realmente tem',
@@ -240,7 +240,7 @@ const FUNCOES = [
       ['Marque como cumprido', 'O bloco fica riscado no dia, e o histórico guarda cada data separadamente.'],
       ['Google Agenda ao lado', 'Sincronize a agenda para os blocos aparecerem no seu calendário de sempre.'],
     ],
-    captura: 'rotina.png',
+    moldura: 'rotina-e',
   },
   {
     olho: 'Amigos', titulo: 'Estudar junto<br>rende mais',
@@ -254,7 +254,7 @@ const FUNCOES = [
       ['Quem está online aparece', 'Um pontinho aceso ao lado do nome de quem está estudando agora.'],
       ['Prefere ficar fora do ranking?', 'Dá para continuar na sala com os seus números escondidos.'],
     ],
-    captura: 'amigos.png', gira: 'gira-r',
+    moldura: 'amigos-d',
   },
   {
     olho: 'Metas', titulo: 'Simulados, provas<br>e hábitos',
@@ -268,7 +268,7 @@ const FUNCOES = [
       ['Hábitos do dia', 'Três por padrão, e você troca por quantos quiser. O calendário mostra a sequência.'],
       ['Exportar a agenda', 'Leve a sua rotina para outro calendário quando precisar.'],
     ],
-    captura: 'metas.png',
+    moldura: 'metas-e',
   },
   {
     olho: 'Progresso', titulo: 'A curva do<br>seu semestre',
@@ -281,7 +281,7 @@ const FUNCOES = [
       ['Baixe o seu backup', 'Um arquivo com tudo, que volta inteiro em qualquer aparelho.'],
       ['Conta e sincronização', 'Entrar, sair e ver quando foi o último envio para a nuvem.'],
     ],
-    captura: 'progresso.png', gira: 'gira-r',
+    moldura: 'progresso-d',
   },
   {
     olho: 'Assistente', titulo: 'Uma IA que<br>já sabe onde você parou',
@@ -295,7 +295,7 @@ const FUNCOES = [
       ['Peça para agendar', 'Ele adiciona blocos na rotina e pendências na sua lista.'],
       ['Faz parte do plano completo', 'A chave da IA fica no servidor e nunca passa pelo seu navegador.'],
     ],
-    captura: 'assistente.png',
+    moldura: 'assistente-e',
   },
 ];
 
@@ -322,11 +322,10 @@ function celular(p) {
           ${passo(4, 'Funciona sem internet', 'O painel abre e guarda o que você fizer; a sincronização acontece quando a rede volta.')}
         </div>
       </div>
-      <div style="flex:1;display:flex;gap:6mm;justify-content:center;align-items:center;
-        transform:perspective(1500px) rotateY(-11deg)">
-        ${fone('celular-hoje.png', '48mm')}
-        <div style="margin-top:14mm">${fone('celular-cronograma.png', '48mm')}</div>
-        <div style="margin-top:-10mm">${fone('celular-cartoes.png', '48mm')}</div>
+      <div style="flex:1;display:flex;justify-content:center;align-items:center">
+        ${fone('celular-hoje', '54mm')}
+        <div style="margin:14mm 0 0 -8mm">${fone('celular-cronograma', '54mm')}</div>
+        <div style="margin:-10mm 0 0 -8mm">${fone('celular-cartoes', '54mm')}</div>
       </div>
     </div>
   </div>

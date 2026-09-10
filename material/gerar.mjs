@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { cssDasFontes } from './fontes.mjs';
 import { documento } from './comum.mjs';
+import { renderizar as renderizarMolduras } from './molduras.mjs';
 import { tutorial } from './tutorial.mjs';
 import { patrocinio } from './patrocinio.mjs';
 
@@ -26,6 +27,8 @@ console.log('fontes:');
 const fontes = await cssDasFontes();
 
 const nav = await chromium.launch({ args: ['--no-sandbox'], executablePath: CHROME });
+
+console.log(`molduras: ${await renderizarMolduras(nav)} peças achatadas em imagem`);
 
 for (const [arquivo, titulo, montar] of DOCS) {
   const paginas = montar(fontes);
