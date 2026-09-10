@@ -372,7 +372,14 @@ mensagem na tela já diz isso, e repete o substituto que o provedor sugeriu.
 Só que a variável **ganha em silêncio**: com um `GEMINI_MODELO` cadastrado, o
 site roda aquele modelo, não o do código, e os dois podem discordar por meses
 sem ninguém notar. `GET /api/assistente` responde qual está no ar de verdade
-(`{"provedor":"gemini","modelo":"..."}`) — vale conferir depois de mexer. E,
+(`{"provedor":"gemini","modelo":"..."}`) — vale conferir depois de mexer.
+
+**Qual nome cadastrar** não se decide de memória: `GET
+/api/assistente?modelos=1` pergunta ao próprio Google quais modelos esta
+chave alcança hoje, com os tetos de entrada e saída de cada um, e diz qual
+está em uso. Foi de memória que o `gemini-1.5-flash` foi parar no código
+depois de já ter saído de circulação para chave nova. Nome de modelo não é
+segredo, e a chave continua sem sair do servidor. E,
 passado o aperto, traga o nome novo para o `GEMINI_PADRAO` e apague a
 variável, para o padrão voltar a ser verdade. O teste do assistente importa
 `GEMINI_PADRAO` em vez de repetir o nome, então ele acompanha sozinho.
