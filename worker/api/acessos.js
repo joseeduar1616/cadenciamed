@@ -7,7 +7,7 @@
  */
 import {
   json, corpoJson, quemPede, ehDono, contaDeServico, tokenDeAcesso,
-  gravarAssinatura, BASE_FIRESTORE, DIAS,
+  gravarAssinatura, validadeDoPlano, concederMentor, BASE_FIRESTORE, DIAS,
 } from "./_comum.js";
 
 async function uidPeloEmail(token, email) {
@@ -97,9 +97,19 @@ export async function onRequest({ request, env }) {
     return json({ ok: true, mensagem: `Acesso de ${email} removido.` });
   }
 
+  /* ── concede o papel de mentor ────────────────────────────────────────
+     Separado do plano: não mexe em assinaturas/{uid}, só em mentores/{uid}
+     — o mesmo caminho que o cupom "mentor1612" usa (concederMentor, em
+     _comum.js), preservando a lista de alunos se a pessoa já for mentora. */
+  if (acao === "conceder-mentor") {
+    const deu = await concederMentor(token, uid, email);
+    if (!deu) return json({ erro: "Não consegui conceder o papel de mentor." }, 500);
+    return json({ ok: true, mensagem: `${email} agora é mentor(a).` });
+  }
+
   /* ── libera ────────────────────────────────────────────────────────── */
   const plano = DIAS[corpo.plano] ? corpo.plano : "mensal";
-  const ate = Date.now() + DIAS[plano] * 86400000;
+  const ate = validadeDoPlano(plano);
   const gravou = await gravarAssinatura(token, uid, {
     plano: { stringValue: plano },
     email: { stringValue: email },

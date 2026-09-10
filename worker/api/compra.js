@@ -10,7 +10,7 @@
  * assinaturas/{uid}.
  */
 import {
-  contaDeServico, tokenDeAcesso, gravarAssinatura, uidPeloEmail, BASE_FIRESTORE, DIAS,
+  contaDeServico, tokenDeAcesso, gravarAssinatura, uidPeloEmail, validadeDoPlano, BASE_FIRESTORE,
 } from "./_comum.js";
 
 /* ── lê o aviso nos formatos da Kiwify e da Hotmart ────────────────────── */
@@ -95,7 +95,7 @@ export async function onRequest({ request, env }) {
       return new Response("ok", { status: 200 });
     }
 
-    const ate = Date.now() + DIAS[info.plano] * 86400000;
+    const ate = validadeDoPlano(info.plano);
     const gravou = await gravarAssinatura(token, uid, {
       plano: { stringValue: info.plano },
       email: { stringValue: info.email.toLowerCase() },

@@ -196,6 +196,7 @@ function Precos({ compacto, onFechar, usuario, plano, aviso }) {
                   <Num size={38} weight={700} color={destaque ? "var(--neon2)" : T.ink}>{p.valor}</Num>
                   <Mini>{p.periodo}</Mini>
                 </div>
+                {destaque ? <Mini style={{ marginTop: 4 }}>válido até 31/12/2027</Mini> : null}
               </div>
               <div className="mt-5">
                 {atual ? (
@@ -355,6 +356,14 @@ function PainelDono({ nuvem, notify }) {
     setOcupado(false);
   };
 
+  const concederMentor = async () => {
+    if (!email.trim()) return setErro("Escreva o e-mail.");
+    setOcupado(true);
+    const j = await chamar({ acao: "conceder-mentor", email: email.trim() });
+    if (j && j.ok) { notify(j.mensagem); setEmail(""); }
+    setOcupado(false);
+  };
+
   return (
     <Card className="px-6 py-6" brilho="var(--warn)">
       <H size={18} color="var(--warn)" icon={<User size={16} />}>Acessos</H>
@@ -374,7 +383,7 @@ function PainelDono({ nuvem, notify }) {
         <Field label="Por quanto tempo">
           <Select value={plano} onChange={(e) => setPlano(e.target.value)}>
             <option value="mensal">Um mês</option>
-            <option value="anual">Um ano</option>
+            <option value="anual">Um ano (até o fim de 2027)</option>
             <option value="vitalicio">Sem prazo</option>
           </Select>
         </Field>
@@ -383,6 +392,9 @@ function PainelDono({ nuvem, notify }) {
       <div className="mt-4 flex items-center gap-3 flex-wrap">
         <Btn tone="primary" onClick={liberar} disabled={ocupado}>
           {ocupado ? "Aguarde…" : "Liberar acesso"}
+        </Btn>
+        <Btn tone="outline" onClick={concederMentor} disabled={ocupado} title="Dá o papel de mentor para esse e-mail, sem mexer no plano dele">
+          <GraduationCap size={15} /> Tornar mentor(a)
         </Btn>
         <Btn tone="outline" size="sm" onClick={carregar} disabled={ocupado}>
           <RefreshCw size={14} /> atualizar lista

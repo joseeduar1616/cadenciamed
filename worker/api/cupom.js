@@ -13,7 +13,7 @@
  */
 import {
   json, corpoJson, quemPede, contaDeServico, tokenDeAcesso,
-  gravarAssinatura, validoAte, BASE_FIRESTORE, DIAS,
+  gravarAssinatura, validoAte, validadeDoPlano, concederMentor, DIAS,
 } from "./_comum.js";
 
 const CUPONS_PADRAO = "secdamocada:anual,medeasysoft:anual";
@@ -22,39 +22,6 @@ const CUPONS_PADRAO = "secdamocada:anual,medeasysoft:anual";
    CUPONS de plano de propósito, para não poder ser trocado pela variável de
    ambiente nem confundido com um cupom de assinatura. */
 const CUPOM_MENTOR = "mentor1612";
-
-/* Lê mentores/{uid} sem estourar em quem nunca resgatou. */
-async function lerMentor(token, uid) {
-  const r = await fetch(`${BASE_FIRESTORE}/mentores/${uid}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!r.ok) return null;
-  const j = await r.json().catch(() => null);
-  const f = (j || {}).fields || {};
-  return {
-    email: (f.email && f.email.stringValue) || "",
-    desde: Number((f.desde && f.desde.doubleValue) || 0),
-    alunos: (((f.alunos || {}).arrayValue || {}).values || []),
-  };
-}
-
-/* Grava mentores/{uid} preservando a lista de alunos já existente: resgatar
-   o cupom de novo não pode apagar quem a pessoa já tinha adicionado. */
-async function concederMentor(token, uid, email) {
-  const atual = await lerMentor(token, uid);
-  if (atual) return true;         // já é mentor, nada a gravar
-  const r = await fetch(`${BASE_FIRESTORE}/mentores/${uid}`, {
-    method: "PATCH",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      fields: {
-        email: { stringValue: email }, desde: { doubleValue: Date.now() },
-        alunos: { arrayValue: { values: [] } },
-      },
-    }),
-  });
-  return r.ok;
-}
 
 function lerCupons(env) {
   const fora = {};
@@ -112,7 +79,7 @@ export async function onRequest({ request, env }) {
     return json({ ok: true, jaTinha: true, mensagem: "Seu acesso já está liberado." });
   }
 
-  const ate = Date.now() + DIAS[plano] * 86400000;
+  const ate = validadeDoPlano(plano);
   const gravou = await gravarAssinatura(token, pessoa.uid, {
     plano: { stringValue: plano },
     email: { stringValue: pessoa.email },

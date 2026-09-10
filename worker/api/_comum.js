@@ -19,6 +19,15 @@ export const DONOS = ["joseeduardo1616@gmail.com"];
 
 export const DIAS = { mensal: 31, anual: 366, vitalicio: 36500 };
 
+/* O plano anual vence numa data fixa — o fim de 2027 —, não um ano a
+   partir da compra. mensal e vitalício continuam contados a partir de
+   agora, com DIAS acima. */
+const FIM_ANUAL = new Date("2028-01-01T00:00:00-03:00").getTime();
+export function validadeDoPlano(plano) {
+  if (plano === "anual") return FIM_ANUAL;
+  return Date.now() + (DIAS[plano] || DIAS.mensal) * 86400000;
+}
+
 export const json = (corpo, status = 200) => new Response(JSON.stringify(corpo), {
   status,
   headers: { "Content-Type": "application/json; charset=utf-8" },
@@ -131,6 +140,41 @@ export async function validoAte(token, uid) {
   if (!r.ok) return 0;
   const j = await r.json().catch(() => null);
   return Number((((j || {}).fields || {}).validoAte || {}).doubleValue || 0);
+}
+
+/* Lê mentores/{uid} sem estourar em quem nunca resgatou. Compartilhada
+   entre cupom.js (resgate de "mentor1612") e acessos.js (o dono concede
+   direto, no painel). */
+export async function lerMentor(token, uid) {
+  const r = await fetch(`${BASE_FIRESTORE}/mentores/${uid}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) return null;
+  const j = await r.json().catch(() => null);
+  const f = (j || {}).fields || {};
+  return {
+    email: (f.email && f.email.stringValue) || "",
+    desde: Number((f.desde && f.desde.doubleValue) || 0),
+    alunos: (((f.alunos || {}).arrayValue || {}).values || []),
+  };
+}
+
+/* Grava mentores/{uid} preservando a lista de alunos já existente: conceder
+   de novo não pode apagar quem a pessoa já tinha adicionado. */
+export async function concederMentor(token, uid, email) {
+  const atual = await lerMentor(token, uid);
+  if (atual) return true;         // já é mentor, nada a gravar
+  const r = await fetch(`${BASE_FIRESTORE}/mentores/${uid}`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      fields: {
+        email: { stringValue: email }, desde: { doubleValue: Date.now() },
+        alunos: { arrayValue: { values: [] } },
+      },
+    }),
+  });
+  return r.ok;
 }
 
 /* Descobre o uid de alguém pelo e-mail, usando a coleção emails/{uid} que

@@ -405,6 +405,22 @@ tinha. O dono (`joseeduardo1616@gmail.com`, em `DONOS`, no `_comum.js`) já é
 mentor sem precisar resgatar nada — é a mesma lista que já dá acesso completo
 sem pagar.
 
+## Plano anual e painel de acessos
+
+O plano anual vale até **31/12/2027**, uma data fixa, não um ano contado a
+partir da compra ou do cupom — `validadeDoPlano`, em `_comum.js`, é o único
+lugar que decide isso, usado por `cupom.js`, `compra.js` e `acessos.js`, para
+não correr o risco de uma dessas rotas ficar com a conta antiga (`+365
+dias`) enquanto as outras mudam. A tela de Planos e o painel do dono
+(`PainelDono`, em `parte11.jsx`) escrevem "até o fim de 2027" perto do preço,
+para não vender por engano um ano a partir da data de hoje.
+
+No painel de acessos (`worker/api/acessos.js`), o dono também pode tornar
+alguém mentor pelo e-mail, sem mexer no plano da pessoa — mesmo caminho do
+cupom `mentor1612` (`concederMentor`, em `_comum.js`), só que iniciado pelo
+dono em vez de digitado pelo aluno. Botão "Tornar mentor(a)", ao lado de
+"Liberar acesso".
+
 ## Cartões
 
 O estudo abre em tela cheia, por cima de tudo. Não é capricho: desenhado
@@ -692,6 +708,25 @@ rótulo de botão deve se comportar), mas o texto de status ("a IA está
 montando todos os cartões...") ia dentro do próprio botão, e ficava comprido
 demais. Rótulo de botão fica sempre curto; o status detalhado vai numa linha
 à parte, fora do `Btn`, que aí quebra normal.
+
+Na aba Cartões, o nome da pasta e o nome do baralho (`parte12.jsx`) tinham
+`overflow:hidden; textOverflow:ellipsis; whiteSpace:nowrap` mas sem
+`minWidth:0` — nesses dois, o `<span>` do nome é filho direto de uma linha
+`flex` ao lado de ícones/contadores de largura fixa, então a pegadinha do
+`min-width:auto` valia de novo, e o nome comprido não encolhia: ficava por
+cima do texto vizinho ("publicar", a contagem de baralhos/cartões) em vez de
+truncar com reticências. Diferente do caso do `<span className="flex-1
+min-w-0">` (o padrão já seguro, usado como wrapper em várias telas), aqui o
+próprio `<span>` do nome participa da linha `flex`, então precisa do
+`minWidth:0` nele mesmo.
+
+O cabeçalho e o menu do celular também sobrepunham a barra de status do
+aparelho quando o site está instalado como app: o `viewport-fit=cover` do
+`<meta name="viewport">` (`montar.py`) junto com `"display":"standalone"` do
+manifesto faz a página desenhar por baixo dessa barra, e sem
+`env(safe-area-inset-top)` o primeiro conteúdo — os botões do topo — nascia
+exatamente atrás dela. `env()` vale `0` fora desse modo (navegador comum),
+então a correção não muda nada para quem não instalou o app.
 
 ## Assistente
 
