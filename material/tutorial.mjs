@@ -394,8 +394,16 @@ function fim(p) {
         <div class="vidro" style="--brilho:${COR.ok};padding:7mm 6mm">
           <div class="conteudo">
             <div style="display:flex;align-items:center;gap:3mm">
+              <!-- O certo é desenhado, não escrito: nenhuma das três fontes da
+                   marca tem o glifo ✓, e o Chromium ia buscar numa fonte de
+                   sistema, que entrava no PDF só por causa de um caractere. -->
               <span style="width:9mm;height:9mm;border-radius:2.4mm;display:flex;align-items:center;
-                justify-content:center;background:${COR.ok}22;color:${COR.ok};font-size:12pt">&#10003;</span>
+                justify-content:center;background:${COR.ok}22">
+                <svg viewBox="0 0 24 24" style="width:4.8mm;height:4.8mm" fill="none"
+                  stroke="${COR.ok}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M5 12.5 10 17.5 19 7" />
+                </svg>
+              </span>
               <div style="font-size:12pt;font-weight:800;color:${COR.ok};text-transform:uppercase;
                 letter-spacing:.06em">Garantia de 7 dias</div>
             </div>
