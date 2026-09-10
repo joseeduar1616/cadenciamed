@@ -799,12 +799,28 @@ resolve: o endereço de dentro vem **sem assinatura**, e o depósito responde
 endereço da imagem expirou" — a mensagem mandava procurar no lugar errado,
 porque o endereço nunca chegou a valer.
 
-O caminho que funciona é pedir ao **próprio Notion**: o `id` que vem na
-query é o id do bloco, e `GET /v1/blocks/<id>` com o token de quem conectou
-a conta (o mesmo do cronograma, em `notion/{uid}`) devolve um endereço novo,
-assinado, que qualquer um com o link busca. `blocoDoNotion` e
-`figuraDoNotion`, em `worker/api/buscar-imagem.js`. O token do Notion nunca
-volta para a página, e o teste cobre isso.
+O caminho que funciona é pedir ao **próprio Notion**: `GET /v1/blocks/<id>`
+com o token de quem conectou a conta (o mesmo do cronograma, em
+`notion/{uid}`) devolve um endereço novo, assinado, que qualquer um com o
+link busca. `figuraDoNotion`, em `worker/api/buscar-imagem.js`. O token do
+Notion nunca volta para a página, e o teste cobre isso.
+
+**E de onde vem esse id?** Nem sempre do endereço. No Notion de hoje o
+`<img>` colado costuma apontar **direto** para o depósito na Amazon, sem
+assinatura e sem id nenhum na query — foi o aviso na tela, depois que ele
+passou a dizer a origem, que revelou isso ("de s3-us-west-2.amazonaws.com").
+Enquanto o código só olhava o embrulho `notion.so/image/…`
+(`blocoDoNotion`), o caminho pela API simplesmente nunca era usado. O id
+está no `<figure>` que embrulha a figura no HTML colado: `blocoQueEnvolve`
+sobe até seis níveis procurando um `id` com cara de UUID e
+`marcarBlocoNasFiguras` copia isso para um `data-bloco` no próprio `<img>`,
+ainda no HTML cru, porque o `insertHTML` do navegador pode mexer na árvore
+em volta. O navegador manda esse id junto com o endereço.
+
+A ordem é: tenta o endereço direto (barato, e funciona quando ele está
+assinado e no prazo); recusado com 401/403 e havendo id de bloco, pede o
+endereço novo ao Notion e tenta de novo. Endereço que já abre não gasta
+chamada nenhuma à API de lá.
 
 Quando não dá, a mensagem diz **o que fazer**, não só o que houve: sem o
 Notion conectado, conectar na aba Cronograma; página não compartilhada com a
@@ -877,6 +893,28 @@ Os cartões caem direto na pasta grande da área da aula, sem perguntar:
 `pastaDaArea` (`parte12.jsx`) traduz a sigla do currículo (`CL`/`CI`/`GO`/
 `PE`/`PR`) na pasta certa. É a mesma função que o montador por documento
 usa — ver "A pasta grande de cada área", acima.
+
+### Tela cheia não pode levar o texto embora
+
+Entrar em tela cheia move o editor para um portal (`createPortal`, pelo
+mesmo motivo do `ModalDrive`), e o React **desmonta e remonta** o
+`contentEditable`. O texto de uma anotação mora no DOM, não em estado —
+então ele ia junto: tudo que a pessoa tinha escrito ou colado desde que
+abriu a anotação sumia ao clicar no botão de tela cheia.
+
+`conteudoRef` guarda o HTML fora do DOM. `alternarCheia` tira a foto antes
+da troca, `aoMudar` a mantém em dia, e um `useLayoutEffect` em `[cheia]`
+devolve o conteúdo — `useLayoutEffect`, e não `useEffect`, para o editor não
+piscar vazio por um quadro.
+
+Duas armadilhas que o teste pegou:
+
+- **A foto tem de ser tirada depois de as imagens voltarem do IndexedDB.**
+  Tirada no início do efeito de abertura, ela devolvia a anotação sem figura
+  nenhuma na troca de tela.
+- **Reescrever o `innerHTML` apaga a seleção.** Sem cursor, o colar seguinte
+  não sabia onde entrar e comia o começo do texto. O cursor volta para o fim
+  do conteúdo, que é onde quem estava escrevendo espera continuar.
 
 ### O tamanho de cada figura
 

@@ -112,6 +112,19 @@ function blocoDoNotion(u) {
   return /^[0-9a-f-]{32,36}$/i.test(id) ? id : "";
 }
 
+/* O id de bloco que o navegador achou no HTML colado.
+ *
+ * Nem sempre o endereço colado é o embrulho do notion.so: no Notion de hoje
+ * o <img> costuma vir apontando DIRETO para o depósito na Amazon, e sem
+ * assinatura — foi o que o aviso na tela acabou revelando, dizendo "de
+ * s3-us-west-2.amazonaws.com". Aí não há id nenhum no endereço, e o id vem
+ * de fora: o <figure> que embrulha a figura no HTML colado carrega o id do
+ * bloco, e o navegador manda junto. */
+function idDeBloco(bruto) {
+  const id = String(bruto || "").trim();
+  return /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i.test(id) ? id : "";
+}
+
 async function tokenDoNotion(env, uid) {
   const conta = contaDeServico(env);
   if (!conta) return "";
@@ -176,61 +189,79 @@ export async function onRequest({ request, env }) {
   const pedido = enderecoOk(corpo.url);
   if (!pedido) return json({ erro: "Endereço de imagem inválido." }, 400);
 
-  /* Figura de dentro do Notion tem caminho próprio: só a API de lá devolve
-     um endereço que alguém de fora consegue abrir. */
-  const bloco = blocoDoNotion(pedido);
-  let doNotion = "";
-  if (bloco) {
+  const buscar = (u) => fetch(u.toString(), {
+    headers: {
+      /* Alguns servidores recusam pedido sem Accept de imagem, e outros
+         mandam a versão em HTML quando não sabem quem está pedindo. E há
+         os que recusam de cara quem não parece navegador: com o
+         User-Agent do próprio app, a resposta vinha 403. */
+      Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        + " (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      /* CDN com proteção contra link de fora costuma exigir que o pedido
+         venha do próprio site da imagem. */
+      Referer: `${u.origin}/`,
+    },
+    redirect: "follow",
+  });
+
+  /* O id do bloco vem do endereço (embrulho do notion.so) ou do HTML colado
+     (o <figure> que embrulha a figura). O segundo é o caso comum hoje. */
+  const bloco = blocoDoNotion(pedido) || idDeBloco(corpo.bloco);
+  /* O embrulho do notion.so nunca abre de fora, e o endereço de dentro vem
+     sem assinatura: com id de bloco na mão, não vale gastar um pedido que
+     já se sabe que vai voltar 403. */
+  const soPeloNotion = !!blocoDoNotion(pedido);
+
+  let alvo = enderecoOk(desembrulhar(pedido).toString());
+  if (!alvo) return json({ erro: "Endereço de imagem inválido." }, 400);
+
+  let r = null;
+  let recusou = "";
+  if (!soPeloNotion) {
+    try {
+      r = await buscar(alvo);
+    } catch (e) {
+      return json({ erro: "Não consegui alcançar o endereço da imagem." }, 502);
+    }
+    if (!r.ok) {
+      recusou = (r.status === 403 || r.status === 401)
+        /* 403 tem duas causas que a pessoa não tem como distinguir, e
+           chamar as duas de "o endereço expirou" mandava procurar no lugar
+           errado: ou a assinatura do endereço venceu, ou a figura
+           simplesmente não abre para quem não está logado no site. */
+        ? "o site da imagem recusou: ou o endereço venceu, ou a figura só abre para quem está logado lá."
+        : `O servidor da imagem respondeu ${r.status}.`;
+    }
+  }
+
+  /* Recusado (ou nem tentado): com id de bloco, o Notion devolve um
+     endereço novo e assinado daquela mesma figura. */
+  if ((soPeloNotion || recusou) && bloco) {
     const acesso = await tokenDoNotion(env, pessoa.uid);
     if (!acesso) {
       return json({
         erro: "essa figura mora dentro do Notion, e só abre para quem está logado lá. "
-          + "Conecte o Notion na aba Cronograma e cole de novo, ou copie a imagem "
+          + "Conecte o Notion na aba Cronograma e tente de novo, ou copie a imagem "
           + "sozinha (botão direito nela, copiar imagem).",
       }, 200);
     }
-    const r = await figuraDoNotion(acesso, bloco);
-    if (r.erro) return json({ erro: r.erro }, 200);
-    doNotion = r.url;
-  }
-
-  const alvo = enderecoOk(desembrulhar(enderecoOk(doNotion || pedido.toString()) || pedido).toString());
-  if (!alvo) return json({ erro: "Endereço de imagem inválido." }, 400);
-
-  let r;
-  try {
-    r = await fetch(alvo.toString(), {
-      headers: {
-        /* Alguns servidores recusam pedido sem Accept de imagem, e outros
-           mandam a versão em HTML quando não sabem quem está pedindo. E há
-           os que recusam de cara quem não parece navegador: com o
-           User-Agent do próprio app, a resposta vinha 403. */
-        Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-          + " (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        /* CDN com proteção contra link de fora costuma exigir que o pedido
-           venha do próprio site da imagem. */
-        Referer: `${alvo.origin}/`,
-      },
-      redirect: "follow",
-    });
-  } catch (e) {
-    return json({ erro: "Não consegui alcançar o endereço da imagem." }, 502);
-  }
-
-  if (!r.ok) {
-    /* 403 tem duas causas que a pessoa não tem como distinguir, e chamar
-       as duas de "o endereço expirou" mandava procurar no lugar errado:
-       ou a assinatura do endereço venceu, ou a figura simplesmente não
-       abre para quem não está logado no site de origem. */
-    if (r.status === 403 || r.status === 401) {
-      return json({
-        erro: "o site da imagem recusou: ou o endereço venceu, ou a figura "
-          + "só abre para quem está logado lá.",
-      }, 200);
+    const novo = await figuraDoNotion(acesso, bloco);
+    if (novo.erro) return json({ erro: novo.erro }, 200);
+    const outro = enderecoOk(novo.url);
+    if (!outro) return json({ erro: "o Notion devolveu um endereço que não dá para buscar." }, 200);
+    alvo = outro;
+    try {
+      r = await buscar(alvo);
+    } catch (e) {
+      return json({ erro: "Não consegui alcançar o endereço que o Notion devolveu." }, 502);
     }
-    return json({ erro: `O servidor da imagem respondeu ${r.status}.` }, 200);
+    if (!r.ok) return json({ erro: `o endereço que o Notion devolveu respondeu ${r.status}.` }, 200);
+    recusou = "";
   }
+
+  if (recusou) return json({ erro: recusou }, 200);
+  if (!r) return json({ erro: "Não consegui buscar essa figura." }, 200);
 
   const cabecalho = String(r.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
   const dito = APELIDOS[cabecalho] || cabecalho;

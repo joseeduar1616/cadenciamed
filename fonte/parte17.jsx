@@ -291,7 +291,39 @@ function baixarBlob(nome, blob) {
    quem colou. */
 /* Pede ao servidor os bytes de uma imagem que o navegador não consegue ler
    por causa do CORS. Devolve o base64, ou vazio se não deu. */
-async function trazerImagemDeFora(nuvem, endereco) {
+/* O id do bloco do Notion que embrulha esta figura no HTML colado.
+ *
+ * O <img> do Notion aponta direto para o depósito na Amazon, sem
+ * assinatura, e por isso ninguém de fora consegue buscar. Mas o <figure>
+ * em volta carrega o id do bloco, e com ele o servidor pede ao Notion um
+ * endereço novo daquela mesma figura. Sem isto, o caminho pela API de lá
+ * simplesmente nunca era usado. */
+const UUID = /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i;
+
+function blocoQueEnvolve(img) {
+  const guardado = img.getAttribute("data-bloco");
+  if (guardado) return guardado;
+  let el = img;
+  for (let i = 0; el && i < 6; i += 1) {
+    const id = el.getAttribute && el.getAttribute("id");
+    if (id && UUID.test(id)) return id;
+    el = el.parentElement;
+  }
+  return "";
+}
+
+/* Copia o id do bloco para dentro do próprio <img>, ainda no HTML cru.
+   Depende de menos coisas: o insertHTML do navegador pode mexer na árvore
+   em volta, e um data- no elemento certo sobrevive a isso. */
+function marcarBlocoNasFiguras(div) {
+  div.querySelectorAll("img").forEach((img) => {
+    if (img.getAttribute("data-bloco")) return;
+    const id = blocoQueEnvolve(img);
+    if (id) img.setAttribute("data-bloco", id);
+  });
+}
+
+async function trazerImagemDeFora(nuvem, endereco, bloco) {
   if (!/^https?:/i.test(endereco)) return { erro: "endereço que não é da web." };
   let token = "";
   try {
@@ -300,7 +332,7 @@ async function trazerImagemDeFora(nuvem, endereco) {
     }
   } catch (e) { /* sem conta, o servidor recusa e a imagem fica como está */ }
   if (!token) return { erro: "entre na sua conta para as figuras coladas ficarem guardadas." };
-  const { dados, erro } = await chamarApi("/api/buscar-imagem", { token, url: endereco }, "Trazer a imagem");
+  const { dados, erro } = await chamarApi("/api/buscar-imagem", { token, url: endereco, bloco: bloco || "" }, "Trazer a imagem");
   if (erro) return { erro };
   if (dados && dados.dados) return { dados: dados.dados };
   return { erro: (dados && dados.erro) || "não consegui trazer essa figura." };
@@ -310,7 +342,7 @@ async function trazerImagemDeFora(nuvem, endereco) {
  * primeiro o próprio navegador, que resolve blob: e sites que liberam CORS;
  * depois o servidor, que é o caminho do Notion e da maioria dos sites.
  */
-async function imagemComoDataUri(nuvem, endereco) {
+async function imagemComoDataUri(nuvem, endereco, bloco) {
   if (!endereco) return { erro: "figura sem endereço." };
   if (endereco.startsWith("data:")) return { dados: endereco };
   try {
@@ -329,19 +361,20 @@ async function imagemComoDataUri(nuvem, endereco) {
       }
     }
   } catch (e) { /* CORS, quase sempre: segue para o servidor */ }
-  return trazerImagemDeFora(nuvem, endereco);
+  return trazerImagemDeFora(nuvem, endereco, bloco);
 }
 
 /* No lugar da figura que não deu para trazer, uma caixa dizendo o que houve
    e o que fazer. Um ícone de imagem quebrada não ensina nada, e era o que a
    pessoa via. */
-function caixaDeFiguraPerdida(motivo, endereco) {
+function caixaDeFiguraPerdida(motivo, endereco, bloco) {
   const caixa = document.createElement("div");
   caixa.setAttribute("data-figura-perdida", "1");
   /* O endereço fica guardado na caixa para dar para tentar de novo depois
      (conectar o Notion, por exemplo) sem ter de recolar a anotação
      inteira — que era o que sobrava para a pessoa fazer. */
   if (endereco) caixa.setAttribute("data-de", endereco);
+  if (bloco) caixa.setAttribute("data-bloco", bloco);
   caixa.setAttribute("style",
     "border:1px dashed rgba(178,59,59,.45);background:rgba(178,59,59,.08);border-radius:8px;"
     + "padding:10px 12px;margin:8px 0;font-size:13px;color:#B23B3B");
@@ -373,9 +406,10 @@ async function internalizarImagens(raiz, nuvem, aviso) {
   for (let i = 0; i < imgs.length; i += 1) {
     const img = imgs[i];
     if (aviso) aviso(imgs.length > 1 ? `trazendo figura ${i + 1} de ${imgs.length}…` : "trazendo a figura…");
-    const r = await imagemComoDataUri(nuvem, img.getAttribute("src") || "");
+    const r = await imagemComoDataUri(nuvem, img.getAttribute("src") || "", blocoQueEnvolve(img));
     if (r.dados) {
       img.setAttribute("src", r.dados);
+      img.removeAttribute("data-bloco");
       img.style.maxWidth = "100%";
       trazidas += 1;
       continue;
@@ -385,8 +419,9 @@ async function internalizarImagens(raiz, nuvem, aviso) {
        que apagar o que a pessoa está vendo. Se nem aparece, some com o ícone
        quebrado e põe a explicação no lugar. */
     const de = img.getAttribute("src") || "";
-    if (!img.naturalWidth) img.replaceWith(caixaDeFiguraPerdida(r.erro || "", de));
-    else img.after(caixaDeFiguraPerdida(r.erro || "", de));
+    const doBloco = img.getAttribute("data-bloco") || "";
+    if (!img.naturalWidth) img.replaceWith(caixaDeFiguraPerdida(r.erro || "", de, doBloco));
+    else img.after(caixaDeFiguraPerdida(r.erro || "", de, doBloco));
   }
   if (aviso) aviso("");
   return { trazidas, perdidas };
@@ -400,6 +435,8 @@ function desfazerCaixasPerdidas(raiz) {
   for (const caixa of caixas) {
     const img = document.createElement("img");
     img.setAttribute("src", caixa.getAttribute("data-de"));
+    const bloco = caixa.getAttribute("data-bloco");
+    if (bloco) img.setAttribute("data-bloco", bloco);
     img.style.maxWidth = "100%";
     caixa.replaceWith(img);
   }
@@ -475,6 +512,7 @@ function limparHtmlColado(html) {
   virarDestaque(div);
   tirarTagsEscritas(div);
   recuperarImagensSemSrc(div);
+  marcarBlocoNasFiguras(div);
   ajustarCoresColadas(div);
   return div.innerHTML;
 }
@@ -737,6 +775,14 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
      tamanho saber em quem mexer. É o elemento em si, não um índice: o
      conteúdo do editor muda o tempo todo por baixo. */
   const [figura, setFigura] = useState(null);
+  /* O que está escrito agora, guardado fora do DOM.
+   *
+   * Entrar e sair da tela cheia troca o editor de lugar na árvore (vai para
+   * um portal, no body), e o React desmonta e remonta o contentEditable. O
+   * texto mora no DOM, não em estado — então ele ia junto, e tudo que a
+   * pessoa tinha escrito ou colado desde que abriu a anotação sumia. Aqui
+   * ele é copiado antes da troca e devolvido depois. */
+  const conteudoRef = useRef(null);
   /* Quantas figuras ficaram pelo caminho, para o botão de tentar de novo
      só aparecer quando há o que tentar. */
   const [perdidas, setPerdidas] = useState(0);
@@ -812,6 +858,9 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
         } catch (e) { /* essa imagem sumiu do IndexedDB, segue sem ela */ }
       }
       if (vivo) {
+        /* só agora, com as imagens de volta: a foto tirada antes disso
+           devolveria a anotação sem figura nenhuma na troca de tela. */
+        conteudoRef.current = raiz.innerHTML;
         setPerdidas(raiz.querySelectorAll("[data-figura-perdida]").length);
         setPronto(true);
       }
@@ -819,6 +868,7 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
     return () => {
       vivo = false;
       setFigura(null);
+      conteudoRef.current = null;
       if (salvarRef.current) window.clearTimeout(salvarRef.current);
     };
   }, [aberto]);
@@ -873,6 +923,7 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
   };
 
   const aoMudar = () => {
+    if (editorRef.current) conteudoRef.current = editorRef.current.innerHTML;
     setSujo(true);
     if (salvarRef.current) window.clearTimeout(salvarRef.current);
     salvarRef.current = window.setTimeout(async () => {
@@ -1003,6 +1054,34 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
     });
   };
 
+  /* Guarda o texto antes de trocar, porque a troca remonta o editor. */
+  const alternarCheia = () => {
+    if (editorRef.current) conteudoRef.current = editorRef.current.innerHTML;
+    setFigura(null);
+    setCheia((v) => !v);
+  };
+
+  /* useLayoutEffect, e não useEffect: devolver o texto antes de a tela
+     pintar evita o editor aparecer vazio por um quadro. */
+  useLayoutEffect(() => {
+    if (!aberto || conteudoRef.current === null) return;
+    const raiz = editorRef.current;
+    if (!raiz) return;
+    raiz.innerHTML = conteudoRef.current;
+    /* Reescrever o innerHTML apaga a seleção, e sem cursor o próximo colar
+       não sabe onde entrar. Quem entra em tela cheia está no meio de
+       escrever: o cursor volta para o fim do texto. */
+    try {
+      const faixa = document.createRange();
+      faixa.selectNodeContents(raiz);
+      faixa.collapse(false);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(faixa);
+      raiz.focus();
+    } catch (e) { /* sem seleção possível, segue sem cursor */ }
+  }, [cheia]);
+
   const aoClicarNoEditor = (e) => {
     const alvo = e.target;
     escolherFigura(alvo && alvo.tagName === "IMG" ? alvo : null);
@@ -1055,8 +1134,8 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
             title={tema.claro ? "Anotação no escuro" : "Anotação no claro"}
             onClick={() => tema.definir(tema.claro ? "dark" : "light")} />
           <BotaoFerramenta icon={cheia ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
-            title={cheia ? "Sair da tela cheia" : "Tela cheia"} onClick={() => setCheia((v) => !v)} />
-          <Btn size="sm" tone="outline" onClick={() => (cheia ? setCheia(false) : setAberto(false))}>fechar</Btn>
+            title={cheia ? "Sair da tela cheia" : "Tela cheia"} onClick={alternarCheia} />
+          <Btn size="sm" tone="outline" onClick={() => (cheia ? alternarCheia() : setAberto(false))}>fechar</Btn>
         </div>
       </div>
 

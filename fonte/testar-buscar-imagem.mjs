@@ -243,6 +243,44 @@ respostaBloco = () => new Response(JSON.stringify({
   type: 'image', image: { type: 'file', file: { url: 'https://imagens.exemplo/figura-nova.png?assinada=1' } },
 }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
+/* ── 4f. o caso de verdade: endereço direto do depósito, sem assinatura ──
+   O <img> do Notion aponta direto para a Amazon, sem assinatura e sem id
+   nenhum no endereço — foi o que o aviso na tela acabou revelando, dizendo
+   "de s3-us-west-2.amazonaws.com". O id do bloco vem do <figure> em volta,
+   que o navegador manda junto. Sem isso, o caminho pela API do Notion
+   nunca chegava a ser usado. */
+const BLOCO = '1f2e3d4c-5b6a-7988-9a0b-1c2d3e4f5a6b';
+/* o depósito recusa o endereço colado, e aceita o que o Notion devolveu */
+responder = (p) => (/figura-nova/.test(p.url)
+  ? { status: 200, tipo: 'image/png', corpo: PIXEL }
+  : { status: 403, tipo: 'text/plain', corpo: 'AccessDenied' });
+r = await pedir({ token: 't', url: URL_BOA, bloco: BLOCO });
+if (String(r.corpo.dados || '').startsWith('data:image/png;base64,')) {
+  ok('endereço recusado + id do bloco: a figura vem pela API do Notion');
+} else falha('recusa com id de bloco: ' + JSON.stringify(r.corpo).slice(0, 200));
+if ((ultimoPedido.url || '').includes('figura-nova.png')) ok('o segundo pedido é ao endereço novo, assinado');
+else falha('não buscou o endereço novo: ' + ultimoPedido.url);
+
+responder = () => ({ status: 403, tipo: 'text/plain', corpo: 'AccessDenied' });
+r = await pedir({ token: 't', url: URL_BOA });
+if (/venceu|logado/.test(r.corpo.erro || '')) ok('sem id de bloco, a recusa do site é explicada como antes');
+else falha('recusa sem bloco: ' + JSON.stringify(r.corpo).slice(0, 160));
+
+r = await pedir({ token: 't', url: URL_BOA, bloco: 'não é um id' });
+if (/venceu|logado/.test(r.corpo.erro || '')) ok('id de bloco inventado é ignorado');
+else falha('id inventado passou: ' + JSON.stringify(r.corpo).slice(0, 160));
+
+/* endereço que abre normalmente não gasta chamada ao Notion */
+let foiAoNotion = 0;
+const respostaBlocoAntes = respostaBloco;
+respostaBloco = (...a) => { foiAoNotion += 1; return respostaBlocoAntes(...a); };
+responder = () => ({ status: 200, tipo: 'image/png', corpo: PIXEL });
+r = await pedir({ token: 't', url: URL_BOA, bloco: BLOCO });
+if (String(r.corpo.dados || '').startsWith('data:image/png;base64,') && foiAoNotion === 0) {
+  ok('endereço que já abre é usado direto, sem incomodar o Notion');
+} else falha('foi ao Notion à toa: ' + foiAoNotion + ' ' + JSON.stringify(r.corpo).slice(0, 120));
+respostaBloco = respostaBlocoAntes;
+
 /* ── 5. endereço vencido, que é o caso do Notion ──────────────────────── */
 responder = () => ({ status: 403, tipo: 'text/plain', corpo: 'expired' });
 r = await pedir({ token: 't', url: URL_BOA });

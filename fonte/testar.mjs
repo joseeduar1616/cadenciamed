@@ -302,6 +302,47 @@ if (await linhaAula.count() === 0) {
     if (await botaoDeNovo.count() > 0) ok('anotação: aparece o botão de tentar as figuras de novo');
     else falha('anotação: não achei o botão de tentar as figuras de novo');
 
+    /* ── tela cheia não pode levar o texto embora ───────────────────────
+       Entrar em tela cheia move o editor para um portal, e o React
+       desmonta e remonta o contentEditable. O texto mora no DOM, não em
+       estado: ia junto, e tudo que a pessoa tinha escrito ou colado desde
+       que abriu a anotação sumia. */
+    /* Comparar o que a pessoa vê, e não o HTML byte a byte: reescrever o
+       innerHTML faz o navegador normalizar a árvore (um <div> dentro de um
+       <p> fecha o <p>), o que muda o texto do HTML sem mudar nada na tela. */
+    const oQueSeVe = () => pag.evaluate(() => {
+      const ed = document.querySelector('[contenteditable="true"]');
+      return {
+        texto: ed.innerText.replace(/\s+/g, ' ').trim(),
+        figuras: ed.querySelectorAll('img').length,
+        negrito: /<b>|<strong>/i.test(ed.innerHTML),
+      };
+    });
+    const antesDaTela = await oQueSeVe();
+    await pag.locator('button[title="Tela cheia"]').first().click();
+    await pag.waitForTimeout(700);
+    const naTelaCheia = await oQueSeVe();
+    if (JSON.stringify(naTelaCheia) === JSON.stringify(antesDaTela)) {
+      ok('anotação: a tela cheia mantém tudo que já estava escrito');
+    } else falha(`anotação: a tela cheia mudou o conteúdo: ${JSON.stringify(antesDaTela)} vs ${JSON.stringify(naTelaCheia)}`);
+
+    await pag.locator('button[title="Sair da tela cheia"]').first().click();
+    await pag.waitForTimeout(700);
+    const depoisDaTela = await oQueSeVe();
+    if (JSON.stringify(depoisDaTela) === JSON.stringify(antesDaTela)) ok('anotação: e sair da tela cheia também mantém');
+    else falha(`anotação: sair da tela cheia mudou o conteúdo: ${JSON.stringify(depoisDaTela)}`);
+
+    /* Reescrever o conteúdo apaga a seleção. Sem cursor, o colar seguinte
+       não sabia onde entrar e comia o começo do texto — foi assim que este
+       teste pegou o defeito. */
+    const cursorVoltou = await pag.evaluate(() => {
+      const ed = document.querySelector('[contenteditable="true"]');
+      const sel = window.getSelection();
+      return !!(sel && sel.rangeCount && ed.contains(sel.getRangeAt(0).commonAncestorContainer));
+    });
+    if (cursorVoltou) ok('anotação: o cursor volta para dentro do texto depois da tela cheia');
+    else falha('anotação: ficou sem cursor depois de sair da tela cheia');
+
     /* A imagem que vem na própria área de transferência (copiar imagem,
        print de tela). É o caminho que sempre funciona, e antes não fazia
        nada. */
