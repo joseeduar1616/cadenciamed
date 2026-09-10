@@ -8,6 +8,7 @@
 
 const ICONE_ABA = {
   hoje: CalendarDays, foco: Target, materias: ListChecks, temas: Stethoscope,
+  cronograma: GraduationCap,
   assistente: Sparkles, cartoes: Layers, revisoes: RotateCcw, rotina: Coffee,
   amigos: Users, metas: Flame, progresso: BarChart3, planos: Zap,
 };
@@ -478,6 +479,7 @@ export default function Cadencia() {
     { id: "hoje", label: "Hoje", acc: "var(--a-CL)" },
     { id: "foco", label: "Foco", acc: "var(--a-PR)" },
     { id: "materias", label: "Matérias", acc: "var(--a-GO)" },
+    { id: "cronograma", label: "Cronograma", acc: "var(--a-PE)" },
     { id: "temas", label: "Temas", acc: "var(--a-CI)" },
     ...(souDono || pro ? [{ id: "assistente", label: "Assistente", acc: "var(--neon)" }] : []),
     { id: "cartoes", label: "Cartões", acc: "var(--neon)", badge: cartoesHoje },
@@ -836,6 +838,7 @@ export default function Cadencia() {
               {tab === "hoje" && <Hoje {...{ data, setData, today, minToday, minWeek, qWeek, streak, late, done, bonusDone, addSession, delSession, notify, go: setTab, blocosHoje, projecao: pro ? projecao : null, pro, verPlanos: () => setTab("planos"), cartoesHoje }} />}
               {tab === "foco" && <Foco {...{ data, setData, today, P, subjectId: pomoSubject, setSubjectId: setPomoSubject }} />}
               {tab === "materias" && <Materias {...{ subjects, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, salvarAnotacao, notify, setData, nuvem }} />}
+              {tab === "cronograma" && <AbaCronograma {...{ data, setData, notify, nuvem, pro, verPlanos: () => setTab("planos") }} />}
               {tab === "temas" && !pro && <Bloqueado recurso={RECURSOS_PRO.temas} onVerPlanos={() => setTab("planos")} />}
               {tab === "rotina" && !pro && <Bloqueado recurso={RECURSOS_PRO.rotina} onVerPlanos={() => setTab("planos")} />}
               {tab === "cartoes" && !pro && <Bloqueado recurso={RECURSOS_PRO.cartoes} onVerPlanos={() => setTab("planos")} />}

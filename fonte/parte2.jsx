@@ -35,9 +35,14 @@ const DEFAULTS = {
   /* Cronograma que a pessoa recebeu do curso dela, em texto, para o
      assistente organizar a rotina em cima do que ela realmente tem. */
   cronograma: { nome: "", texto: "" },
-  /* Currículo próprio, que substitui o padrão no todo ou por área — ver
+  /* Currículo próprio, que substitui o padrão no todo ou por área. Ver
      normalize(), logo abaixo. */
   cronogramaProprio: [],
+  /* Como o currículo próprio entrou: "somar" mantém as aulas da residência
+     ao lado das novas, "substituir" troca as da residência nas áreas
+     enviadas. Serve para a aba Cronograma acender de novo o cartão certo;
+     quem manda no que aparece continua sendo a lista acima. */
+  cronogramaModo: "somar",
   /* Anotação rica por matéria (parte17.jsx), por id de aula. */
   anotacoes: {},
   /* Se os números desta pessoa aparecem no ranking das salas de amigos.
@@ -138,6 +143,7 @@ function normalize(raw) {
       esp: String(s.esp || "").trim().slice(0, 40) || String(s.title).trim().slice(0, 40),
       bonus: arr(s.bonus, []).filter((t) => typeof t === "string" && t.trim()).slice(0, 10).map((t) => String(t).trim().slice(0, 80)),
     })),
+    cronogramaModo: d.cronogramaModo === "substituir" ? "substituir" : "somar",
     /* Anotação rica por matéria (parte17.jsx). O HTML passa de novo por
        limparHtmlColado aqui — não só no colar — porque este é o ponto por
        onde entra tudo que vem de fora: outro aparelho, a nuvem, uma cópia

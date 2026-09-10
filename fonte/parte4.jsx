@@ -88,7 +88,7 @@ function CartaoBloco({ b, iso, estado, onAlternar, onRemover, minutosAgora }) {
           </div>
 
           <Mini style={{ marginTop: 5, fontFamily: F_MONO }}>
-            {b.start}–{b.end} · {fmtMin(dur)}
+            {b.start}-{b.end} · {fmtMin(dur)}
             {b.fixo ? " · toda semana" : " · só nesta data"}
           </Mini>
 
@@ -559,7 +559,7 @@ function Rotina({ data, setData, gcal, today }) {
                               </div>
                               {!curto ? (
                                 <div style={{ fontFamily: F_MONO, fontSize: 9.5, color: acento, marginTop: 2 }}>
-                                  {est === "feito" ? "cumprido" : `${b.start}–${b.end}`}
+                                  {est === "feito" ? "cumprido" : `${b.start}-${b.end}`}
                                 </div>
                               ) : null}
                             </div>

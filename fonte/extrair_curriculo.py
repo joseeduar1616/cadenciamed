@@ -27,7 +27,10 @@ linha_uid = next(l for l in base.splitlines() if l.strip().startswith(marca_uid)
 
 parte9 = open('parte9.jsx', encoding='utf-8').read()
 inicio_p9 = 'function materiaParaAula'
-fim_p9 = 'function Cronograma'
+# Fecha no comentário que abre a aba Cronograma: o nome do componente já
+# mudou uma vez (Cronograma virou AbaCronograma) e levou este extrator
+# junto, sem ninguém perceber até a compilação parar.
+fim_p9 = '/* ── aba Cronograma'
 if inicio_p9 not in parte9 or fim_p9 not in parte9:
     raise SystemExit('não achei materiaParaAula / aplicarNoCronogramaProprio no parte9.jsx')
 bloco_aplicar = parte9[parte9.index(inicio_p9):parte9.index(fim_p9)].rstrip()

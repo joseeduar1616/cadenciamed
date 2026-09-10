@@ -361,7 +361,7 @@ function Notion({ nuvem, subjects, data, setData, notify }) {
       <Texto style={{ marginTop: 10 }}>
         Se você organiza o ano num planner do Notion, dá para trazer de lá o
         que já foi feito: a aula, as questões, os cartões, o desempenho e as
-        revisões marcadas. Nada é escrito por cima — a importação só acrescenta
+        revisões marcadas. Nada é escrito por cima: a importação só acrescenta
         o que ainda não está marcado aqui.
       </Texto>
 
@@ -437,7 +437,7 @@ function Notion({ nuvem, subjects, data, setData, notify }) {
               <Label>confira antes · {plano.duvidas.length}</Label>
               <Mini style={{ marginTop: 4 }}>
                 O tema é parecido, mas não igual. Confirme a aula ou tire a linha
-                da importação — um encaixe errado marcaria a aula errada.
+                da importação, porque um encaixe errado marcaria a aula errada.
               </Mini>
               <div className="mt-3 flex flex-col gap-2" style={{ maxHeight: 320, overflowY: "auto" }}>
                 {plano.duvidas.map((p, i) => (

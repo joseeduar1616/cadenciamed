@@ -36,7 +36,7 @@ Sua tarefa:
    - "Se a prova disser": só quando o texto trouxer uma associação clássica de prova — uma descrição de caso que aponta para um diagnóstico ou conduta específicos. A frente é "**Se a prova disser:** [a descrição, curta]\\n\\nPense em..."; o verso é a resposta, em negrito. Não force esse formato onde o material não tiver essa cara de vinheta.
    Uma palavra inteira em MAIÚSCULAS vale de vez em quando, só para a exceção que muda a conduta (um "NÃO faça" que costuma ser pego de surpresa) — não como regra geral.
 5. Quando um marcador [[img:algumnome]] estiver perto de um trecho que virou cartão, e a imagem for necessária para responder ou entender aquele cartão, copie o marcador, exatamente como está escrito, dentro do texto da frente ou do verso desse cartão. Não invente marcadores que não estejam no texto original, e não repita o mesmo marcador em vários cartões.
-6. Português do Brasil.
+6. Português do Brasil, sem travessão nas frases.
 
 Responda SOMENTE com um JSON válido, sem markdown, sem texto antes ou depois, neste formato exato:
 {"baralho":"nome do assunto","cartoes":[{"frente":"...","verso":"..."}]}

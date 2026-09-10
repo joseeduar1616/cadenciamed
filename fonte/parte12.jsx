@@ -594,7 +594,7 @@ function MontarFlashcardsIA({ setData, notify, nuvem }) {
   const processar = async (f) => {
     setErro("");
     if (!/\.(pdf|docx)$/i.test(f.name)) {
-      setErro("Envie um PDF ou um Word (.docx). O .doc antigo não abre no navegador — salve como .docx e tente de novo.");
+      setErro("Envie um PDF ou um Word (.docx). O .doc antigo não abre no navegador. Salve como .docx e tente de novo.");
       return;
     }
     const baralho = (nomeBaralho || f.name.replace(/\.[^.]+$/, "")).trim().slice(0, 40) || "Assunto importado";

@@ -98,7 +98,7 @@ function BlocoRotinaEditor({ rotina, setRotina }) {
           <span className="rounded-full" style={{ width: 8, height: 8, background: BLOCKS[b.type] || T.faint, flexShrink: 0 }} />
           <span style={{ fontSize: 13, color: T.dim, width: 34, flexShrink: 0 }}>{DAYS[b.day] || "?"}</span>
           <span className="flex-1 min-w-0" style={{ fontSize: 13.5, color: T.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {b.label || b.type} <span style={{ color: T.faint }}>· {b.start}–{b.end}</span>
+            {b.label || b.type} <span style={{ color: T.faint }}>· {b.start}-{b.end}</span>
           </span>
           <button type="button" onClick={() => del(b.id)} className="flex items-center justify-center rounded-full" style={{ width: 26, height: 26, color: T.faint, cursor: "pointer", background: "none", border: "none" }}>
             <X size={13} />
@@ -293,7 +293,7 @@ function PainelAluno({ mentorInfo, uid, notify }) {
 
       <Card className="px-6 py-6">
         <H color="var(--a-GO)" icon={<BookMarked size={16} />}>Currículo</H>
-        <Texto style={{ marginTop: 6 }}>marcar aqui é o mesmo que o aluno marcar em Matérias — grava na hora, sem precisar salvar</Texto>
+        <Texto style={{ marginTop: 6 }}>marcar aqui é o mesmo que o aluno marcar em Matérias: grava na hora, sem precisar salvar</Texto>
         <div className="mt-4">
           <CurriculoDoAluno cronogramaProprio={aluno.cronogramaProprio} marks={aluno.marks} buscaMateria={buscaMateria} setBuscaMateria={setBuscaMateria} onMarcar={marcar} />
         </div>
@@ -317,7 +317,7 @@ function Mentor({ nuvem, notify, mentorInfo }) {
         <H color="var(--neon2)" icon={<GraduationCap size={16} />}>Seus alunos</H>
         <Texto style={{ marginTop: 8 }}>
           Adicione pelo e-mail com que a pessoa se cadastrou no Cadência. Só funciona
-          com quem já tem conta e o plano com a nuvem ligada — sem isso não há dados
+          com quem já tem conta e o plano com a nuvem ligada. Sem isso não há dados
           para ler nem gravar.
         </Texto>
         <div className="mt-5"><NovoAluno mentorInfo={mentorInfo} notify={notify} /></div>

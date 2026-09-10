@@ -18,7 +18,7 @@ const liberado = path.basename(alvo) === 'teste.html';
 
 /* A última aba se chama "Plano" para quem assina e "Assinar" para quem não
    assina, então é procurada pelos dois nomes. */
-const ABAS = ['Hoje', 'Foco', 'Matérias', 'Temas', 'Cartões',
+const ABAS = ['Hoje', 'Foco', 'Matérias', 'Cronograma', 'Temas', 'Cartões',
               'Revisões', 'Rotina', 'Amigos', 'Metas', 'Progresso', 'Plano|Assinar'];
 
 const erros = [];
@@ -112,6 +112,46 @@ for (const aba of ABAS) {
   else if (liberado && /Recurso do plano completo/.test(t)) falha(`aba ${aba} ficou bloqueada no build de teste`);
   else ok(`aba ${aba}: ${t.length} caracteres`);
 }
+
+/* ── aba Cronograma: a escolha do que o painel segue ──────────────────
+   É a primeira coisa que quem entra precisa achar, e ela decide o
+   conteúdo de todas as outras abas. Aqui só se confere que os três
+   caminhos aparecem, que a residência começa em uso e que o cartão do
+   ciclo clínico abre o envio: aplicar de verdade depende da IA, que este
+   teste não chama. */
+await ir('Cronograma');
+const escolhas = ['Residência', 'Ciclo clínico', 'Os dois juntos'];
+const achadas = [];
+for (const e of escolhas) {
+  if (await pag.locator(`button:has-text("${e}")`).count() > 0) achadas.push(e);
+}
+if (achadas.length === escolhas.length) ok('a aba Cronograma oferece os três caminhos');
+else falha(`a aba Cronograma só ofereceu: ${achadas.join(', ') || 'nenhum caminho'}`);
+
+if (/em uso/i.test(await texto())) ok('o cronograma em uso vem marcado');
+else falha('nenhum cronograma aparece como em uso');
+
+await pag.locator('button:has-text("Ciclo clínico")').first().click();
+await pag.waitForTimeout(400);
+if (/Traga o conteúdo do ciclo clínico/i.test(await texto())) ok('escolher o ciclo clínico abre o envio do conteúdo');
+else falha('escolher o ciclo clínico não abriu o envio');
+
+/* o cronograma em texto, que o assistente enxerga, tem campo próprio:
+   guardar aqui não pode depender do envio do ciclo clínico */
+const campoRef = pag.locator('textarea[placeholder*="datas do seu curso"]');
+if (await campoRef.count() === 0) falha('não achei o campo do cronograma em texto');
+else {
+  await campoRef.first().fill('10/03 a 24/03, módulo de Cardiologia');
+  await pag.locator('button:has-text("Guardar cronograma")').first().click();
+  await pag.waitForTimeout(400);
+  if (/caracteres/.test(await texto())) ok('o cronograma em texto fica guardado');
+  else falha('o cronograma em texto não apareceu depois de guardar');
+}
+
+await pag.locator('button:has-text("Residência")').first().click();
+await pag.waitForTimeout(300);
+if (!/Traga o conteúdo do ciclo clínico/i.test(await texto())) ok('voltar para a residência fecha o envio');
+else falha('voltar para a residência deixou o envio aberto');
 
 /* ── anotação rica por matéria ────────────────────────────────────────
    Não depende do plano: dá para testar nos dois builds. Escreve, aplica
@@ -286,19 +326,6 @@ if (liberado) {
   if (temAssistente > 0) ok('a aba Assistente aparece para quem tem o plano completo');
   else falha('a aba Assistente sumiu para quem tem o plano completo');
 
-  /* anexar o cronograma do curso, que o assistente passa a enxergar */
-  await ir('Assistente');
-  const anexar = pag.locator('button:has-text("Anexar meu cronograma")');
-  if (await anexar.count() === 0) falha('não achei o botão de anexar o cronograma');
-  else {
-    await anexar.first().click();
-    await pag.waitForTimeout(300);
-    await pag.locator('textarea').first().fill('Semana 1 — Cardiologia: valvopatias');
-    await pag.locator('button:has-text("Guardar")').first().click();
-    await pag.waitForTimeout(400);
-    if (/cronograma anexado|caracteres/.test(await texto())) ok('o cronograma do curso fica anexado no assistente');
-    else falha('o cronograma anexado não apareceu');
-  }
   await ir('Cartões');
 
   /* ── cartões: criar pasta, criar cartão, estudar ─────────────────── */

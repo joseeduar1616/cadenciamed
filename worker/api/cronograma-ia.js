@@ -33,7 +33,7 @@ Sua tarefa:
 1. Identifique cada aula ou assunto distinto do material: um título curto (até 60 caracteres), a área (um dos 5 códigos acima) e a especialidade dentro da área, em poucas palavras (ex.: "Cardiologia", "Ortopedia", "Nefrologia", "Obstetrícia").
 2. Para cada aula, liste de 2 a 6 tópicos curtos que ela cobre, se o material trouxer esse nível de detalhe — senão pode deixar a lista vazia.
 3. Não crie item para introdução, calendário de provas, avisos administrativos ou texto decorativo — só conteúdo de estudo de verdade.
-4. Português do Brasil.
+4. Português do Brasil, sem travessão nos títulos.
 
 Responda SOMENTE com um JSON válido, sem markdown, sem texto antes ou depois, neste formato exato:
 {"materias":[{"titulo":"...","area":"CL","esp":"...","topicos":["..."]}]}

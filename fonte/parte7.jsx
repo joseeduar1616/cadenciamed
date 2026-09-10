@@ -688,7 +688,7 @@ function Aparencia({ data, setData }) {
             <Mini style={{ marginTop: 10, lineHeight: 1.5, maxWidth: 420 }}>
               A cor escolhida é ajustada para continuar legível tanto no fundo
               escuro quanto no claro, e a segunda cor já nasce combinando com a
-              primeira — dá para trocar as duas à vontade depois.
+              primeira. Dá para trocar as duas à vontade depois.
             </Mini>
           </div>
         ) : null}
@@ -1339,7 +1339,7 @@ function CapituloEntrada({ id, numero, rotulo, titulo, texto, cor, x, figura, ro
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
           <div>
             <div className="pe-rev pe-eye" data-rev>
-              {numero} — {rotulo}
+              {numero} · {rotulo}
             </div>
             <h2 className="pe-rev pe-t pe-t2" data-rev
               style={{ marginTop: 20, transitionDelay: ".07s" }}>{titulo}</h2>
@@ -1382,14 +1382,14 @@ const CAPITULOS = [
   {
     id: "cronograma", rotulo: "Cronograma", cor: "var(--a-GO)", x: "78%",
     titulo: "O cronograma inteiro, num lugar só.",
-    texto: `As ${CURRICULUM.length} aulas principais e ${TOTAL_BONUS} tópicos, divididos pelas cinco áreas da prova. Você marca o que fez, e o radar mostra onde está atrasado — sem planilha, sem caderno de controle, sem montar cronograma do zero.`,
+    texto: `As ${CURRICULUM.length} aulas principais e ${TOTAL_BONUS} tópicos, divididos pelas cinco áreas da prova. Você marca o que fez, e o radar mostra onde está atrasado. Sem planilha, sem caderno de controle e sem montar cronograma do zero.`,
     figura: <FiguraGrade />,
     numeros: [[String(CURRICULUM.length), "aulas"], [String(TOTAL_BONUS), "tópicos"], ["5", "áreas"]],
   },
   {
     id: "revisao", rotulo: "Revisão", cor: "var(--ok)", x: "74%",
     titulo: "A revisão volta na hora certa.",
-    texto: "Toda aula marcada entra numa escada de revisão. O que venceu aparece em Hoje, no dia, sem você precisar lembrar — e se a escada padrão não é a sua, escreva os prazos que você usa.",
+    texto: "Toda aula marcada entra numa escada de revisão. O que venceu aparece em Hoje, no dia, sem você precisar lembrar. E se a escada padrão não é a sua, escreva os prazos que você usa.",
     figura: <FiguraEscada />,
   },
   {
@@ -1631,7 +1631,7 @@ function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar }) {
               </h1>
               <p className="pe-rev pe-p" data-rev style={{ transitionDelay: ".14s" }}>
                 O cronograma inteiro, a revisão que volta na hora certa e os seus
-                flashcards — no mesmo lugar, no computador e no celular.
+                flashcards, no mesmo lugar, no computador e no celular.
                 {" "}{CURRICULUM.length} aulas e {TOTAL_BONUS} tópicos já prontos para marcar.
               </p>
               <div className="pe-rev mt-8 flex gap-3 flex-wrap" data-rev style={{ transitionDelay: ".2s" }}>
@@ -1788,7 +1788,7 @@ function SecaoConta({
       <div className="pe-in">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-start">
           <div>
-            <div className="pe-rev pe-eye" data-rev>06 — Sua conta</div>
+            <div className="pe-rev pe-eye" data-rev>06 · Sua conta</div>
             <h2 className="pe-rev pe-t pe-t2" data-rev style={{ marginTop: 20, transitionDelay: ".07s" }}>
               {semNuvem ? "Comece agora mesmo." : "Crie sua conta."}
             </h2>
@@ -1895,7 +1895,7 @@ function SecaoPlanos({ irPara }) {
     <section id="planos" data-sec="planos" className="pe-sec">
       <span aria-hidden="true" className="pe-lav" style={{ "--c": "var(--neon2)", "--x": "62%" }} />
       <div className="pe-in">
-        <div className="pe-rev pe-eye" data-rev>07 — Planos</div>
+        <div className="pe-rev pe-eye" data-rev>07 · Planos</div>
         <div className="pe-rev mt-5" data-rev style={{ transitionDelay: ".07s" }}>
           <span className="inline-flex items-center gap-2 rounded-full px-4 py-2" style={{
             background: soft("var(--warn)", 14), border: `1px solid ${soft("var(--warn)", 40)}`,
