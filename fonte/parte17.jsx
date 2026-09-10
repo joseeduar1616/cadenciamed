@@ -23,6 +23,15 @@ const CORES_GRIFO_NOTA = ["#FFF59D", "#A5D6A7", "#90CAF9", "#F48FB1", "#FFCC80"]
    perguntar: a área da aula já diz qual é, sem ambiguidade nenhuma. */
 const PASTA_POR_AREA_NOTA = { CI: "CIRURGIA", CL: "CLINICA MÉDICA", PE: "PEDIATRIA", GO: "GO E PREVENTIVA", PR: "GO E PREVENTIVA" };
 
+/* Uma anotação só com imagem, sem texto nenhum, ainda é uma anotação de
+   verdade — sem o "ou <img" aqui, ela reaparecia como "sem anotação". Usada
+   tanto pelo botão de abrir (aqui embaixo) quanto pelo indicador na linha
+   fechada da matéria (SubjectRow, parte6.jsx). */
+function temAnotacao(anotacao) {
+  return !!(anotacao && anotacao.html
+    && (anotacao.html.replace(/<[^>]+>/g, "").trim() || /<img[\s/]/i.test(anotacao.html)));
+}
+
 /* ── exportar em Word e em PDF ──────────────────────────────────────────
  *
  * Word: nenhuma biblioteca. Um .doc de verdade (OOXML) é um zip de XML, e
@@ -444,10 +453,7 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
   };
 
   if (!aberto) {
-    /* Uma anotação só com imagem, sem texto nenhum, ainda é uma anotação de
-       verdade — sem o "ou <img" aqui, ela reaparecia como "sem anotação". */
-    const temTexto = !!(anotacao && anotacao.html
-      && (anotacao.html.replace(/<[^>]+>/g, "").trim() || /<img[\s/]/i.test(anotacao.html)));
+    const temTexto = temAnotacao(anotacao);
     return (
       <button type="button" onClick={() => setAberto(true)}
         className="flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 w-full"

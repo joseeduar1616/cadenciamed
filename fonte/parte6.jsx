@@ -3,6 +3,7 @@
    ═══════════════════════════════════════════════════════════════════ */
 
 function SubjectRow({ s, open, minutes, onToggleOpen, setMark, toggleBonus, anotacao, salvarAnotacao, notify, setData, nuvem }) {
+  const temNota = temAnotacao(anotacao);
   return (
     <Card className="overflow-hidden">
       <div className="flex items-center gap-3.5 px-5 py-4">
@@ -30,11 +31,16 @@ function SubjectRow({ s, open, minutes, onToggleOpen, setMark, toggleBonus, anot
             background: soft(perfColor(s.perf), 15), padding: "3px 9px", borderRadius: 99, whiteSpace: "nowrap",
           }}>{PERF[s.perf]}</span>
         ) : null}
+        {temNota ? <NotebookPen size={15} style={{ color: "var(--neon)", flexShrink: 0 }} /> : null}
         <ChevronDown size={16} style={{ color: T.ghost, transform: open ? "rotate(180deg)" : "none", transition: "transform .2s", flexShrink: 0 }} />
       </div>
 
       {open ? (
         <div className="px-5 pb-5 pt-4 grid grid-cols-1 sm:grid-cols-2 gap-5" style={{ borderTop: `1px solid ${T.line}` }}>
+          <div className="sm:col-span-2 pb-4" style={{ borderBottom: `1px solid ${T.line}` }}>
+            <AnotacaoMateria subjectId={s.id} area={s.area} titulo={s.title}
+              anotacao={anotacao} salvarAnotacao={salvarAnotacao} notify={notify} setData={setData} nuvem={nuvem} />
+          </div>
           <div className="flex flex-col gap-3">
             <Label>Etapas</Label>
             {[["aula", "Aula assistida"], ["qts", "Questões pós-aula"], ["cards", "Flashcards prontos"]].map(([k, lb]) => (
@@ -77,10 +83,6 @@ function SubjectRow({ s, open, minutes, onToggleOpen, setMark, toggleBonus, anot
               </div>
             </div>
           ) : null}
-          <div className="sm:col-span-2 pt-4" style={{ borderTop: `1px solid ${T.line}` }}>
-            <AnotacaoMateria subjectId={s.id} area={s.area} titulo={s.title}
-              anotacao={anotacao} salvarAnotacao={salvarAnotacao} notify={notify} setData={setData} nuvem={nuvem} />
-          </div>
         </div>
       ) : null}
     </Card>
