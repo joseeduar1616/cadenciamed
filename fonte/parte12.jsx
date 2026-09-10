@@ -1268,7 +1268,7 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
                             className="flex items-center gap-2.5 flex-1 min-w-0"
                             style={{ background: "none", border: "none", cursor: "pointer", padding: 0, textAlign: "left" }}>
                             <Layers size={15} style={{ color: p.nome === PASTA_SOLTA ? T.ghost : "var(--neon)", flexShrink: 0 }} />
-                            <span style={{ fontSize: 15, fontWeight: selPasta ? 700 : 600, color: selPasta ? "var(--neon)" : T.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.nome}</span>
+                            <span style={{ fontSize: 15, fontWeight: selPasta ? 700 : 600, color: selPasta ? "var(--neon)" : T.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{p.nome}</span>
                             <Mini style={{ flexShrink: 0 }}>
                               {p.baralhos.length
                                 ? `${p.baralhos.length} baralho${p.baralhos.length === 1 ? "" : "s"} · ${p.total} cartõe${p.total === 1 ? "" : "s"}`
@@ -1349,7 +1349,7 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
                                   onClick={() => { setPastaAtiva(p.nome); setBaralhoAtivo(sel ? "todos" : b.nome); }}
                                   className="flex-1 min-w-0 flex items-center gap-2"
                                   style={{ background: "none", border: "none", cursor: "pointer", padding: 0, textAlign: "left" }}>
-                                  <span style={{ fontSize: 14.5, fontWeight: sel ? 700 : 500, color: sel ? "var(--neon)" : T.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.nome}</span>
+                                  <span style={{ fontSize: 14.5, fontWeight: sel ? 700 : 500, color: sel ? "var(--neon)" : T.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{b.nome}</span>
                                   <span style={{ fontFamily: F_MONO, fontSize: 11, color: b.hoje ? T.warn : T.ghost, flexShrink: 0 }}>
                                     {b.hoje ? `${b.hoje} hoje` : b.total}
                                   </span>

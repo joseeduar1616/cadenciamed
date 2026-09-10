@@ -27,6 +27,7 @@ let UID_DO_EMAIL = 'uid-aluna';   // o que a busca por e-mail encontra
 let GRAVADO = null;
 let APAGADO = null;
 let LISTA = [];
+let MENTORES = {};   // uid -> { fields }, para o "conceder-mentor"
 
 const json = (corpo, status = 200) => new Response(JSON.stringify(corpo),
   { status, headers: { 'Content-Type': 'application/json' } });
@@ -48,6 +49,13 @@ globalThis.fetch = async (url, opcoes = {}) => {
     if (metodo === 'PATCH') { GRAVADO = JSON.parse(opcoes.body); return json({ name: 'ok' }); }
     if (u.includes('pageSize')) return json({ documents: LISTA });
     return json({ error: {} }, 404);
+  }
+  const m = /\/mentores\/([^/?]+)(?:\?|$)/.exec(u);
+  if (m) {
+    const uid = m[1];
+    if (metodo === 'GET') return MENTORES[uid] ? json(MENTORES[uid]) : json({ error: {} }, 404);
+    MENTORES[uid] = JSON.parse(opcoes.body);
+    return json({ name: uid });
   }
   throw new Error('chamada inesperada: ' + u);
 };
@@ -115,6 +123,31 @@ APAGADO = null;
 r = await chamarAcessos({ token: 't', acao: 'revogar', email: 'aluna@email.com' });
 if (r.corpo.ok && APAGADO && APAGADO.includes('uid-aluna')) ok('o dono revoga acesso');
 else falha('revogar: ' + JSON.stringify(r));
+
+/* ── conceder o papel de mentor ────────────────────────────────────────
+   Mesmo caminho do cupom "mentor1612" (concederMentor, em _comum.js), só
+   que iniciado pelo dono, com o e-mail de quem ele escolher. */
+MENTORES = {};
+r = await chamarAcessos({ token: 't', acao: 'conceder-mentor', email: 'Aluna@Email.com' });
+if (r.corpo.ok && /agora é mentor/.test(r.corpo.mensagem)) ok('o dono concede o papel de mentor por e-mail');
+else falha('conceder-mentor: ' + JSON.stringify(r));
+if (MENTORES['uid-aluna'] && MENTORES['uid-aluna'].fields.email.stringValue === 'aluna@email.com') {
+  ok('o e-mail concedido fica gravado em minúsculas, no documento do mentor');
+} else falha('documento do mentor: ' + JSON.stringify(MENTORES));
+
+/* quem não é dono não concede mentor nenhum — mesma regra de "liberar" */
+QUEM = { email: 'aluna@email.com', localId: 'uid-aluna' };
+r = await chamarAcessos({ token: 't', acao: 'conceder-mentor', email: 'outra@x.com' });
+if (r.status === 403) ok('quem não é dono não concede o papel de mentor');
+else falha('conceder-mentor sem ser dono: ' + JSON.stringify(r));
+QUEM = { email: 'joseeduardo1616@gmail.com', localId: 'uid-dono' };
+
+/* conceder de novo não apaga os alunos que a pessoa já tinha */
+MENTORES['uid-aluna'].fields.alunos = { arrayValue: { values: [{ mapValue: { fields: { uid: { stringValue: 'x' }, email: { stringValue: 'x@x.com' }, adicionadoEm: { doubleValue: 1 } } } }] } };
+r = await chamarAcessos({ token: 't', acao: 'conceder-mentor', email: 'aluna@email.com' });
+if (r.corpo.ok && (MENTORES['uid-aluna'].fields.alunos.arrayValue.values || []).length === 1) {
+  ok('conceder o papel de novo preserva os alunos que já tinham sido adicionados');
+} else falha('conceder de novo apagou os alunos: ' + JSON.stringify(MENTORES['uid-aluna']));
 
 r = await chamarAcessos({}, 'GET');
 if (r.status === 405) ok('o painel só aceita POST');

@@ -85,8 +85,11 @@ for (const cod of ['secdamocada', 'medeasysoft']) {
   const f = GRAVADO && GRAVADO.fields;
   if (f && f.plano.stringValue === 'anual') ok(`"${cod}" grava plano anual`);
   else falha(`"${cod}" gravou: ` + JSON.stringify(GRAVADO));
-  if (f && f.validoAte.doubleValue > Date.now() + 300 * 86400000) ok(`"${cod}" vale por cerca de um ano`);
-  else falha(`"${cod}" prazo errado`);
+  /* o anual vence numa data fixa (fim de 2027), não um ano a partir de
+     agora — validadeDoPlano, em _comum.js */
+  const FIM_ANUAL = new Date('2028-01-01T00:00:00-03:00').getTime();
+  if (f && f.validoAte.doubleValue === FIM_ANUAL) ok(`"${cod}" vale até o fim de 2027`);
+  else falha(`"${cod}" prazo errado: ${f && f.validoAte.doubleValue}, esperado ${FIM_ANUAL}`);
   if (f && f.email.stringValue === 'aluna@email.com') ok(`"${cod}" guarda o e-mail de quem resgatou`);
   else falha(`"${cod}" sem e-mail`);
 }

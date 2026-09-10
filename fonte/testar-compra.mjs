@@ -105,7 +105,10 @@ else falha('cortesia errada: ' + JSON.stringify(GRAVADO));
 r = await avisar(HOTMART_PAGO);
 if (r.status === 200 && GRAVADO && GRAVADO.fields.plano.stringValue === 'anual') ok('Hotmart: produto anual vira plano anual');
 else falha('Hotmart pago: ' + JSON.stringify(r) + ' ' + JSON.stringify(GRAVADO));
-if (GRAVADO && GRAVADO.fields.validoAte.doubleValue > Date.now() + 300 * 86400000) ok('o anual vale por cerca de um ano');
+/* o anual vence numa data fixa (fim de 2027), não um ano a partir da
+   compra — validadeDoPlano, em _comum.js */
+const FIM_ANUAL = new Date('2028-01-01T00:00:00-03:00').getTime();
+if (GRAVADO && GRAVADO.fields.validoAte.doubleValue === FIM_ANUAL) ok('o anual vale até o fim de 2027');
 else falha('prazo do anual: ' + JSON.stringify(GRAVADO));
 
 /* ── estorno tira o acesso ───────────────────────────────────────────── */

@@ -127,6 +127,7 @@ function BarraLateral({ abas, atual, onEscolher, estreita, aberta, onFechar, abe
             transform: aberta ? "none" : "translateX(-100%)",
             transition: "transform .28s cubic-bezier(.2,.8,.2,1)",
             visibility: aberta ? "visible" : "hidden",
+            paddingTop: "env(safe-area-inset-top, 0px)",
           }}>
           {conteudo}
         </aside>
@@ -764,7 +765,13 @@ export default function Cadencia() {
             aberto={menuFixo} setAberto={setMenuFixo} />
 
           <div className="flex-1 min-w-0">
-          <header className="px-5 sm:px-8 pt-7 pb-4">
+          {/* pt-7 (1.75rem) somado ao respiro do notch/status bar do celular:
+              instalado como app (manifest "standalone", viewport-fit=cover),
+              a página desenha por baixo da barra de status, e sem isso o
+              primeiro conteúdo nascia atrás dela — exatamente onde ficam os
+              botões do topo. env() vale 0 fora desse modo, então não muda
+              nada em quem abre pelo navegador comum. */}
+          <header className="px-5 sm:px-8 pb-4" style={{ paddingTop: "calc(1.75rem + env(safe-area-inset-top, 0px))" }}>
             <div className="mx-auto" style={{ maxWidth: LARGURA }}>
               {/* Com a barra lateral fixa (tela larga), marca ao centro e
                   controles flutuando nos cantos. Com a barra em gaveta (tela
