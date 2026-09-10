@@ -157,6 +157,7 @@ problema que existia quando as funções moravam dentro do que ia ao ar.
 | `worker/api/assistente.js` | conversa com a IA; o dono e quem assina podem usar |
 | `worker/api/flashcards-ia.js` | monta flashcards a partir do texto extraído de um PDF/Word |
 | `worker/api/cronograma-ia.js` | organiza o cronograma de outro curso (ou ciclo clínico) em matérias |
+| `worker/api/ler-foto.js` | transcreve o texto da foto de um cronograma, para entrar como se tivesse sido colado |
 | `worker/api/mentor.js` | papel de mentor, alunos, e a rotina/metas/currículo de cada um |
 | `worker/api/cupom.js` | confere o cupom e libera o plano |
 | `worker/api/compra.js` | recebe o aviso de compra da Kiwify ou Hotmart |
@@ -329,11 +330,18 @@ Com as duas cadastradas o Gemini é o escolhido. Para forçar um deles,
 cadastre `IA_PROVEDOR` com `gemini` ou `anthropic`. O modelo também dá para
 trocar sem mexer no código, por `GEMINI_MODELO` e `ANTHROPIC_MODELO`.
 
+O padrão é o **`gemini-1.5-flash`**: é o corte rápido e barato, que é o que
+estas rotas pedem. Responder uma dúvida de estudo, separar um cronograma em
+aulas e transcrever a foto de um calendário não precisam do modelo grande, e
+o grande custa algumas vezes mais por pedido.
+
 **O Google aposenta modelo sem aviso.** O `gemini-2.5-flash` parou de aceitar
-conta nova e o assistente passou a devolver a recusa da própria API. Quando
-acontecer de novo, não é preciso recompilar nem publicar: cadastre
-`GEMINI_MODELO` no Worker com o nome que a mensagem de erro indicar. A
-mensagem na tela já diz isso, e repete o substituto que o provedor sugeriu.
+conta nova e o assistente passou a devolver a recusa da própria API. O mesmo
+pode valer para o 1.5, que é de uma geração anterior: se a chave for de um
+projeto novo, ele pode não estar liberado. Quando acontecer, não é preciso
+recompilar nem publicar: cadastre `GEMINI_MODELO` no Worker com o nome que a
+mensagem de erro indicar. A mensagem na tela já diz isso, e repete o
+substituto que o provedor sugeriu.
 
 A assinatura do Gemini Advanced e a do Claude **não** dão acesso às APIs: são
 cobranças separadas. A camada gratuita do Gemini vem da chave do AI Studio,
@@ -353,13 +361,44 @@ mexida nem encurtada.
 
 ### Currículo próprio
 
-Em Assistente → Cronograma, a pessoa pode anexar (colar, ou enviar PDF/Word/
-texto) o cronograma de outro cursinho, ou o conteúdo do ciclo clínico
-(estágio) que está cursando agora. A rota `/api/cronograma-ia` (mesmo padrão
+Na aba Cronograma, a pessoa pode anexar (colar, enviar PDF/Word/texto, ou
+mandar uma foto) o cronograma de outro cursinho, ou o conteúdo do ciclo
+clínico (estágio) que está cursando agora. A rota `/api/cronograma-ia` (mesmo padrão
 de `_ia.js` do montador de flashcards) organiza o material em matérias,
 classificadas nas mesmas 5 áreas do currículo padrão (`CL`/`CI`/`GO`/`PE`/
 `PR` — `AREAS`, no `base.jsx`). A pessoa revê o que a IA separou, desmarca
 áreas que não quer trocar, e confirma.
+
+### A foto do cronograma
+
+Muita gente recebe o cronograma no papel ou vê no mural, e o que tem no
+telefone é a foto. A `/api/ler-foto` manda a imagem para a mesma IA das
+outras rotas e devolve **só o texto transcrito** — daí em diante o caminho é
+o mesmo do PDF, e nenhum campo da aba precisa saber que existe IA no meio.
+
+O navegador reduz a foto antes de mandar: 1600px no lado maior e JPEG de
+qualidade 0,72 (`reduzirFoto`, em `parte9.jsx`). Uma foto de telefone tem
+4000px e vários megabytes, e nesse tamanho demoraria para subir sem ler nada
+melhor: texto de cartaz e de folha impressa fica legível bem antes disso.
+HEIC do iPhone não é desenhado pelo navegador, então nem chega a ser
+reduzido — a mensagem pede JPEG.
+
+Como custa cota da IA, ler foto exige plano, igual ao "organizar com a IA".
+Arquivo e texto colado continuam abertos para todo mundo, porque são lidos
+no próprio navegador.
+
+### As datas do período
+
+`data.cronograma` guarda, além do texto, o `inicio` e o `fim` do período. A
+**data da prova não está aí de propósito**: é a de sempre, em
+`data.profile.examDate`, que é quem manda na projeção de ritmo do painel
+inteiro. Ter duas seria ter duas contagens regressivas discordando uma da
+outra; a aba Cronograma só oferece um segundo lugar para editar a mesma.
+
+As três aparecem no `resumoParaIA` em linha separada do texto do curso: elas
+são dado do painel, conferido pela pessoa, e o calendário é material de fora.
+É o que deixa o assistente dizer "faltam três semanas" sem depender de achar
+isso escrito no meio do calendário.
 
 O resultado fica em `data.cronogramaProprio`: uma lista no mesmo formato do
 currículo padrão (`{id, week, area, title, esp, bonus}`), com o `id`
@@ -892,11 +931,20 @@ A senha nunca é guardada: fica gravado o PBKDF2 dela, com um sal sorteado por
 sala. A conferência é no servidor — no navegador bastaria abrir o código da
 página para entrar em qualquer sala.
 
-O ranking tem três recortes: **semana** (o padrão, porque é a corrida em que
-dá para virar o jogo), **mês** e **desde sempre**. Quem decide de que semana e
-de que mês se trata é o servidor, no fuso de São Paulo — deixar cada navegador
-decidir faria duas pessoas da mesma sala compararem semanas diferentes sem
-perceber.
+O ranking tem quatro recortes: **hoje**, **semana** (o padrão, porque é a
+corrida em que dá para virar o jogo), **mês** e **desde sempre**. Quem decide
+de que dia, de que semana e de que mês se trata é o servidor, no fuso de São
+Paulo — deixar cada navegador decidir faria duas pessoas da mesma sala
+compararem semanas diferentes sem perceber.
+
+O número do dia acompanha **qualquer** recorte, não só o dele: cada linha do
+ranking mostra quanto a pessoa fez hoje ao lado do total da semana. Quem
+lidera o mês pode não ter aberto o livro hoje, e é essa a informação que muda
+o que alguém faz agora.
+
+O próprio dia, no alto da aba (`MeuDia`), sai das sessões gravadas no
+aparelho e não do servidor: é o mesmo número que a aba Hoje mostra, aparece
+na hora e continua certo sem rede.
 
 Cada recorte é gravado com a chave do período junto. Quem estudou muito na
 semana passada e não abriu o app desde então aparece zerado nesta semana, com

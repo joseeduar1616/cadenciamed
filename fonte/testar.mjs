@@ -148,6 +148,32 @@ else {
   else falha('o cronograma em texto não apareceu depois de guardar');
 }
 
+/* as três datas do período, que o assistente lê junto do calendário */
+const datas = pag.locator('input[type="date"]');
+if (await datas.count() >= 3) ok('a aba oferece as três datas: início, término e prova');
+else falha(`só achei ${await datas.count()} campo(s) de data na aba Cronograma`);
+
+await datas.nth(0).fill('2026-03-10');
+await datas.nth(1).fill('2026-05-30');
+await pag.locator('button:has-text("Guardar cronograma")').first().click();
+await pag.waitForTimeout(400);
+if (/semanas de curso/.test(await texto())) ok('as datas viram o tamanho do período em semanas');
+else falha('o resumo do período não apareceu: ' + (await texto()).slice(0, 200));
+
+/* término antes do início é engano de digitação, e precisa ser recusado
+   antes de virar conta de dias negativa */
+await datas.nth(1).fill('2026-01-01');
+await pag.locator('button:has-text("Guardar cronograma")').first().click();
+await pag.waitForTimeout(300);
+if (/término está antes/i.test(await texto())) ok('término antes do início é recusado com o motivo');
+else falha('data invertida passou sem aviso');
+await datas.nth(1).fill('2026-05-30');
+
+/* mandar foto é IA, e a IA é do plano: o botão existe nos dois cartões */
+const botoesFoto = pag.locator('button:has-text("mandar foto")');
+if (await botoesFoto.count() >= 1) ok('dá para mandar foto do cronograma');
+else falha('não achei o botão de mandar foto');
+
 await pag.locator('button:has-text("Residência")').first().click();
 await pag.waitForTimeout(300);
 if (!/Traga o conteúdo do ciclo clínico/i.test(await texto())) ok('voltar para a residência fecha o envio');

@@ -33,8 +33,13 @@ const DEFAULTS = {
   simulados: {}, provas: [], habits: HABITS_SEED, habitLog: {},
   rever: [], notes: {}, googleCal: { id: "", ultima: 0, autoSync: false },
   /* Cronograma que a pessoa recebeu do curso dela, em texto, para o
-     assistente organizar a rotina em cima do que ela realmente tem. */
-  cronograma: { nome: "", texto: "" },
+     assistente organizar a rotina em cima do que ela realmente tem.
+     As duas datas dizem quando esse período começa e quando acaba: sem elas
+     o assistente sabe o conteúdo mas não sabe o prazo. A data da prova não
+     está aqui de propósito, é a de sempre, em profile.examDate, que é quem
+     manda na projeção do painel inteiro. Ter duas seria ter duas contagens
+     regressivas discordando uma da outra. */
+  cronograma: { nome: "", texto: "", inicio: "", fim: "" },
   /* Currículo próprio, que substitui o padrão no todo ou por área. Ver
      normalize(), logo abaixo. */
   cronogramaProprio: [],
@@ -60,6 +65,10 @@ const DEFAULTS = {
 };
 
 const KEY = "cadencia:v3";
+
+/* Um dia no formato do <input type="date">, ou vazio. Serve para qualquer
+   data que venha de fora e vá virar conta de dias depois. */
+const diaValido = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? String(v) : "");
 
 function normalize(raw) {
   const d = raw && typeof raw === "object" ? raw : {};
@@ -126,6 +135,11 @@ function normalize(raw) {
          encheria o armazenamento do navegador e derrubaria o salvamento
          inteiro, não só o assistente. */
       texto: String(obj(d.cronograma).texto || "").slice(0, 20000),
+      /* Data solta vira vazio: o campo é um <input type="date">, então o que
+         vale é AAAA-MM-DD, e qualquer outra coisa só quebraria a conta de
+         dias mais adiante. */
+      inicio: diaValido(obj(d.cronograma).inicio),
+      fim: diaValido(obj(d.cronograma).fim),
     },
     /* Currículo próprio: substitui o padrão (curriculo.js) no todo ou só
        numa área, montado pela IA a partir do que a pessoa anexou em
