@@ -553,15 +553,27 @@ também não funciona — não há OCR aqui.
 
 ## Anotações
 
-Em Matérias, abrir uma aula mostra um botão de anotação — clicar escreve, ou
-cola o que a pessoa já tinha escrito noutro lugar. `parte17.jsx` monta o
-editor, com `document.execCommand` (negrito, itálico, sublinhado, alinhar —
+Em Matérias (não em Temas — as duas abas parecem a mesma coisa pelo nome,
+mas Temas só agrupa o progresso por especialidade, sem abrir aula por
+aula), tocar numa aula mostra o botão de anotação — clicar escreve, ou cola
+o que a pessoa já tinha escrito noutro lugar. `parte17.jsx` monta o editor,
+com `document.execCommand` (negrito, itálico, sublinhado, alinhar —
 inclusive justificado —, cor da letra, grifo, imagem): obsoleto na
 especificação, mas ainda funciona em todo navegador atual, e evita trazer
 uma biblioteca de editor inteira para o que foi pedido, bem mais simples que
 um Word completo. O HTML fica em `data.anotacoes[id]`, pelo id da aula — o
 mesmo id fixo do currículo (ou do currículo próprio, parte9.jsx), então a
 anotação segue a aula mesmo se o currículo próprio substituir o padrão.
+
+**Achado difícil de achar**: a anotação era o último bloco dentro da aula
+aberta, depois de Etapas, Desempenho e Tópicos relacionados — quem abria uma
+aula e não rolava até o fim nunca via o botão. `SubjectRow`, em `parte6.jsx`,
+agora mostra a anotação primeiro, antes de tudo, e a linha fechada da aula
+ganhou um ícone de caderno (`NotebookPen`, aceso em `var(--neon)`) sempre
+que já existe alguma anotação escrita — `temAnotacao()`, extraída para o
+topo de `parte17.jsx` porque tanto o botão de abrir quanto esse indicador
+precisam da mesma regra (uma anotação só com imagem, sem texto, ainda conta
+como anotação).
 
 **As imagens não moram no HTML guardado.** Ficam no mesmo IndexedDB dos
 cartões e do Anki (`guardarMidia`/`lerMidia`, `parte13.jsx`): ao salvar, cada
