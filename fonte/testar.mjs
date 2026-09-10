@@ -289,6 +289,15 @@ if (await linhaAula.count() === 0) {
     if (/site-fechado/.test(guardouEndereco)) ok('anotação: o aviso guarda o endereço da figura, para tentar de novo depois');
     else falha('anotação: o aviso não guardou o endereço: ' + guardouEndereco);
 
+    /* Duas causas diferentes davam a mesma frase na tela, e não havia como
+       saber de qual figura o aviso falava. O nome do site vai escrito. */
+    const avisoDiz = await pag.evaluate(() => {
+      const c = document.querySelector('[contenteditable="true"] [data-figura-perdida]');
+      return c ? c.textContent : '';
+    });
+    if (/\(de [^)]+\)/.test(avisoDiz)) ok('anotação: o aviso diz de qual site era a figura que não veio');
+    else falha('anotação: o aviso não diz a origem: ' + avisoDiz.slice(0, 120));
+
     const botaoDeNovo = pag.locator('button:has-text("de novo")');
     if (await botaoDeNovo.count() > 0) ok('anotação: aparece o botão de tentar as figuras de novo');
     else falha('anotação: não achei o botão de tentar as figuras de novo');

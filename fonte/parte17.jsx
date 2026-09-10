@@ -345,8 +345,14 @@ function caixaDeFiguraPerdida(motivo, endereco) {
   caixa.setAttribute("style",
     "border:1px dashed rgba(178,59,59,.45);background:rgba(178,59,59,.08);border-radius:8px;"
     + "padding:10px 12px;margin:8px 0;font-size:13px;color:#B23B3B");
-  caixa.textContent = `Figura não trazida: ${motivo} `
+  /* O endereço (só o nome do site, não a query inteira, que é enorme e
+     assinada) fica escrito no aviso: sem isso, duas causas bem diferentes
+     produziam a mesma frase na tela e não havia como saber qual era. */
+  let onde = "";
+  try { onde = endereco ? new URL(endereco).hostname : ""; } catch (e) { /* endereço estranho, segue sem */ }
+  caixa.textContent = `Figura não trazida${onde ? ` (de ${onde})` : ""}: ${motivo} `
     + "Copie a imagem sozinha (botão direito nela, copiar imagem) e cole aqui.";
+  if (endereco) caixa.setAttribute("title", endereco);
   return caixa;
 }
 
