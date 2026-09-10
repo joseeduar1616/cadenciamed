@@ -1,5 +1,6 @@
 /* Testa o currículo próprio: substituir o padrão no todo ou só numa área,
- * sem duplicar entre uma leva e outra.
+ * ou somar (ciclo clínico ao lado da residência), sem duplicar entre uma
+ * leva e outra.
  *
  * Roda contra _curriculo.mjs, a cópia automática de montarCurriculo (do
  * base.jsx) e materiaParaAula/aplicarNoCronogramaProprio (do parte9.jsx) —
@@ -80,6 +81,39 @@ else falha('cronograma inteiro: ' + cronogramaInteiro.length);
 const ativoCompleto = montarCurriculo(cronogramaInteiro);
 if (ativoCompleto.lista.length === 5) ok('currículo ativo com as 5 áreas próprias não mistura nada do padrão');
 else falha('ativo completo misturou padrão: ' + ativoCompleto.lista.length);
+
+/* ── modo "somar": ciclo clínico ao lado da residência, não no lugar ──── */
+const materiasCIsomar = [
+  { area: 'CI', titulo: 'Fraturas', esp: 'Ortopedia', topicos: [] },
+  { area: 'CI', titulo: 'Apendicite', esp: 'Cirurgia geral', topicos: [] },
+];
+const somaCI = aplicarNoCronogramaProprio([], materiasCIsomar, 'somar');
+if (somaCI.length === totalCIPadrao + 2) {
+  ok('somar: entram as aulas padrão da área JUNTO com as novas, não uma no lugar da outra');
+} else falha(`somar CI: ${somaCI.length}, esperado ${totalCIPadrao + 2}`);
+const idsPadraoCI = new Set(CURSO.filter((a) => a.area === 'CI').map((a) => a.id));
+if (somaCI.filter((s) => idsPadraoCI.has(s.id)).length === totalCIPadrao) {
+  ok('somar: as aulas padrão copiadas mantêm o id de sempre, então o progresso já marcado continua valendo');
+} else falha('somar não preservou os ids das aulas padrão: ' + JSON.stringify(somaCI.map((s) => s.id)));
+if (somaCI.filter((s) => /^pp-/.test(s.id)).length === 2) {
+  ok('somar: as 2 aulas novas entram com id próprio, junto com as 18 (ou o que for) padrão');
+} else falha('somar: contagem de aulas novas errada');
+
+const ativoSomado = montarCurriculo(somaCI);
+if (ativoSomado.lista.length === CURSO.length + 2) {
+  ok('currículo ativo com "somar": o total cresce (padrão inteiro + as novas), nada é substituído');
+} else falha(`ativo somado: ${ativoSomado.lista.length}, esperado ${CURSO.length + 2}`);
+if (ativoSomado.lista.filter((s) => s.area === 'CI').length === totalCIPadrao + 2) {
+  ok('currículo ativo com "somar": a área mexida tem padrão + novas, as duas juntas');
+} else falha('área somada com contagem errada');
+
+/* somar de novo na mesma área substitui a leva anterior de "somar" (não
+   empilha duas cópias do padrão uma em cima da outra) */
+const materiasCIv3 = [{ area: 'CI', titulo: 'Colecistite', esp: 'Cirurgia geral', topicos: [] }];
+const somaCIdenovo = aplicarNoCronogramaProprio(somaCI, materiasCIv3, 'somar');
+if (somaCIdenovo.length === totalCIPadrao + 1) {
+  ok('somar de novo na mesma área substitui a leva de "somar" anterior, sem duplicar o padrão');
+} else falha(`somar de novo: ${somaCIdenovo.length}, esperado ${totalCIPadrao + 1}`);
 
 console.log(passos.join('\n'));
 console.log('\n' + (erros.length ? `${erros.length} PROBLEMA(S):\n` + erros.join('\n') : 'nenhum erro'));

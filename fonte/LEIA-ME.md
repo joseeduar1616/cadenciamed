@@ -356,11 +356,27 @@ classificadas nas mesmas 5 áreas do currículo padrão (`CL`/`CI`/`GO`/`PE`/
 O resultado fica em `data.cronogramaProprio`: uma lista no mesmo formato do
 currículo padrão (`{id, week, area, title, esp, bonus}`), com o `id`
 prefixado por `"pp-"` (`materiaParaAula`, em `parte9.jsx`) para nunca bater
-com o id de uma aula padrão. Cada substituição (`aplicarNoCronogramaProprio`)
-troca só as áreas que vieram naquela leva, preservando o que já tinha sido
-trocado antes noutra área — é o que faz um envio "só uma área" (ciclo
-clínico) trocar só aquele pedaço, e um envio com as 5 áreas trocar o
-currículo inteiro, sem duplicar entre uma leva e outra.
+com o id de uma aula padrão. Cada leva (`aplicarNoCronogramaProprio`) mexe
+só nas áreas que vieram nela, preservando o que já tinha sido trocado antes
+noutra área — é o que faz um envio "só uma área" (ciclo clínico) trocar só
+aquele pedaço, e um envio com as 5 áreas trocar o currículo inteiro, sem
+duplicar entre uma leva e outra.
+
+**Somar ou substituir, escolhido na hora de revisar.** Duas pessoas usam
+essa tela por motivos bem diferentes: quem segue outro curso inteiro no
+lugar da residência quer **substituir** (era o único comportamento antes
+disso); quem está no ciclo clínico e quer estudar as duas coisas ao mesmo
+tempo quer **somar** — nenhuma aula da residência pode sumir por causa
+disso. No modo "somar", `aplicarNoCronogramaProprio` copia as aulas padrão
+daquela área (do `CURRICULUM`, mantendo o `id` de cada uma — é o que faz o
+progresso já marcado continuar valendo) e põe as aulas novas depois delas,
+as duas dentro da mesma leva de `cronogramaProprio`. Funciona porque
+`montarCurriculo` só sabe fazer uma coisa com uma área presente em
+`cronogramaProprio`: **excluir** o padrão dela — "somar" só engana essa
+regra pré-colocando uma cópia do padrão ali dentro, então nenhuma outra
+parte do app precisou mudar. Somar de novo na mesma área substitui a leva
+de "somar" anterior (não empilha duas cópias do padrão uma em cima da
+outra).
 
 **Qual currículo está ativo, na prática**, é sempre `montarCurriculo(data.
 cronogramaProprio)` (`base.jsx`): sem currículo próprio, é o padrão inteiro;

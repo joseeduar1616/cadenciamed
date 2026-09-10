@@ -253,15 +253,32 @@ function materiaParaAula(m, semana) {
 }
 
 /* Junta o que a pessoa acabou de organizar ao currículo próprio que já
-   existia, substituindo só as áreas que vieram nesta leva — é o que faz um
-   envio "só a área tal" (ciclo clínico) trocar só aquele pedaço, e um envio
-   com as 5 áreas trocar o currículo inteiro, sem duplicar entre uma leva e
-   outra. */
-function aplicarNoCronogramaProprio(anterior, materias) {
-  const novasAreas = new Set(materias.map((m) => m.area));
-  const mantido = (anterior || []).filter((s) => !novasAreas.has(s.area));
-  const novas = materias.map((m, i) => materiaParaAula(m, mantido.length + i + 1));
-  return [...mantido, ...novas];
+   existia, nas áreas que vieram nesta leva — é o que faz um envio "só a
+   área tal" (ciclo clínico) mexer só naquele pedaço, e um envio com as 5
+   áreas mexer no currículo inteiro, sem duplicar entre uma leva e outra.
+   Modo "substituir": some tudo que já tinha nessa área (padrão ou próprio)
+   e fica só o que veio agora — para quem segue outro curso inteiro e não
+   quer as aulas da residência junto. Modo "somar": as aulas padrão da
+   residência continuam, e as novas entram depois delas na mesma área —
+   para quem estuda ciclo clínico ao lado da residência, não no lugar
+   dela. Como cada aula do padrão mantém o id de sempre (id: s.id, sem
+   trocar por um "pp-"), o progresso já marcado nela continua valendo. */
+function aplicarNoCronogramaProprio(anterior, materias, modo) {
+  const novasAreas = [...new Set(materias.map((m) => m.area))];
+  const mantido = (anterior || []).filter((s) => novasAreas.indexOf(s.area) < 0);
+  const partes = [];
+  let cursor = mantido.length;
+  for (const a of novasAreas) {
+    if (modo === "somar") {
+      const padrao = CURRICULUM.filter((s) => s.area === a);
+      partes.push(...padrao);
+      cursor += padrao.length;
+    }
+    const dessaArea = materias.filter((m) => m.area === a);
+    partes.push(...dessaArea.map((m, i) => materiaParaAula(m, cursor + i + 1)));
+    cursor += dessaArea.length;
+  }
+  return [...mantido, ...partes];
 }
 
 function Cronograma({ data, setData, notify, nuvem }) {
@@ -275,6 +292,11 @@ function Cronograma({ data, setData, notify, nuvem }) {
   const [ocupado, setOcupado] = useState(false);
   const [materias, setMaterias] = useState([]);
   const [areasOn, setAreasOn] = useState(() => new Set());
+  /* "somar" é o padrão: entra junto com as aulas da residência, sem apagar
+     nada — o jeito de estudar residência e ciclo clínico ao mesmo tempo.
+     "substituir" continua existindo para quem segue outro curso inteiro
+     no lugar da residência (era o único comportamento antes disso). */
+  const [modo, setModo] = useState("somar");
   const arquivoRef = useRef(null);
 
   const guardar = (texto, comoSeChama) => {
@@ -338,10 +360,12 @@ function Cronograma({ data, setData, notify, nuvem }) {
   const substituir = () => {
     const escolhidas = materias.filter((m) => areasOn.has(m.area));
     if (escolhidas.length === 0) { setErro("Marque pelo menos uma área para substituir."); return; }
-    setData((p) => ({ ...p, cronogramaProprio: aplicarNoCronogramaProprio(p.cronogramaProprio, escolhidas) }));
+    setData((p) => ({ ...p, cronogramaProprio: aplicarNoCronogramaProprio(p.cronogramaProprio, escolhidas, modo) }));
     const areas = [...new Set(escolhidas.map((m) => AREAS[m.area] || m.area))].join(", ");
     setFase("fechado"); setRascunho(""); setNome(""); setErro(""); setMaterias([]);
-    notify(`Currículo atualizado em ${areas}: ${escolhidas.length} aula${escolhidas.length === 1 ? "" : "s"}.`);
+    notify(modo === "somar"
+      ? `Somado ao currículo em ${areas}: ${escolhidas.length} aula${escolhidas.length === 1 ? "" : "s"} a mais, junto com as da residência.`
+      : `Currículo atualizado em ${areas}: ${escolhidas.length} aula${escolhidas.length === 1 ? "" : "s"}.`);
   };
 
   const voltarAoPadrao = () => {
@@ -357,8 +381,25 @@ function Cronograma({ data, setData, notify, nuvem }) {
       <div className="flex flex-col gap-3">
         <Mini style={{ lineHeight: 1.6 }}>
           A IA separou {materias.length} matéria{materias.length === 1 ? "" : "s"}. Desmarque uma área
-          para não mexer nela — só as marcadas substituem o currículo daquela área.
+          para não mexer nela — só as marcadas entram na área abaixo.
         </Mini>
+
+        <div className="flex gap-1.5 rounded-full p-1" style={{ background: T.card2, border: `1px solid ${T.line}`, width: "fit-content" }}>
+          {[["somar", "Somar com a residência"], ["substituir", "Substituir o currículo"]].map(([id, lb]) => (
+            <button key={id} type="button" onClick={() => setModo(id)} className="toque-larg rounded-full px-4 py-2"
+              style={{
+                background: modo === id ? T.card3 : "transparent", border: "none",
+                color: modo === id ? T.ink : T.dim, fontSize: 14,
+                fontWeight: modo === id ? 700 : 500, cursor: "pointer",
+              }}>{lb}</button>
+          ))}
+        </div>
+        <Mini style={{ lineHeight: 1.6 }}>
+          {modo === "somar"
+            ? "As aulas padrão da residência continuam nessas áreas, e as de agora entram junto — para estudar ciclo clínico ao lado da residência, sem perder nenhuma das duas."
+            : "As aulas padrão da residência somem nessas áreas, e ficam só as de agora — para quem segue outro curso inteiro no lugar da residência."}
+        </Mini>
+
         <div className="flex flex-col gap-3" style={{ maxHeight: 320, overflowY: "auto" }}>
           {porArea.map((g) => (
             <label key={g.a} className="flex items-start gap-2.5 rounded-xl px-3 py-2.5" style={{ background: T.card2, border: `1px solid ${T.line}`, cursor: "pointer" }}>
@@ -377,7 +418,7 @@ function Cronograma({ data, setData, notify, nuvem }) {
         </div>
         {erro ? <Label style={{ color: T.bad, textTransform: "none", letterSpacing: 0, fontSize: 14 }}>{erro}</Label> : null}
         <div className="flex items-center gap-2 flex-wrap">
-          <Btn tone="primary" size="sm" onClick={substituir}>Substituir currículo</Btn>
+          <Btn tone="primary" size="sm" onClick={substituir}>{modo === "somar" ? "Somar ao currículo" : "Substituir currículo"}</Btn>
           <Btn tone="outline" size="sm" onClick={() => { setFase("editar"); setErro(""); }}>voltar</Btn>
         </div>
       </div>
@@ -411,7 +452,8 @@ function Cronograma({ data, setData, notify, nuvem }) {
               <Mini style={{ maxWidth: 420, lineHeight: 1.6 }}>
                 Cole ou envie (PDF, Word ou texto) o cronograma do seu curso, ou o
                 conteúdo do ciclo clínico que você está cursando agora — a IA organiza
-                em matérias e pode substituir seu currículo por elas.
+                em matérias, e você escolhe se elas somam com o currículo da residência
+                ou o substituem.
               </Mini>
             </>
           )}
