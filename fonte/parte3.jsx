@@ -631,36 +631,52 @@ function useGoogleDrive() {
     return undefined;
   }, []);
 
+  /* Sempre resolve com { token, erro } — nunca só o token — porque quem
+     chama (enviarArquivo, sobretudo) precisa da mensagem exata de erro na
+     hora, como valor de retorno. Ler o estado erro logo depois de um
+     await aqui dentro pegaria o valor de ANTES do setErro acima ter
+     efeito (o fechamento da função já capturou aquele valor no
+     render passado) — foi assim que uma falha ao enviar para o Drive
+     ficava muda: o botão "parava" sem avisar nada. */
   const pedirToken = useCallback(() => new Promise((resolve) => {
-    if (!window.google || !window.google.accounts) return resolve(null);
+    if (!window.google || !window.google.accounts) {
+      const msg = "O login do Google ainda não carregou. Espere um instante e tente de novo.";
+      setErro(msg); resolve({ token: null, erro: msg });
+      return;
+    }
     try {
       cliente.current = window.google.accounts.oauth2.initTokenClient({
         client_id: GOOGLE_CFG.clientId,
         scope: ESCOPO_DRIVE,
         callback: (r) => {
-          if (r && r.access_token) { setToken(r.access_token); resolve(r.access_token); return; }
+          if (r && r.access_token) { setToken(r.access_token); resolve({ token: r.access_token, erro: "" }); return; }
           const motivo = (r && (r.error_description || r.error)) || "";
-          setErro(motivo ? `O Google recusou a autorização: ${motivo}` : "Autorização não concluída.");
-          resolve(null);
+          const msg = motivo ? `O Google recusou a autorização: ${motivo}` : "Autorização não concluída.";
+          setErro(msg); resolve({ token: null, erro: msg });
         },
-        error_callback: () => { setErro("Não consegui autorizar o Google Drive."); resolve(null); },
+        error_callback: () => { const msg = "Não consegui autorizar o Google Drive."; setErro(msg); resolve({ token: null, erro: msg }); },
       });
       cliente.current.requestAccessToken();
-    } catch (e) { setErro("Não consegui abrir a autorização do Google."); resolve(null); }
+    } catch (e) { const msg = "Não consegui abrir a autorização do Google."; setErro(msg); resolve({ token: null, erro: msg }); }
   }), []);
+
+  const conseguirToken = useCallback(
+    () => (token ? Promise.resolve({ token, erro: "" }) : pedirToken()),
+    [token, pedirToken],
+  );
 
   const conectar = useCallback(async () => {
     setErro(""); setOcupado(true);
-    const tk = token || (await pedirToken());
+    const { token: tk } = await conseguirToken();
     setOcupado(false);
     return !!tk;
-  }, [token, pedirToken]);
+  }, [conseguirToken]);
 
   const chamar = useCallback(async (caminho, opts) => {
-    const tk = token || (await pedirToken());
+    const { token: tk } = await conseguirToken();
     if (!tk) return null;
     return fetch(API_DRIVE + caminho, { ...opts, headers: { Authorization: `Bearer ${tk}`, ...(opts && opts.headers) } });
-  }, [token, pedirToken]);
+  }, [conseguirToken]);
 
   const listarPastas = useCallback(async (paiId) => {
     setErro(""); setOcupado(true);
@@ -687,23 +703,47 @@ function useGoogleDrive() {
     return r.json().catch(() => null);
   }, [chamar]);
 
+  /* Devolve { ok, dados, erro } sempre — nunca só null no fracasso — pelo
+     mesmo motivo do pedirToken acima: quem chama (ModalDrive.enviar, em
+     parte17.jsx) precisa saber IMEDIATAMENTE, pelo valor devolvido, o que
+     deu errado, em vez de reler o estado erro depois (que pode não ter
+     sido atualizado ainda quando o await volta). */
   const enviarArquivo = useCallback(async (nome, mime, blob, pastaId) => {
     setErro(""); setOcupado(true);
-    const tk = token || (await pedirToken());
-    if (!tk) { setOcupado(false); return null; }
+    const { token: tk, erro: motivoToken } = await conseguirToken();
+    if (!tk) { setOcupado(false); return { ok: false, erro: motivoToken || "Não consegui autorizar o Google Drive." }; }
     const metadados = { name: nome, parents: [pastaId || "root"] };
     const boundary = `cadencia-${uid()}`;
     const cabecalho = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadados)}\r\n--${boundary}\r\nContent-Type: ${mime}\r\n\r\n`;
     const corpo = new Blob([cabecalho, blob, `\r\n--${boundary}--`]);
-    const r = await fetch(`${API_DRIVE_UPLOAD}/files?uploadType=multipart&fields=id,webViewLink`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${tk}`, "Content-Type": `multipart/related; boundary=${boundary}` },
-      body: corpo,
-    });
+    let r;
+    try {
+      r = await fetch(`${API_DRIVE_UPLOAD}/files?uploadType=multipart&fields=id,webViewLink`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tk}`, "Content-Type": `multipart/related; boundary=${boundary}` },
+        body: corpo,
+      });
+    } catch (e) {
+      setOcupado(false);
+      const msg = "Sem conexão para enviar ao Drive. Confira a internet e tente de novo.";
+      setErro(msg);
+      return { ok: false, erro: msg };
+    }
     setOcupado(false);
-    if (!r.ok) { setErro("Não consegui enviar o arquivo para o Drive."); return null; }
-    return r.json().catch(() => null);
-  }, [token, pedirToken]);
+    if (!r.ok) {
+      /* O Google costuma mandar o motivo exato (ex.: "Drive API não está
+         ativada"); mostrar esse texto em vez de um genérico ajuda a
+         pessoa (ou quem for configurar o site) a saber o que corrigir. */
+      const detalhe = await r.json().catch(() => null);
+      const msg = (detalhe && detalhe.error && detalhe.error.message)
+        ? `Não consegui enviar ao Drive: ${detalhe.error.message}`
+        : "Não consegui enviar o arquivo para o Drive.";
+      setErro(msg);
+      return { ok: false, erro: msg };
+    }
+    const dados = await r.json().catch(() => null);
+    return { ok: true, dados };
+  }, [conseguirToken]);
 
   return {
     disponivel: !!GOOGLE_CFG, pronto, conectado: !!token, ocupado, erro,
