@@ -884,7 +884,7 @@ export default function Cadencia() {
             <div className="mx-auto rise" style={{ maxWidth: LARGURA }} key={tab}>
               {tab === "hoje" && <Hoje {...{ data, setData, today, minToday, minWeek, qWeek, streak, late, done, bonusDone, addSession, delSession, notify, go: setTab, blocosHoje, projecao: pro ? projecao : null, pro, verPlanos: () => setTab("planos"), cartoesHoje }} />}
               {tab === "foco" && <Foco {...{ data, setData, today, P, subjectId: pomoSubject, setSubjectId: setPomoSubject }} />}
-              {tab === "materias" && <Materias {...{ subjects, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, salvarAnotacao, notify, setData, nuvem }} />}
+              {tab === "materias" && <Materias {...{ subjects, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, salvarAnotacao, notify, setData, nuvem, pastas: data.pastas }} />}
               {tab === "cronograma" && <AbaCronograma {...{ data, setData, notify, nuvem, pro, verPlanos: () => setTab("planos") }} />}
               {tab === "temas" && !pro && <Bloqueado recurso={RECURSOS_PRO.temas} onVerPlanos={() => setTab("planos")} />}
               {tab === "rotina" && !pro && <Bloqueado recurso={RECURSOS_PRO.rotina} onVerPlanos={() => setTab("planos")} />}

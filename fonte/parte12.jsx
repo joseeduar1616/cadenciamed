@@ -16,6 +16,43 @@ const NOTAS = [
 const BARALHO_PADRAO = "Geral";
 const PASTA_SOLTA = "Sem pasta";
 
+/* ── as pastas grandes, uma por área do currículo ─────────────────────
+ *
+ * Cartão gerado por IA (de um documento ou de uma anotação) não vira uma
+ * pasta nova para cada assunto: ele cai na pasta da área a que o material
+ * pertence, e o assunto fica sendo o nome do baralho lá dentro.
+ *
+ * O primeiro nome de cada lista é o que se cria quando a pasta ainda não
+ * existe; os demais são apelidos que a pessoa pode já ter usado, para não
+ * acabar com "PREVENTIVA" e "Medicina Preventiva" lado a lado. A
+ * comparação ignora acento, caixa e pontuação.
+ */
+const PASTAS_DE_AREA = {
+  CL: ["CLÍNICA MÉDICA", "CLINICA", "CLÍNICA", "MEDICINA INTERNA"],
+  CI: ["CIRURGIA", "CIRURGIA GERAL"],
+  GO: ["GO", "GINECOLOGIA E OBSTETRÍCIA", "GINECOLOGIA", "OBSTETRÍCIA", "GO E PREVENTIVA"],
+  PE: ["PEDIATRIA", "PEDIATRIA E NEONATOLOGIA"],
+  PR: ["PREVENTIVA", "MEDICINA PREVENTIVA", "SAÚDE PÚBLICA", "GO E PREVENTIVA"],
+};
+
+const chavePasta = (s) => String(s || "")
+  .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+  .toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
+
+/* A pasta onde um baralho daquela área deve entrar: a que a pessoa já tem,
+   se tiver; senão o nome oficial, que será criado. Área desconhecida
+   devolve "", e quem chamou decide o que fazer. */
+function pastaDaArea(pastas, area) {
+  const nomes = PASTAS_DE_AREA[String(area || "").toUpperCase()];
+  if (!nomes) return "";
+  const jaTem = new Map((pastas || []).map((n) => [chavePasta(n), n]));
+  for (const n of nomes) {
+    const achada = jaTem.get(chavePasta(n));
+    if (achada) return achada;
+  }
+  return nomes[0];
+}
+
 /* ── ajustes de cada baralho ──────────────────────────────────────────
  *
  * Ficam em data.baralhoCfg, com a pasta na chave: dois baralhos de mesmo
@@ -584,7 +621,7 @@ async function gerarFlashcardsComIA({ texto, baralho, cobrirTudo, nuvem }) {
   return chamarApi(ROTA_FLASHCARDS_IA, { token, texto, baralho, cobrirTudo: !!cobrirTudo }, "O montador de flashcards");
 }
 
-function MontarFlashcardsIA({ setData, notify, nuvem }) {
+function MontarFlashcardsIA({ setData, notify, nuvem, pastas }) {
   const [nomeBaralho, setNomeBaralho] = useState("");
   const [cobrirTudo, setCobrirTudo] = useState(false);
   const [lendo, setLendo] = useState("");
@@ -618,15 +655,20 @@ function MontarFlashcardsIA({ setData, notify, nuvem }) {
       }
 
       const nomeFinal = (dados.baralho || baralho).slice(0, 40);
-      const novos = dados.cartoes.map((c) => novoCartao(c.frente, c.verso, null, nomeFinal, nomeFinal));
+      /* A IA também diz de que área é o material, e o baralho entra na
+         pasta grande dessa área. Quando ela não soube dizer, vale o de
+         antes: uma pasta com o nome do próprio assunto. */
+      const pastaFinal = pastaDaArea(pastas, dados.area) || nomeFinal;
+      const novos = dados.cartoes.map((c) => novoCartao(c.frente, c.verso, null, nomeFinal, pastaFinal));
       setData((p) => ({
         ...p,
         flash: [...novos, ...(p.flash || [])],
-        pastas: registrarPasta(p.pastas, nomeFinal),
+        pastas: registrarPasta(p.pastas, pastaFinal),
       }));
 
       const comImg = extraido.imagens || 0;
       notify(`${novos.length} cartõe${novos.length === 1 ? "" : "s"} montados em "${nomeFinal}"`
+        + (pastaFinal === nomeFinal ? "" : `, na pasta ${pastaFinal}`)
         + (comImg ? `, com ${comImg} imagem${comImg === 1 ? "" : "ns"} guardada${comImg === 1 ? "" : "s"}` : "")
         + (dados.cortado ? ". O material era grande e foi cortado antes do fim." : "."));
       setNomeBaralho("");
@@ -1212,12 +1254,16 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
           <div className="mt-6 pt-5" style={{ borderTop: `1px solid ${T.line}` }}>
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <Label>Pastas e baralhos</Label>
-              <div className="flex gap-2 items-center">
+              {/* No celular a largura fixa do campo empurrava o botão para
+                  fora da linha, e os dois subiam por cima do rótulo. Com
+                  base de 260px, o par desce para uma linha só dele quando
+                  não sobra espaço ao lado do rótulo. */}
+              <div className="flex gap-2 items-center justify-end" style={{ flex: "1 1 260px", minWidth: 0 }}>
                 <TextInput value={novaPasta} placeholder="Nova pasta"
                   onChange={(e) => setNovaPasta(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") criarPasta(); }}
-                  style={{ width: 170, padding: "8px 12px", fontSize: 14 }} />
-                <Btn size="sm" onClick={criarPasta}><Plus size={14} /> Criar pasta</Btn>
+                  style={{ flex: "1 1 110px", minWidth: 0, maxWidth: 170, padding: "8px 12px", fontSize: 14 }} />
+                <Btn size="sm" className="shrink-0" onClick={criarPasta}><Plus size={14} /> Criar pasta</Btn>
               </div>
             </div>
 
@@ -1268,17 +1314,24 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
                             className="flex items-center gap-2.5 flex-1 min-w-0"
                             style={{ background: "none", border: "none", cursor: "pointer", padding: 0, textAlign: "left" }}>
                             <Layers size={15} style={{ color: p.nome === PASTA_SOLTA ? T.ghost : "var(--neon)", flexShrink: 0 }} />
-                            <span style={{ fontSize: 15, fontWeight: selPasta ? 700 : 600, color: selPasta ? "var(--neon)" : T.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{p.nome}</span>
-                            <Mini style={{ flexShrink: 0 }}>
-                              {p.baralhos.length
-                                ? `${p.baralhos.length} baralho${p.baralhos.length === 1 ? "" : "s"} · ${p.total} cartõe${p.total === 1 ? "" : "s"}`
-                                : "vazia"}
-                            </Mini>
-                            {p.hoje ? (
-                              <span style={{ fontFamily: F_MONO, fontSize: 10.5, background: soft("var(--warn)", 20), color: T.warn, borderRadius: 99, padding: "1px 7px", flexShrink: 0 }}>
-                                {p.hoje} hoje
+                            {/* No celular o nome e a contagem não cabem lado a
+                                lado: a contagem desce para a segunda linha em
+                                vez de comer o nome da pasta. */}
+                            <span className="flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-2.5 flex-1 min-w-0">
+                              <span data-teste="nome-pasta" style={{ fontSize: 15, fontWeight: selPasta ? 700 : 600, color: selPasta ? "var(--neon)" : T.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{p.nome}</span>
+                              <span className="flex items-center gap-2 min-w-0 flex-wrap">
+                                <Mini style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+                                  {p.baralhos.length
+                                    ? `${p.baralhos.length} baralho${p.baralhos.length === 1 ? "" : "s"} · ${p.total} cartõe${p.total === 1 ? "" : "s"}`
+                                    : "vazia"}
+                                </Mini>
+                                {p.hoje ? (
+                                  <span style={{ fontFamily: F_MONO, fontSize: 10.5, background: soft("var(--warn)", 20), color: T.warn, borderRadius: 99, padding: "1px 7px", flexShrink: 0 }}>
+                                    {p.hoje} hoje
+                                  </span>
+                                ) : null}
                               </span>
-                            ) : null}
+                            </span>
                           </button>
                           {p.nome !== PASTA_SOLTA ? (
                             <div className="flex items-center gap-1" style={{ flexShrink: 0 }}>
@@ -1491,7 +1544,7 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
           documento incluídas nos cartões que precisarem delas.
         </Texto>
         <div className="mt-5">
-          <MontarFlashcardsIA setData={setData} notify={notify} nuvem={nuvem} />
+          <MontarFlashcardsIA setData={setData} notify={notify} nuvem={nuvem} pastas={data.pastas} />
         </div>
       </Card>
 

@@ -28,20 +28,23 @@ O texto abaixo, delimitado por """, foi extraído de um PDF ou Word que o estuda
 
 Sua tarefa:
 1. Identifique o assunto principal do material, num nome curto (até 40 caracteres) para o baralho.
-2. Separe o conteúdo em cartões de pergunta e resposta. Não crie cartão para introdução, sumário ou texto decorativo.
-3. Marque em **negrito** (dois asteriscos de cada lado) o termo que decide a resposta — o diagnóstico, o valor, o nome do achado — tanto na frente quanto no verso, do jeito que um bom cartão de revisão grifa o que importa. Não exagere: só o que realmente merece destaque, não a frase inteira.
-4. Use um destes formatos, o que fizer mais sentido para cada trecho — a maioria dos cartões costuma ser do tipo 1:
+2. Diga a qual das cinco grandes áreas da residência este material pertence, pela sigla: CL para clínica médica (cardiologia, pneumologia, nefrologia, endocrinologia, gastroenterologia, hematologia, reumatologia, neurologia, infectologia, dermatologia, psiquiatria, geriatria, emergências clínicas), CI para cirurgia (cirurgia geral, trauma, ortopedia, urologia, vascular, cabeça e pescoço, anestesia, oftalmologia, otorrino), GO para ginecologia e obstetrícia, PE para pediatria e neonatologia, PR para medicina preventiva, epidemiologia, bioestatística, saúde pública, SUS, medicina do trabalho e ética médica. Escolha a área que domina o material, mesmo que ele encoste em outra. Se o material não for de medicina, ou se de verdade não der para dizer, responda "".
+3. Separe o conteúdo em cartões de pergunta e resposta. Não crie cartão para introdução, sumário ou texto decorativo.
+4. Marque em **negrito** (dois asteriscos de cada lado) o termo que decide a resposta — o diagnóstico, o valor, o nome do achado — tanto na frente quanto no verso, do jeito que um bom cartão de revisão grifa o que importa. Não exagere: só o que realmente merece destaque, não a frase inteira.
+5. Use um destes formatos, o que fizer mais sentido para cada trecho — a maioria dos cartões costuma ser do tipo 1:
    - Fato direto: pergunta curta e objetiva; resposta direta, sem enrolação. Ex.: "Qual o agente etiológico da febre reumática?" → "**Estreptococo beta-hemolítico do grupo A**."
    - Reconhecimento de imagem, só quando houver um marcador [[img:algumnome]] próximo que sirva para aquele cartão: a frente é o marcador seguido de uma pergunta curta ("Qual o achado e o diagnóstico?", "O que essa imagem mostra?"); o verso liga o achado ao diagnóstico com uma seta, os dois em negrito. Ex.: verso "**Podagra** com tofo → **gota**."
    - "Se a prova disser": só quando o texto trouxer uma associação clássica de prova — uma descrição de caso que aponta para um diagnóstico ou conduta específicos. A frente é "**Se a prova disser:** [a descrição, curta]\\n\\nPense em..."; o verso é a resposta, em negrito. Não force esse formato onde o material não tiver essa cara de vinheta.
    Uma palavra inteira em MAIÚSCULAS vale de vez em quando, só para a exceção que muda a conduta (um "NÃO faça" que costuma ser pego de surpresa) — não como regra geral.
-5. Quando um marcador [[img:algumnome]] estiver perto de um trecho que virou cartão, e a imagem for necessária para responder ou entender aquele cartão, copie o marcador, exatamente como está escrito, dentro do texto da frente ou do verso desse cartão. Não invente marcadores que não estejam no texto original, e não repita o mesmo marcador em vários cartões.
-6. Português do Brasil, sem travessão nas frases.
+6. Quando um marcador [[img:algumnome]] estiver perto de um trecho que virou cartão, e a imagem for necessária para responder ou entender aquele cartão, copie o marcador, exatamente como está escrito, dentro do texto da frente ou do verso desse cartão. Não invente marcadores que não estejam no texto original, e não repita o mesmo marcador em vários cartões.
+7. Português do Brasil, sem travessão nas frases.
 
 Responda SOMENTE com um JSON válido, sem markdown, sem texto antes ou depois, neste formato exato:
-{"baralho":"nome do assunto","cartoes":[{"frente":"...","verso":"..."}]}
+{"baralho":"nome do assunto","area":"CL","cartoes":[{"frente":"...","verso":"..."}]}
 
-Se não houver conteúdo aproveitável, responda {"baralho":"","cartoes":[]}.`;
+O campo "area" tem que vir antes de "cartoes", e só aceita CL, CI, GO, PE, PR ou vazio.
+
+Se não houver conteúdo aproveitável, responda {"baralho":"","area":"","cartoes":[]}.`;
 
 /* Só entra quando a pessoa pede explicitamente: por padrão o modelo escolhe
    os pontos que valem a pena, senão um material grande vira uma enxurrada de
@@ -76,6 +79,21 @@ function recuperarCartoesParciais(texto) {
     } catch (e) { /* esse cartão veio malformado, pula */ }
   }
   return cartoes;
+}
+
+/* As cinco áreas do currículo, do jeito que o app as chama. A área decide
+   em qual das pastas grandes o baralho vai cair, lá no navegador. */
+const AREAS = new Set(["CL", "CI", "GO", "PE", "PR"]);
+
+/* A sigla, quando ela veio boa. Se a resposta foi cortada no meio do array
+   de cartões, o JSON não abre — mas a área foi pedida antes deles, então
+   ainda está escrita no texto cru e pode ser pescada de lá. */
+function lerArea(j, cru) {
+  const direto = String((j && j.area) || "").trim().toUpperCase();
+  if (AREAS.has(direto)) return direto;
+  const m = String(cru || "").match(/"area"\s*:\s*"\s*([A-Za-z]{2})\s*"/);
+  const pescada = m ? m[1].toUpperCase() : "";
+  return AREAS.has(pescada) ? pescada : "";
 }
 
 export async function onRequest({ request, env }) {
@@ -155,6 +173,7 @@ export async function onRequest({ request, env }) {
 
   return json({
     baralho: String(j.baralho || pedido || "").trim().slice(0, 40),
+    area: lerArea(j, r.texto),
     cartoes,
     cortado: !!(cortado || r.cortado || recuperado),
   });

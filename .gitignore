@@ -22,6 +22,7 @@ fonte/_leitor.mjs
 fonte/_recorte.mjs
 fonte/_curriculo.mjs
 fonte/_cores.mjs
+fonte/_pastas.mjs
 
 # refeitos por material/capturar.mjs e material/gerar.mjs
 material/capturas/

@@ -28,12 +28,6 @@ const TAMANHOS_FONTE_NOTA = [
   { id: "enorme", nome: "Enorme", px: 24 },
 ];
 
-/* As 4 pastas grandes que já existem na aba Cartões, uma por área do
-   currículo — GO e Preventiva dividem a mesma, como já é feito lá. Os
-   flashcards gerados a partir de uma anotação caem direto numa destas, sem
-   perguntar: a área da aula já diz qual é, sem ambiguidade nenhuma. */
-const PASTA_POR_AREA_NOTA = { CI: "CIRURGIA", CL: "CLINICA MÉDICA", PE: "PEDIATRIA", GO: "GO E PREVENTIVA", PR: "GO E PREVENTIVA" };
-
 /* Uma anotação só com imagem, sem texto nenhum, ainda é uma anotação de
    verdade — sem o "ou <img" aqui, ela reaparecia como "sem anotação". Usada
    tanto pelo botão de abrir (aqui embaixo) quanto pelo indicador na linha
@@ -679,7 +673,7 @@ function ModalDrive({ tituloAula, gerarBlob, sugestaoNome, notify, onFechar }) {
   ), document.body);
 }
 
-function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, notify, setData, nuvem }) {
+function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, notify, setData, nuvem, pastas }) {
   const [aberto, setAberto] = useState(false);
   const [pronto, setPronto] = useState(false);
   const [sujo, setSujo] = useState(false);
@@ -712,7 +706,7 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
       notify("A IA não conseguiu montar cartões a partir dessa anotação.");
       return;
     }
-    const pasta = PASTA_POR_AREA_NOTA[area] || PASTA_SOLTA;
+    const pasta = pastaDaArea(pastas, area) || PASTA_SOLTA;
     const novos = dados.cartoes.map((c) => novoCartao(c.frente, c.verso, subjectId, titulo, pasta));
     setData((p) => ({ ...p, flash: [...novos, ...(p.flash || [])], pastas: registrarPasta(p.pastas, pasta) }));
     notify(`${novos.length} cartõe${novos.length === 1 ? "" : "s"} gerado${novos.length === 1 ? "" : "s"} em "${pasta}".`
@@ -1005,7 +999,7 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
         <Btn size="sm" tone="outline" disabled={gerando} onClick={gerarFlashcards}>
           <Sparkles size={14} /> {gerando ? "Gerando…" : "Gerar flashcards com IA"}
         </Btn>
-        <Mini>vão para a pasta "{PASTA_POR_AREA_NOTA[area] || PASTA_SOLTA}", em Cartões</Mini>
+        <Mini>vão para a pasta "{pastaDaArea(pastas, area) || PASTA_SOLTA}", em Cartões</Mini>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap pt-2" style={{ borderTop: `1px solid ${T.line}` }}>

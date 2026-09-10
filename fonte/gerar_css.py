@@ -43,7 +43,8 @@ def decl(c):
         "inline-flex":"display:inline-flex","inline":"display:inline","block":"display:block",
         "fixed":"position:fixed","flex-1":"flex:1 1 0%","flex-col":"flex-direction:column",
         "flex-row":"flex-direction:row","flex-wrap":"flex-wrap:wrap","w-full":"width:100%",
-        "min-w-0":"min-width:0","mx-auto":"margin-left:auto;margin-right:auto",
+        "min-w-0":"min-width:0","shrink-0":"flex-shrink:0",
+        "mx-auto":"margin-left:auto;margin-right:auto",
         "overflow-hidden":"overflow:hidden","overflow-x-auto":"overflow-x:auto",
         "whitespace-nowrap":"white-space:nowrap","left-1/2":"left:50%",
     }

@@ -49,6 +49,7 @@ node testar.mjs                 # abre no Chromium e confere tudo
 node testar.mjs index.html      # confere o arquivo de produção
 node testar-assistente.mjs      # confere a função da IA, sem gastar cota
 node testar-flashcards-ia.mjs   # confere o montador de flashcards a partir de PDF/Word
+node testar-pastas.mjs          # confere em qual pasta grande cai o baralho de cada área
 node testar-compra.mjs          # confere o aviso de compra: segredo, plano e estorno
 node testar-salas.mjs           # confere as salas de amigos, com banco de mentira
 node testar-baralhos.mjs        # confere os baralhos publicados: quem publica e quem baixa
@@ -99,6 +100,7 @@ some calada quando falta uma linha no `normalize()`.
 | `testar-google.mjs` | teste da ligação permanente com o Google, com o OAuth de mentira |
 | `testar-curriculo.mjs` | teste de substituir o currículo padrão, no todo ou só numa área |
 | `testar-cores.mjs` | teste da cor própria: ajuste de legibilidade e sugestão de combinação |
+| `testar-pastas.mjs` | teste de em qual pasta grande cai o baralho de cada área, incluindo o reaproveitamento de pasta já existente |
 | `testar-recorte-pdf.mjs` | teste da matemática que acha o retângulo de cada figura num PDF, com objetos falsos, sem abrir PDF nenhum |
 | `testar-compra.mjs` | teste do aviso de compra: segredo, planos e estorno |
 | `testar-cupom.mjs` | teste do resgate de cupom, com Firebase falso |
@@ -637,6 +639,32 @@ necessária ali, e não inventar marcador que não estava no texto. O JSON que a
 IA devolve é conferido e limpo no servidor — tamanho de cada campo, quantos
 cartões no máximo — antes de chegar ao navegador.
 
+### A pasta grande de cada área
+
+Antes, cada documento virava uma pasta com o nome do próprio assunto, e a
+aba Cartões enchia de pasta com um baralho só. Agora a IA também diz **de
+que área é o material**: junto do nome do baralho, ela devolve `area`, uma
+das cinco siglas do currículo (`CL`, `CI`, `GO`, `PE`, `PR`). O servidor
+confere a sigla contra a lista — sigla inventada vira `""`, nunca uma pasta
+que o app não sabe desenhar — e pede o campo **antes** dos cartões no JSON
+de propósito: quando a resposta é cortada no meio do array, a área ainda
+está escrita no texto cru e `lerArea` a pesca de lá com regex, do mesmo
+jeito que `recuperarCartoesParciais` salva os cartões inteiros.
+
+No navegador, `pastaDaArea` (`parte12.jsx`) traduz a sigla no nome da pasta.
+Ela não escreve o nome oficial de cara: primeiro procura, entre as pastas
+que a pessoa já tem, uma que **seja** aquela área escrita de outro jeito —
+`PASTAS_DE_AREA` guarda os apelidos ("MEDICINA PREVENTIVA", "SAÚDE
+PÚBLICA", "GO E PREVENTIVA", a pasta antiga que juntava as duas) e
+`chavePasta` compara ignorando acento, caixa e pontuação. Só quando não
+acha nenhuma é que cria a pasta com o nome oficial. É o que impede
+"PREVENTIVA" de nascer ao lado de "Medicina Preventiva" na conta de quem já
+organizou tudo à mão.
+
+Sem área reconhecida, vale o comportamento antigo: uma pasta com o nome do
+assunto. `testar-pastas.mjs` roda contra `_pastas.mjs`, a cópia automática
+dessas três coisas, refeita pelo `extrair_pastas.py` a cada build.
+
 ### O estilo dos cartões
 
 A instrução da IA (`INSTRUCOES`, em `worker/api/flashcards-ia.js`) pede um
@@ -781,13 +809,10 @@ regras de estilo (negrito no que decide a resposta, achado→diagnóstico, "se
 a prova disser"...), então esta função não precisa de instrução própria nem
 de rota nova.
 
-Os cartões caem direto numa das 4 pastas grandes que já existem em Cartões,
-sem perguntar: `PASTA_POR_AREA_NOTA`, em `parte17.jsx`, mapeia a área da
-aula (`CL`/`CI`/`GO`/`PE`/`PR`, as mesmas do currículo) para o nome exato da
-pasta — GO e Preventiva (`PR`) dividem a mesma pasta, "GO E PREVENTIVA",
-como o pedido original já descrevia. Se a pessoa tiver nomeado essas pastas
-com um nome diferente do esperado, os cartões criam uma pasta nova com o
-nome padrão em vez de entrar na pasta dela.
+Os cartões caem direto na pasta grande da área da aula, sem perguntar:
+`pastaDaArea` (`parte12.jsx`) traduz a sigla do currículo (`CL`/`CI`/`GO`/
+`PE`/`PR`) na pasta certa. É a mesma função que o montador por documento
+usa — ver "A pasta grande de cada área", acima.
 
 ### Baixar em Word ou PDF, e enviar para o Google Drive
 

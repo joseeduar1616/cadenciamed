@@ -450,22 +450,22 @@ if (await linhaAula.count() === 0) {
         await pag.waitForTimeout(600);
         await ir('Cartões');
         const t = await texto();
-        /* a área da aula testada (Epidemiologia, PR) vai para "GO E
-           PREVENTIVA" — PASTA_POR_AREA_NOTA, em parte17.jsx */
-        if (/GO E PREVENTIVA/.test(t)) {
+        /* a área da aula testada (Epidemiologia, PR) tem pasta própria:
+           uma das cinco grandes, por pastaDaArea, em parte12.jsx */
+        if (/PREVENTIVA/.test(t)) {
           ok('anotação: os flashcards gerados caem na pasta grande certa, em Cartões');
-        } else falha('anotação: a pasta "GO E PREVENTIVA" não apareceu em Cartões: ' + t.slice(0, 300));
+        } else falha('anotação: a pasta "PREVENTIVA" não apareceu em Cartões: ' + t.slice(0, 300));
 
         /* limpa o que este teste criou: os testes de Cartões, mais abaixo,
            pressupõem que "Pasta de teste" é a única pasta e usam .first()
-           nos botões — deixar "GO E PREVENTIVA" para trás bagunçaria a
-           ordem e quebraria esses testes por posição, não por defeito. */
+           nos botões — deixar "PREVENTIVA" para trás bagunçaria a ordem e
+           quebraria esses testes por posição, não por defeito. */
         await pag.evaluate(() => {
           const bruto = window.localStorage.getItem('cadencia:v3');
           const d = bruto ? JSON.parse(bruto) : null;
           if (!d) return;
-          d.flash = (d.flash || []).filter((c) => c.pasta !== 'GO E PREVENTIVA');
-          d.pastas = (d.pastas || []).filter((p) => p !== 'GO E PREVENTIVA');
+          d.flash = (d.flash || []).filter((c) => c.pasta !== 'PREVENTIVA');
+          d.pastas = (d.pastas || []).filter((p) => p !== 'PREVENTIVA');
           window.localStorage.setItem('cadencia:v3', JSON.stringify(d));
         });
         await pag.reload({ waitUntil: 'load' });
@@ -890,6 +890,63 @@ const vazaLargura = await pag.evaluate(() => document.documentElement.scrollWidt
 if (vazaLargura) falha('a página passou da largura da tela no celular');
 else ok('nada vaza para os lados no celular');
 await pag.screenshot({ path: 'captura-celular.png' });
+
+/* ── celular: a aba Cartões não pode se sobrepor ────────────────────── */
+/* Na largura do celular, o campo "Nova pasta" (que tinha largura fixa)
+   empurrava o botão de criar por cima dele, e o nome da pasta ficava
+   escondido atrás do "publicar" e da lixeira. Aqui as caixas são medidas
+   de verdade: sobreposição é falha. */
+if (liberado) {
+  await pag.locator('button[aria-label="Abrir menu"]').first().click();
+  await esperarGaveta(true);
+  const abaCartoes = pag.locator('aside[aria-label="Navegação"] nav button:has-text("Cartões")');
+  if (await abaCartoes.count() === 0) {
+    falha('celular: não achei a aba Cartões na gaveta');
+  } else {
+    await abaCartoes.first().click();
+    await esperarGaveta(false);
+    await pag.waitForTimeout(500);
+
+    const sobreposicoes = await pag.evaluate(() => {
+      const problemas = [];
+      const cruza = (a, b) => !(a.right <= b.left + 1 || b.right <= a.left + 1
+        || a.bottom <= b.top + 1 || b.bottom <= a.top + 1);
+      const cx = (el) => el.getBoundingClientRect();
+
+      const campo = document.querySelector('input[placeholder="Nova pasta"]');
+      const criar = [...document.querySelectorAll('button')].find((b) => /Criar pasta/.test(b.textContent));
+      if (campo && criar && cruza(cx(campo), cx(criar))) problemas.push('o campo "Nova pasta" está por cima do botão de criar');
+      if (campo && cx(campo).width < 90) problemas.push(`o campo "Nova pasta" ficou espremido (${Math.round(cx(campo).width)}px)`);
+      /* o rótulo "Pastas e baralhos" é o irmão anterior do par campo+botão */
+      const rotulo = campo && campo.parentElement && campo.parentElement.previousElementSibling;
+      if (campo && rotulo && cruza(cx(campo), cx(rotulo))) problemas.push('o campo "Nova pasta" está por cima do rótulo da seção');
+      if (criar && rotulo && cruza(cx(criar), cx(rotulo))) problemas.push('o botão de criar pasta está por cima do rótulo da seção');
+
+      for (const nome of document.querySelectorAll('[data-teste="nome-pasta"]')) {
+        const r = cx(nome);
+        if (r.width < 30) { problemas.push(`o nome "${nome.textContent}" ficou sem largura (${Math.round(r.width)}px)`); continue; }
+        const linha = nome.closest('div.rounded-2xl');
+        if (!linha) continue;
+        for (const outro of linha.querySelectorAll('button, span, div')) {
+          if (outro.contains(nome) || nome.contains(outro)) continue;
+          if (!outro.textContent.trim() && !outro.querySelector('svg')) continue;
+          const ro = cx(outro);
+          if (ro.width < 1 || ro.height < 1) continue;
+          if (cruza(r, ro)) problemas.push(`"${nome.textContent}" cruza com "${(outro.textContent || 'ícone').trim().slice(0, 24)}"`);
+        }
+      }
+      return problemas;
+    });
+
+    if (sobreposicoes.length === 0) ok('celular: nada se sobrepõe na lista de pastas e baralhos');
+    else falha('celular, aba Cartões: ' + sobreposicoes.slice(0, 4).join(' · '));
+
+    const vazaCartoes = await pag.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2);
+    if (vazaCartoes) falha('celular: a aba Cartões passou da largura da tela');
+    else ok('celular: a aba Cartões cabe na largura da tela');
+    await pag.screenshot({ path: 'captura-celular-cartoes.png' });
+  }
+}
 
 await pag.setViewportSize({ width: 1440, height: 900 });
 await pag.waitForTimeout(600);

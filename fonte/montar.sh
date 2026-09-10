@@ -38,6 +38,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   python3 extrair_recorte.py
   python3 extrair_curriculo.py
   python3 extrair_cores.py
+  python3 extrair_pastas.py
   echo "── teste no navegador ──────────────────────────────"
   python3 montar_teste.py > /dev/null
   node testar.mjs
@@ -52,6 +53,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-google.mjs
   node testar-curriculo.mjs
   node testar-cores.mjs
+  node testar-pastas.mjs
   node testar-recorte-pdf.mjs
   node testar-cupom.mjs
   node testar-acessos.mjs
