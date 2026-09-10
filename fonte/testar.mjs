@@ -90,10 +90,24 @@ if (await campoNome.count() > 0) {
    ao servidor por render. Aqui as abas que fazem isso ficam abertas por um
    tempo e o teste conta quantas vezes elas tentam falar com o servidor. */
 let chamadas = 0;
+/* um pixel de verdade, para a ponte de imagem ter o que devolver */
+const PIXEL_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 await pag.route('**/api/**', (rota) => {
   chamadas += 1;
-  rota.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true,"salas":[],"baralhos":[]}' });
+  const corpo = /buscar-imagem/.test(rota.request().url())
+    ? JSON.stringify({ dados: `data:image/png;base64,${PIXEL_B64}` })
+    : '{"ok":true,"salas":[],"baralhos":[]}';
+  rota.fulfill({ status: 200, contentType: 'application/json', body: corpo });
 });
+/* Uma figura "de fora" que o navegador consegue ler (o site libera CORS), e
+   outra que recusa — os dois caminhos que o colar precisa tratar. */
+await pag.route('**/site-de-fora/**', (rota) => rota.fulfill({
+  status: 200,
+  contentType: 'image/png',
+  headers: { 'access-control-allow-origin': '*' },
+  body: Buffer.from(PIXEL_B64, 'base64'),
+}));
+await pag.route('**/site-fechado/**', (rota) => rota.fulfill({ status: 403, body: 'expirado' }));
 
 /* a marca aparece no cabeçalho */
 const marca = pag.locator('header img[alt="Cadência Med"]');
@@ -225,6 +239,106 @@ if (await linhaAula.count() === 0) {
     fs.unlinkSync(caminhoPixel);
     if (await editor.locator('img').count() > 0) ok('anotação: a imagem aparece no editor assim que é inserida');
     else falha('anotação: a imagem não apareceu depois de inserida');
+
+    /* Colar uma página com figura: o endereço aponta para fora e o navegador
+       não consegue ler os bytes. A figura tem que virar parte da anotação na
+       hora do colar, senão ela morre junto com o endereço de origem, que no
+       Notion vence em cerca de uma hora. */
+    await pag.evaluate(() => {
+      const ed = document.querySelector('[contenteditable="true"]');
+      ed.focus();
+      const dt = new DataTransfer();
+      dt.setData('text/html', '<p>com figura</p><figure>'
+        + '<img src="https://site-de-fora/figura.png" alt="Esquema">'
+        + '<figcaption>Fonte: Medgrupo.</figcaption></figure>');
+      ed.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    });
+    await pag.waitForTimeout(2500);
+    const figuraColada = await pag.evaluate(() => {
+      const im = document.querySelector('[contenteditable="true"] img[alt="Esquema"]');
+      return im ? (im.getAttribute('src') || '').slice(0, 20) : 'sumiu';
+    });
+    if (/^data:image\//.test(figuraColada)) ok('anotação: figura colada de fora entra na hora, sem depender do site de origem');
+    else falha('anotação: a figura colada não foi trazida para dentro: ' + figuraColada);
+
+    /* E quando não dá para trazer de jeito nenhum (endereço vencido, que é o
+       caso do Notion depois de uma hora), o lugar da figura precisa explicar
+       o que houve. Um ícone de imagem quebrada não ensina nada. */
+    await pag.evaluate(() => {
+      const ed = document.querySelector('[contenteditable="true"]');
+      ed.focus();
+      const dt = new DataTransfer();
+      dt.setData('text/html', '<p><img src="https://site-fechado/vencida.png" alt="Vencida"></p>');
+      ed.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    });
+    await pag.waitForTimeout(2500);
+    const explicou = await pag.evaluate(() => {
+      const ed = document.querySelector('[contenteditable="true"]');
+      const caixa = ed.querySelector('[data-figura-perdida]');
+      return { temCaixa: !!caixa, texto: caixa ? caixa.textContent.slice(0, 60) : '', aindaTemImg: !!ed.querySelector('img[alt="Vencida"]') };
+    });
+    if (explicou.temCaixa && !explicou.aindaTemImg) ok('anotação: figura que não dá para trazer vira um aviso explicando, não um ícone quebrado');
+    else falha('anotação: figura perdida sem explicação: ' + JSON.stringify(explicou));
+
+    /* A imagem que vem na própria área de transferência (copiar imagem,
+       print de tela). É o caminho que sempre funciona, e antes não fazia
+       nada. */
+    await pag.evaluate((b64) => {
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      const arquivo = new File([bytes], 'colada.png', { type: 'image/png' });
+      const ed = document.querySelector('[contenteditable="true"]');
+      ed.focus();
+      const dt = new DataTransfer();
+      dt.items.add(arquivo);
+      ed.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    }, PIXEL_B64);
+    await pag.waitForTimeout(1200);
+    const quantasFiguras = await pag.evaluate(
+      () => document.querySelectorAll('[contenteditable="true"] img').length);
+    if (quantasFiguras >= 2) ok('anotação: colar a imagem direto da área de transferência funciona');
+    else falha('anotação: colar a imagem em si não inseriu nada (' + quantasFiguras + ' figura(s))');
+
+    /* Texto copiado de site escuro chega com a cor dele grudada: um branco
+       acinzentado que, no papel claro, some. Cor sem cor sai; cor que quer
+       dizer alguma coisa fica, só ajustada para dar para ler nos dois. */
+    await pag.evaluate(() => {
+      const ed = document.querySelector('[contenteditable="true"]');
+      ed.focus();
+      const dt = new DataTransfer();
+      dt.setData('text/html',
+        '<p><span style="color:rgba(255,255,255,0.81)">cinza de fora</span> '
+        + '<span style="color:rgb(77,171,154)">verde com sentido</span></p>');
+      ed.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    });
+    await pag.waitForTimeout(900);
+    const cores = await pag.evaluate(() => {
+      const ed = document.querySelector('[contenteditable="true"]');
+      const spans = [...ed.querySelectorAll('span[style*="color"]')].map((s) => s.getAttribute('style'));
+      return { texto: ed.innerText.includes('cinza de fora'), spans: spans.join(' | ') };
+    });
+    if (cores.texto && !/255,\s*255,\s*255/.test(cores.spans)) ok('anotação: o cinza que vem colado sai, e o texto passa a seguir o tema');
+    else falha('anotação: a cor de fora ficou: ' + cores.spans);
+    if (/77,\s*171,\s*154|rgb\(\s*7\d/.test(cores.spans)) ok('anotação: cor que quer dizer alguma coisa é mantida');
+    else falha('anotação: a cor com sentido se perdeu: ' + cores.spans);
+
+    /* Claro e escuro só da anotação, com letra escura de verdade no claro */
+    await pag.locator('[title="Anotação no claro"]').first().click();
+    await pag.waitForTimeout(500);
+    const noClaro = await pag.locator('[contenteditable="true"]').first()
+      .evaluate((el) => ({ cor: getComputedStyle(el).color, fundo: getComputedStyle(el).backgroundColor }));
+    const claridade = (c) => {
+      const [r, g, b] = (c.match(/\d+/g) || [0, 0, 0]).map(Number);
+      return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    };
+    if (claridade(noClaro.fundo) > 0.9 && claridade(noClaro.cor) < 0.25) {
+      ok('anotação: no claro o papel é branco e a letra é escura de verdade');
+    } else falha('anotação no claro: ' + JSON.stringify(noClaro));
+    await pag.locator('[title="Anotação no escuro"]').first().click();
+    await pag.waitForTimeout(500);
+    const noEscuro = await pag.locator('[contenteditable="true"]').first()
+      .evaluate((el) => ({ cor: getComputedStyle(el).color, fundo: getComputedStyle(el).backgroundColor }));
+    if (claridade(noEscuro.fundo) < 0.2 && claridade(noEscuro.cor) > 0.8) ok('anotação: e volta para o escuro');
+    else falha('anotação no escuro: ' + JSON.stringify(noEscuro));
 
     /* O bloco de destaque do Notion chega escrito como <aside>, e às vezes
        com a própria tag escrita como texto. Nos dois casos ele tem que
@@ -566,6 +680,43 @@ if (liberado) {
   const depois = await pag.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--neon').trim());
   if (depois && depois !== antes) ok(`cor de acento mudou de ${antes} para ${depois}`);
   else falha(`a cor de acento não mudou (antes ${antes}, depois ${depois})`);
+
+  /* A cor escolhida precisa pintar o site, não só os detalhes: fundo,
+     painéis e linhas seguem o matiz. Antes ficava tudo roxo com uns
+     detalhes na cor nova. */
+  const ambiente = () => pag.evaluate(() => {
+    const cs = getComputedStyle(document.documentElement);
+    const ler = (n) => cs.getPropertyValue(n).trim();
+    /* matiz aproximado, o suficiente para dizer se mudou de família */
+    const matiz = (c) => {
+      const m = c.match(/\d+/g);
+      if (!m || m.length < 3) return -1;
+      const [r, g, b] = m.slice(0, 3).map(Number);
+      const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+      if (mx === mn) return -1;
+      const d = mx - mn;
+      let h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+      return Math.round(((h * 60) % 360 + 360) % 360);
+    };
+    const hex = (h) => { const s = h.replace('#', ''); return `rgb(${parseInt(s.slice(0, 2), 16)},${parseInt(s.slice(2, 4), 16)},${parseInt(s.slice(4, 6), 16)})`; };
+    return { bg: matiz(hex(ler('--bg'))), card: matiz(ler('--card2')), linha: matiz(ler('--line')) };
+  });
+  const ambar = await ambiente();
+  await pag.locator('button[title="Rosa"]').first().click();
+  await pag.waitForTimeout(400);
+  const rosa = await ambiente();
+  const mudou = (a, b) => a >= 0 && b >= 0 && Math.abs(a - b) > 20;
+  if (mudou(ambar.bg, rosa.bg) && mudou(ambar.card, rosa.card) && mudou(ambar.linha, rosa.linha)) {
+    ok(`a cor pinta o site inteiro: fundo, painéis e linhas mudaram de matiz (${ambar.bg}° → ${rosa.bg}°)`);
+  } else falha('a cor mudou só os detalhes: ' + JSON.stringify({ ambar, rosa }));
+
+  await pag.locator('button[title="Cadência"]').first().click();
+  await pag.waitForTimeout(400);
+  const voltou = await pag.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--bg').trim());
+  if (voltou.toUpperCase() === '#04030A') ok('voltar para a cor de origem devolve o fundo desenhado');
+  else falha('a cor de origem não voltou: ' + voltou);
+  await pag.locator('button[title="Âmbar"]').first().click();
+  await pag.waitForTimeout(300);
 
   /* ── cor própria: ajustada para continuar legível, e a segunda combinando ── */
   await pag.locator('button:has-text("Escolher")').first().click();

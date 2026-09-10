@@ -62,6 +62,8 @@ const DEFAULTS = {
   revisao: { esquema: "cadencia", dias: [7, 21, 60, 150] },
   /* aparência: cor de acento, fonte e tamanho do texto */
   tema: { cor: "cadencia", neon: "", neon2: "", fonte: "inter", tamanho: 1 },
+  /* Claro e escuro da anotação, à parte do resto: "auto" segue o app. */
+  notaTema: "auto",
 };
 
 const KEY = "cadencia:v3";
@@ -129,6 +131,7 @@ function normalize(raw) {
     habits: arr(d.habits, HABITS_SEED), habitLog: obj(d.habitLog),
     rever: arr(d.rever, []), notes: obj(d.notes),
     mostrarDesempenho: d.mostrarDesempenho !== false,
+    notaTema: ["light", "dark"].indexOf(d.notaTema) >= 0 ? d.notaTema : "auto",
     cronograma: {
       nome: String(obj(d.cronograma).nome || "").slice(0, 80),
       /* Cortado aqui, e não só na hora de enviar: um arquivo enorme colado

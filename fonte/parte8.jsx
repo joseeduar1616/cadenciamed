@@ -219,13 +219,24 @@ export default function Cadencia() {
   const aparencia = useMemo(() => {
     const tm = data.tema || DEFAULTS.tema;
     const pronta = CORES_TEMA.find((c) => c.id === tm.cor);
+    const neon2 = (tm.cor === "propria" ? tm.neon2 : pronta && pronta.neon2) || "";
     return {
       neon: (tm.cor === "propria" ? tm.neon : pronta && pronta.neon) || "",
-      neon2: (tm.cor === "propria" ? tm.neon2 : pronta && pronta.neon2) || "",
+      neon2,
+      /* O fundo, os painéis e as linhas também seguem a cor escolhida. A
+         cor de origem fica de fora: ela É o desenho original, e recalcular
+         o roxo a partir dele mudaria o tom por causa do arredondamento. */
+      ambiente: tm.cor === "cadencia" || !neon2 ? null : neon2,
       fonte: (FONTES.find((f) => f.id === tm.fonte) || FONTES[0]).ui,
       tamanho: Number(tm.tamanho) || 1,
     };
   }, [data.tema]);
+
+  /* Sem cor escolhida o objeto é vazio, e aí nada é sobrescrito: vale o
+     THEME_CSS, que é o desenho de origem. */
+  const ambienteVars = useMemo(() => (
+    aparencia.ambiente ? ambienteDoTema(aparencia.ambiente, data.theme === "light") : {}
+  ), [aparencia.ambiente, data.theme]);
 
   useEffect(() => {
     try {
@@ -236,13 +247,33 @@ export default function Cadencia() {
       else raiz.style.removeProperty("--neon");
       if (aparencia.neon2) raiz.style.setProperty("--neon2", aparencia.neon2);
       else raiz.style.removeProperty("--neon2");
+
+      /* O ambiente também no <html>, para o que é pintado fora do React:
+         o fundo do body e a barra do navegador no celular. Dentro do app
+         quem manda é o style do próprio elemento raiz (ver ambienteVars,
+         mais abaixo), porque o THEME_CSS redeclara estas variáveis num
+         [data-theme] que casa com ele e ganharia daqui. */
+      for (const nome of NOMES_AMBIENTE) {
+        if (ambienteVars[nome]) raiz.style.setProperty(nome, ambienteVars[nome]);
+        else raiz.style.removeProperty(nome);
+      }
+
       raiz.style.setProperty("--f-ui", aparencia.fonte);
       document.body.style.background = "var(--bg)";
       document.body.style.margin = "0";
       const barra = document.querySelector('meta[name="theme-color"]');
-      if (barra) barra.setAttribute("content", data.theme === "light" ? "#F1EFF8" : "#04030A");
+      const fundo = ambienteVars["--bg"] || (data.theme === "light" ? "#F1EFF8" : "#04030A");
+      if (barra) barra.setAttribute("content", fundo);
     } catch (e) { /* noop */ }
-  }, [data.theme, data.layout, aparencia]);
+  }, [data.theme, data.layout, aparencia, ambienteVars]);
+
+  /* Precisa de identidade estável entre renders, senão todo componente que
+     lê o contexto se redesenha a cada tecla digitada em qualquer lugar. */
+  const temaDaNota = useMemo(() => ({
+    app: data.theme,
+    nota: data.notaTema || "auto",
+    definir: (v) => setData((p) => ({ ...p, notaTema: v })),
+  }), [data.theme, data.notaTema, setData]);
 
   const LARGURA = data.layout === "movel" ? 470 : 1120;
   const today = todayISO();
@@ -606,7 +637,15 @@ export default function Cadencia() {
 
   return (
     <AtivoContext.Provider value={ativo}>
-    <div data-theme={data.theme} style={{ background: T.bg, minHeight: "100vh", color: T.ink, fontFamily: F_UI, fontWeight: 500, "--acc": acc }}>
+    <TemaNotaContext.Provider value={temaDaNota}>
+    {/* O ambiente do tema entra aqui, no style do próprio elemento: o
+        THEME_CSS logo abaixo redeclara as mesmas variáveis num
+        [data-theme] que casa com esta div, e regra de folha de estilo
+        ganha de variável herdada do <html>. Escrito assim, no elemento, o
+        valor é o mais específico que existe e vale para tudo que está
+        dentro. Foi por isso que os painéis continuavam roxos num tema
+        rosa mesmo com a variável certa no <html>. */}
+    <div data-theme={data.theme} style={{ background: T.bg, minHeight: "100vh", color: T.ink, fontFamily: F_UI, fontWeight: 500, "--acc": acc, ...ambienteVars }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Instrument+Serif&family=JetBrains+Mono:wght@400;500;600;700&family=Sora:wght@300;400;500;600;700&family=Manrope:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
         ${THEME_CSS}
@@ -650,8 +689,11 @@ export default function Cadencia() {
         .aura-b{top:2%;right:-12%;width:50vw;height:50vw;max-width:740px;max-height:740px;
           background:radial-gradient(circle,color-mix(in srgb,var(--neon2) 42%,transparent),transparent 66%);
           animation:vaga 27s ease-in-out infinite reverse}
+        /* a terceira aura tem cor própria (--aura3) para o conjunto não ser
+           só duas cores; ela acompanha o tema escolhido, senão sobrava um
+           verde-água no meio de um site rosa */
         .aura-c{bottom:-24%;left:28%;width:60vw;height:60vw;max-width:880px;max-height:880px;
-          background:radial-gradient(circle,color-mix(in srgb,var(--ok) 24%,transparent),transparent 68%);
+          background:radial-gradient(circle,color-mix(in srgb,var(--aura3) 24%,transparent),transparent 68%);
           animation:vaga 33s ease-in-out infinite}
         .aura-d{top:34%;left:38%;width:38vw;height:38vw;max-width:520px;max-height:520px;
           background:radial-gradient(circle,color-mix(in srgb,var(--neon2) 26%,transparent),transparent 70%);
@@ -719,7 +761,12 @@ export default function Cadencia() {
         .marca{animation:aceso 5.5s ease-in-out infinite}
       `}</style>
 
-      <Cena cor1="var(--neon)" cor2="var(--neon2)"
+      {/* A cor vai resolvida, e não como var(--neon): o canvas lê a variável
+          do <html>, e o efeito que ESCREVE essa variável roda depois do
+          efeito da Cena (filho antes de pai). Lendo var(), ela pintava
+          sempre com a cor anterior — foi por isso que a constelação
+          continuava ciano depois de escolher rosa. */}
+      <Cena cor1={aparencia.neon || "#35E4FF"} cor2={aparencia.neon2 || "#A855F7"}
         chave={`${data.theme}|${aparencia.neon}|${aparencia.neon2}`} />
 
       {/* auras de luz que respiram, em ciano, verde e roxo */}
@@ -960,6 +1007,7 @@ export default function Cadencia() {
         </div>
       ) : null}
     </div>
+    </TemaNotaContext.Provider>
     </AtivoContext.Provider>
   );
 }

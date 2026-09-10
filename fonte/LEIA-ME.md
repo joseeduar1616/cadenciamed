@@ -131,8 +131,27 @@ tela larga.
 
 ## Aparência e revisão, escolhidas por quem usa
 
-- As cores de acento são `--neon` e `--neon2`. As cinco cores de área
-  (`--a-CL`, `--a-CI`, `--a-GO`, `--a-PE`, `--a-PR`) não mudam nunca.
+- As cores de acento são `--neon` e `--neon2`.
+- **A cor escolhida pinta o site inteiro, não só os acentos.** Antes, escolher
+  rosa deixava rosa o botão e o número em destaque, e o resto continuava roxo,
+  porque fundo, painéis, linhas e texto nasciam roxos no `THEME_CSS`. Agora
+  `ambienteDoTema` (`base.jsx`) recalcula tudo isso: cada valor é a cor
+  original convertida para HSL, com a **saturação e a claridade preservadas**
+  e só o matiz trocado pelo da cor escolhida. É o que faz o rosa ficar rosa em
+  tudo sem clarear o fundo nem apagar o texto. As cinco cores de área também
+  entram na família (`AREAS_DO_TEMA`), espalhadas em matiz, saturação e
+  claridade para continuarem distinguíveis no radar e nos gráficos.
+- **Onde essas variáveis são escritas importa.** Elas vão no `style` do
+  elemento raiz do app, e não só no `<html>`: o `THEME_CSS` redeclara as
+  mesmas variáveis num `[data-theme]` que casa com esse elemento, e regra de
+  folha de estilo ganha de variável herdada do `<html>`. Escritas só no
+  `<html>`, o fundo da página mudava e os painéis continuavam roxos — o
+  defeito parecia "a cor não pega" e era ordem de cascata. O `<html>`
+  continua recebendo uma cópia, para o fundo do body e a cor da barra do
+  navegador no celular.
+- A cor de origem (`cadencia`) é a única que **não** passa por isso: ela é o
+  desenho original, e recalcular o roxo a partir dele mudaria o tom por
+  arredondamento.
 - `--neon`/`--neon2` valem para os dois temas (claro e escuro) — a troca de
   tema não as toca, só as outras variáveis. Escolhendo uma cor própria (em
   vez de uma das prontas, `CORES_TEMA`), `corLegivel` (`base.jsx`) ajusta a
@@ -702,6 +721,37 @@ elemento, e aí aparecia sem destaque nenhum; ou com a tag escrita como texto,
 e aí `</aside>` aparecia escrito na anotação e ia parar no PDF. `virarDestaque`
 e `tirarTagsEscritas` resolvem os dois, no colar e também ao abrir uma
 anotação que já estava gravada com o defeito (`limparAnotacaoGravada`).
+
+**A figura é trazida no COLAR, não na hora de salvar** (`internalizarImagens`).
+Esperar o salvamento já é esperar demais: o endereço do Notion vence em cerca
+de uma hora, e quem cola, lê um pouco e só depois volta perdia a figura. Se
+não der para trazer de jeito nenhum, o lugar dela vira uma caixa dizendo o que
+houve e o que fazer — um ícone de imagem quebrada não ensina nada.
+
+**Colar a imagem em si funciona sempre**, e antes não fazia nada: `aoColar`
+olha `clipboardData.files` antes do HTML. Copiar a figura (botão direito,
+copiar imagem) ou dar um print traz os bytes junto, sem depender de endereço,
+de CORS nem do site de origem. É a saída para figura que não dá para buscar.
+
+**A cor que vem colada** passa por `ajustarCoresColadas`. Texto copiado de
+site escuro chega com a cor dele grudada, um branco acinzentado: no editor
+escuro ninguém nota, no claro é cinza sobre branco. Cor sem cor (cinza,
+branco, preto) é só o "texto normal" do site de origem e sai fora, deixando o
+texto seguir o tema; cor com cor (o verde do "NORMAL", o vermelho do
+"ANORMAL") quer dizer alguma coisa e fica, só com a claridade puxada para uma
+faixa que se lê nos dois fundos.
+
+### Claro e escuro só da anotação
+
+O resto do painel é para consultar e o escuro cai bem; a anotação é para
+escrever e reler por muito tempo, e aí a escolha é pessoal. Ela tem o próprio
+interruptor (`data.notaTema`: `auto`, `light` ou `dark`), que começa seguindo
+o app e passa a mandar sozinho assim que a pessoa escolhe. No claro a letra é
+quase preta (`PAPEL_NOTA`, no `base.jsx`), não um cinza: cinza sobre branco
+cansa a vista.
+
+Vai por contexto (`TemaNotaContext`) e não por propriedade: o editor está três
+componentes abaixo de quem tem os dados.
 
 **Tela cheia e tamanho de fonte.** O botão de tela cheia (`Maximize2`, na
 barra da anotação) usa o mesmo `createPortal` do `ModalDrive` para escapar

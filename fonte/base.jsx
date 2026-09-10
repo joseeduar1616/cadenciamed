@@ -35,7 +35,7 @@ const THEME_CSS = `
   --line:rgba(170,145,255,0.12); --line2:rgba(185,160,255,0.30);
   --ink:#F5F2FF; --dim:#B5ACD4; --faint:#807899; --ghost:#585072;
   --neon:#35E4FF; --neon2:#A855F7;
-  --ok:#3EE0B0; --warn:#FFB648; --bad:#FF6B85;
+  --ok:#3EE0B0; --warn:#FFB648; --bad:#FF6B85; --aura3:#3EE0B0;
   --a-CL:#FF9450; --a-CI:#3EE0B0; --a-GO:#4FA8FF; --a-PE:#FF6FB0; --a-PR:#A182E6;
   --shadow:0 30px 80px rgba(2,0,12,.82), 0 2px 0 rgba(255,255,255,.03) inset;
   --vidro:linear-gradient(158deg,rgba(190,170,255,.09),rgba(190,170,255,0) 48%);
@@ -48,7 +48,7 @@ const THEME_CSS = `
   --line:rgba(48,30,90,0.11); --line2:rgba(60,30,120,0.26);
   --ink:#140E24; --dim:#4E4570; --faint:#7B7398; --ghost:#A9A2C0;
   --neon:#0E8FB8; --neon2:#7C3AED;
-  --ok:#12876A; --warn:#B06A00; --bad:#C93A54;
+  --ok:#12876A; --warn:#B06A00; --bad:#C93A54; --aura3:#12876A;
   --a-CL:#C25718; --a-CI:#12876A; --a-GO:#2C63CC; --a-PE:#B33A72; --a-PR:#6C42BE;
   --shadow:0 18px 44px rgba(50,30,100,.13);
   --vidro:linear-gradient(158deg,rgba(255,255,255,.85),rgba(255,255,255,0) 48%);
@@ -72,13 +72,17 @@ const FONTES = [
   { id: "sistema", nome: "Do aparelho", amostra: "A fonte nativa do sistema", ui: '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif' },
 ];
 
-/* Cores de acento prontas. Quem quiser outra escolhe no seletor de cor. */
+/* Cores de acento prontas. Quem quiser outra escolhe no seletor de cor.
+ *
+ * A SEGUNDA cor de cada uma é a que pinta o site inteiro (ver
+ * ambienteDoTema), então ela precisa ser a cor do nome: a "Rosa" tinha um
+ * roxo aqui, e escolher rosa deixava o site roxo com detalhes rosa. */
 const CORES_TEMA = [
   { id: "cadencia", nome: "Cadência", neon: "#35E4FF", neon2: "#A855F7" },
   { id: "violeta", nome: "Violeta", neon: "#C084FC", neon2: "#7C3AED" },
-  { id: "menta", nome: "Menta", neon: "#34E5C0", neon2: "#3B82F6" },
+  { id: "menta", nome: "Menta", neon: "#34E5C0", neon2: "#12A594" },
   { id: "ambar", nome: "Âmbar", neon: "#FFC658", neon2: "#FF7A3D" },
-  { id: "rosa", nome: "Rosa", neon: "#FF7BC0", neon2: "#A855F7" },
+  { id: "rosa", nome: "Rosa", neon: "#FF7BC0", neon2: "#E23E96" },
   { id: "gelo", nome: "Gelo", neon: "#8FB6FF", neon2: "#5C7CFA" },
 ];
 
@@ -137,6 +141,98 @@ function corLegivel(hex) {
 function corCombinando(hex) {
   const { h } = hexParaHsl(corLegivel(hex));
   return hslParaHex(h + 48, 78, 58);
+}
+
+/* ── a cor escolhida pintando o site inteiro ──────────────────────────
+ *
+ * Antes, escolher rosa deixava rosa só o que era acento: botão, número em
+ * destaque, borda acesa. O fundo, os painéis, as linhas e o texto seguiam
+ * roxos, porque nasceram roxos no THEME_CSS. Na tela o site continuava
+ * roxo com uns detalhes rosa, que não é o que alguém quer dizer quando
+ * escolhe uma cor.
+ *
+ * Aqui o desenho continua o mesmo e só o MATIZ muda. Cada valor abaixo é a
+ * cor original do tema convertida para HSL: a saturação e a claridade
+ * ficam como foram desenhadas, e o matiz passa a ser o da cor escolhida.
+ * Assim o rosa fica rosa em tudo sem clarear o fundo nem apagar o texto,
+ * que é o que aconteceria mexendo nas três coisas ao mesmo tempo.
+ *
+ * O matiz vem da segunda cor (a mais funda), que é quem já dava o clima do
+ * tema de origem: o roxo do Cadência.
+ */
+const AMBIENTE = {
+  dark: [
+    ["--bg", 54, 2.5], ["--bg2", 48, 3.7],
+    ["--card", 40, 7.8, 0.6], ["--card2", 35, 12.7, 0.72], ["--card3", 31, 19.8, 0.88],
+    ["--line", 100, 78, 0.12], ["--line2", 100, 81, 0.3],
+    ["--ink", 100, 97], ["--dim", 30, 75], ["--faint", 13, 53], ["--ghost", 18, 38],
+  ],
+  light: [
+    ["--bg", 33, 95], ["--bg2", 0, 100],
+    ["--card", 0, 100, 0.9], ["--card2", 47, 96], ["--card3", 42, 91],
+    ["--line", 50, 24, 0.11], ["--line2", 60, 29, 0.26],
+    ["--ink", 45, 10], ["--dim", 24, 35], ["--faint", 15, 52], ["--ghost", 18, 69],
+  ],
+};
+
+/* As cinco áreas no tema escolhido: [área, giro do matiz, saturação, claridade].
+   Os números saíram das cores originais, para o conjunto continuar com a
+   mesma variação de peso que tinha. */
+const AREAS_DO_TEMA = {
+  dark: [
+    ["CL", -55, 90, 66], ["CI", -28, 74, 56], ["GO", 0, 96, 70],
+    ["PE", 28, 92, 74], ["PR", 55, 68, 60],
+  ],
+  light: [
+    ["CL", -55, 74, 43], ["CI", -28, 72, 32], ["GO", 0, 66, 47],
+    ["PE", 28, 55, 44], ["PR", 55, 50, 50],
+  ],
+};
+
+/* Tudo que o ambiente escreve no <html>, para conseguir apagar depois:
+   quem volta para a cor de origem precisa que estas variáveis sumam, e não
+   que fiquem valendo com o matiz antigo. */
+const NOMES_AMBIENTE = [
+  "--bg", "--bg2", "--card", "--card2", "--card3", "--line", "--line2",
+  "--ink", "--dim", "--faint", "--ghost", "--glow", "--vidro", "--aura3",
+  "--a-CL", "--a-CI", "--a-GO", "--a-PE", "--a-PR",
+];
+
+function hslParaRgba(h, s, l, a) {
+  const hex = hslParaHex(h, s, l).replace("#", "");
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+/* Devolve { "--bg": "...", ... } para o matiz da cor pedida. */
+function ambienteDoTema(corFunda, claro) {
+  const { h } = hexParaHsl(corFunda);
+  const saida = {};
+  for (const [nome, s, l, a] of AMBIENTE[claro ? "light" : "dark"]) {
+    saida[nome] = a === undefined ? hslParaHex(h, s, l) : hslParaRgba(h, s, l, a);
+  }
+  /* O brilho de fundo e o vidro dos painéis são a própria cor, bem diluída */
+  saida["--glow"] = hslParaRgba(h, 90, claro ? 62 : 65, claro ? 0.1 : 0.18);
+  saida["--vidro"] = `linear-gradient(158deg,${claro
+    ? "rgba(255,255,255,.85)"
+    : hslParaRgba(h, 100, 83, 0.09)},rgba(255,255,255,0) 48%)`;
+  /* a terceira aura, um pouco ao lado no círculo de cores: dá volume ao
+     fundo sem fugir do tema */
+  saida["--aura3"] = hslParaHex(h + 40, 70, claro ? 40 : 62);
+
+  /* As cinco áreas também entram na família da cor escolhida.
+   *
+   * Elas continuam precisando ser distinguíveis entre si (é assim que se lê
+   * o radar e o gráfico por especialidade), então o afastamento não é só de
+   * matiz: cada uma tem também a sua saturação e a sua claridade. Espalhar
+   * pelos três eixos é o que mantém cinco tons reconhecíveis sem nenhum
+   * deles sair do tema. */
+  for (const [area, dh, s, l] of AREAS_DO_TEMA[claro ? "light" : "dark"]) {
+    saida[`--a-${area}`] = hslParaHex(h + dh, s, l);
+  }
+  return saida;
 }
 
 const T = {
@@ -305,6 +401,39 @@ function montarCurriculo(cronogramaProprio) {
 
 const AtivoContext = createContext({ lista: CURRICULUM, byId: BY_ID, totalBonus: TOTAL_BONUS });
 function useAtivo() { return useContext(AtivoContext); }
+
+/* ── claro e escuro só da anotação ────────────────────────────────────
+ *
+ * O resto do painel é para consultar, e o escuro cai bem. A anotação é
+ * para escrever e reler por muito tempo seguido, e aí a escolha é pessoal:
+ * tem quem só consiga ler texto longo em papel branco. Por isso ela tem o
+ * próprio interruptor, que começa seguindo o app ("auto") e passa a mandar
+ * sozinho assim que a pessoa escolhe.
+ *
+ * Vai por contexto, e não por propriedade: o editor está três componentes
+ * abaixo de quem tem os dados, e passar de mão em mão só para isso sujaria
+ * três assinaturas.
+ */
+const TemaNotaContext = createContext({ app: "dark", nota: "auto", definir: () => {} });
+function useTemaNota() {
+  const t = useContext(TemaNotaContext);
+  const efetivo = t.nota === "auto" ? t.app : t.nota;
+  return { ...t, efetivo, claro: efetivo === "light" };
+}
+
+/* As cores do editor em cada modo. No claro a letra é escura de verdade
+   (quase preta), não um cinza: cinza sobre branco cansa a vista e foi
+   justamente a reclamação. */
+const PAPEL_NOTA = {
+  light: {
+    fundo: "#FFFFFF", tinta: "#15121D", meio: "#4A4560",
+    linha: "rgba(20,14,36,.16)", barra: "#F4F2FA",
+  },
+  dark: {
+    fundo: "var(--bg2)", tinta: "#F5F2FF", meio: "var(--dim)",
+    linha: "var(--line)", barra: "var(--card2)",
+  },
+};
 
 const SIMULADOS = [
   ["Simulado 1", "2026-04-12", "2026-04-22"], ["Simulado 2", "2026-05-10", "2026-05-20"],

@@ -277,16 +277,93 @@ function baixarBlob(nome, blob) {
 /* Pede ao servidor os bytes de uma imagem que o navegador não consegue ler
    por causa do CORS. Devolve o base64, ou vazio se não deu. */
 async function trazerImagemDeFora(nuvem, endereco) {
-  if (!/^https?:/i.test(endereco)) return "";
+  if (!/^https?:/i.test(endereco)) return { erro: "endereço que não é da web." };
   let token = "";
   try {
     if (nuvem && nuvem.sdk && nuvem.sdk.auth && nuvem.sdk.auth.currentUser) {
       token = await nuvem.sdk.auth.currentUser.getIdToken();
     }
   } catch (e) { /* sem conta, o servidor recusa e a imagem fica como está */ }
-  if (!token) return "";
-  const { dados } = await chamarApi("/api/buscar-imagem", { token, url: endereco }, "Trazer a imagem");
-  return (dados && dados.dados) || "";
+  if (!token) return { erro: "entre na sua conta para as figuras coladas ficarem guardadas." };
+  const { dados, erro } = await chamarApi("/api/buscar-imagem", { token, url: endereco }, "Trazer a imagem");
+  if (erro) return { erro };
+  if (dados && dados.dados) return { dados: dados.dados };
+  return { erro: (dados && dados.erro) || "não consegui trazer essa figura." };
+}
+
+/* Uma imagem de fora virando base64, do jeito mais barato para o mais caro:
+ * primeiro o próprio navegador, que resolve blob: e sites que liberam CORS;
+ * depois o servidor, que é o caminho do Notion e da maioria dos sites.
+ */
+async function imagemComoDataUri(nuvem, endereco) {
+  if (!endereco) return { erro: "figura sem endereço." };
+  if (endereco.startsWith("data:")) return { dados: endereco };
+  try {
+    const resp = await fetch(endereco);
+    if (resp.ok) {
+      const blob = await resp.blob();
+      if (/^image\//i.test(blob.type || "")) {
+        return {
+          dados: await new Promise((resolve, reject) => {
+            const rd = new FileReader();
+            rd.onload = () => resolve(String(rd.result || ""));
+            rd.onerror = () => reject(new Error("leitura falhou"));
+            rd.readAsDataURL(blob);
+          }),
+        };
+      }
+    }
+  } catch (e) { /* CORS, quase sempre: segue para o servidor */ }
+  return trazerImagemDeFora(nuvem, endereco);
+}
+
+/* No lugar da figura que não deu para trazer, uma caixa dizendo o que houve
+   e o que fazer. Um ícone de imagem quebrada não ensina nada, e era o que a
+   pessoa via. */
+function caixaDeFiguraPerdida(motivo) {
+  const caixa = document.createElement("div");
+  caixa.setAttribute("data-figura-perdida", "1");
+  caixa.setAttribute("style",
+    "border:1px dashed rgba(178,59,59,.45);background:rgba(178,59,59,.08);border-radius:8px;"
+    + "padding:10px 12px;margin:8px 0;font-size:13px;color:#B23B3B");
+  caixa.textContent = `Figura não trazida: ${motivo} `
+    + "Copie a imagem sozinha (botão direito nela, copiar imagem) e cole aqui.";
+  return caixa;
+}
+
+/* Traz para dentro da anotação toda imagem que ainda aponta para fora.
+ *
+ * Roda no COLAR, e não só na hora de salvar, por dois motivos: a pessoa vê
+ * o que aconteceu na hora, e o endereço da figura do Notion vence em cerca
+ * de uma hora — esperar o salvamento já é esperar demais quando alguém cola,
+ * lê um pouco e só depois volta. */
+async function internalizarImagens(raiz, nuvem, aviso) {
+  const imgs = [...raiz.querySelectorAll("img")]
+    .filter((im) => !im.getAttribute("data-nome"))
+    .filter((im) => /^(https?:|blob:)/i.test(im.getAttribute("src") || ""));
+  if (!imgs.length) return { trazidas: 0, perdidas: 0 };
+
+  let trazidas = 0;
+  let perdidas = 0;
+  for (let i = 0; i < imgs.length; i += 1) {
+    const img = imgs[i];
+    if (aviso) aviso(imgs.length > 1 ? `trazendo figura ${i + 1} de ${imgs.length}…` : "trazendo a figura…");
+    const r = await imagemComoDataUri(nuvem, img.getAttribute("src") || "");
+    if (r.dados) {
+      img.setAttribute("src", r.dados);
+      img.style.maxWidth = "100%";
+      trazidas += 1;
+      continue;
+    }
+    perdidas += 1;
+    /* Se a figura pelo menos aparece, vale mais deixá-la aí com o aviso do
+       que apagar o que a pessoa está vendo. Se nem aparece, some com o ícone
+       quebrado e põe a explicação no lugar. */
+    if (!img.naturalWidth) img.replaceWith(caixaDeFiguraPerdida(r.erro || ""));
+    else img.after(caixaDeFiguraPerdida(r.erro || ""));
+  }
+  if (aviso) aviso("");
+  return { trazidas, perdidas };
 }
 
 /* ── o destaque do Notion ─────────────────────────────────────────────
@@ -354,7 +431,80 @@ function limparHtmlColado(html) {
   });
   virarDestaque(div);
   tirarTagsEscritas(div);
+  recuperarImagensSemSrc(div);
+  ajustarCoresColadas(div);
   return div.innerHTML;
+}
+
+/* ── a cor que vem junto do texto colado ──────────────────────────────
+ *
+ * Copiado de um site de tema escuro (o Notion, por exemplo), o texto chega
+ * com a cor dele grudada: um branco acinzentado, escrito no próprio
+ * elemento. No editor escuro isso passa despercebido; no claro é cinza
+ * claro sobre branco, praticamente invisível. Era a reclamação de "as
+ * fontes estão cinza".
+ *
+ * A regra separa duas coisas que parecem uma só:
+ *
+ * - cor sem cor (cinza, branco, preto): é só o "texto normal" do site de
+ *   origem. Sai fora, e o texto passa a seguir o tema da anotação, que é o
+ *   que a pessoa escolheu. É o que conserta o cinza.
+ * - cor com cor (o verde do "NORMAL", o vermelho do "ANORMAL"): isso quer
+ *   dizer alguma coisa e fica. Só a claridade é puxada para uma faixa que
+ *   se lê nos dois fundos, senão um amarelo-claro some no branco.
+ */
+function corDeTexto(valor) {
+  const m = String(valor || "").match(/-?\d*\.?\d+/g);
+  if (!m || m.length < 3) return null;
+  const [r, g, b] = m.slice(0, 3).map(Number);
+  if (m.length >= 4 && Number(m[3]) < 0.35) return null;   // quase transparente
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const l = (max + min) / 2 / 255;
+  const s = max === min ? 0 : (max - min) / (255 - Math.abs(max + min - 255));
+  return { r, g, b, s, l };
+}
+
+function ajustarCoresColadas(div) {
+  div.querySelectorAll("[style]").forEach((el) => {
+    const cor = corDeTexto(el.style.color);
+    if (cor) {
+      if (cor.s < 0.18) el.style.color = "";           // cinza, branco ou preto: fora
+      else {
+        /* fica colorido, mas numa claridade que se lê no branco e no escuro */
+        const alvo = Math.min(0.62, Math.max(0.34, cor.l));
+        if (Math.abs(alvo - cor.l) > 0.02) {
+          const f = alvo / (cor.l || 0.0001);
+          const ajusta = (v) => Math.round(Math.min(255, Math.max(0, v * f)));
+          el.style.color = `rgb(${ajusta(cor.r)}, ${ajusta(cor.g)}, ${ajusta(cor.b)})`;
+        }
+      }
+    }
+    /* Grifo escuro vira invisível no papel branco, e o texto por cima some
+       junto: melhor perder o grifo do que perder a frase. */
+    const fundo = corDeTexto(el.style.backgroundColor);
+    if (fundo && fundo.l < 0.35) el.style.backgroundColor = "";
+  });
+}
+
+/* Muitos sites entregam a figura com o endereço fora do src: em data-src,
+   porque a imagem só carrega quando entra na tela, ou em srcset, com vários
+   tamanhos. Copiado de lá, o <img> chega sem src nenhum e não aparece nunca.
+   Aqui o primeiro endereço que existir vira o src. */
+function recuperarImagensSemSrc(div) {
+  div.querySelectorAll("img").forEach((img) => {
+    /* Imagem nossa, guardada no IndexedDB: ela é gravada SEM src de
+       propósito, e o src volta na hora de abrir (lerMidia). Apagar aqui
+       jogaria fora toda figura já guardada — foi o que o teste pegou. */
+    if (img.getAttribute("data-nome")) return;
+    const src = (img.getAttribute("src") || "").trim();
+    if (src) return;
+    const alternativo = img.getAttribute("data-src")
+      || img.getAttribute("data-original")
+      || img.getAttribute("data-lazy-src")
+      || (img.getAttribute("srcset") || "").split(",")[0].trim().split(/\s+/)[0];
+    if (alternativo) img.setAttribute("src", alternativo);
+    else img.remove();          // <img> sem endereço nenhum é só um ícone quebrado
+  });
 }
 
 /* A mesma limpeza, para anotação que já está gravada com a tag à vista de
@@ -538,6 +688,10 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
   const [tamanhoAberto, setTamanhoAberto] = useState(false);
   const [cheia, setCheia] = useState(false);
   const [gerando, setGerando] = useState(false);
+  /* "trazendo figura 2 de 5…", enquanto o colar busca as imagens */
+  const [statusImagem, setStatusImagem] = useState("");
+  const tema = useTemaNota();
+  const papel = PAPEL_NOTA[tema.efetivo === "light" ? "light" : "dark"];
   const editorRef = useRef(null);
   const salvarRef = useRef(null);
   const arquivoRef = useRef(null);
@@ -629,25 +783,13 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
          página). Falhando (CORS bloqueado, por exemplo), segue com o
          endereço original abaixo, em vez de simplesmente apagar. */
       if (/^(https?:|blob:)/i.test(src)) {
-        try {
-          const resp = await fetch(src);
-          const blob = await resp.blob();
-          src = await new Promise((resolve, reject) => {
-            const rd = new FileReader();
-            rd.onload = () => resolve(String(rd.result || ""));
-            rd.onerror = () => reject(new Error("leitura falhou"));
-            rd.readAsDataURL(blob);
-          });
-        } catch (e) {
-          /* Bloqueado pelo CORS, que é a regra e não a exceção: o Notion, o
-             Google Docs e a maioria dos sites não liberam a leitura dos
-             bytes por outro domínio. O servidor busca no lugar. Sem isso a
-             figura ficava presa ao endereço de origem, e o do Notion vence
-             em cerca de uma hora: pouco depois de colar, sumia. */
-          const trazida = await trazerImagemDeFora(nuvem, src);
-          if (trazida) src = trazida;
-          else if (!avisouImagem) { avisouImagem = true; falhouImagem += 1; }
-        }
+        /* O colar já tenta trazer a figura na hora; isto aqui é a segunda
+           chance, para o que entrou por outro caminho (arrastar, desfazer,
+           anotação antiga). Quem sabe fazer isso é o imagemComoDataUri:
+           navegador primeiro, servidor depois. */
+        const r = await imagemComoDataUri(nuvem, src);
+        if (r.dados) src = r.dados;
+        else if (!avisouImagem) { avisouImagem = true; falhouImagem += 1; }
       }
       if (src.startsWith("data:")) {
         const nome = `nota-${uid()}`;
@@ -706,27 +848,18 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
     aoMudar();
   };
 
-  const aoColar = (e) => {
-    const html = e.clipboardData && e.clipboardData.getData("text/html");
-    if (!html) return;   // sem HTML: deixa colar como texto puro, do jeito padrão
-    e.preventDefault();
-    document.execCommand("insertHTML", false, limparHtmlColado(html));
-    aoMudar();
-  };
-
-  const inserirImagem = async (e) => {
-    const f = e.target.files && e.target.files[0];
-    e.target.value = "";
-    if (!f) return;
-    if (!/^image\//.test(f.type)) { notify("Escolha um arquivo de imagem."); return; }
-    if (f.size > 5 * 1024 * 1024) { notify("Imagem grande demais (máx. 5 MB)."); return; }
+  /* Um arquivo de imagem entrando na anotação: o mesmo caminho para o botão
+     de inserir, para o colar e para o arrastar. */
+  const inserirArquivoDeImagem = async (f) => {
+    if (!f || !/^image\//.test(f.type)) { notify("Escolha um arquivo de imagem."); return false; }
+    if (f.size > 5 * 1024 * 1024) { notify("Imagem grande demais (máx. 5 MB)."); return false; }
     const dataUri = await new Promise((resolve, reject) => {
       const rd = new FileReader();
       rd.onload = () => resolve(String(rd.result || ""));
       rd.onerror = () => reject(new Error("leitura falhou"));
       rd.readAsDataURL(f);
     }).catch(() => null);
-    if (!dataUri) { notify("Não consegui ler essa imagem."); return; }
+    if (!dataUri) { notify("Não consegui ler essa imagem."); return false; }
     if (editorRef.current) editorRef.current.focus();
     document.execCommand("insertImage", false, dataUri);
     if (editorRef.current) {
@@ -734,7 +867,51 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
         img.style.maxWidth = "100%"; img.style.borderRadius = "10px"; img.style.margin = "8px 0";
       });
     }
+    return true;
+  };
+
+  const aoColar = async (e) => {
+    const ct = e.clipboardData;
+    if (!ct) return;
+
+    /* A imagem em si na área de transferência (copiar imagem, print de tela,
+       recorte). É o caminho que sempre funciona, porque os bytes já estão na
+       mão: não depende de endereço, de CORS nem do site de origem. Antes
+       disso ser tratado aqui, colar uma imagem simplesmente não fazia nada. */
+    const figuras = [...(ct.files || [])].filter((f) => /^image\//i.test(f.type));
+    if (figuras.length) {
+      e.preventDefault();
+      for (const f of figuras) await inserirArquivoDeImagem(f);
+      aoMudar();
+      return;
+    }
+
+    const html = ct.getData("text/html");
+    if (!html) return;   // sem HTML: deixa colar como texto puro, do jeito padrão
+    e.preventDefault();
+    document.execCommand("insertHTML", false, limparHtmlColado(html));
+
+    /* As figuras vêm apontando para o site de origem. Trazer agora, e não só
+       na hora de salvar: a pessoa vê o resultado no ato, e o endereço da
+       figura do Notion vence em cerca de uma hora. */
+    if (editorRef.current) {
+      const r = await internalizarImagens(editorRef.current, nuvem, setStatusImagem);
+      if (r.perdidas) {
+        notify(r.trazidas
+          ? `${r.trazidas} figura(s) trazidas, ${r.perdidas} não. Veja o aviso no texto.`
+          : "Não consegui trazer as figuras. Veja o aviso no texto.");
+      } else if (r.trazidas) {
+        notify(`${r.trazidas} figura${r.trazidas === 1 ? "" : "s"} guardada${r.trazidas === 1 ? "" : "s"} dentro da anotação.`);
+      }
+    }
     aoMudar();
+  };
+
+  const inserirImagem = async (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    if (await inserirArquivoDeImagem(f)) aoMudar();
   };
 
   if (!aberto) {
@@ -756,7 +933,13 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
       <div className="flex items-center justify-between">
         <Label>Anotação</Label>
         <div className="flex items-center gap-2">
+          {statusImagem ? <Mini style={{ color: "var(--neon)" }}>{statusImagem}</Mini> : null}
           {sujo ? <Mini>salvando…</Mini> : null}
+          {/* Claro e escuro só desta caixa. Texto longo se lê melhor no
+              papel de cada um, e o resto do painel continua como está. */}
+          <BotaoFerramenta icon={tema.claro ? <Moon size={15} /> : <Sun size={15} />}
+            title={tema.claro ? "Anotação no escuro" : "Anotação no claro"}
+            onClick={() => tema.definir(tema.claro ? "dark" : "light")} />
           <BotaoFerramenta icon={cheia ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
             title={cheia ? "Sair da tela cheia" : "Tela cheia"} onClick={() => setCheia((v) => !v)} />
           <Btn size="sm" tone="outline" onClick={() => (cheia ? setCheia(false) : setAberto(false))}>fechar</Btn>
@@ -809,12 +992,12 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
       <div ref={editorRef} contentEditable suppressContentEditableWarning
         onInput={aoMudar} onPaste={aoColar}
         className="rounded-xl px-4 py-3"
-        style={cheia ? {
-          flex: 1, minHeight: 0, overflowY: "auto", fontSize: 14.5, lineHeight: 1.6,
-          color: T.ink, background: T.bg, border: `1px solid ${T.line}`, outline: "none",
-        } : {
-          minHeight: 140, maxHeight: 420, overflowY: "auto", fontSize: 14.5, lineHeight: 1.6,
-          color: T.ink, background: T.bg, border: `1px solid ${T.line}`, outline: "none",
+        style={{
+          fontSize: 14.5, lineHeight: 1.6, overflowY: "auto", outline: "none",
+          color: papel.tinta, background: papel.fundo, border: `1px solid ${papel.linha}`,
+          ...(cheia
+            ? { flex: 1, minHeight: 0 }
+            : { minHeight: 140, maxHeight: 420 }),
         }} />
       {!pronto ? <Mini>carregando…</Mini> : null}
 
