@@ -335,9 +335,13 @@ async function imagemComoDataUri(nuvem, endereco) {
 /* No lugar da figura que não deu para trazer, uma caixa dizendo o que houve
    e o que fazer. Um ícone de imagem quebrada não ensina nada, e era o que a
    pessoa via. */
-function caixaDeFiguraPerdida(motivo) {
+function caixaDeFiguraPerdida(motivo, endereco) {
   const caixa = document.createElement("div");
   caixa.setAttribute("data-figura-perdida", "1");
+  /* O endereço fica guardado na caixa para dar para tentar de novo depois
+     (conectar o Notion, por exemplo) sem ter de recolar a anotação
+     inteira — que era o que sobrava para a pessoa fazer. */
+  if (endereco) caixa.setAttribute("data-de", endereco);
   caixa.setAttribute("style",
     "border:1px dashed rgba(178,59,59,.45);background:rgba(178,59,59,.08);border-radius:8px;"
     + "padding:10px 12px;margin:8px 0;font-size:13px;color:#B23B3B");
@@ -374,11 +378,29 @@ async function internalizarImagens(raiz, nuvem, aviso) {
     /* Se a figura pelo menos aparece, vale mais deixá-la aí com o aviso do
        que apagar o que a pessoa está vendo. Se nem aparece, some com o ícone
        quebrado e põe a explicação no lugar. */
-    if (!img.naturalWidth) img.replaceWith(caixaDeFiguraPerdida(r.erro || ""));
-    else img.after(caixaDeFiguraPerdida(r.erro || ""));
+    const de = img.getAttribute("src") || "";
+    if (!img.naturalWidth) img.replaceWith(caixaDeFiguraPerdida(r.erro || "", de));
+    else img.after(caixaDeFiguraPerdida(r.erro || "", de));
   }
   if (aviso) aviso("");
   return { trazidas, perdidas };
+}
+
+/* Desfaz as caixas de figura perdida, devolvendo cada <img> ao lugar onde
+   estava. Serve para tentar de novo depois que a causa foi resolvida (o
+   Notion conectado, por exemplo). Devolve quantas voltaram. */
+function desfazerCaixasPerdidas(raiz) {
+  const caixas = [...raiz.querySelectorAll("[data-figura-perdida][data-de]")];
+  for (const caixa of caixas) {
+    const img = document.createElement("img");
+    img.setAttribute("src", caixa.getAttribute("data-de"));
+    img.style.maxWidth = "100%";
+    caixa.replaceWith(img);
+  }
+  /* Caixa sem endereço guardado (anotação antiga) não tem como voltar; some
+     junto, senão o aviso fica para sempre mesmo depois de resolvido. */
+  raiz.querySelectorAll("[data-figura-perdida]:not([data-de])").forEach((c) => c.remove());
+  return caixas.length;
 }
 
 /* ── o destaque do Notion ─────────────────────────────────────────────
@@ -709,6 +731,9 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
      tamanho saber em quem mexer. É o elemento em si, não um índice: o
      conteúdo do editor muda o tempo todo por baixo. */
   const [figura, setFigura] = useState(null);
+  /* Quantas figuras ficaram pelo caminho, para o botão de tentar de novo
+     só aparecer quando há o que tentar. */
+  const [perdidas, setPerdidas] = useState(0);
   const tema = useTemaNota();
   const papel = PAPEL_NOTA[tema.efetivo === "light" ? "light" : "dark"];
   const editorRef = useRef(null);
@@ -780,7 +805,10 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
           if (vivo && uri) img.src = uri;
         } catch (e) { /* essa imagem sumiu do IndexedDB, segue sem ela */ }
       }
-      if (vivo) setPronto(true);
+      if (vivo) {
+        setPerdidas(raiz.querySelectorAll("[data-figura-perdida]").length);
+        setPronto(true);
+      }
     })();
     return () => {
       vivo = false;
@@ -929,7 +957,24 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
       } else if (r.trazidas) {
         notify(`${r.trazidas} figura${r.trazidas === 1 ? "" : "s"} guardada${r.trazidas === 1 ? "" : "s"} dentro da anotação.`);
       }
+      setPerdidas(editorRef.current.querySelectorAll("[data-figura-perdida]").length);
     }
+    aoMudar();
+  };
+
+  /* Tenta trazer de novo as figuras que ficaram pelo caminho, sem precisar
+     recolar a anotação inteira. É o que fazer depois de conectar o Notion,
+     ou depois de compartilhar a página com a integração. */
+  const tentarFigurasDeNovo = async () => {
+    const raiz = editorRef.current;
+    if (!raiz) return;
+    const quantas = desfazerCaixasPerdidas(raiz);
+    if (!quantas) { setPerdidas(0); return; }
+    const r = await internalizarImagens(raiz, nuvem, setStatusImagem);
+    setPerdidas(raiz.querySelectorAll("[data-figura-perdida]").length);
+    notify(r.trazidas
+      ? `${r.trazidas} figura${r.trazidas === 1 ? "" : "s"} trazida${r.trazidas === 1 ? "" : "s"} agora.`
+      : "As figuras continuam sem vir. Veja o motivo no aviso, dentro do texto.");
     aoMudar();
   };
 
@@ -1085,6 +1130,11 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
       {!pronto ? <Mini>carregando…</Mini> : null}
 
       <div className="flex items-center gap-2 flex-wrap">
+        {perdidas ? (
+          <Btn size="sm" tone="outline" onClick={tentarFigurasDeNovo}>
+            <ImagePlus size={14} /> Tentar as {perdidas} figura{perdidas === 1 ? "" : "s"} de novo
+          </Btn>
+        ) : null}
         <Btn size="sm" tone="outline" disabled={gerando} onClick={gerarFlashcards}>
           <Sparkles size={14} /> {gerando ? "Gerando…" : "Gerar flashcards com IA"}
         </Btn>

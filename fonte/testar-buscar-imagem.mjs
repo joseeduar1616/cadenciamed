@@ -47,10 +47,39 @@ globalThis.fetch = (url, opcoes) => {
   if (u.startsWith('https://www.notion.so/')) {
     return Promise.resolve(new Response('sessão exigida', { status: 403 }));
   }
+  if (u.includes('oauth2.googleapis.com/token')) {
+    return Promise.resolve(new Response(JSON.stringify({ access_token: 'servico-falso' }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }));
+  }
+  if (u.includes('firestore.googleapis.com') && u.includes('/notion/')) {
+    return Promise.resolve(TOKEN_NOTION
+      ? new Response(JSON.stringify({ fields: { acesso: { stringValue: TOKEN_NOTION } } }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } })
+      : new Response('não achei', { status: 404 }));
+  }
+  if (u.startsWith('https://api.notion.com/v1/blocks/')) {
+    return Promise.resolve(respostaBloco(u, opcoes));
+  }
   return fetchReal(url, opcoes);
 };
 
-const env = { FIREBASE_API_KEY: 'chave-firebase' };
+/* Conta de serviço de mentira: a ponte precisa dela para ler o token do
+   Notion de quem pediu, em notion/{uid}. */
+const { generateKeyPairSync } = await import('node:crypto');
+const CONTA = {
+  client_email: 'teste@exemplo.iam.gserviceaccount.com',
+  private_key: generateKeyPairSync('rsa', { modulusLength: 2048 })
+    .privateKey.export({ type: 'pkcs8', format: 'pem' }),
+};
+
+/* o que o Firestore devolve para notion/{uid}: token guardado, ou nada */
+let TOKEN_NOTION = 'secret_notion_de_teste';
+/* o que a API do Notion responde para GET /blocks/<id> */
+let respostaBloco = () => new Response(JSON.stringify({
+  type: 'image', image: { type: 'file', file: { url: 'https://imagens.exemplo/figura-nova.png?assinada=1' } },
+}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+const env = { FIREBASE_API_KEY: 'chave-firebase', FIREBASE_SERVICE_ACCOUNT: JSON.stringify(CONTA) };
 const carregar = async () => (await import('../worker/api/buscar-imagem.js?v=' + Math.random())).onRequest;
 
 const pedir = async (corpo) => {
@@ -159,10 +188,65 @@ r = await pedir({ token: 't', url: `https://www.notion.so/image/${encodeURICompo
 if (r.status === 400 && /inválido/i.test(r.corpo.erro || '')) ok('embrulho que aponta para a rede interna é recusado');
 else falha('embrulho perigoso passou: ' + JSON.stringify(r).slice(0, 160));
 
+/* ── 4e. figura que mora dentro do Notion ─────────────────────────────
+   O endereço com ?table=block&id=… não abre para ninguém de fora: depende
+   do cookie de sessão de quem copiou, e nem desembrulhado funciona (o
+   endereço de dentro vem sem assinatura, e o depósito responde 403). Quem
+   devolve um endereço utilizável é a API do Notion, com o token de quem
+   conectou a conta. */
+const URL_BLOCO = `https://www.notion.so/image/${encodeURIComponent('https://prod-files.s3.amazonaws.com/x/y/fig.png')}`
+  + '?table=block&id=1f2e3d4c-5b6a-7988-9a0b-1c2d3e4f5a6b&cache=v2';
+
+r = await pedir({ token: 't', url: URL_BLOCO });
+if (String(r.corpo.dados || '').startsWith('data:image/png;base64,')) ok('figura do Notion vem pela API de lá, com endereço novo');
+else falha('figura do Notion: ' + JSON.stringify(r).slice(0, 200));
+if ((ultimoPedido.url || '').includes('figura-nova.png')) ok('quem é buscado é o endereço novo que o Notion devolveu, não o colado');
+else falha('buscou o endereço errado: ' + ultimoPedido.url);
+
+/* a página não foi compartilhada com a integração: dizer isso, e o que fazer */
+respostaBloco = () => new Response(JSON.stringify({ message: 'not found' }), { status: 404 });
+r = await pedir({ token: 't', url: URL_BLOCO });
+if (/não está compartilhada/.test(r.corpo.erro || '') && /Conexões/.test(r.corpo.erro || '')) {
+  ok('página não compartilhada: explica o que fazer, em vez de "o endereço expirou"');
+} else falha('404 do Notion: ' + JSON.stringify(r.corpo).slice(0, 200));
+
+/* sem Notion conectado, o recado diz por onde começar */
+respostaBloco = () => new Response(JSON.stringify({
+  type: 'image', image: { type: 'file', file: { url: 'https://imagens.exemplo/figura-nova.png' } },
+}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+TOKEN_NOTION = '';
+r = await pedir({ token: 't', url: URL_BLOCO });
+if (/Conecte o Notion/.test(r.corpo.erro || '')) ok('sem o Notion conectado, o recado diz o que fazer');
+else falha('sem token do Notion: ' + JSON.stringify(r.corpo).slice(0, 200));
+TOKEN_NOTION = 'secret_notion_de_teste';
+
+/* bloco que não é figura */
+respostaBloco = () => new Response(JSON.stringify({ type: 'paragraph', paragraph: {} }),
+  { status: 200, headers: { 'Content-Type': 'application/json' } });
+r = await pedir({ token: 't', url: URL_BLOCO });
+if (/não é uma figura/.test(r.corpo.erro || '')) ok('bloco do Notion que não é figura é explicado');
+else falha('bloco sem figura: ' + JSON.stringify(r.corpo).slice(0, 160));
+
+/* figura hospedada fora, que o Notion só aponta */
+respostaBloco = () => new Response(JSON.stringify({
+  type: 'image', image: { type: 'external', external: { url: 'https://imagens.exemplo/de-fora.png' } },
+}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+r = await pedir({ token: 't', url: URL_BLOCO });
+if (String(r.corpo.dados || '').startsWith('data:image/png;base64,')) ok('figura que o Notion só aponta (externa) também é trazida');
+else falha('figura externa do Notion: ' + JSON.stringify(r.corpo).slice(0, 160));
+
+/* o token do Notion nunca pode voltar para a página */
+if (!JSON.stringify(r.corpo).includes('secret_notion_de_teste')) ok('o token do Notion não vaza na resposta');
+else falha('O TOKEN DO NOTION VAZOU: ' + JSON.stringify(r.corpo).slice(0, 200));
+
+respostaBloco = () => new Response(JSON.stringify({
+  type: 'image', image: { type: 'file', file: { url: 'https://imagens.exemplo/figura-nova.png?assinada=1' } },
+}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
 /* ── 5. endereço vencido, que é o caso do Notion ──────────────────────── */
 responder = () => ({ status: 403, tipo: 'text/plain', corpo: 'expired' });
 r = await pedir({ token: 't', url: URL_BOA });
-if (/expirou/.test(r.corpo.erro || '')) ok('endereço vencido é explicado, não vira erro cru');
+if (/venceu|logado/.test(r.corpo.erro || '')) ok('403 do site de origem é explicado, com as duas causas possíveis');
 else falha('403 de origem: ' + JSON.stringify(r));
 
 /* ── 6. imagem grande demais ──────────────────────────────────────────── */

@@ -280,6 +280,19 @@ if (await linhaAula.count() === 0) {
     if (explicou.temCaixa && !explicou.aindaTemImg) ok('anotação: figura que não dá para trazer vira um aviso explicando, não um ícone quebrado');
     else falha('anotação: figura perdida sem explicação: ' + JSON.stringify(explicou));
 
+    /* O endereço fica guardado na caixa, senão tentar de novo depois de
+       resolver a causa (conectar o Notion) exigiria recolar tudo. */
+    const guardouEndereco = await pag.evaluate(() => {
+      const c = document.querySelector('[contenteditable="true"] [data-figura-perdida]');
+      return c ? c.getAttribute('data-de') || '' : '';
+    });
+    if (/site-fechado/.test(guardouEndereco)) ok('anotação: o aviso guarda o endereço da figura, para tentar de novo depois');
+    else falha('anotação: o aviso não guardou o endereço: ' + guardouEndereco);
+
+    const botaoDeNovo = pag.locator('button:has-text("de novo")');
+    if (await botaoDeNovo.count() > 0) ok('anotação: aparece o botão de tentar as figuras de novo');
+    else falha('anotação: não achei o botão de tentar as figuras de novo');
+
     /* A imagem que vem na própria área de transferência (copiar imagem,
        print de tela). É o caminho que sempre funciona, e antes não fazia
        nada. */

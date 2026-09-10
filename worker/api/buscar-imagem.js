@@ -18,7 +18,12 @@
  * e nada de nome que aponte para dentro da rede. E só para quem está na
  * própria conta: a rota não é um proxy aberto para a internet inteira.
  */
-import { json, quemPede, corpoJson } from "./_comum.js";
+import {
+  json, quemPede, corpoJson, contaDeServico, tokenDeAcesso, BASE_FIRESTORE,
+} from "./_comum.js";
+
+const NOTION = "https://api.notion.com/v1";
+const VERSAO_NOTION = "2022-06-28";
 
 const MAX_BYTES = 8 * 1024 * 1024;
 const TIPOS = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/avif", "image/svg+xml"];
@@ -81,6 +86,71 @@ const PROIBIDOS = [
   /^172\.(1[6-9]|2\d|3[01])\./, /\.internal$/i, /^\[?::1\]?$/,
 ];
 
+/* ── figura que mora dentro do Notion ─────────────────────────────────
+ *
+ * O endereço colado é notion.so/image/<endereço do depósito>?table=block&id=…
+ * e ele NÃO abre para ninguém de fora: depende do cookie de sessão de quem
+ * copiou. Nem o servidor alcança, nem o próprio navegador — num <img> de
+ * outro site o cookie do Notion não vai junto, e é por isso que no lugar da
+ * figura não aparecia nem a imagem quebrada, só o vazio.
+ *
+ * Desembrulhar também não resolve: o endereço de dentro vem SEM assinatura,
+ * e o depósito responde 403 para pedido sem assinatura. Era esse 403 que
+ * chegava na tela como "o endereço da imagem expirou" — a mensagem estava
+ * errada, o endereço nunca chegou a valer.
+ *
+ * O caminho que funciona é pedir ao próprio Notion, com o token de quem
+ * conectou a conta (o mesmo do cronograma, guardado em notion/{uid}): a API
+ * devolve um endereço novo, assinado, que vale cerca de uma hora e que
+ * qualquer um com o link consegue buscar.
+ */
+function blocoDoNotion(u) {
+  if (!/(^|\.)notion\.so$/i.test(u.hostname)) return "";
+  if (!/^\/image\//.test(u.pathname)) return "";
+  if ((u.searchParams.get("table") || "block") !== "block") return "";
+  const id = u.searchParams.get("id") || "";
+  return /^[0-9a-f-]{32,36}$/i.test(id) ? id : "";
+}
+
+async function tokenDoNotion(env, uid) {
+  const conta = contaDeServico(env);
+  if (!conta) return "";
+  let servico;
+  try { servico = await tokenDeAcesso(conta); } catch (e) { return ""; }
+  const r = await fetch(`${BASE_FIRESTORE}/notion/${uid}`, {
+    headers: { Authorization: `Bearer ${servico}` },
+  });
+  if (!r.ok) return "";
+  const j = await r.json().catch(() => null);
+  const campo = ((j || {}).fields || {}).acesso;
+  return (campo && campo.stringValue) || "";
+}
+
+/* O endereço novo daquela figura, ou o motivo de não ter dado. */
+async function figuraDoNotion(acesso, bloco) {
+  let r;
+  try {
+    r = await fetch(`${NOTION}/blocks/${bloco}`, {
+      headers: { Authorization: `Bearer ${acesso}`, "Notion-Version": VERSAO_NOTION },
+    });
+  } catch (e) {
+    return { erro: "não consegui falar com o Notion para buscar a figura." };
+  }
+  if (r.status === 404) {
+    return {
+      erro: "essa página do Notion não está compartilhada com a integração do Cadência. "
+        + "No Notion, abra a página, clique nos três pontinhos, "
+        + "Conexões, e adicione o Cadência Med.",
+    };
+  }
+  if (!r.ok) return { erro: `o Notion respondeu ${r.status} ao buscar a figura.` };
+  const j = await r.json().catch(() => null);
+  const bloco_ = (j || {})[(j || {}).type] || {};
+  const url = (bloco_.file && bloco_.file.url) || (bloco_.external && bloco_.external.url) || "";
+  if (!url) return { erro: "esse bloco do Notion não é uma figura." };
+  return { url };
+}
+
 function enderecoOk(bruto) {
   let u;
   try { u = new URL(String(bruto || "")); } catch (e) { return null; }
@@ -105,7 +175,26 @@ export async function onRequest({ request, env }) {
 
   const pedido = enderecoOk(corpo.url);
   if (!pedido) return json({ erro: "Endereço de imagem inválido." }, 400);
-  const alvo = enderecoOk(desembrulhar(pedido).toString());
+
+  /* Figura de dentro do Notion tem caminho próprio: só a API de lá devolve
+     um endereço que alguém de fora consegue abrir. */
+  const bloco = blocoDoNotion(pedido);
+  let doNotion = "";
+  if (bloco) {
+    const acesso = await tokenDoNotion(env, pessoa.uid);
+    if (!acesso) {
+      return json({
+        erro: "essa figura mora dentro do Notion, e só abre para quem está logado lá. "
+          + "Conecte o Notion na aba Cronograma e cole de novo, ou copie a imagem "
+          + "sozinha (botão direito nela, copiar imagem).",
+      }, 200);
+    }
+    const r = await figuraDoNotion(acesso, bloco);
+    if (r.erro) return json({ erro: r.erro }, 200);
+    doNotion = r.url;
+  }
+
+  const alvo = enderecoOk(desembrulhar(enderecoOk(doNotion || pedido.toString()) || pedido).toString());
   if (!alvo) return json({ erro: "Endereço de imagem inválido." }, 400);
 
   let r;
@@ -130,10 +219,15 @@ export async function onRequest({ request, env }) {
   }
 
   if (!r.ok) {
-    /* 403 aqui é quase sempre endereço do Notion que já venceu: a assinatura
-       dura cerca de uma hora. Vale dizer isso, senão parece defeito do app. */
+    /* 403 tem duas causas que a pessoa não tem como distinguir, e chamar
+       as duas de "o endereço expirou" mandava procurar no lugar errado:
+       ou a assinatura do endereço venceu, ou a figura simplesmente não
+       abre para quem não está logado no site de origem. */
     if (r.status === 403 || r.status === 401) {
-      return json({ erro: "O endereço da imagem expirou. Copie de novo do lugar de origem." }, 200);
+      return json({
+        erro: "o site da imagem recusou: ou o endereço venceu, ou a figura "
+          + "só abre para quem está logado lá.",
+      }, 200);
     }
     return json({ erro: `O servidor da imagem respondeu ${r.status}.` }, 200);
   }

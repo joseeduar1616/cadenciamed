@@ -787,6 +787,33 @@ e aí `</aside>` aparecia escrito na anotação e ia parar no PDF. `virarDestaqu
 e `tirarTagsEscritas` resolvem os dois, no colar e também ao abrir uma
 anotação que já estava gravada com o defeito (`limparAnotacaoGravada`).
 
+**Figura que mora dentro do Notion não se busca por endereço nenhum.** Este
+foi o caso mais teimoso. O `src` colado é
+`notion.so/image/<endereço do depósito>?table=block&id=…`, e ele **não abre
+para ninguém de fora**: depende do cookie de sessão de quem copiou. Nem o
+servidor alcança, nem o próprio navegador — num `<img>` de outro site o
+cookie do Notion não vai junto, e é por isso que no lugar da figura não
+aparecia nem o ícone de imagem quebrada, só o vazio. Desembrulhar também não
+resolve: o endereço de dentro vem **sem assinatura**, e o depósito responde
+403 para pedido sem assinatura. Era esse 403 que chegava na tela como "o
+endereço da imagem expirou" — a mensagem mandava procurar no lugar errado,
+porque o endereço nunca chegou a valer.
+
+O caminho que funciona é pedir ao **próprio Notion**: o `id` que vem na
+query é o id do bloco, e `GET /v1/blocks/<id>` com o token de quem conectou
+a conta (o mesmo do cronograma, em `notion/{uid}`) devolve um endereço novo,
+assinado, que qualquer um com o link busca. `blocoDoNotion` e
+`figuraDoNotion`, em `worker/api/buscar-imagem.js`. O token do Notion nunca
+volta para a página, e o teste cobre isso.
+
+Quando não dá, a mensagem diz **o que fazer**, não só o que houve: sem o
+Notion conectado, conectar na aba Cronograma; página não compartilhada com a
+integração, o caminho exato no Notion (três pontinhos → Conexões → Cadência
+Med). E a caixa que fica no lugar da figura guarda o endereço original em
+`data-de`, então o botão **"Tentar as N figuras de novo"** refaz a busca sem
+precisar recolar a anotação inteira — que era o que sobrava para a pessoa
+fazer depois de resolver a causa.
+
 **A figura é trazida no COLAR, não na hora de salvar** (`internalizarImagens`).
 Esperar o salvamento já é esperar demais: o endereço do Notion vence em cerca
 de uma hora, e quem cola, lê um pouco e só depois volta perdia a figura. Se
