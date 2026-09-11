@@ -1292,6 +1292,43 @@ dizer a verdade inteira: "a cada 30 min, **com o site aberto**" — não há
 sincronização com o app fechado, e prometer isso seria pior do que não
 prometer nada.
 
+## Desempenho, Ciclo clínico e Configurações
+
+Três abas que arrumam coisas que já existiam espalhadas (`parte18.jsx`).
+
+**Desempenho.** As questões já eram gravadas em cada sessão (`questions` e
+`correct`, desde sempre), mas faltavam as duas pontas: só dava para
+lançá-las junto com tempo de estudo (o formulário de sessão exige um minuto
+no mínimo), e o acerto por matéria não aparecia em lugar nenhum — o
+Progresso mostrava só o total e a curva no tempo. Aqui o lançamento é só de
+questões, com o tempo opcional, e o resultado é lido por área e por matéria,
+**a mais fraca em primeiro**: esta tela existe para achar onde estudar, não
+para comemorar o que já está bom. Com o mesmo acerto, ganha quem fez mais
+questões, que é o dado mais firme.
+
+Nada de estrutura nova: tudo sai de `data.sessions`, então o que já estava
+lançado aparece na hora. Sessão sem questão nenhuma fica de fora da conta —
+uma aula não é desempenho ruim, e entrar na média puxaria tudo para baixo
+sem querer dizer nada. E sem questão nenhuma a tela diz isso, em vez de
+mostrar 0%: 0% e "não lancei nada" são coisas diferentes.
+
+**Ciclo clínico.** As matérias do ciclo são as de `data.cronogramaProprio`,
+e elas moram na mesma lista do currículo ativo (`montarCurriculo`). A aba
+nova é a **mesma tela de Matérias com a lista filtrada** — de propósito: a
+anotação, as etapas e o desempenho de cada aula são exatamente os mesmos,
+sem uma segunda implementação para manter em pé. `idsDoCiclo` separa as
+duas listas, e cada matéria aparece num lugar só. A aba só existe quando há
+cronograma próprio. Quem substituiu o currículo inteiro pelo ciclo deixa
+Matérias sem nenhuma aula; em vez de uma tela em branco, que parece defeito,
+ela diz onde as matérias foram parar e leva até lá.
+
+**Configurações.** Conta, plano, cupom, aparência, formato da tela, metas e
+backup, que estavam divididos entre o rodapé e a aba Progresso. O Progresso
+ficou só com os números. O esquema de revisão e as conexões (Google, Notion)
+continuam nas telas delas, com o contexto que explica cada uma — repetir o
+controle aqui criaria dois lugares para mexer na mesma coisa —, e
+Configurações só diz onde ficam.
+
 ## Mentor
 
 Quem resgata o cupom `mentor1612` (veja "Cupons", acima) ganha a aba Mentor
