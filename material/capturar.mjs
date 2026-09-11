@@ -20,9 +20,19 @@ const ESCALA = 3;
 
 const ABAS = [
   ['hoje', 'Hoje'], ['foco', 'Foco'], ['materias', 'Matérias'],
-  ['cronograma', 'Cronograma'], ['temas', 'Temas'], ['assistente', 'Assistente'],
+  ['ciclo-clinico', 'Ciclo clínico'], ['cronograma', 'Cronograma'],
+  ['temas', 'Temas'], ['assistente', 'Assistente'],
   ['cartoes', 'Cartões'], ['revisoes', 'Revisões'], ['rotina', 'Rotina'],
-  ['amigos', 'Amigos'], ['metas', 'Metas'], ['progresso', 'Progresso'], ['planos', 'Plano'],
+  ['amigos', 'Amigos'], ['metas', 'Metas'], ['desempenho', 'Desempenho'],
+  ['progresso', 'Progresso'], ['planos', 'Plano'], ['configuracoes', 'Configurações'],
+];
+
+/* As mesmas telas no celular. Post de rede social é vertical, então estas
+   costumam ser as mais usadas. */
+const ABAS_CELULAR = [
+  ['hoje', 'Hoje'], ['materias', 'Matérias'], ['cartoes', 'Cartões'],
+  ['desempenho', 'Desempenho'], ['amigos', 'Amigos'], ['revisoes', 'Revisões'],
+  ['cronograma', 'Cronograma'], ['progresso', 'Progresso'],
 ];
 
 if (!fs.existsSync(ALVO)) {
@@ -76,6 +86,37 @@ const irPara = async (pag, rotulo) => {
   await ctx.close();
 }
 
+/* ── o miolo de algumas abas ─────────────────────────────────────────
+   O topo da aba nem sempre é a parte que interessa: em Desempenho o que
+   rende é o acerto por matéria, e em Cartões é o montador com IA. Estas
+   capturas rolam até o cartão pedido antes de fotografar. */
+{
+  const { ctx, pag } = await novaPagina(LARGURA, 940, ESCALA);
+  const ROLADAS = [
+    ['desempenho-por-materia', 'Desempenho', 'Por matéria'],
+    ['desempenho-por-area', 'Desempenho', 'Por área'],
+    ['cartoes-montar-ia', 'Cartões', 'Montar flashcards com IA'],
+    ['progresso-tempo', 'Progresso', 'Onde o tempo foi'],
+    ['progresso-constancia', 'Progresso', 'Constância'],
+    ['metas-simulados', 'Metas', 'Simulados'],
+    ['rotina-semana', 'Rotina', 'Semana'],
+  ];
+  for (const [arq, rotulo, alvo] of ROLADAS) {
+    if (!(await irPara(pag, rotulo))) { console.log('  pulei', arq); continue; }
+    /* O título de cartão é desenhado com ícone ao lado, então o texto não
+       fica sozinho num elemento: quem acha isso direito é o seletor de
+       texto do próprio Playwright. */
+    const titulo = pag.locator(`main >> text=${alvo}`).first();
+    if (await titulo.count() === 0) { console.log('  não achei', alvo, 'em', rotulo); continue; }
+    await titulo.scrollIntoViewIfNeeded();
+    await pag.evaluate(() => window.scrollBy(0, -120));
+    await pag.waitForTimeout(900);
+    await pag.screenshot({ path: `${SAIDA}/${arq}.png` });
+    console.log(`  ${arq}.png`);
+  }
+  await ctx.close();
+}
+
 /* ── a página de entrada, sem conta ──────────────────────────────────
    Aberta de um arquivo, sem rede, o Firebase não carrega e a página cai na
    entrada pelo nome. Segurar o módulo sem responder mantém a nuvem em
@@ -100,10 +141,31 @@ const irPara = async (pag, rotulo) => {
 /* ── celular, para mostrar que roda no bolso ───────────────────────── */
 {
   const { ctx, pag } = await novaPagina(390, 844, ESCALA);
-  for (const [arq, rotulo] of [['hoje', 'Hoje'], ['cartoes', 'Cartões'], ['cronograma', 'Cronograma']]) {
-    if (!(await irPara(pag, rotulo))) continue;
+  for (const [arq, rotulo] of ABAS_CELULAR) {
+    if (!(await irPara(pag, rotulo))) { console.log('  pulei celular', rotulo); continue; }
     await pag.screenshot({ path: `${SAIDA}/celular-${arq}.png` });
     console.log(`  celular-${arq}.png`);
+  }
+  await ctx.close();
+}
+
+/* ── tema claro ──────────────────────────────────────────────────────
+   Metade das pessoas usa o site no claro, e o post que só mostra o escuro
+   parece outro produto para elas. */
+{
+  const { ctx, pag } = await novaPagina(LARGURA, 940, ESCALA);
+  await pag.evaluate(() => {
+    const bruto = window.localStorage.getItem('cadencia:v3');
+    const d = bruto ? JSON.parse(bruto) : {};
+    d.theme = 'light';
+    window.localStorage.setItem('cadencia:v3', JSON.stringify(d));
+  });
+  await pag.reload({ waitUntil: 'load' });
+  await pag.waitForTimeout(2600);
+  for (const [arq, rotulo] of [['hoje', 'Hoje'], ['materias', 'Matérias'], ['desempenho', 'Desempenho']]) {
+    if (!(await irPara(pag, rotulo))) continue;
+    await pag.screenshot({ path: `${SAIDA}/claro-${arq}.png` });
+    console.log(`  claro-${arq}.png`);
   }
   await ctx.close();
 }
