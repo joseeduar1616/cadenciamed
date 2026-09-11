@@ -21,7 +21,7 @@ python3 gerar_icones.py
 echo "── juntando os pedaços ─────────────────────────────"
 cat base.jsx parte2.jsx parte3.jsx parte10.jsx parte11.jsx parte13.jsx \
     parte12.jsx parte17.jsx parte4.jsx parte5.jsx parte6.jsx parte7.jsx parte9.jsx \
-    parte14.jsx parte15.jsx parte16.jsx parte8.jsx > app.jsx
+    parte14.jsx parte15.jsx parte16.jsx parte18.jsx parte8.jsx > app.jsx
 
 echo "── compilando ──────────────────────────────────────"
 npx esbuild main.jsx --bundle --minify --format=iife --loader:.jsx=jsx \

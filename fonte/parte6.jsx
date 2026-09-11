@@ -89,7 +89,7 @@ function SubjectRow({ s, open, minutes, onToggleOpen, setMark, toggleBonus, anot
   );
 }
 
-function Materias({ subjects, setMark, toggleBonus, minutes, done, bonusDone, anotacoes, salvarAnotacao, notify, setData, nuvem, pastas }) {
+function Materias({ subjects, setMark, toggleBonus, minutes, done, bonusDone, anotacoes, salvarAnotacao, notify, setData, nuvem, pastas, vazioEm, irPara }) {
   const [area, setArea] = useState("todas");
   const [status, setStatus] = useState("todas");
   const [q, setQ] = useState("");
@@ -134,6 +134,25 @@ function Materias({ subjects, setMark, toggleBonus, minutes, done, bonusDone, an
       onToggleOpen={() => setOpenId(openId === s.id ? null : s.id)} setMark={setMark} toggleBonus={toggleBonus}
       anotacao={(anotacoes || {})[s.id]} salvarAnotacao={salvarAnotacao} notify={notify} setData={setData} nuvem={nuvem} pastas={pastas} />
   );
+
+  /* Quem substituiu o currículo inteiro pelo ciclo clínico deixa esta aba
+     sem nenhuma matéria. Uma tela em branco parece defeito; aqui ela diz
+     onde as matérias foram parar. */
+  if (subjects.length === 0 && vazioEm) {
+    return (
+      <Card className="px-6 py-7">
+        <H size={18} color="var(--ok)" icon={<Layers size={16} />}>Suas matérias estão no ciclo clínico</H>
+        <Texto style={{ marginTop: 10 }}>
+          O cronograma que você subiu cobre todas as áreas, então não sobrou
+          nenhuma aula da residência aqui. Elas estão na aba Ciclo clínico,
+          com as mesmas anotações e etapas.
+        </Texto>
+        <Btn tone="primary" className="mt-5" onClick={() => irPara && irPara(vazioEm)}>
+          Ir para o Ciclo clínico
+        </Btn>
+      </Card>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-5">

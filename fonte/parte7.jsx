@@ -787,9 +787,7 @@ function Aparencia({ data, setData }) {
   );
 }
 
-function Progresso({ data, setData, byDay, today, totals, subjects, notify, nuvem, pro, aoLiberar }) {
-  const [confirm, setConfirm] = useState(false);
-  const fileRef = useRef(null);
+function Progresso({ data, byDay, today, totals, subjects }) {
   const ativo = useAtivo();
 
   const last14 = useMemo(() => {
@@ -829,36 +827,8 @@ function Progresso({ data, setData, byDay, today, totals, subjects, notify, nuve
   const doneCount = subjects.filter((s) => s.aula).length;
   const bonusCount = subjects.reduce((a, s) => a + s.bonusCount, 0);
 
-  const exportar = () => {
-    const txt = JSON.stringify(data, null, 2);
-    if (baixar(`cadencia-${today}.json`, "application/json", txt, notify)) notify("Backup baixado.");
-  };
-
-  const importar = (e) => {
-    const f = e.target.files && e.target.files[0];
-    if (!f) return;
-    const rd = new FileReader();
-    rd.onload = () => {
-      try {
-        const novo = normalize(JSON.parse(String(rd.result)));
-        setData(novo);
-        const aulas = Object.values(novo.marks || {}).filter((m) => m && m.aula).length;
-        const degraus = Object.values(novo.reviews || {}).reduce((a, r) => a + Object.keys((r && r.done) || {}).length, 0);
-        notify(`Restaurado: ${aulas} aula${aulas === 1 ? "" : "s"} e ${degraus} revis${degraus === 1 ? "ão" : "ões"}.`);
-      } catch (err) { notify("Arquivo inválido."); }
-    };
-    rd.onerror = () => notify("Não consegui ler o arquivo.");
-    rd.readAsText(f);
-    e.target.value = "";
-  };
-
   return (
     <div className="flex flex-col gap-5">
-      <ContaNuvem nuvem={nuvem} notify={notify} />
-      {nuvem.usuario && !pro ? <Cupom nuvem={nuvem} notify={notify} aoLiberar={aoLiberar} /> : null}
-      {ehDono(nuvem.usuario) ? <PainelDono nuvem={nuvem} notify={notify} /> : null}
-      <Aparencia data={data} setData={setData} />
-
       <Card className="px-6 sm:px-8 py-7">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-7">
           <div><Num size={34}>{fmtMin(totals.min)}</Num><Label style={{ marginTop: 9 }}>horas registradas</Label></div>
@@ -949,33 +919,14 @@ function Progresso({ data, setData, byDay, today, totals, subjects, notify, nuve
         </Card>
       </div>
 
+      {/* O resumo de quanto do currículo já foi marcado; o backup e o
+          apagar tudo foram para Configurações, que é onde se mexe na
+          conta em vez de olhar número de estudo. */}
       <Card className="px-6 py-6">
-        <H size={18} color="var(--a-PR)" icon={<Download size={16} />}>Seus dados</H>
+        <H size={18} color="var(--a-PR)" icon={<ListChecks size={16} />}>Quanto do currículo</H>
         <Label style={{ marginTop: 4 }}>
           {doneCount} de {subjects.length} aulas e {bonusCount} de {ativo.totalBonus} tópicos marcados
         </Label>
-        <div className="mt-5 flex flex-wrap gap-2">
-          <Btn onClick={exportar}><Download size={15} /> Baixar backup</Btn>
-          <Btn onClick={() => fileRef.current && fileRef.current.click()}><Upload size={15} /> Restaurar backup</Btn>
-          <input ref={fileRef} type="file" accept="application/json,.json" onChange={importar} style={{ display: "none" }} />
-          {confirm ? (
-            <>
-              <Btn tone="danger" onClick={() => { setData({ ...DEFAULTS, theme: data.theme, layout: data.layout, tema: data.tema, revisao: data.revisao }); setConfirm(false); notify("Tudo apagado."); }}>
-                <Trash2 size={15} /> Confirmar
-              </Btn>
-              <Btn tone="outline" onClick={() => setConfirm(false)}>Cancelar</Btn>
-            </>
-          ) : (
-            <Btn tone="danger" onClick={() => setConfirm(true)}><Trash2 size={15} /> Apagar tudo</Btn>
-          )}
-        </div>
-        {confirm ? (
-          <Label style={{ marginTop: 14, color: T.bad }}>
-            Isso apaga sessões, marcações, revisões, cartões, pastas, rotina, metas
-            e anotações. A aparência e o esquema de revisão continuam como estão.
-            Baixe um backup antes.
-          </Label>
-        ) : null}
       </Card>
     </div>
   );

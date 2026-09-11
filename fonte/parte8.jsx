@@ -280,6 +280,19 @@ export default function Cadencia() {
   const ativo = useMemo(() => montarCurriculo(data.cronogramaProprio), [data.cronogramaProprio]);
   const subjects = useMemo(() => ativo.lista.map((s) => subjectState(s, data.marks)), [ativo, data.marks]);
 
+  /* O ciclo clínico ganhou aba própria, então as matérias dele saem de
+     Matérias: cada uma aparece num lugar só. O que separa as duas é a
+     origem — as do ciclo são as que vieram de data.cronogramaProprio. */
+  const doCiclo = useMemo(() => idsDoCiclo(data), [data.cronogramaProprio]);
+  const subjectsResidencia = useMemo(
+    () => (doCiclo.size ? subjects.filter((s) => !doCiclo.has(s.id)) : subjects),
+    [subjects, doCiclo],
+  );
+  const subjectsClinico = useMemo(
+    () => (doCiclo.size ? subjects.filter((s) => doCiclo.has(s.id)) : []),
+    [subjects, doCiclo],
+  );
+
   /* A escada de revisão sai do esquema escolhido em Revisões. Trocar de
      esquema muda os prazos na hora, sem mexer no que já foi marcado: cada
      degrau cumprido é guardado pelo número de dias, então um degrau que
@@ -510,6 +523,7 @@ export default function Cadencia() {
     { id: "hoje", label: "Hoje", acc: "var(--a-CL)" },
     { id: "foco", label: "Foco", acc: "var(--a-PR)" },
     { id: "materias", label: "Matérias", acc: "var(--a-GO)" },
+    ...(subjectsClinico.length ? [{ id: "clinico", label: "Ciclo clínico", acc: "var(--ok)" }] : []),
     { id: "cronograma", label: "Cronograma", acc: "var(--a-PE)" },
     { id: "temas", label: "Temas", acc: "var(--a-CI)" },
     ...(souDono || pro ? [{ id: "assistente", label: "Assistente", acc: "var(--neon)" }] : []),
@@ -519,8 +533,10 @@ export default function Cadencia() {
     { id: "amigos", label: "Amigos", acc: "var(--neon2)" },
     ...(mentorInfo.mentor ? [{ id: "mentor", label: "Mentor", acc: "var(--neon2)" }] : []),
     { id: "metas", label: "Metas", acc: "var(--warn)" },
+    { id: "desempenho", label: "Desempenho", acc: "var(--a-CI)" },
     { id: "progresso", label: "Progresso", acc: "var(--a-CI)" },
     { id: "planos", label: pro ? "Plano" : "Assinar", acc: "var(--neon2)" },
+    { id: "config", label: "Configurações", acc: "var(--dim)" },
   ];
   const acc = (TABS.find((t) => t.id === tab) || TABS[0]).acc;
 
@@ -884,7 +900,8 @@ export default function Cadencia() {
             <div className="mx-auto rise" style={{ maxWidth: LARGURA }} key={tab}>
               {tab === "hoje" && <Hoje {...{ data, setData, today, minToday, minWeek, qWeek, streak, late, done, bonusDone, addSession, delSession, notify, go: setTab, blocosHoje, projecao: pro ? projecao : null, pro, verPlanos: () => setTab("planos"), cartoesHoje }} />}
               {tab === "foco" && <Foco {...{ data, setData, today, P, subjectId: pomoSubject, setSubjectId: setPomoSubject }} />}
-              {tab === "materias" && <Materias {...{ subjects, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, salvarAnotacao, notify, setData, nuvem, pastas: data.pastas }} />}
+              {tab === "materias" && <Materias {...{ subjects: subjectsResidencia, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, salvarAnotacao, notify, setData, nuvem, pastas: data.pastas, vazioEm: subjectsClinico.length ? "clinico" : null, irPara: setTab }} />}
+              {tab === "clinico" && <Materias {...{ subjects: subjectsClinico, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, salvarAnotacao, notify, setData, nuvem, pastas: data.pastas, irPara: setTab }} />}
               {tab === "cronograma" && <AbaCronograma {...{ data, setData, notify, nuvem, pro, verPlanos: () => setTab("planos") }} />}
               {tab === "temas" && !pro && <Bloqueado recurso={RECURSOS_PRO.temas} onVerPlanos={() => setTab("planos")} />}
               {tab === "rotina" && !pro && <Bloqueado recurso={RECURSOS_PRO.rotina} onVerPlanos={() => setTab("planos")} />}
@@ -908,7 +925,9 @@ export default function Cadencia() {
               {tab === "amigos" && pro && <Amigos {...{ nuvem, notify, data, setData }} />}
               {tab === "metas" && pro && <Metas {...{ data, setData, today, qWeek, notify, ladder, gcal }} />}
               {tab === "mentor" && mentorInfo.mentor && <Mentor {...{ nuvem, notify, mentorInfo }} />}
-              {tab === "progresso" && <Progresso {...{ data, setData, byDay, today, totals, subjects, notify, nuvem, pro, aoLiberar: assinatura.recarregar }} />}
+              {tab === "desempenho" && <Desempenho {...{ data, today, addSession, delSession, notify }} />}
+              {tab === "progresso" && <Progresso {...{ data, byDay, today, totals, subjects }} />}
+              {tab === "config" && <Configuracoes {...{ data, setData, today, notify, nuvem, pro, aoLiberar: assinatura.recarregar, irPara: setTab }} />}
             </div>
           </main>
 

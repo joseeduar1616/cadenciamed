@@ -19,7 +19,8 @@ const liberado = path.basename(alvo) === 'teste.html';
 /* A última aba se chama "Plano" para quem assina e "Assinar" para quem não
    assina, então é procurada pelos dois nomes. */
 const ABAS = ['Hoje', 'Foco', 'Matérias', 'Cronograma', 'Temas', 'Cartões',
-              'Revisões', 'Rotina', 'Amigos', 'Metas', 'Progresso', 'Plano|Assinar'];
+              'Revisões', 'Rotina', 'Amigos', 'Metas', 'Desempenho', 'Progresso',
+              'Plano|Assinar', 'Configurações'];
 
 const erros = [];
 const passos = [];
@@ -796,8 +797,175 @@ if (liberado) {
     else falha('a escada personalizada não apareceu: ' + t2.slice(0, 160));
   }
 
+  /* ── desempenho: lançar questões e ler o acerto ──────────────────
+     As questões já eram gravadas em cada sessão, mas o lançamento exigia
+     tempo de estudo e o acerto por matéria não aparecia em lugar nenhum.
+     Aqui as duas coisas são conferidas de ponta a ponta. */
+  await ir('Desempenho');
+  {
+    const lancar = async (materia, q, c) => {
+      /* Com uma matéria já escolhida o seletor troca o campo de busca por
+         um chip com o nome dela; sem soltar a escolha, o segundo
+         lançamento não teria onde digitar. */
+      const trocar = pag.locator('button[aria-label="Trocar matéria"]');
+      if (await trocar.count()) { await trocar.first().click(); await pag.waitForTimeout(300); }
+      await pag.locator('input[placeholder="Buscar matéria"]').first().click();
+      await pag.waitForTimeout(200);
+      await pag.locator('input[placeholder="Buscar matéria"]').first().fill(materia);
+      await pag.waitForTimeout(350);
+      const opcao = pag.locator('button:has-text("' + materia + '")').last();
+      if (await opcao.count()) await opcao.click();
+      await pag.waitForTimeout(250);
+      const campos = pag.locator('input[type="number"]');
+      await campos.nth(0).fill(String(q));
+      await campos.nth(1).fill(String(c));
+      await pag.locator('button:has-text("Lançar")').first().click();
+      await pag.waitForTimeout(600);
+    };
+
+    const semNada = await texto();
+    if (/ainda sem questões/i.test(semNada)) ok('desempenho: sem questão nenhuma, a tela explica em vez de mostrar 0%');
+    else falha('desempenho: estado vazio não apareceu: ' + semNada.slice(0, 160));
+
+    /* tempo de estudo é opcional: é o que faltava para lançar só questões */
+    await lancar('Epidemiologia', 10, 9);
+    const depois1 = await texto();
+    if (/90%/.test(depois1)) ok('desempenho: lançar só questões, sem tempo, funciona e calcula o acerto');
+    else falha('desempenho: não achei os 90%: ' + depois1.slice(0, 300));
+
+    await lancar('Epidemiologia', 10, 3);
+    const depois2 = await texto();
+    /* 12 de 20 = 60%, a média das duas, e não a última */
+    if (/60%/.test(depois2)) ok('desempenho: dois lançamentos da mesma matéria viram uma média só');
+    else falha('desempenho: a média não bateu: ' + depois2.slice(0, 300));
+
+    if (/por área/i.test(depois2) && /por matéria/i.test(depois2)) ok('desempenho: o acerto aparece por área e por matéria');
+    else falha('desempenho: faltou o recorte por área ou por matéria');
+
+    /* o recorte por período é o que separa "estou melhorando" de "já fui bem" */
+    await pag.locator('button:has-text("7 dias")').first().click();
+    await pag.waitForTimeout(400);
+    if (/60%/.test(await texto())) ok('desempenho: o recorte de 7 dias mantém o que foi lançado hoje');
+    else falha('desempenho: o recorte de 7 dias perdeu o lançamento de hoje');
+
+    /* limpa o que este teste criou: as sessões entram no Progresso e nas
+       metas, e deixá-las mudaria a conta dos testes seguintes */
+    await pag.evaluate(() => {
+      const bruto = window.localStorage.getItem('cadencia:v3');
+      const d = bruto ? JSON.parse(bruto) : null;
+      if (!d) return;
+      d.sessions = (d.sessions || []).filter((x) => x.kind !== 'Questões');
+      window.localStorage.setItem('cadencia:v3', JSON.stringify(d));
+    });
+    await pag.reload({ waitUntil: 'load' });
+    await pag.waitForTimeout(2200);
+  }
+
+  /* ── configurações: o que veio de outras telas ───────────────────── */
+  await ir('Configurações');
+  {
+    const t = await texto();
+    for (const [parte, oQue] of [
+      ['Aparência', 'a aparência'],
+      ['Formato da tela', 'o formato da tela, que estava no rodapé'],
+      ['Suas metas', 'as metas'],
+      ['Baixar backup', 'o backup'],
+    ]) {
+      if (t.toLowerCase().includes(parte.toLowerCase())) ok(`configurações: ${oQue} está lá`);
+      else falha(`configurações: faltou ${oQue}: ` + t.slice(0, 200));
+    }
+
+    /* a meta de questões é a barra do painel de Hoje: mexer aqui tem de
+       chegar lá, senão são dois números com o mesmo nome */
+    const campoMeta = pag.locator('input[data-teste="meta-questions"]');
+    await campoMeta.fill('321');
+    /* o app grava com 1,5s de espera (parte8.jsx), então ler o disco antes
+       disso pega o valor velho */
+    await pag.waitForTimeout(2300);
+    const gravou = await pag.evaluate(() => {
+      const d = JSON.parse(window.localStorage.getItem('cadencia:v3') || '{}');
+      return (d.goals || {}).questions;
+    });
+    if (gravou === 321) ok('configurações: mexer na meta grava de verdade');
+    else falha('configurações: a meta não gravou: ' + gravou);
+
+    await ir('Hoje');
+    if (/321/.test(await texto())) ok('configurações: a meta nova aparece no painel de Hoje');
+    else falha('configurações: a meta nova não chegou ao painel de Hoje');
+    await ir('Configurações');
+
+    /* o Progresso ficou só com os números */
+    await ir('Progresso');
+    const tp = await texto();
+    if (!/aparência|baixar backup|apagar tudo/i.test(tp)) ok('progresso: os ajustes saíram de lá, ficou só o que é número');
+    else falha('progresso: sobrou ajuste na aba: ' + tp.slice(0, 200));
+    if (/horas registradas/i.test(tp)) ok('progresso: os números continuam onde estavam');
+    else falha('progresso: os números sumiram junto');
+    await ir('Configurações');
+  }
+
+  /* ── ciclo clínico: aba própria, com as anotações junto ──────────
+     As matérias do ciclo vêm de data.cronogramaProprio e moram na mesma
+     lista do currículo ativo. A aba nova é a tela de Matérias com a lista
+     filtrada — de propósito, para a anotação e as etapas serem as mesmas
+     e não haver uma segunda implementação para manter em pé. */
+  {
+    const semCiclo = await pag.locator('nav button:has-text("Ciclo clínico")').count();
+    if (semCiclo === 0) ok('ciclo clínico: sem cronograma próprio, a aba nem aparece');
+    else falha('ciclo clínico: a aba apareceu sem haver ciclo nenhum');
+
+    await pag.evaluate(() => {
+      const d = JSON.parse(window.localStorage.getItem('cadencia:v3') || '{}');
+      d.cronogramaProprio = [
+        { id: 'ciclo-1', week: 1, area: 'CL', title: 'Enfermaria de Clínica', esp: 'Ciclo', bonus: [] },
+        { id: 'ciclo-2', week: 2, area: 'CL', title: 'Ambulatório de Clínica', esp: 'Ciclo', bonus: [] },
+      ];
+      d.cronogramaModo = 'somar';
+      window.localStorage.setItem('cadencia:v3', JSON.stringify(d));
+    });
+    await pag.reload({ waitUntil: 'load' });
+    await pag.waitForTimeout(2400);
+
+    if (await pag.locator('nav button:has-text("Ciclo clínico")').count() > 0) {
+      ok('ciclo clínico: com cronograma próprio, a aba aparece');
+
+      await ir('Ciclo clínico');
+      const tc = await texto();
+      if (/Enfermaria de Clínica/.test(tc) && /Ambulatório de Clínica/.test(tc)) {
+        ok('ciclo clínico: as matérias do ciclo estão na aba nova');
+      } else falha('ciclo clínico: não achei as matérias do ciclo: ' + tc.slice(0, 200));
+
+      /* a anotação é a mesma de Matérias, e é o motivo de a aba reusar a
+         tela em vez de ter uma própria */
+      await pag.locator('[data-teste="titulo-materia"]').first().click();
+      await pag.waitForTimeout(500);
+      if (await pag.locator('button:has-text("anotação")').count() > 0) {
+        ok('ciclo clínico: a matéria abre com a mesma anotação de Matérias');
+      } else falha('ciclo clínico: a anotação não apareceu na matéria do ciclo');
+
+      await ir('Matérias');
+      const tm = await texto();
+      if (!/Enfermaria de Clínica/.test(tm)) ok('ciclo clínico: as matérias do ciclo saíram de Matérias, cada uma num lugar só');
+      else falha('ciclo clínico: a matéria do ciclo aparece nas duas abas');
+      if (/de \d+ aulas principais/i.test(tm)) ok('ciclo clínico: Matérias continua com as aulas da residência');
+      else falha('ciclo clínico: Matérias ficou sem nada: ' + tm.slice(0, 200));
+    } else falha('ciclo clínico: a aba não apareceu com cronograma próprio gravado');
+
+    /* limpa: o cronograma próprio troca o currículo ativo, e os testes
+       seguintes contam com o padrão */
+    await pag.evaluate(() => {
+      const d = JSON.parse(window.localStorage.getItem('cadencia:v3') || '{}');
+      d.cronogramaProprio = [];
+      window.localStorage.setItem('cadencia:v3', JSON.stringify(d));
+    });
+    await pag.reload({ waitUntil: 'load' });
+    await pag.waitForTimeout(2400);
+  }
+
   /* ── aparência: cor, fonte e tamanho ─────────────────────────────── */
-  await ir('Progresso');
+  /* Mudou de casa: conta, plano, aparência, layout, metas e backup agora
+     moram em Configurações, e o Progresso ficou só com os números. */
+  await ir('Configurações');
   const antes = await pag.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--neon').trim());
   await pag.locator('button[title="Âmbar"]').first().click();
   await pag.waitForTimeout(350);
