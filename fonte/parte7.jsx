@@ -225,6 +225,27 @@ function Metas({ data, setData, today, qWeek, notify, ladder, gcal }) {
           {gcal && gcal.conectado ? <Btn tone="outline" size="sm" onClick={gcal.desconectar}>desconectar</Btn> : null}
         </div>
 
+        {/* Mão dupla. Só aparece com a conta ligada de vez porque é a única
+            situação em que dá para escrever na agenda sem abrir janela. */}
+        {gcal && gcal.disponivel && gcal.permanente ? (
+          <label className="mt-4 flex items-start gap-3 rounded-2xl px-4 py-3"
+            style={{ background: T.card2, cursor: "pointer" }}>
+            <input type="checkbox" checked={!!gcal.autoEnviar} style={{ marginTop: 3, flexShrink: 0 }}
+              onChange={(e) => gcal.mudarAutoEnviar(e.target.checked)} />
+            <span className="flex-1 min-w-0">
+              <span style={{ display: "block", fontSize: 15, fontWeight: 600 }}>
+                Mandar as mudanças sozinho
+              </span>
+              <Mini style={{ marginTop: 2, lineHeight: 1.6 }}>
+                {gcal.enviandoAuto
+                  ? "enviando para o Google agora…"
+                  : "o que você criar ou apagar aqui, e o que o assistente marcar, "
+                    + `aparece em ${NOME_AGENDA} poucos segundos depois`}
+              </Mini>
+            </span>
+          </label>
+        ) : null}
+
         {/* A ligação de vez. Sem ela o Google devolve um token que vale cerca
             de uma hora e some quando o aplicativo fecha, e a autorização
             volta a aparecer toda vez que a pessoa abre o site. */}
@@ -259,6 +280,16 @@ function Metas({ data, setData, today, qWeek, notify, ladder, gcal }) {
               </>
             )}
           </div>
+        ) : null}
+        {/* Sem conta não há onde guardar a autorização, então o Google
+            devolve um acesso de uma hora e a tela de autorizar volta a cada
+            abertura. Dizer isso aqui evita a pessoa achar que é defeito. */}
+        {gcal && gcal.disponivel && !gcal.logado ? (
+          <Mini style={{ marginTop: 14, lineHeight: 1.6 }}>
+            Entre na sua conta do Cadência para o Google ficar ligado de vez.
+            Sem conta, a autorização do Google vale cerca de uma hora e a tela
+            de permissão volta a aparecer quando você abre o app de novo.
+          </Mini>
         ) : null}
         {gcal && gcal.progresso ? (
           <div className="mt-4"><Track pct={(gcal.progresso.feito / Math.max(1, gcal.progresso.total)) * 100} color="var(--a-GO)" /></div>

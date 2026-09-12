@@ -1118,6 +1118,46 @@ if (liberado) {
   else falha('os blocos da agenda sumiram depois de recarregar');
   if (/cumprido/.test(rotinaDepois)) ok('o bloco marcado como cumprido continua marcado depois de recarregar');
   else falha('a marca de cumprido sumiu depois de recarregar');
+
+  /* O envio automático para o Google Agenda guarda em googleCal o que já
+     subiu (enviados), quais grupos sobem (opts) e se está ligado
+     (autoEnviar). Tudo isso passa pelo normalize na volta do disco: o que
+     não estiver copiado lá some a cada abertura — e aí toda abertura
+     reenviaria a agenda inteira, em silêncio. */
+  await pag.evaluate(() => {
+    const d = JSON.parse(window.localStorage.getItem('cadencia:v3') || '{}');
+    d.googleCal = {
+      id: 'agenda-de-teste', ultima: 123, autoSync: true, autoEnviar: false,
+      opts: { rotina: true, revisoes: true },
+      enviados: { AAA: 'rotina:zz1', BBB: 'revisoes:zz2', RUIM: { nao: 'texto' } },
+    };
+    window.localStorage.setItem('cadencia:v3', JSON.stringify(d));
+  });
+  await pag.reload({ waitUntil: 'load' });
+  await pag.waitForTimeout(2200);
+  /* Só ler de volta não provaria nada: se o normalize tivesse deixado o
+     campo cair, o disco ainda teria o texto injetado aqui. Mexer em algo
+     obriga a gravar por cima, e aí o que está no disco é o que sobreviveu
+     à volta pelo normalize. */
+  await ir('Rotina');
+  await pag.locator('button:has-text("Novo bloco")').first().click();
+  await pag.waitForTimeout(300);
+  await pag.locator('input[placeholder="Ex.: enfermaria clínica médica"]').fill('Bloco que força a gravação');
+  await pag.locator('button:has-text("Adicionar bloco")').first().click();
+  await pag.waitForTimeout(2600);
+  const gc = await pag.evaluate(() => {
+    const d = JSON.parse(window.localStorage.getItem('cadencia:v3') || '{}');
+    return d.googleCal || {};
+  });
+  if (gc.enviados && gc.enviados.AAA === 'rotina:zz1' && gc.enviados.BBB === 'revisoes:zz2') {
+    ok('o que já subiu para o Google Agenda sobrevive ao recarregar');
+  } else falha('a lista do que já subiu para o Google Agenda sumiu ao recarregar');
+  if (gc.enviados && !('RUIM' in gc.enviados)) ok('marca que não é texto é descartada na volta do disco');
+  else falha('marca em formato estranho passou pelo normalize');
+  if (gc.opts && gc.opts.revisoes === true) ok('os grupos escolhidos para sincronizar sobrevivem');
+  else falha('a escolha de grupos do Google Agenda sumiu ao recarregar');
+  if (gc.autoEnviar === false) ok('desligar o envio automático fica desligado depois de recarregar');
+  else falha('o envio automático voltou a ligar sozinho depois de recarregar');
 }
 
 /* ── barra lateral ────────────────────────────────────────────────── */

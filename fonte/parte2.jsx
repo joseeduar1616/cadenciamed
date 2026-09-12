@@ -31,7 +31,8 @@ const DEFAULTS = {
   },
   pomoLog: [],
   simulados: {}, provas: [], habits: HABITS_SEED, habitLog: {},
-  rever: [], notes: {}, googleCal: { id: "", ultima: 0, autoSync: false },
+  rever: [], notes: {},
+  googleCal: { id: "", ultima: 0, autoSync: false, autoEnviar: true, opts: {}, enviados: {} },
   /* Cronograma que a pessoa recebeu do curso dela, em texto, para o
      assistente organizar a rotina em cima do que ela realmente tem.
      As duas datas dizem quando esse período começa e quando acaba: sem elas
@@ -178,6 +179,19 @@ function normalize(raw) {
       id: typeof gc.id === "string" ? gc.id : "",
       ultima: Number(gc.ultima) || 0,
       autoSync: !!gc.autoSync,
+      /* Mão dupla: manda para o Google o que muda aqui. Ligado por padrão,
+         então o que conta é a recusa explícita. */
+      autoEnviar: gc.autoEnviar !== false,
+      /* Quais grupos de evento sobem, do último envio pelo botão. */
+      opts: obj(gc.opts),
+      /* O que já subiu: id do evento → "grupo:marca do conteúdo". Sem isto
+         na volta do disco, toda abertura reenviaria a agenda inteira.
+         Filtrado porque é mapa grande e vem da nuvem: valor que não for
+         texto viraria comparação estranha lá na frente. */
+      enviados: Object.entries(obj(gc.enviados))
+        .filter(([, v]) => typeof v === "string")
+        .slice(0, 3000)
+        .reduce((m, [k, v]) => { m[k] = v; return m; }, {}),
     },
     /* Os cartões precisam sobreviver ao recarregar a página: como tudo passa
        por aqui na volta do disco e da nuvem, o que não for copiado se perde. */

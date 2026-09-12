@@ -262,7 +262,7 @@ function eventosGoogle({ routine, agenda, ladder, simulados, examDate, today, op
     for (const b of (agenda || [])) {
       if (b.gid) continue;
       ev.push({
-        id: idGoogle(`agenda-${b.id}`),
+        cat: "rotina", id: idGoogle(`agenda-${b.id}`),
         summary: b.label,
         description: `${b.type} · compromisso do dia (Cadência)`,
         start: { dateTime: `${b.date}T${b.start}:00`, timeZone: FUSO },
@@ -272,7 +272,7 @@ function eventosGoogle({ routine, agenda, ladder, simulados, examDate, today, op
     for (const b of routine) {
       const dia = addDays(monday, Number(b.day) || 0);
       ev.push({
-        id: idGoogle(`rotina-${b.id}`),
+        cat: "rotina", id: idGoogle(`rotina-${b.id}`),
         summary: b.label,
         description: `${b.type} · bloco fixo da semana (Cadência)`,
         start: { dateTime: `${dia}T${b.start}:00`, timeZone: FUSO },
@@ -287,7 +287,7 @@ function eventosGoogle({ routine, agenda, ladder, simulados, examDate, today, op
       for (const st of r.steps) {
         if (st.on || st.due > limite) continue;
         ev.push({
-          id: idGoogle(`revisao-${r.id}-${st.d}`),
+          cat: "revisoes", id: idGoogle(`revisao-${r.id}-${st.d}`),
           summary: `Revisar ${st.label}: ${r.title}`,
           description: `${aLabel(r.area)} · estudado em ${brDate(r.anchor)}`,
           start: { date: st.due }, end: { date: addDays(st.due, 1) },
@@ -300,7 +300,7 @@ function eventosGoogle({ routine, agenda, ladder, simulados, examDate, today, op
     SIMULADOS.forEach(([nome, ini, fim], i) => {
       if (simulados[i]) return;
       ev.push({
-        id: idGoogle(`simulado-${i}`),
+        cat: "simulados", id: idGoogle(`simulado-${i}`),
         summary: `${nome} · janela aberta`,
         description: "Janela oficial do cronograma (Cadência)",
         start: { date: ini }, end: { date: addDays(fim, 1) },
@@ -310,13 +310,66 @@ function eventosGoogle({ routine, agenda, ladder, simulados, examDate, today, op
   }
   if (opts.prova && examDate) {
     ev.push({
-      id: idGoogle(`prova-${examDate}`),
+      cat: "prova", id: idGoogle(`prova-${examDate}`),
       summary: "Dia da prova",
       start: { date: examDate }, end: { date: addDays(examDate, 1) },
     });
   }
   return ev;
 }
+
+/* O evento como o Google quer receber: sem o "cat", que é etiqueta nossa
+   para saber de que grupo ele veio e não campo da API. */
+function corpoDoEvento(ev) {
+  const { cat, ...resto } = ev;
+  return resto;
+}
+
+/* Uma marca curta do conteúdo do evento. Serve para o envio automático
+   mandar só o que mudou: sem isso, mexer num bloco reescreveria os
+   duzentos eventos da agenda a cada edição. */
+function marcaDoEvento(ev) {
+  const txt = JSON.stringify(corpoDoEvento(ev));
+  let h = 5381;
+  for (let i = 0; i < txt.length; i++) h = ((h * 33) ^ txt.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+
+/* As marcas de uma lista de eventos, no formato que fica guardado:
+   id do evento → "grupo:marca do conteúdo". */
+function marcasDaLista(lista) {
+  const m = {};
+  for (const ev of lista) m[ev.id] = `${ev.cat}:${marcaDoEvento(ev)}`;
+  return m;
+}
+
+/* O que precisa subir e o que precisa sumir da agenda do Google.
+ *
+ * Pura de propósito: são as duas regras que sustentam o envio automático.
+ * A primeira é não reescrever o que já está lá igual — sem ela, mexer num
+ * bloco reenviaria a agenda inteira a cada tecla. A segunda é só apagar
+ * dentro dos grupos ligados — sem ela, desmarcar "revisões" limparia oito
+ * meses de revisões da agenda de quem só queria parar de mandar as novas.
+ */
+function diferencaDaAgenda(lista, antes, opts) {
+  const agora = marcasDaLista(lista);
+  const velho = antes || {};
+  const subir = lista.filter((ev) => velho[ev.id] !== agora[ev.id]);
+  const apagar = Object.keys(velho)
+    .filter((id) => !agora[id] && !!(opts || {})[String(velho[id]).split(":")[0]]);
+  return { agora, subir, apagar };
+}
+
+/* Padrão do envio automático: o que a pessoa realmente edita no dia a dia,
+   e o que o assistente cria. Revisões, simulados e prova continuam sendo
+   escolha dela no cartão da aba Rotina — se ela sincronizar com eles
+   marcados, a escolha fica guardada e o automático passa a incluí-los. */
+const AUTO_PADRAO = { rotina: true, revisoes: false, simulados: false, prova: false };
+
+/* Quanto o envio automático espera parar de mudar antes de subir, e quanta
+   mudança ele aceita mandar sem alguém ter clicado em nada. */
+const ESPERA_AUTO = 6000;
+const LIMITE_AUTO = 400;
 
 /* ── a ligação que não vence ───────────────────────────────────────────
  *
@@ -352,6 +405,25 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
   const [permanente, setPermanente] = useState(null);
   const validade = useRef(0);
   const logado = !!(nuvem && nuvem.usuario);
+  /* Espelho de "permanente" sempre atual. Quem clica em sincronizar no
+     primeiro segundo, antes da resposta do servidor, decidiria pelo valor
+     velho do fechamento e podia abrir duas janelas seguidas. */
+  const permanenteRef = useRef(permanente);
+  permanenteRef.current = permanente;
+  /* O que já subiu para a agenda do Google: id do evento → "grupo:marca".
+     Fica num ref porque o envio automático precisa comparar sem se
+     reagendar a cada gravação, e é copiado para os dados (googleCal.
+     enviados) para sobreviver a fechar o aplicativo. */
+  const marcasRef = useRef((data.googleCal && data.googleCal.enviados) || {});
+  const semeado = useRef(false);
+  useEffect(() => {
+    if (semeado.current) return;
+    const guardado = data.googleCal && data.googleCal.enviados;
+    if (!guardado) return;
+    semeado.current = true;
+    /* o desta sessão por cima: é o mais recente */
+    marcasRef.current = { ...guardado, ...marcasRef.current };
+  }, [data.googleCal]);
 
   useEffect(() => {
     if (!GOOGLE_CFG) return undefined;
@@ -419,11 +491,16 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
   }, [logado, nuvem]);
 
   /* Liga a conta de vez: uma janela só, uma vez. O que volta dela é um
-     código, que o servidor troca por uma autorização que não vence. */
+     código, que o servidor troca por uma autorização que não vence.
+     Devolve o token de acesso quando dá certo; devolve a string vazia
+     quando este site não tem a ligação permanente configurada (aí quem
+     chamou tenta o caminho antigo, com janela a cada sessão); e devolve
+     null quando falhou por outro motivo — janela bloqueada, fechada,
+     recusada —, caso em que insistir com outra janela só piora. */
   const ligarDeVez = useCallback(async () => {
     if (!window.google || !window.google.accounts || !GOOGLE_CFG) {
       setErro("O login do Google ainda não carregou. Tente de novo em instantes.");
-      return false;
+      return null;
     }
     setErro("");
     const codigo = await new Promise((resolve) => {
@@ -442,16 +519,20 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
         c.requestCode();
       } catch (e) { setErro("Não consegui abrir a autorização do Google."); resolve(""); }
     });
-    if (!codigo) return false;
+    if (!codigo) return null;
 
     const r = await falarComGoogle(nuvem, { acao: "ligar", codigo });
-    if (r.erro) { setErro(r.erro); return false; }
+    if (r.erro) {
+      setErro(r.erro);
+      if (r.disponivel === false) { setPermanente(false); return ""; }
+      return null;
+    }
     if (r.acesso) { setToken(r.acesso); validade.current = Number(r.expiraEm || 0); }
     setPermanente(true);
     setData((p) => ({ ...p, googleCal: { ...(p.googleCal || {}), autoSync: true } }));
     notify("Google ligado. Não precisa autorizar de novo.");
-    return true;
-  }, [nuvem, notify, setData]);
+    return r.acesso || (await tokenDoServidor()) || null;
+  }, [nuvem, notify, setData, tokenDoServidor]);
 
   const pedirToken = useCallback(() => new Promise((resolve) => {
     if (!window.google || !window.google.accounts) return resolve(null);
@@ -475,7 +556,13 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
 
   /* O token que vale agora, do jeito menos incômodo possível: o que já está
      na mão, senão o do servidor (silencioso), e só em último caso a janela
-     do Google. */
+     do Google.
+     Quando a janela é inevitável, ela é a do fluxo de código — a que liga a
+     conta de vez. Antes a janela padrão era a do fluxo de token, que vale
+     uma hora e some ao fechar o aplicativo: quem não achasse o cartão
+     "Ligar a conta de vez" lá embaixo da aba Rotina autorizava de novo a
+     cada abertura, para sempre. Agora a primeira autorização já é a
+     definitiva, e o cartão virou só o aviso de que está ligada. */
   const garantirToken = useCallback(async (semJanela) => {
     if (token && (!validade.current || validade.current > Date.now())) return token;
     if (permanente !== false && logado) {
@@ -483,8 +570,16 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
       if (doServidor) return doServidor;
     }
     if (semJanela) return null;
+    if (logado && permanenteRef.current !== false) {
+      const daLigacao = await ligarDeVez();
+      /* string com token: deu certo. null: falhou com motivo já na tela, e
+         abrir outra janela em cima seria só um segundo bloqueio. "": este
+         site não tem a ligação permanente, então vale o caminho antigo. */
+      if (daLigacao) return daLigacao;
+      if (daLigacao === null) return null;
+    }
     return pedirToken();
-  }, [token, permanente, logado, tokenDoServidor, pedirToken]);
+  }, [token, permanente, logado, tokenDoServidor, ligarDeVez, pedirToken]);
 
   const chamar = useCallback(async (tk, caminho, metodo, corpo) => {
     const r = await fetch(API_GC + caminho, {
@@ -523,22 +618,36 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
       }
       setProgresso({ feito: 0, total: lista.length });
       let feito = 0, falhas = 0;
+      const enviados = {};
       const fila = lista.slice();
       const trabalhar = async () => {
         for (;;) {
           const ev = fila.shift();
           if (!ev) return;
-          let r = await chamar(tk, `/calendars/${encodeURIComponent(cal)}/events`, "POST", ev);
+          const corpo = corpoDoEvento(ev);
+          let r = await chamar(tk, `/calendars/${encodeURIComponent(cal)}/events`, "POST", corpo);
           if (r.status === 409) {
-            r = await chamar(tk, `/calendars/${encodeURIComponent(cal)}/events/${ev.id}`, "PUT", ev);
+            r = await chamar(tk, `/calendars/${encodeURIComponent(cal)}/events/${ev.id}`, "PUT", corpo);
           }
           if (!r.ok) falhas += 1;
+          else enviados[ev.id] = `${ev.cat}:${marcaDoEvento(ev)}`;
           feito += 1;
           setProgresso({ feito, total: lista.length });
         }
       };
       await Promise.all([trabalhar(), trabalhar(), trabalhar(), trabalhar()]);
-      setData((p) => ({ ...p, googleCal: { ...(p.googleCal || {}), id: cal, ultima: Date.now() } }));
+      /* Guarda o que subiu e com quais grupos: daqui em diante o envio
+         automático compara com isso e manda só a diferença. */
+      marcasRef.current = { ...marcasRef.current, ...enviados };
+      setData((p) => ({
+        ...p,
+        googleCal: {
+          ...(p.googleCal || {}),
+          id: cal, ultima: Date.now(), autoSync: true,
+          opts: { ...AUTO_PADRAO, ...opts },
+          enviados: marcasRef.current,
+        },
+      }));
       notify(falhas
         ? `${lista.length - falhas} de ${lista.length} eventos sincronizados.`
         : `${lista.length} eventos sincronizados na agenda.`);
@@ -716,12 +825,113 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
     };
   }, [autoSync, pronto, token, executarImportacao, today]);
 
+  /* ── mão dupla: o que muda aqui sobe sozinho para o Google ──────────
+   *
+   * A volta (Google → site) já existia na importação automática acima. A
+   * ida só acontecia no clique de "Sincronizar agora": criar um plantão na
+   * aba Rotina, ou pedir um bloco ao assistente, deixava a agenda do
+   * Google para trás até alguém lembrar do botão. Agora cada mudança sobe
+   * sozinha alguns segundos depois de parar de digitar.
+   *
+   * Sobe só a diferença. Cada evento carrega uma marca do próprio
+   * conteúdo, e o que já está lá com a mesma marca não é reescrito — sem
+   * isso, mexer num bloco reenviaria a agenda inteira a cada tecla. O que
+   * sumiu daqui é apagado lá, mas só dentro dos grupos ligados: senão
+   * desmarcar "revisões" limparia oito meses de revisões da agenda de quem
+   * só queria parar de mandar as novas.
+   *
+   * Nunca abre janela: usa garantirToken(true), o caminho silencioso. Por
+   * isso exige a conta ligada de vez — sem ela não há token silencioso, e
+   * a alternativa seria justamente a janela que ninguém pediu.
+   */
+  const autoEnviar = !!(data.googleCal && data.googleCal.autoEnviar !== false);
+  const [enviandoAuto, setEnviandoAuto] = useState(false);
+  const ocupadoAuto = useRef(false);
+  const agendaRef = useRef("");
+  agendaRef.current = (data.googleCal && data.googleCal.id) || agendaRef.current;
+  /* Estas funções mudam de identidade a cada token novo. Guardadas em ref,
+     o efeito não precisa tê-las como dependência — e assim ele só acorda
+     quando o conteúdo muda de verdade, nunca por rerrenderização. */
+  const garantirTokenRef = useRef(garantirToken);
+  garantirTokenRef.current = garantirToken;
+  const garantirAgendaRef = useRef(garantirAgenda);
+  garantirAgendaRef.current = garantirAgenda;
+
+  const autoMapa = useMemo(() => {
+    if (!GOOGLE_CFG || !autoSync || !autoEnviar || permanente !== true) return { chave: "" };
+    const opts = { ...AUTO_PADRAO, ...((data.googleCal && data.googleCal.opts) || null) };
+    const lista = eventosGoogle({
+      routine: data.routine, agenda: data.agenda, ladder, simulados: data.simulados,
+      examDate: data.profile.examDate, today, opts,
+    });
+    const agora = marcasDaLista(lista);
+    /* A chave é texto de propósito: ladder e agenda são arrays novos a cada
+       rerrenderização, e depender deles reiniciaria a espera para sempre. */
+    return { chave: JSON.stringify([opts, agora]), lista, opts };
+  }, [autoSync, autoEnviar, permanente, data.googleCal, data.routine, data.agenda,
+    data.simulados, data.profile.examDate, ladder, today]);
+
+  useEffect(() => {
+    if (!autoMapa.chave) return undefined;
+    let cancelado = false;
+    const t = window.setTimeout(async () => {
+      if (cancelado || ocupadoAuto.current) return;
+      const antes = marcasRef.current || {};
+      const { agora, subir, apagar } = diferencaDaAgenda(autoMapa.lista, antes, autoMapa.opts);
+      if (!subir.length && !apagar.length) return;
+      /* Volume de mudança que não vem de edição humana (troca de conta,
+         restauração de backup). Melhor deixar para o botão, que mostra o
+         andamento, do que escrever centenas de eventos em silêncio. */
+      if (subir.length + apagar.length > LIMITE_AUTO) return;
+      ocupadoAuto.current = true;
+      setEnviandoAuto(true);
+      try {
+        const tk = await garantirTokenRef.current(true);
+        if (!tk || cancelado) return;
+        const cal = agendaRef.current || await garantirAgendaRef.current(tk);
+        agendaRef.current = cal;
+        const feitas = { ...antes };
+        for (const ev of subir) {
+          if (cancelado) break;
+          const corpo = corpoDoEvento(ev);
+          let r = await chamar(tk, `/calendars/${encodeURIComponent(cal)}/events`, "POST", corpo);
+          if (r.status === 409) {
+            r = await chamar(tk, `/calendars/${encodeURIComponent(cal)}/events/${ev.id}`, "PUT", corpo);
+          }
+          if (r.ok) feitas[ev.id] = agora[ev.id];
+        }
+        for (const id of apagar) {
+          if (cancelado) break;
+          const r = await chamar(tk, `/calendars/${encodeURIComponent(cal)}/events/${id}`, "DELETE");
+          /* 404 e 410 são "já não está lá", que é exatamente o que se queria */
+          if (r.ok || r.status === 404 || r.status === 410) delete feitas[id];
+        }
+        marcasRef.current = feitas;
+        if (!cancelado) {
+          setData((p) => ({
+            ...p,
+            googleCal: { ...(p.googleCal || {}), id: cal, enviados: feitas, ultima: Date.now() },
+          }));
+        }
+      } catch (e) {
+        /* Calado de propósito: é trabalho de fundo, e a próxima mudança
+           tenta de novo com o mesmo resultado esperado. */
+      } finally { ocupadoAuto.current = false; setEnviandoAuto(false); }
+    }, ESPERA_AUTO);
+    return () => { cancelado = true; window.clearTimeout(t); };
+  }, [autoMapa.chave, chamar, setData]);
+
+  const mudarAutoEnviar = useCallback((ligado) => {
+    setData((p) => ({ ...p, googleCal: { ...(p.googleCal || {}), autoEnviar: !!ligado } }));
+  }, [setData]);
+
   return {
     disponivel: !!GOOGLE_CFG, pronto, conectado: !!token, ocupado, progresso, erro,
     sincronizar, importarRotina, desconectar, autoSync, autoParou,
+    autoEnviar, mudarAutoEnviar, enviandoAuto,
     /* permanente: true já ligado de vez, false não dá (ou foi desligado),
        null ainda não perguntei ao servidor. */
-    permanente, ligarDeVez, podeLigarDeVez: logado && permanente !== false,
+    permanente, ligarDeVez, podeLigarDeVez: logado && permanente !== false, logado,
     ultima: (data.googleCal && data.googleCal.ultima) || 0,
   };
 }

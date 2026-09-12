@@ -23,6 +23,7 @@ fonte/_recorte.mjs
 fonte/_curriculo.mjs
 fonte/_cores.mjs
 fonte/_pastas.mjs
+fonte/_agenda.mjs
 
 # refeitos por material/capturar.mjs e material/gerar.mjs
 material/capturas/
