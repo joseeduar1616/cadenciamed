@@ -12,7 +12,7 @@ Um painel de estudo para quem se prepara para a residência médica: o
 cronograma inteiro, a revisão espaçada que volta sozinha na hora certa e os
 flashcards, no mesmo lugar, no computador e no celular.
 
-**Endereço:** https://cadenciamed.com.br
+**Endereço:** https://cadenciamed.com.br (sempre sem o "www")
 **Nome:** Cadência Med
 **Assinatura do site:** "A residência pede cadência."
 **Sobrelinha usada no topo:** "Preparação para residência médica"
@@ -65,7 +65,7 @@ Preventiva 7.
 - Os dois estão marcados como **"Promoção de lançamento"** no site, com o
   valor cheio riscado ao lado.
 - **Garantia de 7 dias.**
-- Suporte: suporte@cadenciamed.com
+- Suporte: suporte@cadenciamed.com.br
 - Existe sistema de **cupom**: dá para distribuir código que libera o
   plano. Útil para parceria com influencer, sorteio ou turma.
 
@@ -214,8 +214,8 @@ Conta, plano, aparência, formato da tela, metas e backup num lugar só.
 - **Cinco fontes** para escolher, e tamanho de texto ajustável
 - **Backup em um clique** (baixa e restaura tudo em JSON) — os dados são
   seus e saem do site quando você quiser
-- Continua funcionando **sem internet**: os dados ficam no aparelho e
-  sobem quando a conexão volta
+- **Abre sem internet depois da primeira visita**: o site fica guardado no
+  aparelho, e os dados também — eles sobem quando a conexão volta
 
 ## 8. Identidade visual
 

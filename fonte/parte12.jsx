@@ -709,7 +709,7 @@ function MontarFlashcardsIA({ setData, notify, nuvem, pastas }) {
             onChange={(e) => setCobrirTudo(e.target.checked)} />
           <span style={{ fontSize: 13.5, color: T.dim }}>
             Quero todos os cartões possíveis, cobrindo tudo do documento
-            <span style={{ color: T.ghost }}> · sem marcar, a IA escolhe só os pontos principais</span>
+            <span style={{ color: T.faint }}> · sem marcar, a IA escolhe só os pontos principais</span>
           </span>
         </label>
       )}
@@ -1290,7 +1290,7 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
                     <div className="flex items-center gap-2 px-4 py-3">
                       <button type="button" aria-label={aberta ? "Fechar pasta" : "Abrir pasta"}
                         onClick={() => setAbertas((a) => ({ ...a, [p.nome]: !aberta }))}
-                        className="flex items-center justify-center"
+                        className="toque flex items-center justify-center"
                         style={{ background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0 }}>
                         <ChevronDown size={15} style={{ color: T.faint, transform: aberta ? "none" : "rotate(-90deg)", transition: "transform .2s" }} />
                       </button>
@@ -1350,11 +1350,13 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
                               ) : null}
                               <button type="button" aria-label="Renomear pasta" title="Renomear"
                                 onClick={() => { setRenomeando({ tipo: "pasta", nome: p.nome }); setNovoNome(p.nome); }}
+                                className="toque flex items-center justify-center"
                                 style={{ background: "none", border: "none", color: T.ghost, cursor: "pointer", padding: 4 }}>
                                 <Settings2 size={14} />
                               </button>
                               <button type="button" aria-label="Desfazer pasta" title="Desfazer a pasta"
                                 onClick={() => setConfirmando(confirmaPasta ? null : { tipo: "pasta", nome: p.nome })}
+                                className="toque flex items-center justify-center"
                                 style={{ background: "none", border: "none", color: confirmaPasta ? T.bad : T.ghost, cursor: "pointer", padding: 4 }}>
                                 <Trash2 size={14} />
                               </button>
@@ -1410,7 +1412,7 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
 
                                 <button type="button" aria-label={`Estudar ${b.nome}`} title="Estudar só este baralho"
                                   onClick={() => comecar({ pasta: p.nome, baralho: b.nome })}
-                                  className="flex items-center justify-center rounded-full brilhar"
+                                  className="toque flex items-center justify-center rounded-full brilhar"
                                   style={{
                                     width: 30, height: 30, flexShrink: 0, cursor: "pointer",
                                     background: b.hoje ? soft("var(--neon)", 16) : "transparent",
@@ -1422,7 +1424,7 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
 
                                 <button type="button" aria-label={`Ajustes de ${b.nome}`} title="Ajustes do baralho"
                                   onClick={() => { setAjustando(abertoB ? null : { nome: b.nome, pasta: p.nome }); setConfirmando(null); }}
-                                  className="flex items-center justify-center rounded-full"
+                                  className="toque flex items-center justify-center rounded-full"
                                   style={{
                                     width: 30, height: 30, flexShrink: 0, cursor: "pointer",
                                     background: abertoB ? T.card3 : "transparent",
@@ -1485,7 +1487,7 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
                                       onChange={(e) => mudarCfg(p.nome, b.nome, "embaralhar", e.target.checked)} />
                                     <span style={{ fontSize: 13.5, color: T.dim }}>
                                       Embaralhar a ordem
-                                      <span style={{ color: T.ghost }}> · sem isso você acaba decorando pela posição</span>
+                                      <span style={{ color: T.faint }}> · sem isso você acaba decorando pela posição</span>
                                     </span>
                                   </label>
 

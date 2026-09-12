@@ -17,6 +17,8 @@ VERSAO="${VERSAO:-$(date +'%d/%m %H:%M')}"
 
 echo "── ícones ──────────────────────────────────────────"
 python3 gerar_icones.py
+python3 gerar_cartao.py
+python3 gerar_legais.py
 
 echo "── juntando os pedaços ─────────────────────────────"
 cat base.jsx parte2.jsx parte3.jsx parte10.jsx parte11.jsx parte13.jsx \

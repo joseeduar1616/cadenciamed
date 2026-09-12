@@ -33,8 +33,18 @@ const THEME_CSS = `
 [data-theme="dark"]{
   --bg:#04030A; --bg2:#0A0714; --glow:rgba(168,85,247,0.18);
   --card:rgba(15,12,28,0.60); --card2:rgba(26,21,44,0.72); --card3:rgba(42,35,66,0.88);
+  /* Os quatro tons de texto vão do mais forte ao mais apagado. Os dois
+     últimos foram clareados até passarem no contraste mínimo medido
+     contra o fundo MAIS CLARO em que aparecem: o --card3 COMPOSTO, que é
+     translúcido e acaba mais claro do que o valor escrito nele (rgba
+     .88 sobre o card2, que por sua vez é .72 sobre o fundo). Medir contra
+     o valor cru dava um número melhor do que a tela mostra, e foi assim
+     que o texto continuou ilegível no celular ao sol depois do primeiro
+     conserto. "faint" carrega texto de
+     verdade e vai a 4.5:1; "ghost" é ícone, contorno e estado desligado,
+     e vai a 3:1, que é o mínimo para elemento de interface. */
   --line:rgba(170,145,255,0.12); --line2:rgba(185,160,255,0.30);
-  --ink:#F5F2FF; --dim:#B5ACD4; --faint:#807899; --ghost:#585072;
+  --ink:#F5F2FF; --dim:#B5ACD4; --faint:#8F88A5; --ghost:#726894;
   --neon:#35E4FF; --neon2:#A855F7;
   --ok:#3EE0B0; --warn:#FFB648; --bad:#FF6B85; --aura3:#3EE0B0;
   --a-CL:#FF9450; --a-CI:#3EE0B0; --a-GO:#4FA8FF; --a-PE:#FF6FB0; --a-PR:#A182E6;
@@ -47,7 +57,7 @@ const THEME_CSS = `
   --bg:#F1EFF8; --bg2:#FFFFFF; --glow:rgba(139,92,246,0.10);
   --card:rgba(255,255,255,0.90); --card2:#F2EFFA; --card3:#E4DEF3;
   --line:rgba(48,30,90,0.11); --line2:rgba(60,30,120,0.26);
-  --ink:#140E24; --dim:#4E4570; --faint:#7B7398; --ghost:#A9A2C0;
+  --ink:#140E24; --dim:#4E4570; --faint:#675F82; --ghost:#847AA5;
   --neon:#0E8FB8; --neon2:#7C3AED;
   --ok:#12876A; --warn:#B06A00; --bad:#C93A54; --aura3:#12876A;
   --a-CL:#C25718; --a-CI:#12876A; --a-GO:#2C63CC; --a-PE:#B33A72; --a-PR:#6C42BE;
@@ -208,11 +218,61 @@ function hslParaRgba(h, s, l, a) {
 }
 
 /* Devolve { "--bg": "...", ... } para o matiz da cor pedida. */
+/* Luminância de um hex, na conta da WCAG, e a razão de contraste entre
+   duas cores. Serve para o ajuste logo abaixo. */
+function luminancia(hex) {
+  const limpo = String(hex || "000000").replace("#", "");
+  const cheio = limpo.length === 3 ? limpo.split("").map((c) => c + c).join("") : limpo;
+  const canal = (i) => {
+    const x = parseInt(cheio.slice(i, i + 2), 16) / 255;
+    return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * canal(0) + 0.7152 * canal(2) + 0.0722 * canal(4);
+}
+
+function contraste(a, b) {
+  const la = luminancia(a);
+  const lb = luminancia(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+/* Clareia (ou escurece) um tom até ele alcançar o contraste pedido contra
+   o fundo.
+ *
+ * Existe porque girar o matiz preservando a claridade do HSL NÃO preserva
+ * o contraste: um amarelo e um azul com o mesmo L têm luminâncias bem
+ * diferentes, e os tons de texto que passavam no tema padrão voltavam a
+ * sumir em alguns temas. Aqui o alvo é medido de verdade, tema a tema. */
+function ateContrastar(cor, fundo, alvo, claro) {
+  const { h, s, l } = hexParaHsl(cor);
+  let atual = l;
+  for (let i = 0; i < 120; i += 1) {
+    const tentativa = hslParaHex(h, s, atual);
+    if (contraste(tentativa, fundo) >= alvo) return tentativa;
+    atual = claro ? Math.max(0, atual - 0.8) : Math.min(100, atual + 0.8);
+    if (atual <= 0 || atual >= 100) break;
+  }
+  return hslParaHex(h, s, atual);
+}
+
+/* Quanto cada tom de texto precisa alcançar contra o painel mais claro em
+   que ele aparece. Os dois primeiros já passam com folga em qualquer
+   matiz; os dois últimos são os que precisam de conferência. */
+const CONTRASTE_MINIMO = { "--ink": 7, "--dim": 4.5, "--faint": 4.5, "--ghost": 3 };
+
 function ambienteDoTema(corFunda, claro) {
   const { h } = hexParaHsl(corFunda);
   const saida = {};
   for (const [nome, s, l, a] of AMBIENTE[claro ? "light" : "dark"]) {
     saida[nome] = a === undefined ? hslParaHex(h, s, l) : hslParaRgba(h, s, l, a);
+  }
+
+  /* O fundo mais claro em que texto aparece é o --card3 (cartão sobre
+     cartão), e é contra ele que a conta é feita: era esse o pior caso. */
+  for (const [nome, alvo] of Object.entries(CONTRASTE_MINIMO)) {
+    if (saida[nome] && saida["--card3"]) {
+      saida[nome] = ateContrastar(saida[nome], saida["--card3"], alvo, claro);
+    }
   }
   /* O brilho de fundo e o vidro dos painéis são a própria cor, bem diluída */
   saida["--glow"] = hslParaRgba(h, 90, claro ? 62 : 65, claro ? 0.1 : 0.18);

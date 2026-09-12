@@ -1,0 +1,5 @@
+# Cadência Med — cadenciamed.com.br
+User-agent: *
+Allow: /
+
+Sitemap: https://cadenciamed.com.br/sitemap.xml

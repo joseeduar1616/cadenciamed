@@ -13,3 +13,19 @@
 
 /sql-asm.js
   Cache-Control: public, max-age=2592000
+
+/sw.js
+  Cache-Control: no-cache
+  Service-Worker-Allowed: /
+
+/robots.txt
+  Cache-Control: public, max-age=86400
+
+/sitemap.xml
+  Cache-Control: public, max-age=86400
+
+/privacidade.html
+  Cache-Control: public, max-age=3600
+
+/termos.html
+  Cache-Control: public, max-age=3600

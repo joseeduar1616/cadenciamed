@@ -680,7 +680,7 @@ function Amigos({ nuvem, notify, data, setData }) {
           Estudar acompanhado
         </h2>
         <p style={{ color: T.dim, fontSize: 15, lineHeight: 1.65, marginTop: 10, maxWidth: 430, marginLeft: "auto", marginRight: "auto" }}>
-          Crie uma conta em Progresso para montar salas com seus amigos e comparar
+          Crie uma conta em Configurações para montar salas com seus amigos e comparar
           horas estudadas, questões e acerto.
         </p>
       </Card>
@@ -836,7 +836,7 @@ function Amigos({ nuvem, notify, data, setData }) {
             Aparecem só o nome do perfil e os três números do ranking, mais a
             marca de quem está com o cronômetro andando agora. O que você
             estudou, suas anotações e seus cartões não são compartilhados. Para
-            mudar o nome que os outros veem, é o nome em Progresso.
+            mudar o nome que os outros veem, é o nome em Configurações.
           </Mini>
         </Card>
       ) : atual && ocupado ? (

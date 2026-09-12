@@ -899,8 +899,19 @@ if (liberado) {
     const tp = await texto();
     if (!/aparência|baixar backup|apagar tudo/i.test(tp)) ok('progresso: os ajustes saíram de lá, ficou só o que é número');
     else falha('progresso: sobrou ajuste na aba: ' + tp.slice(0, 200));
-    if (/horas registradas/i.test(tp)) ok('progresso: os números continuam onde estavam');
-    else falha('progresso: os números sumiram junto');
+    /* Sem sessão nenhuma, o certo é a tela explicar em vez de mostrar uma
+       parede de zeros; com sessão, os números. As duas coisas valem, e o
+       que não pode é ficar sem nenhuma das duas. */
+    const temSessao = await pag.evaluate(() => {
+      const d = JSON.parse(window.localStorage.getItem('cadencia:v3') || '{}');
+      return ((d.sessions || []).length > 0);
+    });
+    if (temSessao) {
+      if (/horas registradas/i.test(tp)) ok('progresso: os números continuam onde estavam');
+      else falha('progresso: os números sumiram junto');
+    } else if (/seu progresso aparece aqui/i.test(tp)) {
+      ok('progresso: sem sessão nenhuma, a tela explica em vez de mostrar zeros');
+    } else falha('progresso: nem números nem explicação: ' + tp.slice(0, 160));
     await ir('Configurações');
   }
 
@@ -1142,6 +1153,92 @@ await pag.locator('button[aria-label="Expandir menu"]').first().click();
 const larguraDeVolta = await esperarLargura(larguraAberta);
 if (Math.abs(larguraDeVolta - larguraAberta) < 3) ok('a barra volta a expandir');
 else falha(`a barra não voltou (${Math.round(larguraDeVolta)} vs ${Math.round(larguraAberta)})`);
+
+/* ── o que a auditoria pegou ────────────────────────────────────────
+   Cada uma destas foi um defeito de verdade encontrado varrendo o site
+   inteiro; o teste existe para não voltarem. */
+{
+  /* 1. Texto mandando para a aba errada. A conta mudou de Progresso para
+     Configurações, e quatro telas continuaram apontando para o lugar
+     antigo — quem procurava não achava. */
+  const apontamErrado = [];
+  for (const aba of ['Amigos', 'Plano|Assinar', 'Cronograma']) {
+    if (!(await ir(aba))) continue;
+    const t = await texto();
+    if (/conta em Progresso|backup em Progresso|nome em Progresso/i.test(t)) apontamErrado.push(aba);
+  }
+  if (apontamErrado.length === 0) ok('nenhuma tela manda a pessoa procurar a conta em Progresso');
+  else falha('ainda apontam para Progresso: ' + apontamErrado.join(', '));
+
+  /* 2. Botão só com ícone não tem nome nenhum para leitor de tela. */
+  const semNome = [];
+  for (const aba of ['Hoje', 'Metas', 'Cartões', 'Desempenho', 'Configurações']) {
+    if (!(await ir(aba))) continue;
+    const n = await pag.evaluate(() => [...document.querySelectorAll('main button')]
+      .filter((b) => !((b.getAttribute('aria-label') || b.textContent || '').trim())).length);
+    if (n) semNome.push(`${aba}: ${n}`);
+  }
+  if (semNome.length === 0) ok('todo botão tem nome para leitor de tela');
+  else falha('botões sem nome — ' + semNome.join(' | '));
+
+  /* 3. Contraste dos dois tons apagados, medido contra o fundo mais claro
+     em que aparecem. Texto de verdade precisa de 4.5:1; ícone e contorno,
+     de 3:1. Abaixo disso some no celular ao sol. */
+  const contraste = await pag.evaluate(() => {
+    const lum = (c) => {
+      const m = String(c).match(/[\d.]+/g);
+      if (!m || m.length < 3) return null;
+      const [r, g, b] = m.slice(0, 3).map(Number).map((v) => {
+        const s = v / 255;
+        return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    /* Ler a cor DEPOIS de composta: o --card3 é translúcido, e medir o
+       valor cru dá um contraste melhor do que a tela mostra. Pintando um
+       quadrado de verdade sobre o fundo da página, o navegador faz a
+       composição e o que se lê é o pixel. */
+    const composta = (valorDeFundo) => {
+      const fora = document.createElement('div');
+      fora.style.cssText = 'position:fixed;left:-9999px;top:0;width:40px;height:40px;background:var(--bg)';
+      const dentro = document.createElement('div');
+      dentro.style.cssText = `width:100%;height:100%;background:${valorDeFundo}`;
+      fora.appendChild(dentro);
+      document.body.appendChild(fora);
+      const rgb = getComputedStyle(dentro).backgroundColor;
+      const pai = getComputedStyle(fora).backgroundColor;
+      fora.remove();
+      const n = (c) => (String(c).match(/[\d.]+/g) || []).map(Number);
+      const [r, g, b2, a2 = 1] = n(rgb);
+      const [fr, fg, fb] = n(pai);
+      return lum(`rgb(${a2 * r + (1 - a2) * fr},${a2 * g + (1 - a2) * fg},${a2 * b2 + (1 - a2) * fb})`);
+    };
+    const cs = getComputedStyle(document.documentElement);
+    const ler = (n) => {
+      const d = document.createElement('div');
+      d.style.color = cs.getPropertyValue(n).trim(); document.body.appendChild(d);
+      const rgb = getComputedStyle(d).color; d.remove();
+      return lum(rgb);
+    };
+    const razao = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    const card3 = composta('var(--card2)') > composta('var(--card3)')
+      ? composta('var(--card2)') : composta('var(--card3)');
+    return { faint: razao(ler('--faint'), card3), ghost: razao(ler('--ghost'), card3) };
+  });
+  if (contraste.faint >= 4.5) ok(`o tom "faint" passa no contraste de texto (${contraste.faint.toFixed(2)}:1)`);
+  else falha(`"faint" está em ${contraste.faint.toFixed(2)}:1, abaixo dos 4.5 exigidos para texto`);
+  if (contraste.ghost >= 3) ok(`o tom "ghost" passa no contraste de interface (${contraste.ghost.toFixed(2)}:1)`);
+  else falha(`"ghost" está em ${contraste.ghost.toFixed(2)}:1, abaixo dos 3 exigidos`);
+
+  /* 4. Termos e privacidade têm de estar alcançáveis de dentro do app:
+     é exigência da LGPD e da plataforma de pagamento. */
+  const legais = await pag.evaluate(() => ({
+    termos: !!document.querySelector('a[href="/termos.html"]'),
+    privacidade: !!document.querySelector('a[href="/privacidade.html"]'),
+  }));
+  if (legais.termos && legais.privacidade) ok('termos e privacidade têm link no rodapé');
+  else falha('faltou link legal no rodapé: ' + JSON.stringify(legais));
+}
 
 /* ── celular ──────────────────────────────────────────────────────── */
 await pag.setViewportSize({ width: 390, height: 844 });

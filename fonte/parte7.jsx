@@ -85,7 +85,7 @@ function Metas({ data, setData, today, qWeek, notify, ladder, gcal }) {
                 setData((p) => ({ ...p, provas: [{ id: uid(), text: prova.trim(), date: todayISO() }, ...p.provas] }));
                 setProva("");
               }} />
-            <Btn onClick={() => {
+            <Btn title="Adicionar prova resolvida" onClick={() => {
               if (!prova.trim()) return;
               setData((p) => ({ ...p, provas: [{ id: uid(), text: prova.trim(), date: todayISO() }, ...p.provas] }));
               setProva("");
@@ -143,7 +143,7 @@ function Metas({ data, setData, today, qWeek, notify, ladder, gcal }) {
                 setData((p) => ({ ...p, habits: [...p.habits, { id: uid(), text: habit.trim() }] }));
                 setHabit("");
               }} />
-            <Btn onClick={() => {
+            <Btn title="Adicionar hábito" onClick={() => {
               if (!habit.trim()) return;
               setData((p) => ({ ...p, habits: [...p.habits, { id: uid(), text: habit.trim() }] }));
               setHabit("");
@@ -161,7 +161,7 @@ function Metas({ data, setData, today, qWeek, notify, ladder, gcal }) {
                 setData((p) => ({ ...p, rever: [{ id: uid(), text: rever.trim(), done: false }, ...p.rever] }));
                 setRever("");
               }} />
-            <Btn onClick={() => {
+            <Btn title="Adicionar assunto para rever" onClick={() => {
               if (!rever.trim()) return;
               setData((p) => ({ ...p, rever: [{ id: uid(), text: rever.trim(), done: false }, ...p.rever] }));
               setRever("");
@@ -826,6 +826,27 @@ function Progresso({ data, byDay, today, totals, subjects }) {
   const ativos = last14.filter((d) => d.min > 0).length;
   const doneCount = subjects.filter((s) => s.aula).length;
   const bonusCount = subjects.reduce((a, s) => a + s.bonusCount, 0);
+
+  /* Conta nova via uma parede de zeros — 0min, 0 sessões, 0 ativos, sem
+     questões — e nenhuma pista do que fazer. Zero não é resultado ruim
+     aqui: é que ainda não começou, e a tela tem de dizer isso. */
+  if (data.sessions.length === 0) {
+    return (
+      <Card className="px-6 py-8">
+        <H size={18} color="var(--a-CL)" icon={<BarChart3 size={16} />}>Seu progresso aparece aqui</H>
+        <Texto style={{ marginTop: 10, maxWidth: 520 }}>
+          Assim que você registrar a primeira sessão de estudo, esta tela
+          mostra as horas, a constância dia a dia, onde o seu tempo foi e
+          o acerto ao longo do tempo.
+        </Texto>
+        <Mini style={{ marginTop: 14, lineHeight: 1.7 }}>
+          O tempo entra por dois caminhos: o cronômetro da aba Foco, que
+          registra sozinho ao terminar, ou o lançamento à mão em Hoje. Só
+          questões, sem tempo, vai pela aba Desempenho.
+        </Mini>
+      </Card>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -1702,6 +1723,11 @@ function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar }) {
               </button>
             )}
             <a className="pe-link" href={`mailto:${EMAIL_SUPORTE}`}>Falar com o suporte</a>
+            {/* Exigência prática, não enfeite: a LGPD pede que esteja
+                escrito o que se coleta, e a plataforma de pagamento pede
+                o endereço dos termos para aprovar o produto. */}
+            <a className="pe-link" href="/termos.html">Termos de uso</a>
+            <a className="pe-link" href="/privacidade.html">Privacidade</a>
           </div>
 
           <div className="mt-10 pt-6 flex items-center justify-between gap-4 flex-wrap"

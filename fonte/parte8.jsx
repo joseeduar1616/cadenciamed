@@ -955,6 +955,14 @@ export default function Cadencia() {
                   Ferramenta independente de organização pessoal. O conteúdo das
                   aulas é de quem você estuda; aqui ficam só as suas marcações.
                 </Mini>
+                {/* As duas páginas legais são arquivo solto, fora do app:
+                    abrem sem carregar o aplicativo inteiro e é esse
+                    endereço que se cola no checkout. */}
+                <div className="mt-4 flex items-center justify-center gap-3 flex-wrap">
+                  <a href="/termos.html" style={{ color: T.faint, fontSize: 13, textDecoration: "none" }}>Termos de uso</a>
+                  <span style={{ color: T.ghost, fontSize: 13 }}>·</span>
+                  <a href="/privacidade.html" style={{ color: T.faint, fontSize: 13, textDecoration: "none" }}>Privacidade</a>
+                </div>
               </div>
             </div>
           </footer>

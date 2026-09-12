@@ -20,7 +20,11 @@ const PRECOS = {
    os dois precisam aparecer — na tela de planos dentro do app e na página
    de entrada, que lê estas mesmas constantes. */
 const GARANTIA_DIAS = 7;
-const EMAIL_SUPORTE = "suporte@cadenciamed.com";
+/* No domínio DO SITE. Estava em cadenciamed.com enquanto o site é
+   cadenciamed.com.br: além de confundir, é mais um domínio para manter
+   caixa de entrada. A caixa precisa existir de verdade — sem registro MX
+   no domínio, quem escrever recebe erro de entrega. */
+const EMAIL_SUPORTE = "suporte@cadenciamed.com.br";
 
 /* Links de checkout da Kiwify ou Hotmart. Trocar pelos seus. */
 const CHECKOUT = (typeof window !== "undefined" && window.CADENCIA_CHECKOUT) || {
@@ -233,7 +237,7 @@ function Precos({ compacto, onFechar, usuario, plano, aviso }) {
                 <Label>{p.rotulo}</Label>
                 {p.de ? (
                   <div className="flex items-center gap-2" style={{ marginTop: 6 }}>
-                    <span style={{ fontFamily: F_MONO, fontSize: 15, color: T.ghost, textDecoration: "line-through" }}>{p.de}</span>
+                    <span style={{ fontFamily: F_MONO, fontSize: 15, color: T.faint, textDecoration: "line-through" }}>{p.de}</span>
                     <span style={{ fontSize: 11.5, fontWeight: 700, color: T.warn, letterSpacing: "0.1em", textTransform: "uppercase" }}>
                       {PROMO}
                     </span>
@@ -300,7 +304,7 @@ function Precos({ compacto, onFechar, usuario, plano, aviso }) {
       {!usuario ? (
         <Card className="px-6 py-5" flat>
           <Mini style={{ lineHeight: 1.7 }}>
-            Crie sua conta em Progresso antes de assinar, e use o mesmo e-mail
+            Crie sua conta em Configurações antes de assinar, e use o mesmo e-mail
             na hora do pagamento. É assim que a assinatura é reconhecida.
           </Mini>
         </Card>

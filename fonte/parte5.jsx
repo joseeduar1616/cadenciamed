@@ -525,7 +525,7 @@ function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, do
           <div className="mt-4 flex gap-2">
             <TextInput value={newTask} placeholder="Anotar" onChange={(e) => setNewTask(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") addTask(); }} />
-            <Btn onClick={addTask}><Plus size={15} /></Btn>
+            <Btn onClick={addTask} title="Anotar tarefa"><Plus size={15} /></Btn>
           </div>
           {data.tasks.length === 0 ? (
             <Blank icon={<ListChecks size={22} />} title="Lista limpa" hint="O que não pode escapar desta semana." />
@@ -535,7 +535,7 @@ function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, do
                 <div key={t.id} className="flex items-center gap-3 rounded-2xl px-3.5 py-2.5" style={{ background: T.card2 }}>
                   <Tick on={t.done} size={19} label={t.done ? "Reabrir" : "Concluir"}
                     onClick={() => setData((p) => ({ ...p, tasks: p.tasks.map((x) => x.id === t.id ? { ...x, done: !x.done } : x) }))} />
-                  <span className="flex-1 min-w-0" style={{ fontSize: 14.5, color: t.done ? T.ghost : T.ink, textDecoration: t.done ? "line-through" : "none" }}>{t.text}</span>
+                  <span className="flex-1 min-w-0" style={{ fontSize: 14.5, color: t.done ? T.faint : T.ink, textDecoration: t.done ? "line-through" : "none" }}>{t.text}</span>
                   <button type="button" aria-label="Excluir" className="toque"
                     onClick={() => setData((p) => ({ ...p, tasks: p.tasks.filter((x) => x.id !== t.id) }))}
                     style={{ background: "none", border: "none", color: T.ghost, cursor: "pointer" }}><Trash2 size={13} /></button>

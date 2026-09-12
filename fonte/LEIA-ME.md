@@ -1329,6 +1329,84 @@ continuam nas telas delas, com o contexto que explica cada uma — repetir o
 controle aqui criaria dois lugares para mexer na mesma coisa —, e
 Configurações só diz onde ficam.
 
+## O acabamento que uma varredura pegou
+
+Uma varredura do site inteiro, aba por aba, nas duas larguras e em conta
+nova, achou coisas que nenhum teste pegava porque nenhum teste olhava para
+elas. Ficam registradas aqui porque cada uma tem um porquê que não é óbvio.
+
+**Contraste dos tons apagados.** `--faint` e `--ghost` estavam em 2,7:1,
+abaixo dos 4,5:1 que texto exige. Duas armadilhas apareceram no conserto:
+
+1. O fundo contra o qual medir não é o `--bg`, é o **`--card3` composto**.
+   Ele é translúcido (`rgba(...,.88)` sobre o card2, que é `.72` sobre o
+   fundo), então acaba bem mais claro do que o valor escrito nele. Medir
+   o valor cru dava um número melhor do que a tela mostra, e foi por isso
+   que o primeiro conserto não bastou.
+2. **Trocar a cor do tema desfazia o conserto.** `ambienteDoTema` gira o
+   matiz preservando a claridade do HSL — mas claridade igual em HSL não é
+   luminância igual: um amarelo e um azul com o mesmo L têm contrastes
+   bem diferentes. Agora, depois de girar o matiz, `ateContrastar` mede o
+   contraste de verdade e ajusta cada tom de texto até o mínimo
+   (`CONTRASTE_MINIMO`), tema a tema. `faint` vai a 4,5:1 porque carrega
+   texto; `ghost` a 3:1, que é o mínimo de elemento de interface, porque
+   é ícone e contorno.
+
+**Alvos de toque.** A varredura acusou 43 botões pequenos em Matérias —
+**e era falso alarme**: a regra `.toque` já resolve, mas só dentro de
+`@media (pointer: coarse)`, e a medição rodava sem emular toque. Refeita
+num celular de verdade, sobraram só os de Cartões, que não tinham a
+classe. Vale a lição: medir acessibilidade sem emular o aparelho mede
+outra coisa.
+
+**Botão só com ícone não tem nome.** Quem usa leitor de tela ouve "botão"
+e acabou. `Btn` agora usa o `title` como nome acessível quando não há
+texto dentro — um lugar só para manter em dia, já que o título também é o
+que aparece ao parar o mouse.
+
+**Texto apontando para a aba errada.** A conta mudou de Progresso para
+Configurações e quatro telas continuaram mandando a pessoa para o lugar
+antigo. É o tipo de defeito que só aparece lendo o site inteiro, e o teste
+agora procura por ele.
+
+## Compartilhamento, buscador e páginas legais
+
+**Tags de compartilhamento.** Sem `og:`/`twitter:`, colar o link no
+WhatsApp ou no Instagram mostrava só o endereço cru. A imagem é o
+`cartao.png`, 1200x630 (a medida que as redes recortam sem cortar nada),
+**desenhada** pelo `gerar_cartao.py` e não fotografada de uma tela:
+captura de tela vira ilegível em miniatura. Dois detalhes que custaram
+tentativa: o brilho é desenhado pequeno e ampliado com LANCZOS (círculo
+desenhado no tamanho final vira um disco de borda dura), e a marca tem um
+halo assado no PNG que aparecia como retângulo — o alfa abaixo de 25% é
+zerado antes de colar.
+
+**robots.txt e sitemap.xml precisam existir como arquivo.** Sem eles, o
+"qualquer endereço devolve o index" fazia o buscador receber a página do
+app onde esperava regras.
+
+**Privacidade e termos são páginas soltas** (`gerar_legais.py`), fora do
+React: abrem sem carregar 1 MB, funcionam pelo endereço direto — que é o
+que se cola no checkout — e continuam no ar mesmo se o app quebrar. O
+texto sai dos fatos do próprio sistema (o que é guardado, onde, por
+quanto tempo); um modelo genérico descreveria outro produto.
+
+## O site abrindo sem internet
+
+Havia manifest e o site se dizia instalável, mas **não havia service
+worker**: sem ele o app não abre offline e o Android nem oferece instalar
+direito. Junto disso, o HTML é publicado com `no-store` de propósito (para
+uma publicação nova aparecer na hora), e o preço era rebaixar ~300 KB a
+cada abertura.
+
+`sw.js` resolve os dois com estratégias diferentes por tipo: **rede
+primeiro** para a navegação, então quem está online sempre vê a versão
+mais nova e quem está sem rede vê a última que funcionou; **cache
+primeiro** para ícone e manifest, que mudam pouco. O que nunca entra em
+cache é `/api/`: são respostas por pessoa, com token, e guardá-las seria
+mostrar dado de uma conta em outra. O próprio `sw.js` vai com `no-cache`,
+senão um worker velho preso no cache prenderia junto tudo o mais.
+
 ## Mentor
 
 Quem resgata o cupom `mentor1612` (veja "Cupons", acima) ganha a aba Mentor

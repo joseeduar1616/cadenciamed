@@ -357,7 +357,7 @@ async function gravarBruto(k, v) {
 function diagnostico(e) {
   const t = String((e && (e.name || e.code)) || "") + " " + String((e && e.message) || "");
   if (/quota|exceed|\b22\b/i.test(t)) {
-    return "O espaço de armazenamento do navegador encheu. Baixe um backup em Progresso e apague parte do histórico.";
+    return "O espaço de armazenamento do navegador encheu. Baixe um backup em Configurações e apague parte do histórico.";
   }
   if (/security|access|denied|not allowed/i.test(t)) {
     return "O navegador bloqueou o armazenamento nesta página. Costuma acontecer em aba anônima, ou ao abrir o arquivo direto do computador.";
@@ -483,8 +483,16 @@ function Btn({ children, onClick, tone = "quiet", disabled, className = "", titl
     danger: { bg: "transparent", fg: T.bad, bd: soft("var(--bad)", 35) },
   };
   const t = map[tone] || map.quiet;
+  /* Botão só com ícone não tem nome nenhum para quem usa leitor de tela:
+     ouve "botão" e acabou. Quando não há texto dentro, o título vira o
+     nome — é o mesmo texto que já aparece ao parar o mouse em cima, então
+     não há um segundo lugar para manter em dia. */
+  const soIcone = !React.Children.toArray(children).some(
+    (c) => typeof c === "string" || typeof c === "number",
+  );
   return (
-    <button type="button" title={title} onClick={onClick} disabled={disabled}
+    <button type="button" title={title} aria-label={soIcone ? title : undefined}
+      onClick={onClick} disabled={disabled}
       className={`inline-flex items-center justify-center gap-2 rounded-full ${className}`}
       style={{
         background: t.bg, color: t.fg, border: `1px solid ${t.bd}`,
