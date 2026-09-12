@@ -362,7 +362,7 @@ function diferencaDaAgenda(lista, antes, opts) {
 
 /* Padrão do envio automático: o que a pessoa realmente edita no dia a dia,
    e o que o assistente cria. Revisões, simulados e prova continuam sendo
-   escolha dela no cartão da aba Rotina — se ela sincronizar com eles
+   escolha dela no cartão da aba Metas — se ela sincronizar com eles
    marcados, a escolha fica guardada e o automático passa a incluí-los. */
 const AUTO_PADRAO = { rotina: true, revisoes: false, simulados: false, prova: false };
 
@@ -560,7 +560,7 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
      Quando a janela é inevitável, ela é a do fluxo de código — a que liga a
      conta de vez. Antes a janela padrão era a do fluxo de token, que vale
      uma hora e some ao fechar o aplicativo: quem não achasse o cartão
-     "Ligar a conta de vez" lá embaixo da aba Rotina autorizava de novo a
+     "Ligar a conta de vez" lá embaixo da aba Metas autorizava de novo a
      cada abertura, para sempre. Agora a primeira autorização já é a
      definitiva, e o cartão virou só o aviso de que está ligada. */
   const garantirToken = useCallback(async (semJanela) => {
@@ -766,11 +766,18 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
      nenhuma e relê a semana atual a cada 30 minutos com a aba aberta, e de
      novo sempre que a aba volta a ficar visível depois de ficar 15 minutos
      ou mais em segundo plano.
-     Com a conta ligada de vez, o token vem do servidor e isso funciona
-     sempre. Sem ela, sobra a tentativa do próprio navegador (prompt vazio),
-     que só dá certo se o navegador ainda tiver a sessão do Google e não
-     estiver barrando cookie de terceiros — é por isso que no celular a
-     autorização voltava a aparecer a cada abertura. */
+     O token vem do servidor, e só de lá. Aqui existia uma segunda
+     tentativa, pelo próprio navegador, com prompt vazio: em teoria ela
+     renovava calada, na prática ela É a tela de "entrar com o Google" que
+     aparecia sozinha a cada abertura. Prompt vazio não quer dizer janela
+     nenhuma — quer dizer sem tela de consentimento; quando o navegador não
+     consegue resolver a sessão em silêncio, e hoje ele quase nunca
+     consegue (Chrome e Safari barram cookie de terceiros, e no aplicativo
+     instalado não há cookie nenhum), ele abre a escolha de conta. Sem
+     ninguém ter clicado em nada, um segundo e meio depois de abrir o app.
+
+     Então sumiu. Sem token do servidor, a sincronização sozinha para e
+     diz que parou (autoParou), em vez de pedir para entrar de novo. */
   const autoSync = !!(data.googleCal && data.googleCal.autoSync);
   const ultimaAutoRef = useRef(0);
   /* A tentativa silenciosa falhou: sem a conta ligada de vez, o token do
@@ -783,23 +790,10 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
     if (!GOOGLE_CFG || !autoSync || !pronto) return undefined;
     let cancelado = false;
 
-    const tentarSilencioso = () => new Promise((resolve) => {
-      if (!window.google || !window.google.accounts) return resolve(null);
-      try {
-        const c = window.google.accounts.oauth2.initTokenClient({
-          client_id: GOOGLE_CFG.clientId,
-          scope: ESCOPO_GC,
-          callback: (r) => resolve(r && r.access_token ? r.access_token : null),
-          error_callback: () => resolve(null),
-        });
-        c.requestAccessToken({ prompt: "" });
-      } catch (e) { resolve(null); }
-    });
-
     const rodar = async () => {
       if (cancelado) return;
-      let tk = await garantirToken(true);
-      if (!tk) tk = await tentarSilencioso();
+      /* semJanela: este caminho nunca pode abrir nada. Ninguém clicou. */
+      const tk = await garantirToken(true);
       if (cancelado) return;
       if (!tk) { setAutoParou(true); return; }
       setAutoParou(false);

@@ -58,6 +58,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-cores.mjs
   node testar-pastas.mjs
   node testar-agenda.mjs
+  node testar-janela-google.mjs
   node testar-recorte-pdf.mjs
   node testar-cupom.mjs
   node testar-acessos.mjs

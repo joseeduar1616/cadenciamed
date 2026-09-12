@@ -345,7 +345,9 @@ function Rotina({ data, setData, gcal, today }) {
                acontecer em silêncio: a agenda fica velha e parece certa. */
             <div className="mt-2.5 flex items-center gap-2 flex-wrap">
               <Mini style={{ color: T.warn }}>
-                a sincronização sozinha parou: o Google pediu autorização de novo
+                {gcal.logado
+                  ? "a sincronização sozinha parou: falta ligar a conta do Google de vez"
+                  : "a sincronização sozinha parou: entre na sua conta do Cadência para ela voltar"}
                 {gcal.ultima
                   ? ` · a última foi às ${pad(new Date(gcal.ultima).getHours())}:${pad(new Date(gcal.ultima).getMinutes())}`
                   : ""}
