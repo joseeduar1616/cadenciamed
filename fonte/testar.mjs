@@ -19,7 +19,8 @@ const liberado = path.basename(alvo) === 'teste.html';
 /* A última aba se chama "Plano" para quem assina e "Assinar" para quem não
    assina, então é procurada pelos dois nomes. */
 const ABAS = ['Hoje', 'Foco', 'Matérias', 'Cronograma', 'Temas', 'Cartões',
-              'Revisões', 'Rotina', 'Amigos', 'Metas', 'Progresso', 'Plano|Assinar'];
+              'Revisões', 'Rotina', 'Amigos', 'Metas', 'Desempenho', 'Progresso',
+              'Plano|Assinar', 'Configurações'];
 
 const erros = [];
 const passos = [];
@@ -90,10 +91,24 @@ if (await campoNome.count() > 0) {
    ao servidor por render. Aqui as abas que fazem isso ficam abertas por um
    tempo e o teste conta quantas vezes elas tentam falar com o servidor. */
 let chamadas = 0;
+/* um pixel de verdade, para a ponte de imagem ter o que devolver */
+const PIXEL_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 await pag.route('**/api/**', (rota) => {
   chamadas += 1;
-  rota.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true,"salas":[],"baralhos":[]}' });
+  const corpo = /buscar-imagem/.test(rota.request().url())
+    ? JSON.stringify({ dados: `data:image/png;base64,${PIXEL_B64}` })
+    : '{"ok":true,"salas":[],"baralhos":[]}';
+  rota.fulfill({ status: 200, contentType: 'application/json', body: corpo });
 });
+/* Uma figura "de fora" que o navegador consegue ler (o site libera CORS), e
+   outra que recusa — os dois caminhos que o colar precisa tratar. */
+await pag.route('**/site-de-fora/**', (rota) => rota.fulfill({
+  status: 200,
+  contentType: 'image/png',
+  headers: { 'access-control-allow-origin': '*' },
+  body: Buffer.from(PIXEL_B64, 'base64'),
+}));
+await pag.route('**/site-fechado/**', (rota) => rota.fulfill({ status: 403, body: 'expirado' }));
 
 /* a marca aparece no cabeçalho */
 const marca = pag.locator('header img[alt="Cadência Med"]');
@@ -148,6 +163,32 @@ else {
   else falha('o cronograma em texto não apareceu depois de guardar');
 }
 
+/* as três datas do período, que o assistente lê junto do calendário */
+const datas = pag.locator('input[type="date"]');
+if (await datas.count() >= 3) ok('a aba oferece as três datas: início, término e prova');
+else falha(`só achei ${await datas.count()} campo(s) de data na aba Cronograma`);
+
+await datas.nth(0).fill('2026-03-10');
+await datas.nth(1).fill('2026-05-30');
+await pag.locator('button:has-text("Guardar cronograma")').first().click();
+await pag.waitForTimeout(400);
+if (/semanas de curso/.test(await texto())) ok('as datas viram o tamanho do período em semanas');
+else falha('o resumo do período não apareceu: ' + (await texto()).slice(0, 200));
+
+/* término antes do início é engano de digitação, e precisa ser recusado
+   antes de virar conta de dias negativa */
+await datas.nth(1).fill('2026-01-01');
+await pag.locator('button:has-text("Guardar cronograma")').first().click();
+await pag.waitForTimeout(300);
+if (/término está antes/i.test(await texto())) ok('término antes do início é recusado com o motivo');
+else falha('data invertida passou sem aviso');
+await datas.nth(1).fill('2026-05-30');
+
+/* mandar foto é IA, e a IA é do plano: o botão existe nos dois cartões */
+const botoesFoto = pag.locator('button:has-text("mandar foto")');
+if (await botoesFoto.count() >= 1) ok('dá para mandar foto do cronograma');
+else falha('não achei o botão de mandar foto');
+
 await pag.locator('button:has-text("Residência")').first().click();
 await pag.waitForTimeout(300);
 if (!/Traga o conteúdo do ciclo clínico/i.test(await texto())) ok('voltar para a residência fecha o envio');
@@ -199,6 +240,250 @@ if (await linhaAula.count() === 0) {
     fs.unlinkSync(caminhoPixel);
     if (await editor.locator('img').count() > 0) ok('anotação: a imagem aparece no editor assim que é inserida');
     else falha('anotação: a imagem não apareceu depois de inserida');
+
+    /* Colar uma página com figura: o endereço aponta para fora e o navegador
+       não consegue ler os bytes. A figura tem que virar parte da anotação na
+       hora do colar, senão ela morre junto com o endereço de origem, que no
+       Notion vence em cerca de uma hora. */
+    await pag.evaluate(() => {
+      const ed = document.querySelector('[contenteditable="true"]');
+      ed.focus();
+      const dt = new DataTransfer();
+      dt.setData('text/html', '<p>com figura</p><figure>'
+        + '<img src="https://site-de-fora/figura.png" alt="Esquema">'
+        + '<figcaption>Fonte: Medgrupo.</figcaption></figure>');
+      ed.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    });
+    await pag.waitForTimeout(2500);
+    const figuraColada = await pag.evaluate(() => {
+      const im = document.querySelector('[contenteditable="true"] img[alt="Esquema"]');
+      return im ? (im.getAttribute('src') || '').slice(0, 20) : 'sumiu';
+    });
+    if (/^data:image\//.test(figuraColada)) ok('anotação: figura colada de fora entra na hora, sem depender do site de origem');
+    else falha('anotação: a figura colada não foi trazida para dentro: ' + figuraColada);
+
+    /* E quando não dá para trazer de jeito nenhum (endereço vencido, que é o
+       caso do Notion depois de uma hora), o lugar da figura precisa explicar
+       o que houve. Um ícone de imagem quebrada não ensina nada. */
+    await pag.evaluate(() => {
+      const ed = document.querySelector('[contenteditable="true"]');
+      ed.focus();
+      const dt = new DataTransfer();
+      dt.setData('text/html', '<p><img src="https://site-fechado/vencida.png" alt="Vencida"></p>');
+      ed.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    });
+    await pag.waitForTimeout(2500);
+    const explicou = await pag.evaluate(() => {
+      const ed = document.querySelector('[contenteditable="true"]');
+      const caixa = ed.querySelector('[data-figura-perdida]');
+      return { temCaixa: !!caixa, texto: caixa ? caixa.textContent.slice(0, 60) : '', aindaTemImg: !!ed.querySelector('img[alt="Vencida"]') };
+    });
+    if (explicou.temCaixa && !explicou.aindaTemImg) ok('anotação: figura que não dá para trazer vira um aviso explicando, não um ícone quebrado');
+    else falha('anotação: figura perdida sem explicação: ' + JSON.stringify(explicou));
+
+    /* O endereço fica guardado na caixa, senão tentar de novo depois de
+       resolver a causa (conectar o Notion) exigiria recolar tudo. */
+    const guardouEndereco = await pag.evaluate(() => {
+      const c = document.querySelector('[contenteditable="true"] [data-figura-perdida]');
+      return c ? c.getAttribute('data-de') || '' : '';
+    });
+    if (/site-fechado/.test(guardouEndereco)) ok('anotação: o aviso guarda o endereço da figura, para tentar de novo depois');
+    else falha('anotação: o aviso não guardou o endereço: ' + guardouEndereco);
+
+    /* Duas causas diferentes davam a mesma frase na tela, e não havia como
+       saber de qual figura o aviso falava. O nome do site vai escrito. */
+    const avisoDiz = await pag.evaluate(() => {
+      const c = document.querySelector('[contenteditable="true"] [data-figura-perdida]');
+      return c ? c.textContent : '';
+    });
+    if (/\(de [^)]+\)/.test(avisoDiz)) ok('anotação: o aviso diz de qual site era a figura que não veio');
+    else falha('anotação: o aviso não diz a origem: ' + avisoDiz.slice(0, 120));
+
+    const botaoDeNovo = pag.locator('button:has-text("de novo")');
+    if (await botaoDeNovo.count() > 0) ok('anotação: aparece o botão de tentar as figuras de novo');
+    else falha('anotação: não achei o botão de tentar as figuras de novo');
+
+    /* ── tela cheia não pode levar o texto embora ───────────────────────
+       Entrar em tela cheia move o editor para um portal, e o React
+       desmonta e remonta o contentEditable. O texto mora no DOM, não em
+       estado: ia junto, e tudo que a pessoa tinha escrito ou colado desde
+       que abriu a anotação sumia. */
+    /* Comparar o que a pessoa vê, e não o HTML byte a byte: reescrever o
+       innerHTML faz o navegador normalizar a árvore (um <div> dentro de um
+       <p> fecha o <p>), o que muda o texto do HTML sem mudar nada na tela. */
+    const oQueSeVe = () => pag.evaluate(() => {
+      const ed = document.querySelector('[contenteditable="true"]');
+      return {
+        texto: ed.innerText.replace(/\s+/g, ' ').trim(),
+        figuras: ed.querySelectorAll('img').length,
+        negrito: /<b>|<strong>/i.test(ed.innerHTML),
+      };
+    });
+    const antesDaTela = await oQueSeVe();
+    await pag.locator('button[title="Tela cheia"]').first().click();
+    await pag.waitForTimeout(700);
+    const naTelaCheia = await oQueSeVe();
+    if (JSON.stringify(naTelaCheia) === JSON.stringify(antesDaTela)) {
+      ok('anotação: a tela cheia mantém tudo que já estava escrito');
+    } else falha(`anotação: a tela cheia mudou o conteúdo: ${JSON.stringify(antesDaTela)} vs ${JSON.stringify(naTelaCheia)}`);
+
+    await pag.locator('button[title="Sair da tela cheia"]').first().click();
+    await pag.waitForTimeout(700);
+    const depoisDaTela = await oQueSeVe();
+    if (JSON.stringify(depoisDaTela) === JSON.stringify(antesDaTela)) ok('anotação: e sair da tela cheia também mantém');
+    else falha(`anotação: sair da tela cheia mudou o conteúdo: ${JSON.stringify(depoisDaTela)}`);
+
+    /* Reescrever o conteúdo apaga a seleção. Sem cursor, o colar seguinte
+       não sabia onde entrar e comia o começo do texto — foi assim que este
+       teste pegou o defeito. */
+    const cursorVoltou = await pag.evaluate(() => {
+      const ed = document.querySelector('[contenteditable="true"]');
+      const sel = window.getSelection();
+      return !!(sel && sel.rangeCount && ed.contains(sel.getRangeAt(0).commonAncestorContainer));
+    });
+    if (cursorVoltou) ok('anotação: o cursor volta para dentro do texto depois da tela cheia');
+    else falha('anotação: ficou sem cursor depois de sair da tela cheia');
+
+    /* A imagem que vem na própria área de transferência (copiar imagem,
+       print de tela). É o caminho que sempre funciona, e antes não fazia
+       nada. */
+    await pag.evaluate((b64) => {
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      const arquivo = new File([bytes], 'colada.png', { type: 'image/png' });
+      const ed = document.querySelector('[contenteditable="true"]');
+      ed.focus();
+      const dt = new DataTransfer();
+      dt.items.add(arquivo);
+      ed.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    }, PIXEL_B64);
+    await pag.waitForTimeout(1200);
+    const quantasFiguras = await pag.evaluate(
+      () => document.querySelectorAll('[contenteditable="true"] img').length);
+    if (quantasFiguras >= 2) ok('anotação: colar a imagem direto da área de transferência funciona');
+    else falha('anotação: colar a imagem em si não inseriu nada (' + quantasFiguras + ' figura(s))');
+
+    /* ── régua de tamanho da figura ─────────────────────────────────────
+       Uma figura colada chega do tamanho que era na origem, e antes disto
+       não havia como mexer. Clicar nela abre a régua. */
+    /* clique disparado no elemento, e não pelo ponteiro: a figura do teste
+       tem 1x1 pixel e fica atrás do texto, então o ponteiro nunca a
+       alcançaria — o que se quer testar aqui é o que o editor faz com um
+       clique NA figura. */
+    await pag.evaluate(() => {
+      document.querySelector('[contenteditable="true"] img')
+        .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await pag.waitForTimeout(350);
+    const temRegua = await pag.locator('text=tamanho da figura').count();
+    if (temRegua > 0) ok('anotação: clicar numa figura abre a régua de tamanho');
+    else falha('anotação: a régua de tamanho não apareceu ao clicar na figura');
+
+    const contornou = await pag.evaluate(
+      () => !!(document.querySelector('[contenteditable="true"] img') || {}).style?.outline);
+    if (contornou) ok('anotação: a figura escolhida fica marcada na tela');
+    else falha('anotação: nada indica qual figura está escolhida');
+
+    if (temRegua > 0) {
+      await pag.locator('button:has-text("Cheia")').first().click();
+      await pag.waitForTimeout(300);
+      const larguraCheia = await pag.evaluate(
+        () => document.querySelector('[contenteditable="true"] img').style.width);
+      if (larguraCheia === '100%') ok('anotação: a figura vai para a largura escolhida');
+      else falha('anotação: a largura não foi aplicada: ' + larguraCheia);
+
+      /* a largura vai em porcentagem, não em pixels: a mesma anotação é
+         lida no computador e no celular */
+      await pag.locator('div:has-text("tamanho da figura") > button:has-text("M")').first().click();
+      await pag.waitForTimeout(300);
+      const larguraM = await pag.evaluate(
+        () => document.querySelector('[contenteditable="true"] img').style.width);
+      if (larguraM === '50%') ok('anotação: dá para trocar o tamanho de novo, sempre em porcentagem');
+      else falha('anotação: o segundo tamanho não pegou: ' + larguraM);
+
+      await pag.locator('button:has-text("Original")').first().click();
+      await pag.waitForTimeout(300);
+      const semLargura = await pag.evaluate(() => {
+        const im = document.querySelector('[contenteditable="true"] img');
+        return { w: im.style.width, teto: im.style.maxWidth };
+      });
+      if (!semLargura.w && semLargura.teto === '100%') ok('anotação: "original" tira a largura escrita e mantém o teto da caixa');
+      else falha('anotação: o original não limpou a largura: ' + JSON.stringify(semLargura));
+
+      /* clicar no texto solta a figura, e a régua fecha */
+      await pag.evaluate(() => {
+        const ed = document.querySelector('[contenteditable="true"]');
+        ed.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      });
+      await pag.waitForTimeout(350);
+      if (await pag.locator('text=tamanho da figura').count() === 0) ok('anotação: clicar fora da figura fecha a régua');
+      else falha('anotação: a régua ficou aberta depois de clicar fora');
+      const semContorno = await pag.evaluate(
+        () => [...document.querySelectorAll('[contenteditable="true"] img')].every((im) => !im.style.outline));
+      if (semContorno) ok('anotação: a marca da figura escolhida sai junto');
+      else falha('anotação: o contorno ficou grudado na figura');
+    }
+
+    /* Texto copiado de site escuro chega com a cor dele grudada: um branco
+       acinzentado que, no papel claro, some. Cor sem cor sai; cor que quer
+       dizer alguma coisa fica, só ajustada para dar para ler nos dois. */
+    await pag.evaluate(() => {
+      const ed = document.querySelector('[contenteditable="true"]');
+      ed.focus();
+      const dt = new DataTransfer();
+      dt.setData('text/html',
+        '<p><span style="color:rgba(255,255,255,0.81)">cinza de fora</span> '
+        + '<span style="color:rgb(77,171,154)">verde com sentido</span></p>');
+      ed.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    });
+    await pag.waitForTimeout(900);
+    const cores = await pag.evaluate(() => {
+      const ed = document.querySelector('[contenteditable="true"]');
+      const spans = [...ed.querySelectorAll('span[style*="color"]')].map((s) => s.getAttribute('style'));
+      return { texto: ed.innerText.includes('cinza de fora'), spans: spans.join(' | ') };
+    });
+    if (cores.texto && !/255,\s*255,\s*255/.test(cores.spans)) ok('anotação: o cinza que vem colado sai, e o texto passa a seguir o tema');
+    else falha('anotação: a cor de fora ficou: ' + cores.spans);
+    if (/77,\s*171,\s*154|rgb\(\s*7\d/.test(cores.spans)) ok('anotação: cor que quer dizer alguma coisa é mantida');
+    else falha('anotação: a cor com sentido se perdeu: ' + cores.spans);
+
+    /* Claro e escuro só da anotação, com letra escura de verdade no claro */
+    await pag.locator('[title="Anotação no claro"]').first().click();
+    await pag.waitForTimeout(500);
+    const noClaro = await pag.locator('[contenteditable="true"]').first()
+      .evaluate((el) => ({ cor: getComputedStyle(el).color, fundo: getComputedStyle(el).backgroundColor }));
+    const claridade = (c) => {
+      const [r, g, b] = (c.match(/\d+/g) || [0, 0, 0]).map(Number);
+      return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    };
+    if (claridade(noClaro.fundo) > 0.9 && claridade(noClaro.cor) < 0.25) {
+      ok('anotação: no claro o papel é branco e a letra é escura de verdade');
+    } else falha('anotação no claro: ' + JSON.stringify(noClaro));
+    await pag.locator('[title="Anotação no escuro"]').first().click();
+    await pag.waitForTimeout(500);
+    const noEscuro = await pag.locator('[contenteditable="true"]').first()
+      .evaluate((el) => ({ cor: getComputedStyle(el).color, fundo: getComputedStyle(el).backgroundColor }));
+    if (claridade(noEscuro.fundo) < 0.2 && claridade(noEscuro.cor) > 0.8) ok('anotação: e volta para o escuro');
+    else falha('anotação no escuro: ' + JSON.stringify(noEscuro));
+
+    /* O bloco de destaque do Notion chega escrito como <aside>, e às vezes
+       com a própria tag escrita como texto. Nos dois casos ele tem que
+       virar uma caixa com barra na lateral, e a tag não pode sobrar à vista
+       nem na anotação nem no PDF. */
+    await pag.evaluate(() => {
+      const ed = document.querySelector('[contenteditable="true"]');
+      ed.innerHTML += '<p>&lt;aside&gt;</p><aside><p>bloco do Notion</p></aside><p>&lt;/aside&gt;</p>';
+      ed.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await pag.waitForTimeout(1800);
+    await pag.locator('button:has-text("fechar")').first().click();
+    await pag.waitForTimeout(500);
+    await pag.locator('text=Ver ou editar anotação').first().click();
+    await pag.waitForTimeout(800);
+    const depoisDoDestaque = await pag.locator('[contenteditable="true"]').first().innerHTML();
+    if (!/&lt;\/?aside&gt;|<\/?aside>/i.test(depoisDoDestaque)) ok('anotação: a tag do destaque do Notion não fica escrita na tela');
+    else falha('anotação: sobrou <aside> à vista: ' + depoisDoDestaque.slice(0, 160));
+    if (/border-left:\s*3px/i.test(depoisDoDestaque)) ok('anotação: o destaque do Notion vira uma caixa com barra na lateral');
+    else falha('anotação: o destaque não virou caixa: ' + depoisDoDestaque.slice(0, 160));
 
     /* debounce do salvamento da anotação (1200ms) + do salvamento geral */
     await pag.waitForTimeout(4000);
@@ -290,22 +575,22 @@ if (await linhaAula.count() === 0) {
         await pag.waitForTimeout(600);
         await ir('Cartões');
         const t = await texto();
-        /* a área da aula testada (Epidemiologia, PR) vai para "GO E
-           PREVENTIVA" — PASTA_POR_AREA_NOTA, em parte17.jsx */
-        if (/GO E PREVENTIVA/.test(t)) {
+        /* a área da aula testada (Epidemiologia, PR) tem pasta própria:
+           uma das cinco grandes, por pastaDaArea, em parte12.jsx */
+        if (/PREVENTIVA/.test(t)) {
           ok('anotação: os flashcards gerados caem na pasta grande certa, em Cartões');
-        } else falha('anotação: a pasta "GO E PREVENTIVA" não apareceu em Cartões: ' + t.slice(0, 300));
+        } else falha('anotação: a pasta "PREVENTIVA" não apareceu em Cartões: ' + t.slice(0, 300));
 
         /* limpa o que este teste criou: os testes de Cartões, mais abaixo,
            pressupõem que "Pasta de teste" é a única pasta e usam .first()
-           nos botões — deixar "GO E PREVENTIVA" para trás bagunçaria a
-           ordem e quebraria esses testes por posição, não por defeito. */
+           nos botões — deixar "PREVENTIVA" para trás bagunçaria a ordem e
+           quebraria esses testes por posição, não por defeito. */
         await pag.evaluate(() => {
           const bruto = window.localStorage.getItem('cadencia:v3');
           const d = bruto ? JSON.parse(bruto) : null;
           if (!d) return;
-          d.flash = (d.flash || []).filter((c) => c.pasta !== 'GO E PREVENTIVA');
-          d.pastas = (d.pastas || []).filter((p) => p !== 'GO E PREVENTIVA');
+          d.flash = (d.flash || []).filter((c) => c.pasta !== 'PREVENTIVA');
+          d.pastas = (d.pastas || []).filter((p) => p !== 'PREVENTIVA');
           window.localStorage.setItem('cadencia:v3', JSON.stringify(d));
         });
         await pag.reload({ waitUntil: 'load' });
@@ -512,14 +797,229 @@ if (liberado) {
     else falha('a escada personalizada não apareceu: ' + t2.slice(0, 160));
   }
 
+  /* ── desempenho: lançar questões e ler o acerto ──────────────────
+     As questões já eram gravadas em cada sessão, mas o lançamento exigia
+     tempo de estudo e o acerto por matéria não aparecia em lugar nenhum.
+     Aqui as duas coisas são conferidas de ponta a ponta. */
+  await ir('Desempenho');
+  {
+    const lancar = async (materia, q, c) => {
+      /* Com uma matéria já escolhida o seletor troca o campo de busca por
+         um chip com o nome dela; sem soltar a escolha, o segundo
+         lançamento não teria onde digitar. */
+      const trocar = pag.locator('button[aria-label="Trocar matéria"]');
+      if (await trocar.count()) { await trocar.first().click(); await pag.waitForTimeout(300); }
+      await pag.locator('input[placeholder="Buscar matéria"]').first().click();
+      await pag.waitForTimeout(200);
+      await pag.locator('input[placeholder="Buscar matéria"]').first().fill(materia);
+      await pag.waitForTimeout(350);
+      const opcao = pag.locator('button:has-text("' + materia + '")').last();
+      if (await opcao.count()) await opcao.click();
+      await pag.waitForTimeout(250);
+      const campos = pag.locator('input[type="number"]');
+      await campos.nth(0).fill(String(q));
+      await campos.nth(1).fill(String(c));
+      await pag.locator('button:has-text("Lançar")').first().click();
+      await pag.waitForTimeout(600);
+    };
+
+    const semNada = await texto();
+    if (/ainda sem questões/i.test(semNada)) ok('desempenho: sem questão nenhuma, a tela explica em vez de mostrar 0%');
+    else falha('desempenho: estado vazio não apareceu: ' + semNada.slice(0, 160));
+
+    /* tempo de estudo é opcional: é o que faltava para lançar só questões */
+    await lancar('Epidemiologia', 10, 9);
+    const depois1 = await texto();
+    if (/90%/.test(depois1)) ok('desempenho: lançar só questões, sem tempo, funciona e calcula o acerto');
+    else falha('desempenho: não achei os 90%: ' + depois1.slice(0, 300));
+
+    await lancar('Epidemiologia', 10, 3);
+    const depois2 = await texto();
+    /* 12 de 20 = 60%, a média das duas, e não a última */
+    if (/60%/.test(depois2)) ok('desempenho: dois lançamentos da mesma matéria viram uma média só');
+    else falha('desempenho: a média não bateu: ' + depois2.slice(0, 300));
+
+    if (/por área/i.test(depois2) && /por matéria/i.test(depois2)) ok('desempenho: o acerto aparece por área e por matéria');
+    else falha('desempenho: faltou o recorte por área ou por matéria');
+
+    /* o recorte por período é o que separa "estou melhorando" de "já fui bem" */
+    await pag.locator('button:has-text("7 dias")').first().click();
+    await pag.waitForTimeout(400);
+    if (/60%/.test(await texto())) ok('desempenho: o recorte de 7 dias mantém o que foi lançado hoje');
+    else falha('desempenho: o recorte de 7 dias perdeu o lançamento de hoje');
+
+    /* limpa o que este teste criou: as sessões entram no Progresso e nas
+       metas, e deixá-las mudaria a conta dos testes seguintes */
+    await pag.evaluate(() => {
+      const bruto = window.localStorage.getItem('cadencia:v3');
+      const d = bruto ? JSON.parse(bruto) : null;
+      if (!d) return;
+      d.sessions = (d.sessions || []).filter((x) => x.kind !== 'Questões');
+      window.localStorage.setItem('cadencia:v3', JSON.stringify(d));
+    });
+    await pag.reload({ waitUntil: 'load' });
+    await pag.waitForTimeout(2200);
+  }
+
+  /* ── configurações: o que veio de outras telas ───────────────────── */
+  await ir('Configurações');
+  {
+    const t = await texto();
+    for (const [parte, oQue] of [
+      ['Aparência', 'a aparência'],
+      ['Formato da tela', 'o formato da tela, que estava no rodapé'],
+      ['Suas metas', 'as metas'],
+      ['Baixar backup', 'o backup'],
+    ]) {
+      if (t.toLowerCase().includes(parte.toLowerCase())) ok(`configurações: ${oQue} está lá`);
+      else falha(`configurações: faltou ${oQue}: ` + t.slice(0, 200));
+    }
+
+    /* a meta de questões é a barra do painel de Hoje: mexer aqui tem de
+       chegar lá, senão são dois números com o mesmo nome */
+    const campoMeta = pag.locator('input[data-teste="meta-questions"]');
+    await campoMeta.fill('321');
+    /* o app grava com 1,5s de espera (parte8.jsx), então ler o disco antes
+       disso pega o valor velho */
+    await pag.waitForTimeout(2300);
+    const gravou = await pag.evaluate(() => {
+      const d = JSON.parse(window.localStorage.getItem('cadencia:v3') || '{}');
+      return (d.goals || {}).questions;
+    });
+    if (gravou === 321) ok('configurações: mexer na meta grava de verdade');
+    else falha('configurações: a meta não gravou: ' + gravou);
+
+    await ir('Hoje');
+    if (/321/.test(await texto())) ok('configurações: a meta nova aparece no painel de Hoje');
+    else falha('configurações: a meta nova não chegou ao painel de Hoje');
+    await ir('Configurações');
+
+    /* o Progresso ficou só com os números */
+    await ir('Progresso');
+    const tp = await texto();
+    if (!/aparência|baixar backup|apagar tudo/i.test(tp)) ok('progresso: os ajustes saíram de lá, ficou só o que é número');
+    else falha('progresso: sobrou ajuste na aba: ' + tp.slice(0, 200));
+    /* Sem sessão nenhuma, o certo é a tela explicar em vez de mostrar uma
+       parede de zeros; com sessão, os números. As duas coisas valem, e o
+       que não pode é ficar sem nenhuma das duas. */
+    const temSessao = await pag.evaluate(() => {
+      const d = JSON.parse(window.localStorage.getItem('cadencia:v3') || '{}');
+      return ((d.sessions || []).length > 0);
+    });
+    if (temSessao) {
+      if (/horas registradas/i.test(tp)) ok('progresso: os números continuam onde estavam');
+      else falha('progresso: os números sumiram junto');
+    } else if (/seu progresso aparece aqui/i.test(tp)) {
+      ok('progresso: sem sessão nenhuma, a tela explica em vez de mostrar zeros');
+    } else falha('progresso: nem números nem explicação: ' + tp.slice(0, 160));
+    await ir('Configurações');
+  }
+
+  /* ── ciclo clínico: aba própria, com as anotações junto ──────────
+     As matérias do ciclo vêm de data.cronogramaProprio e moram na mesma
+     lista do currículo ativo. A aba nova é a tela de Matérias com a lista
+     filtrada — de propósito, para a anotação e as etapas serem as mesmas
+     e não haver uma segunda implementação para manter em pé. */
+  {
+    const semCiclo = await pag.locator('nav button:has-text("Ciclo clínico")').count();
+    if (semCiclo === 0) ok('ciclo clínico: sem cronograma próprio, a aba nem aparece');
+    else falha('ciclo clínico: a aba apareceu sem haver ciclo nenhum');
+
+    await pag.evaluate(() => {
+      const d = JSON.parse(window.localStorage.getItem('cadencia:v3') || '{}');
+      d.cronogramaProprio = [
+        { id: 'ciclo-1', week: 1, area: 'CL', title: 'Enfermaria de Clínica', esp: 'Ciclo', bonus: [] },
+        { id: 'ciclo-2', week: 2, area: 'CL', title: 'Ambulatório de Clínica', esp: 'Ciclo', bonus: [] },
+      ];
+      d.cronogramaModo = 'somar';
+      window.localStorage.setItem('cadencia:v3', JSON.stringify(d));
+    });
+    await pag.reload({ waitUntil: 'load' });
+    await pag.waitForTimeout(2400);
+
+    if (await pag.locator('nav button:has-text("Ciclo clínico")').count() > 0) {
+      ok('ciclo clínico: com cronograma próprio, a aba aparece');
+
+      await ir('Ciclo clínico');
+      const tc = await texto();
+      if (/Enfermaria de Clínica/.test(tc) && /Ambulatório de Clínica/.test(tc)) {
+        ok('ciclo clínico: as matérias do ciclo estão na aba nova');
+      } else falha('ciclo clínico: não achei as matérias do ciclo: ' + tc.slice(0, 200));
+
+      /* a anotação é a mesma de Matérias, e é o motivo de a aba reusar a
+         tela em vez de ter uma própria */
+      await pag.locator('[data-teste="titulo-materia"]').first().click();
+      await pag.waitForTimeout(500);
+      if (await pag.locator('button:has-text("anotação")').count() > 0) {
+        ok('ciclo clínico: a matéria abre com a mesma anotação de Matérias');
+      } else falha('ciclo clínico: a anotação não apareceu na matéria do ciclo');
+
+      await ir('Matérias');
+      const tm = await texto();
+      if (!/Enfermaria de Clínica/.test(tm)) ok('ciclo clínico: as matérias do ciclo saíram de Matérias, cada uma num lugar só');
+      else falha('ciclo clínico: a matéria do ciclo aparece nas duas abas');
+      if (/de \d+ aulas principais/i.test(tm)) ok('ciclo clínico: Matérias continua com as aulas da residência');
+      else falha('ciclo clínico: Matérias ficou sem nada: ' + tm.slice(0, 200));
+    } else falha('ciclo clínico: a aba não apareceu com cronograma próprio gravado');
+
+    /* limpa: o cronograma próprio troca o currículo ativo, e os testes
+       seguintes contam com o padrão */
+    await pag.evaluate(() => {
+      const d = JSON.parse(window.localStorage.getItem('cadencia:v3') || '{}');
+      d.cronogramaProprio = [];
+      window.localStorage.setItem('cadencia:v3', JSON.stringify(d));
+    });
+    await pag.reload({ waitUntil: 'load' });
+    await pag.waitForTimeout(2400);
+  }
+
   /* ── aparência: cor, fonte e tamanho ─────────────────────────────── */
-  await ir('Progresso');
+  /* Mudou de casa: conta, plano, aparência, layout, metas e backup agora
+     moram em Configurações, e o Progresso ficou só com os números. */
+  await ir('Configurações');
   const antes = await pag.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--neon').trim());
   await pag.locator('button[title="Âmbar"]').first().click();
   await pag.waitForTimeout(350);
   const depois = await pag.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--neon').trim());
   if (depois && depois !== antes) ok(`cor de acento mudou de ${antes} para ${depois}`);
   else falha(`a cor de acento não mudou (antes ${antes}, depois ${depois})`);
+
+  /* A cor escolhida precisa pintar o site, não só os detalhes: fundo,
+     painéis e linhas seguem o matiz. Antes ficava tudo roxo com uns
+     detalhes na cor nova. */
+  const ambiente = () => pag.evaluate(() => {
+    const cs = getComputedStyle(document.documentElement);
+    const ler = (n) => cs.getPropertyValue(n).trim();
+    /* matiz aproximado, o suficiente para dizer se mudou de família */
+    const matiz = (c) => {
+      const m = c.match(/\d+/g);
+      if (!m || m.length < 3) return -1;
+      const [r, g, b] = m.slice(0, 3).map(Number);
+      const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+      if (mx === mn) return -1;
+      const d = mx - mn;
+      let h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+      return Math.round(((h * 60) % 360 + 360) % 360);
+    };
+    const hex = (h) => { const s = h.replace('#', ''); return `rgb(${parseInt(s.slice(0, 2), 16)},${parseInt(s.slice(2, 4), 16)},${parseInt(s.slice(4, 6), 16)})`; };
+    return { bg: matiz(hex(ler('--bg'))), card: matiz(ler('--card2')), linha: matiz(ler('--line')) };
+  });
+  const ambar = await ambiente();
+  await pag.locator('button[title="Rosa"]').first().click();
+  await pag.waitForTimeout(400);
+  const rosa = await ambiente();
+  const mudou = (a, b) => a >= 0 && b >= 0 && Math.abs(a - b) > 20;
+  if (mudou(ambar.bg, rosa.bg) && mudou(ambar.card, rosa.card) && mudou(ambar.linha, rosa.linha)) {
+    ok(`a cor pinta o site inteiro: fundo, painéis e linhas mudaram de matiz (${ambar.bg}° → ${rosa.bg}°)`);
+  } else falha('a cor mudou só os detalhes: ' + JSON.stringify({ ambar, rosa }));
+
+  await pag.locator('button[title="Cadência"]').first().click();
+  await pag.waitForTimeout(400);
+  const voltou = await pag.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--bg').trim());
+  if (voltou.toUpperCase() === '#04030A') ok('voltar para a cor de origem devolve o fundo desenhado');
+  else falha('a cor de origem não voltou: ' + voltou);
+  await pag.locator('button[title="Âmbar"]').first().click();
+  await pag.waitForTimeout(300);
 
   /* ── cor própria: ajustada para continuar legível, e a segunda combinando ── */
   await pag.locator('button:has-text("Escolher")').first().click();
@@ -618,6 +1118,46 @@ if (liberado) {
   else falha('os blocos da agenda sumiram depois de recarregar');
   if (/cumprido/.test(rotinaDepois)) ok('o bloco marcado como cumprido continua marcado depois de recarregar');
   else falha('a marca de cumprido sumiu depois de recarregar');
+
+  /* O envio automático para o Google Agenda guarda em googleCal o que já
+     subiu (enviados), quais grupos sobem (opts) e se está ligado
+     (autoEnviar). Tudo isso passa pelo normalize na volta do disco: o que
+     não estiver copiado lá some a cada abertura — e aí toda abertura
+     reenviaria a agenda inteira, em silêncio. */
+  await pag.evaluate(() => {
+    const d = JSON.parse(window.localStorage.getItem('cadencia:v3') || '{}');
+    d.googleCal = {
+      id: 'agenda-de-teste', ultima: 123, autoSync: true, autoEnviar: false,
+      opts: { rotina: true, revisoes: true },
+      enviados: { AAA: 'rotina:zz1', BBB: 'revisoes:zz2', RUIM: { nao: 'texto' } },
+    };
+    window.localStorage.setItem('cadencia:v3', JSON.stringify(d));
+  });
+  await pag.reload({ waitUntil: 'load' });
+  await pag.waitForTimeout(2200);
+  /* Só ler de volta não provaria nada: se o normalize tivesse deixado o
+     campo cair, o disco ainda teria o texto injetado aqui. Mexer em algo
+     obriga a gravar por cima, e aí o que está no disco é o que sobreviveu
+     à volta pelo normalize. */
+  await ir('Rotina');
+  await pag.locator('button:has-text("Novo bloco")').first().click();
+  await pag.waitForTimeout(300);
+  await pag.locator('input[placeholder="Ex.: enfermaria clínica médica"]').fill('Bloco que força a gravação');
+  await pag.locator('button:has-text("Adicionar bloco")').first().click();
+  await pag.waitForTimeout(2600);
+  const gc = await pag.evaluate(() => {
+    const d = JSON.parse(window.localStorage.getItem('cadencia:v3') || '{}');
+    return d.googleCal || {};
+  });
+  if (gc.enviados && gc.enviados.AAA === 'rotina:zz1' && gc.enviados.BBB === 'revisoes:zz2') {
+    ok('o que já subiu para o Google Agenda sobrevive ao recarregar');
+  } else falha('a lista do que já subiu para o Google Agenda sumiu ao recarregar');
+  if (gc.enviados && !('RUIM' in gc.enviados)) ok('marca que não é texto é descartada na volta do disco');
+  else falha('marca em formato estranho passou pelo normalize');
+  if (gc.opts && gc.opts.revisoes === true) ok('os grupos escolhidos para sincronizar sobrevivem');
+  else falha('a escolha de grupos do Google Agenda sumiu ao recarregar');
+  if (gc.autoEnviar === false) ok('desligar o envio automático fica desligado depois de recarregar');
+  else falha('o envio automático voltou a ligar sozinho depois de recarregar');
 }
 
 /* ── barra lateral ────────────────────────────────────────────────── */
@@ -653,6 +1193,92 @@ await pag.locator('button[aria-label="Expandir menu"]').first().click();
 const larguraDeVolta = await esperarLargura(larguraAberta);
 if (Math.abs(larguraDeVolta - larguraAberta) < 3) ok('a barra volta a expandir');
 else falha(`a barra não voltou (${Math.round(larguraDeVolta)} vs ${Math.round(larguraAberta)})`);
+
+/* ── o que a auditoria pegou ────────────────────────────────────────
+   Cada uma destas foi um defeito de verdade encontrado varrendo o site
+   inteiro; o teste existe para não voltarem. */
+{
+  /* 1. Texto mandando para a aba errada. A conta mudou de Progresso para
+     Configurações, e quatro telas continuaram apontando para o lugar
+     antigo — quem procurava não achava. */
+  const apontamErrado = [];
+  for (const aba of ['Amigos', 'Plano|Assinar', 'Cronograma']) {
+    if (!(await ir(aba))) continue;
+    const t = await texto();
+    if (/conta em Progresso|backup em Progresso|nome em Progresso/i.test(t)) apontamErrado.push(aba);
+  }
+  if (apontamErrado.length === 0) ok('nenhuma tela manda a pessoa procurar a conta em Progresso');
+  else falha('ainda apontam para Progresso: ' + apontamErrado.join(', '));
+
+  /* 2. Botão só com ícone não tem nome nenhum para leitor de tela. */
+  const semNome = [];
+  for (const aba of ['Hoje', 'Metas', 'Cartões', 'Desempenho', 'Configurações']) {
+    if (!(await ir(aba))) continue;
+    const n = await pag.evaluate(() => [...document.querySelectorAll('main button')]
+      .filter((b) => !((b.getAttribute('aria-label') || b.textContent || '').trim())).length);
+    if (n) semNome.push(`${aba}: ${n}`);
+  }
+  if (semNome.length === 0) ok('todo botão tem nome para leitor de tela');
+  else falha('botões sem nome — ' + semNome.join(' | '));
+
+  /* 3. Contraste dos dois tons apagados, medido contra o fundo mais claro
+     em que aparecem. Texto de verdade precisa de 4.5:1; ícone e contorno,
+     de 3:1. Abaixo disso some no celular ao sol. */
+  const contraste = await pag.evaluate(() => {
+    const lum = (c) => {
+      const m = String(c).match(/[\d.]+/g);
+      if (!m || m.length < 3) return null;
+      const [r, g, b] = m.slice(0, 3).map(Number).map((v) => {
+        const s = v / 255;
+        return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    /* Ler a cor DEPOIS de composta: o --card3 é translúcido, e medir o
+       valor cru dá um contraste melhor do que a tela mostra. Pintando um
+       quadrado de verdade sobre o fundo da página, o navegador faz a
+       composição e o que se lê é o pixel. */
+    const composta = (valorDeFundo) => {
+      const fora = document.createElement('div');
+      fora.style.cssText = 'position:fixed;left:-9999px;top:0;width:40px;height:40px;background:var(--bg)';
+      const dentro = document.createElement('div');
+      dentro.style.cssText = `width:100%;height:100%;background:${valorDeFundo}`;
+      fora.appendChild(dentro);
+      document.body.appendChild(fora);
+      const rgb = getComputedStyle(dentro).backgroundColor;
+      const pai = getComputedStyle(fora).backgroundColor;
+      fora.remove();
+      const n = (c) => (String(c).match(/[\d.]+/g) || []).map(Number);
+      const [r, g, b2, a2 = 1] = n(rgb);
+      const [fr, fg, fb] = n(pai);
+      return lum(`rgb(${a2 * r + (1 - a2) * fr},${a2 * g + (1 - a2) * fg},${a2 * b2 + (1 - a2) * fb})`);
+    };
+    const cs = getComputedStyle(document.documentElement);
+    const ler = (n) => {
+      const d = document.createElement('div');
+      d.style.color = cs.getPropertyValue(n).trim(); document.body.appendChild(d);
+      const rgb = getComputedStyle(d).color; d.remove();
+      return lum(rgb);
+    };
+    const razao = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    const card3 = composta('var(--card2)') > composta('var(--card3)')
+      ? composta('var(--card2)') : composta('var(--card3)');
+    return { faint: razao(ler('--faint'), card3), ghost: razao(ler('--ghost'), card3) };
+  });
+  if (contraste.faint >= 4.5) ok(`o tom "faint" passa no contraste de texto (${contraste.faint.toFixed(2)}:1)`);
+  else falha(`"faint" está em ${contraste.faint.toFixed(2)}:1, abaixo dos 4.5 exigidos para texto`);
+  if (contraste.ghost >= 3) ok(`o tom "ghost" passa no contraste de interface (${contraste.ghost.toFixed(2)}:1)`);
+  else falha(`"ghost" está em ${contraste.ghost.toFixed(2)}:1, abaixo dos 3 exigidos`);
+
+  /* 4. Termos e privacidade têm de estar alcançáveis de dentro do app:
+     é exigência da LGPD e da plataforma de pagamento. */
+  const legais = await pag.evaluate(() => ({
+    termos: !!document.querySelector('a[href="/termos.html"]'),
+    privacidade: !!document.querySelector('a[href="/privacidade.html"]'),
+  }));
+  if (legais.termos && legais.privacidade) ok('termos e privacidade têm link no rodapé');
+  else falha('faltou link legal no rodapé: ' + JSON.stringify(legais));
+}
 
 /* ── celular ──────────────────────────────────────────────────────── */
 await pag.setViewportSize({ width: 390, height: 844 });
@@ -693,6 +1319,63 @@ const vazaLargura = await pag.evaluate(() => document.documentElement.scrollWidt
 if (vazaLargura) falha('a página passou da largura da tela no celular');
 else ok('nada vaza para os lados no celular');
 await pag.screenshot({ path: 'captura-celular.png' });
+
+/* ── celular: a aba Cartões não pode se sobrepor ────────────────────── */
+/* Na largura do celular, o campo "Nova pasta" (que tinha largura fixa)
+   empurrava o botão de criar por cima dele, e o nome da pasta ficava
+   escondido atrás do "publicar" e da lixeira. Aqui as caixas são medidas
+   de verdade: sobreposição é falha. */
+if (liberado) {
+  await pag.locator('button[aria-label="Abrir menu"]').first().click();
+  await esperarGaveta(true);
+  const abaCartoes = pag.locator('aside[aria-label="Navegação"] nav button:has-text("Cartões")');
+  if (await abaCartoes.count() === 0) {
+    falha('celular: não achei a aba Cartões na gaveta');
+  } else {
+    await abaCartoes.first().click();
+    await esperarGaveta(false);
+    await pag.waitForTimeout(500);
+
+    const sobreposicoes = await pag.evaluate(() => {
+      const problemas = [];
+      const cruza = (a, b) => !(a.right <= b.left + 1 || b.right <= a.left + 1
+        || a.bottom <= b.top + 1 || b.bottom <= a.top + 1);
+      const cx = (el) => el.getBoundingClientRect();
+
+      const campo = document.querySelector('input[placeholder="Nova pasta"]');
+      const criar = [...document.querySelectorAll('button')].find((b) => /Criar pasta/.test(b.textContent));
+      if (campo && criar && cruza(cx(campo), cx(criar))) problemas.push('o campo "Nova pasta" está por cima do botão de criar');
+      if (campo && cx(campo).width < 90) problemas.push(`o campo "Nova pasta" ficou espremido (${Math.round(cx(campo).width)}px)`);
+      /* o rótulo "Pastas e baralhos" é o irmão anterior do par campo+botão */
+      const rotulo = campo && campo.parentElement && campo.parentElement.previousElementSibling;
+      if (campo && rotulo && cruza(cx(campo), cx(rotulo))) problemas.push('o campo "Nova pasta" está por cima do rótulo da seção');
+      if (criar && rotulo && cruza(cx(criar), cx(rotulo))) problemas.push('o botão de criar pasta está por cima do rótulo da seção');
+
+      for (const nome of document.querySelectorAll('[data-teste="nome-pasta"]')) {
+        const r = cx(nome);
+        if (r.width < 30) { problemas.push(`o nome "${nome.textContent}" ficou sem largura (${Math.round(r.width)}px)`); continue; }
+        const linha = nome.closest('div.rounded-2xl');
+        if (!linha) continue;
+        for (const outro of linha.querySelectorAll('button, span, div')) {
+          if (outro.contains(nome) || nome.contains(outro)) continue;
+          if (!outro.textContent.trim() && !outro.querySelector('svg')) continue;
+          const ro = cx(outro);
+          if (ro.width < 1 || ro.height < 1) continue;
+          if (cruza(r, ro)) problemas.push(`"${nome.textContent}" cruza com "${(outro.textContent || 'ícone').trim().slice(0, 24)}"`);
+        }
+      }
+      return problemas;
+    });
+
+    if (sobreposicoes.length === 0) ok('celular: nada se sobrepõe na lista de pastas e baralhos');
+    else falha('celular, aba Cartões: ' + sobreposicoes.slice(0, 4).join(' · '));
+
+    const vazaCartoes = await pag.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2);
+    if (vazaCartoes) falha('celular: a aba Cartões passou da largura da tela');
+    else ok('celular: a aba Cartões cabe na largura da tela');
+    await pag.screenshot({ path: 'captura-celular-cartoes.png' });
+  }
+}
 
 await pag.setViewportSize({ width: 1440, height: 900 });
 await pag.waitForTimeout(600);

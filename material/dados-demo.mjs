@@ -162,7 +162,16 @@ export function montarDados() {
     rever: [{ id: 'v1', text: 'Antibiótico na pneumonia grave', done: false }],
     notes: {}, googleCal: { id: '', ultima: 0, autoSync: false },
     cronograma: { nome: '', texto: '' },
-    cronogramaProprio: [], cronogramaModo: 'somar',
+    /* Um ciclo clínico de mentira, para a aba de Ciclo clínico existir
+       nas capturas. Só a área CL é substituída, então Matérias continua
+       com as outras quatro. */
+    cronogramaProprio: [
+      { id: 'ciclo-clinica-med', week: 1, area: 'CL', title: 'Enfermaria de Clínica Médica', esp: 'Internato', bonus: ['Visita', 'Evolução', 'Prescrição'] },
+      { id: 'ciclo-pronto-socorro', week: 2, area: 'CL', title: 'Pronto-socorro adulto', esp: 'Internato', bonus: ['Dor torácica', 'Dispneia'] },
+      { id: 'ciclo-ambulatorio', week: 3, area: 'CL', title: 'Ambulatório de Endocrinologia', esp: 'Internato', bonus: ['Diabetes', 'Tireoide'] },
+      { id: 'ciclo-uti', week: 4, area: 'CL', title: 'UTI adulto', esp: 'Internato', bonus: ['Ventilação', 'Sedação'] },
+    ],
+    cronogramaModo: 'somar',
     anotacoes: {}, mostrarDesempenho: true,
     flash, pastas, baralhoCfg: {},
     hojeIso,

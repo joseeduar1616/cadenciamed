@@ -33,6 +33,7 @@ const MAX_RECADO = 400;
 const MAX_RECADO_ITENS = 80;
 
 const PERIODOS = [
+  ["hoje", "Hoje"],
   ["semana", "Semana"],
   ["mes", "Mês"],
   ["total", "Desde sempre"],
@@ -40,10 +41,10 @@ const PERIODOS = [
 
 /* Publica os números de quem está logado, para aparecerem no ranking.
  *
- * Vão três recortes: a semana, o mês e o total. Cada um leva junto a que
- * semana e a que mês se refere — sem isso, quem estudou muito na semana
- * passada e não abriu o app desde então continuaria no topo do ranking desta
- * semana, com números que já não valem.
+ * Vão quatro recortes: o dia, a semana, o mês e o total. Cada um leva junto
+ * a que dia, a que semana e a que mês se refere — sem isso, quem estudou
+ * muito na semana passada e não abriu o app desde então continuaria no topo
+ * do ranking desta semana, com números que já não valem.
  *
  * Só números: nada do que foi estudado, nenhuma anotação. */
 function usePerfilPublico(nuvem, nome, sessions, today, mostrar, aoVivo) {
@@ -51,6 +52,7 @@ function usePerfilPublico(nuvem, nome, sessions, today, mostrar, aoVivo) {
     const iniSemana = weekStart(today);
     const mes = String(today).slice(0, 7);
     const soma = { min: 0, q: 0, ok: 0 };
+    const dia = { min: 0, q: 0, ok: 0 };
     const sem = { min: 0, q: 0, ok: 0 };
     const mensal = { min: 0, q: 0, ok: 0 };
 
@@ -61,6 +63,7 @@ function usePerfilPublico(nuvem, nome, sessions, today, mostrar, aoVivo) {
       const ok = Math.min(q, Math.max(0, Number(s.correct) || 0));
       soma.min += m; soma.q += q; soma.ok += ok;
       const d = String(s.date || "");
+      if (d === today) { dia.min += m; dia.q += q; dia.ok += ok; }
       if (d >= iniSemana && d <= today) { sem.min += m; sem.q += q; sem.ok += ok; }
       if (d.slice(0, 7) === mes) { mensal.min += m; mensal.q += q; mensal.ok += ok; }
     }
@@ -73,6 +76,7 @@ function usePerfilPublico(nuvem, nome, sessions, today, mostrar, aoVivo) {
         nome: String(nome || "").trim().slice(0, 40),
         oculto: true,
         minutos: 0, questoes: 0, acertos: 0,
+        diaChave: today, diaMinutos: 0, diaQuestoes: 0, diaAcertos: 0,
         semanaChave: iniSemana, semanaMinutos: 0, semanaQuestoes: 0, semanaAcertos: 0,
         mesChave: mes, mesMinutos: 0, mesQuestoes: 0, mesAcertos: 0,
       };
@@ -82,6 +86,8 @@ function usePerfilPublico(nuvem, nome, sessions, today, mostrar, aoVivo) {
       nome: String(nome || "").trim().slice(0, 40),
       oculto: false,
       minutos: Math.round(soma.min), questoes: soma.q, acertos: soma.ok,
+      diaChave: today,
+      diaMinutos: Math.round(dia.min), diaQuestoes: dia.q, diaAcertos: dia.ok,
       semanaChave: iniSemana,
       semanaMinutos: Math.round(sem.min), semanaQuestoes: sem.q, semanaAcertos: sem.ok,
       mesChave: mes,
@@ -162,6 +168,180 @@ async function falarComSalas(nuvem, corpo) {
 
 const MEDALHA = ["var(--warn)", "var(--dim)", "var(--a-CL)"];
 
+/* ── quem é quem ───────────────────────────────────────────────────────
+ *
+ * A sala não tem foto de perfil e não vai ter: subir imagem de gente é um
+ * problema inteiro (moderação, armazenamento, o que aparece para quem) para
+ * resolver uma coisa pequena. O que resolve a mesma coisa é a inicial num
+ * círculo, com uma cor tirada do próprio nome: sempre a mesma cor para a
+ * mesma pessoa, e dá para achar alguém na lista de relance. */
+const TONS_FACE = [
+  "var(--a-CL)", "var(--a-CI)", "var(--a-GO)", "var(--a-PE)", "var(--a-PR)",
+  "var(--neon)", "var(--neon2)", "var(--ok)",
+];
+
+function corDoNome(nome) {
+  let n = 0;
+  const s = String(nome || "");
+  for (let i = 0; i < s.length; i += 1) n = (n * 31 + s.charCodeAt(i)) % 99991;
+  return TONS_FACE[n % TONS_FACE.length];
+}
+
+function iniciais(nome) {
+  const partes = String(nome || "").trim().split(/\s+/).filter(Boolean);
+  if (!partes.length) return "?";
+  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
+  return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase();
+}
+
+function Face({ nome, cor, tamanho = 38, forte }) {
+  const c = cor || corDoNome(nome);
+  return (
+    <span className="flex items-center justify-center rounded-full" style={{
+      width: tamanho, height: tamanho, flexShrink: 0,
+      background: `linear-gradient(140deg, ${soft(c, forte ? 30 : 18)}, ${soft(c, 6)})`,
+      border: `1px solid ${soft(c, forte ? 55 : 24)}`,
+      color: c, fontFamily: F_UI, fontWeight: 700,
+      fontSize: Math.round(tamanho * 0.37), letterSpacing: "0.02em",
+    }}>{iniciais(nome)}</span>
+  );
+}
+
+/* Barra fina, usada tanto no pódio quanto na linha do ranking. */
+function Barra({ fracao, cor, altura = 4 }) {
+  return (
+    <span style={{
+      display: "block", height: altura, borderRadius: 99,
+      background: soft(cor, 12), overflow: "hidden",
+    }}>
+      <span style={{
+        display: "block", height: "100%", borderRadius: 99,
+        width: `${Math.max(2, Math.min(100, Math.round(fracao * 100)))}%`,
+        background: `linear-gradient(90deg, ${soft(cor, 40)}, ${cor})`,
+      }} />
+    </span>
+  );
+}
+
+/* Os três primeiros, em destaque.
+ *
+ * Em ordem mesmo, 1º, 2º, 3º: o pódio de verdade põe o campeão no meio, mas
+ * na tela isso só funciona enquanto os três couberem lado a lado, e no
+ * celular a leitura vira 2º, 1º, 3º de cima para baixo, que é errado. Quem
+ * marca o campeão aqui é o ouro e o tamanho, não a posição. */
+function Podio({ linhas }) {
+  const tres = linhas.filter((x) => !x.oculto).slice(0, 3);
+  if (tres.length < 3) return null;
+  const teto = tres[0].minutos || 1;
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-5">
+      {tres.map((x) => {
+        const cor = MEDALHA[x.posicao - 1];
+        const primeiro = x.posicao === 1;
+        return (
+          <div key={x.uid} className="rounded-2xl px-4 py-4"
+            style={{
+              background: primeiro
+                ? `linear-gradient(160deg, ${soft(cor, 16)}, ${soft(cor, 4)})`
+                : T.card2,
+              border: `1px solid ${soft(cor, primeiro ? 45 : 18)}`,
+            }}>
+            <div className="flex items-center gap-3">
+              <Face nome={x.nome} cor={cor} tamanho={primeiro ? 46 : 38} forte={primeiro} />
+              <span className="flex-1 min-w-0">
+                <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+                  <Num size={primeiro ? 20 : 17} color={cor} weight={700}>{x.posicao}º</Num>
+                  {x.souEu ? (
+                    <span style={{
+                      fontSize: 10.5, fontWeight: 700, color: "var(--neon)",
+                      background: soft("var(--neon)", 16), padding: "1px 7px", borderRadius: 99,
+                    }}>você</span>
+                  ) : null}
+                </div>
+                <div style={{
+                  fontSize: primeiro ? 15 : 14, fontWeight: 600, color: T.ink, marginTop: 2,
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                }}>{x.nome}</div>
+              </span>
+            </div>
+            <div className="mt-3">
+              <Barra fracao={x.minutos / teto} cor={cor} altura={primeiro ? 5 : 4} />
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <Num size={primeiro ? 19 : 16} weight={700}>{fmtMin(x.minutos)}</Num>
+              <Mini>{x.pct === null ? "sem questões" : `${x.pct}% de acerto`}</Mini>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── o seu dia ─────────────────────────────────────────────────────────
+ *
+ * Sai das próprias sessões gravadas, e não do servidor: é o mesmo número
+ * que a aba Hoje mostra, aparece na hora e continua certo mesmo sem rede.
+ * Fica no alto da aba porque é a resposta da pergunta que faz alguém abrir
+ * a sala de manhã, que é "eu já fiz alguma coisa hoje". */
+function MeuDia({ data, hoje, minhaLinha, rotuloSala }) {
+  const soma = useMemo(() => {
+    const s = { min: 0, q: 0, ok: 0 };
+    for (const x of data.sessions || []) {
+      if (!x || String(x.date || "") !== hoje) continue;
+      const q = Math.max(0, Number(x.questions) || 0);
+      s.min += Math.max(0, Number(x.minutes) || 0);
+      s.q += q;
+      s.ok += Math.min(q, Math.max(0, Number(x.correct) || 0));
+    }
+    return s;
+  }, [data.sessions, hoje]);
+
+  const meta = Math.max(1, Number(data.goals.daily) || 0);
+  const fracao = soma.min / meta;
+  const pct = soma.q ? Math.round((soma.ok / soma.q) * 100) : null;
+  const bateu = soma.min >= meta;
+  const cor = bateu ? "var(--ok)" : soma.min > 0 ? "var(--neon)" : T.ghost;
+
+  return (
+    <Card className="px-6 py-5" brilho={bateu ? "var(--ok)" : "var(--neon)"}>
+      <div className="flex items-center justify-between gap-3" style={{ flexWrap: "wrap" }}>
+        <H size={18} color={cor} icon={<Flame size={15} />}>O seu dia</H>
+        <Mini>
+          {bateu ? "meta do dia batida" : `meta de ${fmtMin(meta)}, faltam ${fmtMin(Math.max(0, meta - soma.min))}`}
+        </Mini>
+      </div>
+
+      <div className="mt-4">
+        <Barra fracao={fracao} cor={cor} altura={6} />
+      </div>
+
+      <div className="mt-4 flex gap-x-8 gap-y-3" style={{ flexWrap: "wrap" }}>
+        <div>
+          <Num size={26} color={cor}>{fmtMin(soma.min)}</Num>
+          <Mini style={{ marginTop: 3 }}>estudadas hoje</Mini>
+        </div>
+        <div>
+          <Num size={26}>{soma.q}</Num>
+          <Mini style={{ marginTop: 3 }}>questões hoje</Mini>
+        </div>
+        <div>
+          <Num size={26} color={pct === null ? T.ghost : pct >= 70 ? T.ok : pct >= 50 ? T.warn : T.bad}>
+            {pct === null ? "—" : `${pct}%`}
+          </Num>
+          <Mini style={{ marginTop: 3 }}>acerto de hoje</Mini>
+        </div>
+        {minhaLinha ? (
+          <div>
+            <Num size={26} color="var(--warn)">{minhaLinha.posicao ? `${minhaLinha.posicao}º` : "—"}</Num>
+            <Mini style={{ marginTop: 3 }}>{rotuloSala}</Mini>
+          </div>
+        ) : null}
+      </div>
+    </Card>
+  );
+}
+
 /* Quem está com o cronômetro andando neste instante.
  *
  * O tempo aqui é o do bloco em andamento, e ele não entra no ranking: entra
@@ -182,64 +362,101 @@ function Estudando({ minutos }) {
   );
 }
 
-function LinhaRanking({ x }) {
-  const cor = !x.oculto && x.posicao <= 3 ? MEDALHA[x.posicao - 1] : T.ghost;
+/* Uma linha do ranking.
+ *
+ * A barra atrás do nome é o tempo desta pessoa em relação ao primeiro
+ * colocado. É o que transforma uma lista de números numa corrida que dá
+ * para ler de relance, sem comparar minuto com minuto na cabeça.
+ *
+ * O "hoje" na ponta aparece mesmo quando o recorte escolhido é a semana ou
+ * o mês: quem lidera o mês pode não ter aberto o livro hoje, e é essa a
+ * informação que muda o que a pessoa faz agora. */
+function LinhaRanking({ x, teto, mostrarHoje }) {
+  const medalha = !x.oculto && x.posicao <= 3;
+  const cor = x.oculto ? T.ghost : medalha ? MEDALHA[x.posicao - 1] : corDoNome(x.nome);
+  const fracao = !x.oculto && teto > 0 ? x.minutos / teto : 0;
+
   return (
-    <div className="flex items-center gap-3 rounded-2xl px-4 py-3.5"
+    <div className="rounded-2xl"
       style={{
+        position: "relative", overflow: "hidden",
         background: x.souEu ? soft("var(--neon)", 10) : T.card2,
         border: `1px solid ${x.souEu ? soft("var(--neon)", 34) : "transparent"}`,
       }}>
-      <span className="flex items-center justify-center rounded-full"
-        style={{
-          width: 30, height: 30, flexShrink: 0,
-          background: !x.oculto && x.posicao <= 3 ? soft(cor, 18) : "transparent",
-          border: !x.oculto && x.posicao <= 3 ? "none" : `1px solid ${T.line}`,
-          fontFamily: F_MONO, fontSize: 13, fontWeight: 700,
-          color: x.oculto ? T.ghost : cor,
-        }}>{x.oculto ? "—" : x.posicao}</span>
+      {/* o tempo desta pessoa, pintado atrás do conteúdo */}
+      {fracao > 0 ? (
+        <span aria-hidden="true" style={{
+          position: "absolute", left: 0, top: 0, bottom: 0,
+          width: `${Math.max(1.5, Math.min(100, fracao * 100))}%`,
+          background: `linear-gradient(90deg, ${soft(cor, 13)}, ${soft(cor, 3)})`,
+          pointerEvents: "none",
+        }} />
+      ) : null}
 
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
-          <span style={{
-            fontSize: 15, fontWeight: 600, color: T.ink,
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220,
-          }}>{x.nome}</span>
-          {x.souEu ? (
-            <span style={{
-              fontSize: 11, fontWeight: 700, color: "var(--neon)",
-              background: soft("var(--neon)", 16), padding: "2px 8px", borderRadius: 99,
-            }}>você</span>
-          ) : null}
-          {x.estudando ? <Estudando minutos={x.agoraMin} /> : null}
-          {x.dono ? <Mini>criou a sala</Mini> : null}
+      {/* No celular o nome fica numa linha e os números na de baixo: lado a
+          lado, os três números espremiam o nome até virar "A..". */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 px-4 py-3.5"
+        style={{ position: "relative" }}>
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <span className="flex items-center justify-center" style={{
+            width: 22, flexShrink: 0,
+            fontFamily: F_MONO, fontSize: 13, fontWeight: 700,
+            color: x.oculto ? T.ghost : cor,
+          }}>{x.oculto ? "—" : x.posicao}</span>
+
+          <Face nome={x.nome} cor={x.oculto ? T.ghost : cor} tamanho={34} forte={medalha} />
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+              <span style={{
+                fontSize: 15, fontWeight: 600, color: T.ink,
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220,
+              }}>{x.nome}</span>
+              {x.souEu ? (
+                <span style={{
+                  fontSize: 11, fontWeight: 700, color: "var(--neon)",
+                  background: soft("var(--neon)", 16), padding: "2px 8px", borderRadius: 99,
+                }}>você</span>
+              ) : null}
+              {x.estudando ? <Estudando minutos={x.agoraMin} /> : null}
+              {x.dono ? <Mini>criou a sala</Mini> : null}
+            </div>
+            <Mini style={{ marginTop: 3 }}>
+              {x.oculto ? "escolheu não mostrar o desempenho"
+                : x.questoes ? `${x.acertos} de ${x.questoes} questões` : "sem questões lançadas"}
+              {x.oculto ? "" : !x.atualizadoEm ? " · ainda não sincronizou"
+                : x.foraDoRecorte ? " · não abriu o app neste período" : ""}
+            </Mini>
+          </div>
         </div>
-        <Mini style={{ marginTop: 3 }}>
-          {x.oculto ? "escolheu não mostrar o desempenho"
-            : x.questoes ? `${x.acertos} de ${x.questoes} questões` : "sem questões lançadas"}
-          {x.oculto ? "" : !x.atualizadoEm ? " · ainda não sincronizou"
-            : x.foraDoRecorte ? " · não abriu o app neste período" : ""}
-        </Mini>
+
+        {x.oculto ? (
+          <span style={{ flexShrink: 0, color: T.ghost, display: "inline-flex" }}>
+            <Lock size={15} />
+          </span>
+        ) : (
+          <div className="flex items-center justify-end gap-4" style={{ flexShrink: 0 }}>
+            {mostrarHoje ? (
+              <div className="text-right">
+                <Num size={15} weight={700} color={x.hoje && x.hoje.minutos ? T.ok : T.ghost}>
+                  {x.hoje && x.hoje.minutos ? fmtMin(x.hoje.minutos) : "—"}
+                </Num>
+                <Mini>hoje</Mini>
+              </div>
+            ) : null}
+            <div className="text-right">
+              <Num size={17} weight={700}>{fmtMin(x.minutos)}</Num>
+              <Mini>líquidas</Mini>
+            </div>
+            <div className="text-right" style={{ minWidth: 52 }}>
+              <Num size={17} weight={700} color={x.pct === null ? T.ghost : x.pct >= 70 ? T.ok : x.pct >= 50 ? T.warn : T.bad}>
+                {x.pct === null ? "—" : `${x.pct}%`}
+              </Num>
+              <Mini>acerto</Mini>
+            </div>
+          </div>
+        )}
       </div>
-
-      {x.oculto ? (
-        <span style={{ flexShrink: 0, color: T.ghost, display: "inline-flex" }}>
-          <Lock size={15} />
-        </span>
-      ) : (
-        <div className="flex items-center gap-5" style={{ flexShrink: 0 }}>
-          <div className="text-right">
-            <Num size={17} weight={700}>{fmtMin(x.minutos)}</Num>
-            <Mini>líquidas</Mini>
-          </div>
-          <div className="text-right" style={{ minWidth: 52 }}>
-            <Num size={17} weight={700} color={x.pct === null ? T.ghost : x.pct >= 70 ? T.ok : x.pct >= 50 ? T.warn : T.bad}>
-              {x.pct === null ? "—" : `${x.pct}%`}
-            </Num>
-            <Mini>acerto</Mini>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -379,6 +596,12 @@ function Amigos({ nuvem, notify, data, setData }) {
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState("");
   const estudandoAgora = (ranking || []).filter((x) => x.estudando).length;
+  const hoje = todayISO();
+  /* O primeiro colocado é a régua da barra de cada linha. Só entra quem
+     mostra o desempenho: quem esconde publica zero, e não seria régua de
+     nada. */
+  const teto = Math.max(0, ...(ranking || []).filter((x) => !x.oculto).map((x) => x.minutos));
+  const minhaLinha = (ranking || []).find((x) => x.souEu) || null;
 
   const logado = !!(nuvem && nuvem.usuario);
   /* O objeto da nuvem entra por referência, e não como dependência: quem
@@ -457,7 +680,7 @@ function Amigos({ nuvem, notify, data, setData }) {
           Estudar acompanhado
         </h2>
         <p style={{ color: T.dim, fontSize: 15, lineHeight: 1.65, marginTop: 10, maxWidth: 430, marginLeft: "auto", marginRight: "auto" }}>
-          Crie uma conta em Progresso para montar salas com seus amigos e comparar
+          Crie uma conta em Configurações para montar salas com seus amigos e comparar
           horas estudadas, questões e acerto.
         </p>
       </Card>
@@ -466,6 +689,9 @@ function Amigos({ nuvem, notify, data, setData }) {
 
   return (
     <div className="flex flex-col gap-5">
+      <MeuDia data={data} hoje={hoje} minhaLinha={minhaLinha}
+        rotuloSala={cabecalho && cabecalho.rotulo ? `na sala, ${cabecalho.rotulo}` : "na sala"} />
+
       <Card className="px-6 py-6" brilho="var(--neon2)">
         <H color="var(--neon2)" icon={<Users size={16} />}>Salas de amigos</H>
         <Texto style={{ marginTop: 10 }}>
@@ -489,18 +715,31 @@ function Amigos({ nuvem, notify, data, setData }) {
 
         {salas && salas.length ? (
           <div className="mt-5 flex gap-2 flex-wrap">
-            {salas.map((s) => (
-              <button key={s.slug} type="button" onClick={() => setAtual(s.slug)}
-                className="rounded-full px-4 py-2 brilhar"
-                style={{
-                  background: atual === s.slug ? soft("var(--neon2)", 18) : T.card,
-                  border: `1px solid ${atual === s.slug ? "transparent" : T.line}`,
-                  color: atual === s.slug ? "var(--neon2)" : T.dim,
-                  fontSize: 14, fontWeight: atual === s.slug ? 700 : 500, cursor: "pointer",
-                }}>
-                {s.nome} <span style={{ opacity: 0.65 }}>· {s.membros}</span>
-              </button>
-            ))}
+            {salas.map((s) => {
+              const on = atual === s.slug;
+              return (
+                <button key={s.slug} type="button" onClick={() => setAtual(s.slug)}
+                  className="flex items-center gap-2.5 rounded-full brilhar"
+                  style={{
+                    padding: "5px 14px 5px 5px",
+                    background: on
+                      ? `linear-gradient(140deg, ${soft("var(--neon2)", 22)}, ${soft("var(--neon2)", 8)})`
+                      : T.card,
+                    border: `1px solid ${on ? soft("var(--neon2)", 40) : T.line}`,
+                    color: on ? "var(--neon2)" : T.dim,
+                    fontSize: 14, fontWeight: on ? 700 : 500, cursor: "pointer",
+                  }}>
+                  <Face nome={s.nome} cor={on ? "var(--neon2)" : T.dim} tamanho={26} forte={on} />
+                  {s.nome}
+                  <span style={{
+                    fontFamily: F_MONO, fontSize: 11.5, fontWeight: 700,
+                    color: on ? "var(--neon2)" : T.ghost,
+                    background: soft(on ? "var(--neon2)" : "var(--ink)", 12),
+                    padding: "1px 7px", borderRadius: 99,
+                  }}>{s.membros}</span>
+                </button>
+              );
+            })}
           </div>
         ) : null}
 
@@ -583,16 +822,21 @@ function Amigos({ nuvem, notify, data, setData }) {
             <Blank icon={<Users size={26} />} title="Sala vazia"
               hint="Passe o nome e a senha para quem estuda com você." />
           ) : (
-            <div className="mt-5 flex flex-col gap-2">
-              {ranking.map((x) => <LinhaRanking key={x.uid} x={x} />)}
-            </div>
+            <>
+              <Podio linhas={ranking} />
+              <div className="mt-5 flex flex-col gap-2">
+                {ranking.map((x) => (
+                  <LinhaRanking key={x.uid} x={x} teto={teto} mostrarHoje={periodo !== "hoje"} />
+                ))}
+              </div>
+            </>
           )}
 
           <Mini style={{ marginTop: 16, lineHeight: 1.7 }}>
             Aparecem só o nome do perfil e os três números do ranking, mais a
             marca de quem está com o cronômetro andando agora. O que você
             estudou, suas anotações e seus cartões não são compartilhados. Para
-            mudar o nome que os outros veem, é o nome em Progresso.
+            mudar o nome que os outros veem, é o nome em Configurações.
           </Mini>
         </Card>
       ) : atual && ocupado ? (

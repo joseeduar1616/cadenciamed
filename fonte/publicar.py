@@ -16,7 +16,18 @@ DESTINO = os.path.join(RAIZ, 'publicar')
 
 ARQUIVOS = [
     'index.html',
+    'sw.js',
     'manifest.webmanifest',
+    # Buscador e redes sociais. O robots e o sitemap precisam existir como
+    # ARQUIVO: sem eles, o "qualquer endereço devolve o index" faz o
+    # buscador receber a página do app onde esperava regras.
+    'robots.txt',
+    'sitemap.xml',
+    'cartao.png',
+    # As duas páginas legais ficam fora do app, para abrirem sem carregar
+    # 1 MB e continuarem no ar mesmo se o app quebrar.
+    'privacidade.html',
+    'termos.html',
     'regras-firestore.txt',
     'sql-asm.js',
     'favicon.ico',
@@ -56,6 +67,22 @@ CABECALHOS = """/index.html
 
 /sql-asm.js
   Cache-Control: public, max-age=2592000
+
+/sw.js
+  Cache-Control: no-cache
+  Service-Worker-Allowed: /
+
+/robots.txt
+  Cache-Control: public, max-age=86400
+
+/sitemap.xml
+  Cache-Control: public, max-age=86400
+
+/privacidade.html
+  Cache-Control: public, max-age=3600
+
+/termos.html
+  Cache-Control: public, max-age=3600
 """
 open(os.path.join(DESTINO, '_headers'), 'w', encoding='utf-8').write(CABECALHOS)
 

@@ -85,7 +85,7 @@ function Metas({ data, setData, today, qWeek, notify, ladder, gcal }) {
                 setData((p) => ({ ...p, provas: [{ id: uid(), text: prova.trim(), date: todayISO() }, ...p.provas] }));
                 setProva("");
               }} />
-            <Btn onClick={() => {
+            <Btn title="Adicionar prova resolvida" onClick={() => {
               if (!prova.trim()) return;
               setData((p) => ({ ...p, provas: [{ id: uid(), text: prova.trim(), date: todayISO() }, ...p.provas] }));
               setProva("");
@@ -143,7 +143,7 @@ function Metas({ data, setData, today, qWeek, notify, ladder, gcal }) {
                 setData((p) => ({ ...p, habits: [...p.habits, { id: uid(), text: habit.trim() }] }));
                 setHabit("");
               }} />
-            <Btn onClick={() => {
+            <Btn title="Adicionar hábito" onClick={() => {
               if (!habit.trim()) return;
               setData((p) => ({ ...p, habits: [...p.habits, { id: uid(), text: habit.trim() }] }));
               setHabit("");
@@ -161,7 +161,7 @@ function Metas({ data, setData, today, qWeek, notify, ladder, gcal }) {
                 setData((p) => ({ ...p, rever: [{ id: uid(), text: rever.trim(), done: false }, ...p.rever] }));
                 setRever("");
               }} />
-            <Btn onClick={() => {
+            <Btn title="Adicionar assunto para rever" onClick={() => {
               if (!rever.trim()) return;
               setData((p) => ({ ...p, rever: [{ id: uid(), text: rever.trim(), done: false }, ...p.rever] }));
               setRever("");
@@ -224,6 +224,73 @@ function Metas({ data, setData, today, qWeek, notify, ladder, gcal }) {
           </Btn>
           {gcal && gcal.conectado ? <Btn tone="outline" size="sm" onClick={gcal.desconectar}>desconectar</Btn> : null}
         </div>
+
+        {/* Mão dupla. Só aparece com a conta ligada de vez porque é a única
+            situação em que dá para escrever na agenda sem abrir janela. */}
+        {gcal && gcal.disponivel && gcal.permanente ? (
+          <label className="mt-4 flex items-start gap-3 rounded-2xl px-4 py-3"
+            style={{ background: T.card2, cursor: "pointer" }}>
+            <input type="checkbox" checked={!!gcal.autoEnviar} style={{ marginTop: 3, flexShrink: 0 }}
+              onChange={(e) => gcal.mudarAutoEnviar(e.target.checked)} />
+            <span className="flex-1 min-w-0">
+              <span style={{ display: "block", fontSize: 15, fontWeight: 600 }}>
+                Mandar as mudanças sozinho
+              </span>
+              <Mini style={{ marginTop: 2, lineHeight: 1.6 }}>
+                {gcal.enviandoAuto
+                  ? "enviando para o Google agora…"
+                  : "o que você criar ou apagar aqui, e o que o assistente marcar, "
+                    + `aparece em ${NOME_AGENDA} poucos segundos depois`}
+              </Mini>
+            </span>
+          </label>
+        ) : null}
+
+        {/* A ligação de vez. Sem ela o Google devolve um token que vale cerca
+            de uma hora e some quando o aplicativo fecha, e a autorização
+            volta a aparecer toda vez que a pessoa abre o site. */}
+        {gcal && gcal.disponivel && gcal.podeLigarDeVez ? (
+          <div className="mt-4 rounded-2xl px-4 py-4"
+            style={{
+              background: soft(gcal.permanente ? "var(--ok)" : "var(--a-GO)", 10),
+              border: `1px solid ${soft(gcal.permanente ? "var(--ok)" : "var(--a-GO)", 30)}`,
+            }}>
+            {gcal.permanente ? (
+              <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+                <span style={{ fontSize: 14.5, fontWeight: 600, color: T.ok }}>
+                  Conta do Google ligada de vez
+                </span>
+                <Mini>não precisa autorizar de novo ao abrir o app</Mini>
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: 14.5, fontWeight: 600, color: T.ink }}>
+                  Cansado de autorizar toda vez que abre?
+                </div>
+                <Mini style={{ marginTop: 6, lineHeight: 1.6 }}>
+                  Ligue a conta de vez: você autoriza uma única vez e o site
+                  renova o acesso sozinho daí em diante, sem abrir janela
+                  nenhuma. Dá para desligar quando quiser.
+                </Mini>
+                <div className="mt-4">
+                  <Btn size="sm" tone="primary" disabled={!gcal.pronto} onClick={gcal.ligarDeVez}>
+                    Ligar a conta de vez
+                  </Btn>
+                </div>
+              </>
+            )}
+          </div>
+        ) : null}
+        {/* Sem conta não há onde guardar a autorização, então o Google
+            devolve um acesso de uma hora e a tela de autorizar volta a cada
+            abertura. Dizer isso aqui evita a pessoa achar que é defeito. */}
+        {gcal && gcal.disponivel && !gcal.logado ? (
+          <Mini style={{ marginTop: 14, lineHeight: 1.6 }}>
+            Entre na sua conta do Cadência para o Google ficar ligado de vez.
+            Sem conta, a autorização do Google vale cerca de uma hora e a tela
+            de permissão volta a aparecer quando você abre o app de novo.
+          </Mini>
+        ) : null}
         {gcal && gcal.progresso ? (
           <div className="mt-4"><Track pct={(gcal.progresso.feito / Math.max(1, gcal.progresso.total)) * 100} color="var(--a-GO)" /></div>
         ) : null}
@@ -751,9 +818,7 @@ function Aparencia({ data, setData }) {
   );
 }
 
-function Progresso({ data, setData, byDay, today, totals, subjects, notify, nuvem, pro, aoLiberar }) {
-  const [confirm, setConfirm] = useState(false);
-  const fileRef = useRef(null);
+function Progresso({ data, byDay, today, totals, subjects }) {
   const ativo = useAtivo();
 
   const last14 = useMemo(() => {
@@ -793,36 +858,29 @@ function Progresso({ data, setData, byDay, today, totals, subjects, notify, nuve
   const doneCount = subjects.filter((s) => s.aula).length;
   const bonusCount = subjects.reduce((a, s) => a + s.bonusCount, 0);
 
-  const exportar = () => {
-    const txt = JSON.stringify(data, null, 2);
-    if (baixar(`cadencia-${today}.json`, "application/json", txt, notify)) notify("Backup baixado.");
-  };
-
-  const importar = (e) => {
-    const f = e.target.files && e.target.files[0];
-    if (!f) return;
-    const rd = new FileReader();
-    rd.onload = () => {
-      try {
-        const novo = normalize(JSON.parse(String(rd.result)));
-        setData(novo);
-        const aulas = Object.values(novo.marks || {}).filter((m) => m && m.aula).length;
-        const degraus = Object.values(novo.reviews || {}).reduce((a, r) => a + Object.keys((r && r.done) || {}).length, 0);
-        notify(`Restaurado: ${aulas} aula${aulas === 1 ? "" : "s"} e ${degraus} revis${degraus === 1 ? "ão" : "ões"}.`);
-      } catch (err) { notify("Arquivo inválido."); }
-    };
-    rd.onerror = () => notify("Não consegui ler o arquivo.");
-    rd.readAsText(f);
-    e.target.value = "";
-  };
+  /* Conta nova via uma parede de zeros — 0min, 0 sessões, 0 ativos, sem
+     questões — e nenhuma pista do que fazer. Zero não é resultado ruim
+     aqui: é que ainda não começou, e a tela tem de dizer isso. */
+  if (data.sessions.length === 0) {
+    return (
+      <Card className="px-6 py-8">
+        <H size={18} color="var(--a-CL)" icon={<BarChart3 size={16} />}>Seu progresso aparece aqui</H>
+        <Texto style={{ marginTop: 10, maxWidth: 520 }}>
+          Assim que você registrar a primeira sessão de estudo, esta tela
+          mostra as horas, a constância dia a dia, onde o seu tempo foi e
+          o acerto ao longo do tempo.
+        </Texto>
+        <Mini style={{ marginTop: 14, lineHeight: 1.7 }}>
+          O tempo entra por dois caminhos: o cronômetro da aba Foco, que
+          registra sozinho ao terminar, ou o lançamento à mão em Hoje. Só
+          questões, sem tempo, vai pela aba Desempenho.
+        </Mini>
+      </Card>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-5">
-      <ContaNuvem nuvem={nuvem} notify={notify} />
-      {nuvem.usuario && !pro ? <Cupom nuvem={nuvem} notify={notify} aoLiberar={aoLiberar} /> : null}
-      {ehDono(nuvem.usuario) ? <PainelDono nuvem={nuvem} notify={notify} /> : null}
-      <Aparencia data={data} setData={setData} />
-
       <Card className="px-6 sm:px-8 py-7">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-7">
           <div><Num size={34}>{fmtMin(totals.min)}</Num><Label style={{ marginTop: 9 }}>horas registradas</Label></div>
@@ -913,33 +971,14 @@ function Progresso({ data, setData, byDay, today, totals, subjects, notify, nuve
         </Card>
       </div>
 
+      {/* O resumo de quanto do currículo já foi marcado; o backup e o
+          apagar tudo foram para Configurações, que é onde se mexe na
+          conta em vez de olhar número de estudo. */}
       <Card className="px-6 py-6">
-        <H size={18} color="var(--a-PR)" icon={<Download size={16} />}>Seus dados</H>
+        <H size={18} color="var(--a-PR)" icon={<ListChecks size={16} />}>Quanto do currículo</H>
         <Label style={{ marginTop: 4 }}>
           {doneCount} de {subjects.length} aulas e {bonusCount} de {ativo.totalBonus} tópicos marcados
         </Label>
-        <div className="mt-5 flex flex-wrap gap-2">
-          <Btn onClick={exportar}><Download size={15} /> Baixar backup</Btn>
-          <Btn onClick={() => fileRef.current && fileRef.current.click()}><Upload size={15} /> Restaurar backup</Btn>
-          <input ref={fileRef} type="file" accept="application/json,.json" onChange={importar} style={{ display: "none" }} />
-          {confirm ? (
-            <>
-              <Btn tone="danger" onClick={() => { setData({ ...DEFAULTS, theme: data.theme, layout: data.layout, tema: data.tema, revisao: data.revisao }); setConfirm(false); notify("Tudo apagado."); }}>
-                <Trash2 size={15} /> Confirmar
-              </Btn>
-              <Btn tone="outline" onClick={() => setConfirm(false)}>Cancelar</Btn>
-            </>
-          ) : (
-            <Btn tone="danger" onClick={() => setConfirm(true)}><Trash2 size={15} /> Apagar tudo</Btn>
-          )}
-        </div>
-        {confirm ? (
-          <Label style={{ marginTop: 14, color: T.bad }}>
-            Isso apaga sessões, marcações, revisões, cartões, pastas, rotina, metas
-            e anotações. A aparência e o esquema de revisão continuam como estão.
-            Baixe um backup antes.
-          </Label>
-        ) : null}
       </Card>
     </div>
   );
@@ -1715,6 +1754,11 @@ function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar }) {
               </button>
             )}
             <a className="pe-link" href={`mailto:${EMAIL_SUPORTE}`}>Falar com o suporte</a>
+            {/* Exigência prática, não enfeite: a LGPD pede que esteja
+                escrito o que se coleta, e a plataforma de pagamento pede
+                o endereço dos termos para aprovar o produto. */}
+            <a className="pe-link" href="/termos.html">Termos de uso</a>
+            <a className="pe-link" href="/privacidade.html">Privacidade</a>
           </div>
 
           <div className="mt-10 pt-6 flex items-center justify-between gap-4 flex-wrap"

@@ -217,6 +217,58 @@ if (r.corpo.cartoes[1].frente === 'Pergunta 2' && r.corpo.cartoes[1].verso === '
 if (r.corpo.cortado === true) ok('recuperação parcial: o painel sabe que o material foi cortado');
 else falha('recuperação parcial não avisada: ' + JSON.stringify(r));
 
+/* ── 6d. a área do material ──────────────────────────────────────────
+   A IA classifica o documento numa das cinco grandes áreas e o app usa
+   isso para jogar o baralho na pasta certa. Sigla inventada não pode
+   passar: viraria uma pasta que o app não sabe desenhar. */
+const respostaComArea = (area) => () => ({
+  status: 200,
+  corpo: {
+    candidates: [{
+      content: { parts: [{ text: JSON.stringify({ baralho: 'Asma', area, cartoes: [{ frente: 'a', verso: 'b' }] }) }] },
+      finishReason: 'STOP',
+    }],
+  },
+});
+
+for (const area of ['CL', 'CI', 'GO', 'PE', 'PR']) {
+  responder = respostaComArea(area);
+  r = await pedir(await carregar(), PEDIDO);
+  if (r.status === 200 && r.corpo.area === area) ok(`a área ${area} chega ao painel`);
+  else falha(`a área ${area} não voltou: ` + JSON.stringify(r.corpo));
+}
+
+responder = respostaComArea('cl');
+r = await pedir(await carregar(), PEDIDO);
+if (r.corpo.area === 'CL') ok('sigla em caixa baixa é aceita, em maiúsculas');
+else falha('sigla em caixa baixa: ' + JSON.stringify(r.corpo));
+
+for (const ruim of ['', 'XX', 'CLINICA', 'clinica médica', 42, null]) {
+  responder = respostaComArea(ruim);
+  r = await pedir(await carregar(), PEDIDO);
+  if (r.corpo.area === '') ok(`área inválida (${JSON.stringify(ruim)}) volta vazia, sem inventar pasta`);
+  else falha(`área inválida (${JSON.stringify(ruim)}) passou como "${r.corpo.area}"`);
+}
+
+/* a área é pedida antes dos cartões justamente para sobreviver ao corte */
+const cortadoComArea = '{"baralho":"Cardio","area":"CL","cartoes":[{"frente":"P1","verso":"R1"},{"frente":"P2 incomple';
+responder = () => ({
+  status: 200,
+  corpo: { candidates: [{ content: { parts: [{ text: cortadoComArea }] }, finishReason: 'MAX_TOKENS' }] },
+});
+r = await pedir(await carregar(), { ...PEDIDO, cobrirTudo: true });
+if (r.corpo.cartoes.length === 1 && r.corpo.area === 'CL') {
+  ok('resposta cortada: a área é resgatada junto com os cartões inteiros');
+} else falha('área na recuperação parcial: ' + JSON.stringify(r.corpo));
+
+/* e a instrução tem de explicar as cinco siglas, senão a IA chuta */
+responder = respostaComArea('CL');
+r = await pedir(await carregar(), PEDIDO);
+const instrucao = ultimoPedido.corpo.system_instruction.parts[0].text;
+if (['CL', 'CI', 'GO', 'PE', 'PR'].every((s) => instrucao.includes(s)) && /"area"/.test(instrucao)) {
+  ok('a instrução ensina as cinco siglas e pede o campo "area"');
+} else falha('a instrução não explica a área: ' + instrucao.slice(0, 300));
+
 /* ── 7. quem pode usar: mesma regra do assistente ────────────────────── */
 r = await pedir(await carregar(), { ...PEDIDO, token: '' });
 if (r.status === 403 && /Entre na sua conta/.test(r.corpo.erro)) ok('sem token: recusado antes de gastar cota');

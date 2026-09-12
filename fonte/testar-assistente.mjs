@@ -7,6 +7,9 @@
  *   node testar-assistente.mjs
  */
 import http from 'node:http';
+/* o nome do modelo padrão vem do próprio código, para o teste não
+   envelhecer toda vez que o Google aposenta um modelo */
+import { GEMINI_PADRAO } from '../worker/api/_ia.js';
 
 const passos = [];
 const erros = [];
@@ -122,7 +125,7 @@ else falha('Gemini resposta: ' + JSON.stringify(r));
 
 /* formato do pedido que saiu */
 const p = ultimoPedido;
-if (/gemini-3\.6-flash:generateContent/.test(p.url)) ok('Gemini: modelo e método certos na URL');
+if (p.url.includes(`${GEMINI_PADRAO}:generateContent`)) ok('Gemini: modelo e método certos na URL');
 else falha('Gemini URL: ' + p.url);
 if (p.headers['x-goog-api-key'] === 'chave-de-teste') ok('Gemini: chave vai no cabeçalho x-goog-api-key');
 else falha('Gemini cabeçalho: ' + JSON.stringify(p.headers['x-goog-api-key']));
@@ -158,7 +161,7 @@ responder = () => ({
   status: 400,
   corpo: {
     error: {
-      message: 'This model models/gemini-3.6-flash is no longer available to new users. '
+      message: `This model models/${GEMINI_PADRAO} is no longer available to new users. `
         + 'Please update your code to use models/gemini-4.0-flash for the latest features.',
     },
   },
@@ -168,7 +171,7 @@ if (/GEMINI_MODELO/.test(r.corpo.erro)) ok('modelo aposentado: diz qual variáve
 else falha('modelo aposentado: ' + JSON.stringify(r));
 if (/gemini-4\.0-flash/.test(r.corpo.erro)) ok('modelo aposentado: aproveita o substituto que o provedor sugeriu');
 else falha('não citou o substituto: ' + JSON.stringify(r.corpo.erro));
-if (!/Cadastre GEMINI_MODELO com "gemini-3\.6-flash"/.test(r.corpo.erro)) ok('modelo aposentado: não sugere o modelo que acabou de ser recusado');
+if (!r.corpo.erro.includes(`Cadastre GEMINI_MODELO com "${GEMINI_PADRAO}"`)) ok('modelo aposentado: não sugere o modelo que acabou de ser recusado');
 else falha('sugeriu o próprio modelo recusado: ' + r.corpo.erro);
 
 /* sem substituto citado, ainda assim aponta o caminho */
@@ -248,7 +251,7 @@ const olhar = async (fn) => {
 env.GEMINI_API_KEY = 'chave-de-teste';
 env.ANTHROPIC_API_KEY = 'sk-ant-teste';
 r = await olhar(await carregar());
-if (r.corpo.provedor === 'gemini' && r.corpo.modelo === 'gemini-3.6-flash') ok('GET mostra qual IA está ligada');
+if (r.corpo.provedor === 'gemini' && r.corpo.modelo === GEMINI_PADRAO) ok('GET mostra qual IA está ligada');
 else falha('GET provedor: ' + JSON.stringify(r.corpo));
 if (r.corpo.chaves.GEMINI_API_KEY === true && r.corpo.chaves.ANTHROPIC_API_KEY === true) ok('GET diz quais chaves chegaram na função');
 else falha('GET chaves: ' + JSON.stringify(r.corpo.chaves));
@@ -260,6 +263,54 @@ delete env.ANTHROPIC_API_KEY;
 r = await olhar(await carregar());
 if (r.corpo.provedor === 'nenhum') ok('GET avisa quando nenhuma chave chegou');
 else falha('GET sem chave: ' + JSON.stringify(r.corpo));
+env.GEMINI_API_KEY = 'chave-de-teste';
+
+/* ── 7b. quais modelos esta chave alcança (GET ?modelos=1) ────────────
+   O Google aposenta e lança modelo sem aviso; escolher pela memória foi
+   como o gemini-1.5-flash foi parar no código depois de já ter saído de
+   circulação para chave nova. Quem responde tem de ser o provedor. */
+const listar = async () => {
+  const res = await (await carregar())({
+    request: new Request('http://local/api/assistente?modelos=1'), env,
+  });
+  return { status: res.status, corpo: await res.json() };
+};
+
+let listaDeModelos = {
+  models: [
+    { name: 'models/gemini-3.6-flash', displayName: 'Gemini 3.6 Flash', inputTokenLimit: 1048576, outputTokenLimit: 65536, supportedGenerationMethods: ['generateContent'] },
+    { name: 'models/gemini-3.6-flash-lite', displayName: 'Gemini 3.6 Flash-Lite', inputTokenLimit: 1048576, outputTokenLimit: 65536, supportedGenerationMethods: ['generateContent'] },
+    { name: 'models/text-embedding-004', displayName: 'Embedding', supportedGenerationMethods: ['embedContent'] },
+  ],
+};
+let respostaLista = () => new Response(JSON.stringify(listaDeModelos), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+const fetchAntesDaLista = globalThis.fetch;
+globalThis.fetch = (url, opcoes) => (String(url).includes('/v1beta/models?')
+  ? Promise.resolve(respostaLista(url, opcoes))
+  : fetchAntesDaLista(url, opcoes));
+
+r = await listar();
+const nomes = (r.corpo.modelos || []).map((m) => m.nome);
+if (nomes.join(',') === 'gemini-3.6-flash,gemini-3.6-flash-lite') ok('a lista traz só os modelos que escrevem texto, em ordem');
+else falha('lista de modelos: ' + JSON.stringify(r.corpo).slice(0, 200));
+if (r.corpo.emUso === GEMINI_PADRAO) ok('a lista diz qual modelo está em uso agora');
+else falha('emUso: ' + JSON.stringify(r.corpo.emUso));
+if ((r.corpo.modelos[0] || {}).saida === 65536) ok('cada modelo vem com os tetos de entrada e saída');
+else falha('tetos do modelo: ' + JSON.stringify(r.corpo.modelos[0]));
+if (!JSON.stringify(r.corpo).includes('chave-de-teste')) ok('a lista de modelos não vaza a chave');
+else falha('a lista VAZOU A CHAVE: ' + JSON.stringify(r.corpo));
+
+respostaLista = () => new Response(JSON.stringify({ error: { message: 'API key not valid' } }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+r = await listar();
+if (/API key not valid/.test(r.corpo.erro || '')) ok('recusa do Google chega com o motivo real, não um genérico');
+else falha('recusa ao listar: ' + JSON.stringify(r.corpo));
+respostaLista = () => new Response(JSON.stringify(listaDeModelos), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+delete env.GEMINI_API_KEY;
+r = await listar();
+if (r.status === 400 && /GEMINI_API_KEY/.test(r.corpo.erro || '')) ok('sem chave do Gemini, a lista explica o que falta');
+else falha('lista sem chave: ' + JSON.stringify(r.corpo));
 env.GEMINI_API_KEY = 'chave-de-teste';
 
 /* ── 8. quem pode usar: o dono e quem tem plano em dia ───────────────── */

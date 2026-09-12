@@ -18,6 +18,28 @@ TPL = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#04030A">
 <meta name="description" content="__DESC__">
+<link rel="canonical" href="__SITE__/">
+
+<!-- Compartilhamento. Sem isto, colar o link no WhatsApp, no Instagram ou
+     no Twitter mostra só o endereço cru: nada de imagem, título ou
+     descrição. Numa campanha de lançamento isso custa clique em toda
+     postagem. A imagem é gerada pelo gerar_cartao.py, 1200x630, que é a
+     medida que as três redes recortam sem cortar nada. -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Cadência Med">
+<meta property="og:locale" content="pt_BR">
+<meta property="og:url" content="__SITE__/">
+<meta property="og:title" content="__TITLE__">
+<meta property="og:description" content="__DESC__">
+<meta property="og:image" content="__SITE__/cartao.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Cadência Med: cronograma, revisão espaçada e flashcards para a residência médica.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="__TITLE__">
+<meta name="twitter:description" content="__DESC__">
+<meta name="twitter:image" content="__SITE__/cartao.png">
+
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Cadência Med">
@@ -111,18 +133,32 @@ __CSS__
 <script>
 __JS__
 </script>
+<script>
+/* Service worker: é o que faz o site abrir sem internet e carregar na
+   hora na segunda visita. Registrado depois do load para não disputar
+   banda com a primeira pintura, e só em https (ou localhost) — aberto
+   como arquivo, o navegador recusa e não adianta tentar. */
+if ("serviceWorker" in navigator && location.protocol === "https:") {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("/sw.js").catch(function () { /* segue sem */ });
+  });
+}
+</script>
 </body>
 </html>
 """
 
 
+SITE = 'https://cadenciamed.com.br'
+
+
 def build(js, out, title, desc):
     html = (TPL.replace('__CSS__', css).replace('__TITLE__', title)
-            .replace('__DESC__', desc)
+            .replace('__DESC__', desc).replace('__SITE__', SITE)
             .replace('__FAVICON32__', ICONES['FAVICON32'])
             .replace('__APPLE180__', ICONES['APPLE180'])
             .replace('__JS__', open(js, encoding='utf-8').read()))
-    for sobrou in ('__CSS__', '__TITLE__', '__DESC__', '__JS__', '__FAVICON32__', '__APPLE180__'):
+    for sobrou in ('__CSS__', '__TITLE__', '__DESC__', '__SITE__', '__JS__', '__FAVICON32__', '__APPLE180__'):
         if sobrou in html:
             raise SystemExit('marcador não substituído: ' + sobrou)
     open(out, 'w', encoding='utf-8').write(html)
@@ -131,4 +167,5 @@ def build(js, out, title, desc):
 
 if __name__ == '__main__':
     build('b-limpa.js', 'index.html', 'Cadência Med · Estudos para residência',
-          'Painel de estudos para residencia medica: cronograma, cronometro, revisao espacada, flashcards e rotina.')
+          'O cronograma inteiro, a revisão que volta na hora certa e os seus flashcards, no mesmo lugar. '
+          '90 aulas e 213 tópicos prontos para marcar.')

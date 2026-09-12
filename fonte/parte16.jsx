@@ -137,7 +137,7 @@ function TarefasEditor({ tarefas, setTarefas }) {
       <div className="flex gap-2">
         <TextInput value={texto} placeholder="nova meta para o aluno" onChange={(e) => setTexto(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") add(); }} />
-        <Btn onClick={add}><Plus size={15} /></Btn>
+        <Btn onClick={add} title="Adicionar meta"><Plus size={15} /></Btn>
       </div>
       {tarefas.length === 0 ? <Mini>nenhuma meta ainda</Mini> : null}
       {tarefas.map((t) => (

@@ -49,6 +49,7 @@ node testar.mjs                 # abre no Chromium e confere tudo
 node testar.mjs index.html      # confere o arquivo de produção
 node testar-assistente.mjs      # confere a função da IA, sem gastar cota
 node testar-flashcards-ia.mjs   # confere o montador de flashcards a partir de PDF/Word
+node testar-pastas.mjs          # confere em qual pasta grande cai o baralho de cada área
 node testar-compra.mjs          # confere o aviso de compra: segredo, plano e estorno
 node testar-salas.mjs           # confere as salas de amigos, com banco de mentira
 node testar-baralhos.mjs        # confere os baralhos publicados: quem publica e quem baixa
@@ -94,8 +95,12 @@ some calada quando falta uma linha no `normalize()`.
 | `testar-assistente.mjs` | teste da função da IA, com servidor falso no lugar da API |
 | `testar-flashcards-ia.mjs` | teste do montador de flashcards a partir de PDF/Word, mesma técnica de servidor falso |
 | `testar-cronograma-ia.mjs` | teste de organizar o cronograma de outro curso (ou ciclo clínico) em matérias, mesma técnica |
+| `testar-ler-foto.mjs` | teste da transcrição de foto de cronograma, com a IA de mentira |
+| `testar-buscar-imagem.mjs` | teste da ponte que traz figura de fora, incluindo o que ela precisa recusar |
+| `testar-google.mjs` | teste da ligação permanente com o Google, com o OAuth de mentira |
 | `testar-curriculo.mjs` | teste de substituir o currículo padrão, no todo ou só numa área |
 | `testar-cores.mjs` | teste da cor própria: ajuste de legibilidade e sugestão de combinação |
+| `testar-pastas.mjs` | teste de em qual pasta grande cai o baralho de cada área, incluindo o reaproveitamento de pasta já existente |
 | `testar-recorte-pdf.mjs` | teste da matemática que acha o retângulo de cada figura num PDF, com objetos falsos, sem abrir PDF nenhum |
 | `testar-compra.mjs` | teste do aviso de compra: segredo, planos e estorno |
 | `testar-cupom.mjs` | teste do resgate de cupom, com Firebase falso |
@@ -128,8 +133,27 @@ tela larga.
 
 ## Aparência e revisão, escolhidas por quem usa
 
-- As cores de acento são `--neon` e `--neon2`. As cinco cores de área
-  (`--a-CL`, `--a-CI`, `--a-GO`, `--a-PE`, `--a-PR`) não mudam nunca.
+- As cores de acento são `--neon` e `--neon2`.
+- **A cor escolhida pinta o site inteiro, não só os acentos.** Antes, escolher
+  rosa deixava rosa o botão e o número em destaque, e o resto continuava roxo,
+  porque fundo, painéis, linhas e texto nasciam roxos no `THEME_CSS`. Agora
+  `ambienteDoTema` (`base.jsx`) recalcula tudo isso: cada valor é a cor
+  original convertida para HSL, com a **saturação e a claridade preservadas**
+  e só o matiz trocado pelo da cor escolhida. É o que faz o rosa ficar rosa em
+  tudo sem clarear o fundo nem apagar o texto. As cinco cores de área também
+  entram na família (`AREAS_DO_TEMA`), espalhadas em matiz, saturação e
+  claridade para continuarem distinguíveis no radar e nos gráficos.
+- **Onde essas variáveis são escritas importa.** Elas vão no `style` do
+  elemento raiz do app, e não só no `<html>`: o `THEME_CSS` redeclara as
+  mesmas variáveis num `[data-theme]` que casa com esse elemento, e regra de
+  folha de estilo ganha de variável herdada do `<html>`. Escritas só no
+  `<html>`, o fundo da página mudava e os painéis continuavam roxos — o
+  defeito parecia "a cor não pega" e era ordem de cascata. O `<html>`
+  continua recebendo uma cópia, para o fundo do body e a cor da barra do
+  navegador no celular.
+- A cor de origem (`cadencia`) é a única que **não** passa por isso: ela é o
+  desenho original, e recalcular o roxo a partir dele mudaria o tom por
+  arredondamento.
 - `--neon`/`--neon2` valem para os dois temas (claro e escuro) — a troca de
   tema não as toca, só as outras variáveis. Escolhendo uma cor própria (em
   vez de uma das prontas, `CORES_TEMA`), `corLegivel` (`base.jsx`) ajusta a
@@ -157,6 +181,9 @@ problema que existia quando as funções moravam dentro do que ia ao ar.
 | `worker/api/assistente.js` | conversa com a IA; o dono e quem assina podem usar |
 | `worker/api/flashcards-ia.js` | monta flashcards a partir do texto extraído de um PDF/Word |
 | `worker/api/cronograma-ia.js` | organiza o cronograma de outro curso (ou ciclo clínico) em matérias |
+| `worker/api/ler-foto.js` | transcreve o texto da foto de um cronograma, para entrar como se tivesse sido colado |
+| `worker/api/buscar-imagem.js` | busca a figura que o navegador não consegue ler por CORS, para ela ficar dentro da anotação |
+| `worker/api/google.js` | liga a conta do Google de vez: guarda o token de atualização e entrega acesso sem janela |
 | `worker/api/mentor.js` | papel de mentor, alunos, e a rotina/metas/currículo de cada um |
 | `worker/api/cupom.js` | confere o cupom e libera o plano |
 | `worker/api/compra.js` | recebe o aviso de compra da Kiwify ou Hotmart |
@@ -329,11 +356,33 @@ Com as duas cadastradas o Gemini é o escolhido. Para forçar um deles,
 cadastre `IA_PROVEDOR` com `gemini` ou `anthropic`. O modelo também dá para
 trocar sem mexer no código, por `GEMINI_MODELO` e `ANTHROPIC_MODELO`.
 
-**O Google aposenta modelo sem aviso.** O `gemini-2.5-flash` parou de aceitar
-conta nova e o assistente passou a devolver a recusa da própria API. Quando
-acontecer de novo, não é preciso recompilar nem publicar: cadastre
-`GEMINI_MODELO` no Worker com o nome que a mensagem de erro indicar. A
+O padrão é o **`gemini-3.6-flash`** (`GEMINI_PADRAO`, em
+`worker/api/_ia.js`): o Flash é o corte rápido e barato, que é o que estas
+rotas pedem. Responder uma dúvida de estudo, separar um cronograma em aulas e
+transcrever a foto de um calendário não precisam do modelo grande, e o grande
+custa algumas vezes mais por pedido.
+
+**O Google aposenta modelo sem aviso**, e já aconteceu duas vezes aqui: o
+`gemini-2.5-flash` parou de aceitar conta nova, e depois o `gemini-1.5-flash`
+deixou de ser reconhecido para chave de projeto novo. Quando acontecer de
+novo, não é preciso recompilar nem publicar na hora: cadastre `GEMINI_MODELO`
+no Worker com o nome que a mensagem de erro indicar, e ela ganha do padrão. A
 mensagem na tela já diz isso, e repete o substituto que o provedor sugeriu.
+
+Só que a variável **ganha em silêncio**: com um `GEMINI_MODELO` cadastrado, o
+site roda aquele modelo, não o do código, e os dois podem discordar por meses
+sem ninguém notar. `GET /api/assistente` responde qual está no ar de verdade
+(`{"provedor":"gemini","modelo":"..."}`) — vale conferir depois de mexer.
+
+**Qual nome cadastrar** não se decide de memória: `GET
+/api/assistente?modelos=1` pergunta ao próprio Google quais modelos esta
+chave alcança hoje, com os tetos de entrada e saída de cada um, e diz qual
+está em uso. Foi de memória que o `gemini-1.5-flash` foi parar no código
+depois de já ter saído de circulação para chave nova. Nome de modelo não é
+segredo, e a chave continua sem sair do servidor. E,
+passado o aperto, traga o nome novo para o `GEMINI_PADRAO` e apague a
+variável, para o padrão voltar a ser verdade. O teste do assistente importa
+`GEMINI_PADRAO` em vez de repetir o nome, então ele acompanha sozinho.
 
 A assinatura do Gemini Advanced e a do Claude **não** dão acesso às APIs: são
 cobranças separadas. A camada gratuita do Gemini vem da chave do AI Studio,
@@ -353,13 +402,44 @@ mexida nem encurtada.
 
 ### Currículo próprio
 
-Em Assistente → Cronograma, a pessoa pode anexar (colar, ou enviar PDF/Word/
-texto) o cronograma de outro cursinho, ou o conteúdo do ciclo clínico
-(estágio) que está cursando agora. A rota `/api/cronograma-ia` (mesmo padrão
+Na aba Cronograma, a pessoa pode anexar (colar, enviar PDF/Word/texto, ou
+mandar uma foto) o cronograma de outro cursinho, ou o conteúdo do ciclo
+clínico (estágio) que está cursando agora. A rota `/api/cronograma-ia` (mesmo padrão
 de `_ia.js` do montador de flashcards) organiza o material em matérias,
 classificadas nas mesmas 5 áreas do currículo padrão (`CL`/`CI`/`GO`/`PE`/
 `PR` — `AREAS`, no `base.jsx`). A pessoa revê o que a IA separou, desmarca
 áreas que não quer trocar, e confirma.
+
+### A foto do cronograma
+
+Muita gente recebe o cronograma no papel ou vê no mural, e o que tem no
+telefone é a foto. A `/api/ler-foto` manda a imagem para a mesma IA das
+outras rotas e devolve **só o texto transcrito** — daí em diante o caminho é
+o mesmo do PDF, e nenhum campo da aba precisa saber que existe IA no meio.
+
+O navegador reduz a foto antes de mandar: 1600px no lado maior e JPEG de
+qualidade 0,72 (`reduzirFoto`, em `parte9.jsx`). Uma foto de telefone tem
+4000px e vários megabytes, e nesse tamanho demoraria para subir sem ler nada
+melhor: texto de cartaz e de folha impressa fica legível bem antes disso.
+HEIC do iPhone não é desenhado pelo navegador, então nem chega a ser
+reduzido — a mensagem pede JPEG.
+
+Como custa cota da IA, ler foto exige plano, igual ao "organizar com a IA".
+Arquivo e texto colado continuam abertos para todo mundo, porque são lidos
+no próprio navegador.
+
+### As datas do período
+
+`data.cronograma` guarda, além do texto, o `inicio` e o `fim` do período. A
+**data da prova não está aí de propósito**: é a de sempre, em
+`data.profile.examDate`, que é quem manda na projeção de ritmo do painel
+inteiro. Ter duas seria ter duas contagens regressivas discordando uma da
+outra; a aba Cronograma só oferece um segundo lugar para editar a mesma.
+
+As três aparecem no `resumoParaIA` em linha separada do texto do curso: elas
+são dado do painel, conferido pela pessoa, e o calendário é material de fora.
+É o que deixa o assistente dizer "faltam três semanas" sem depender de achar
+isso escrito no meio do calendário.
 
 O resultado fica em `data.cronogramaProprio`: uma lista no mesmo formato do
 currículo padrão (`{id, week, area, title, esp, bonus}`), com o `id`
@@ -574,6 +654,32 @@ necessária ali, e não inventar marcador que não estava no texto. O JSON que a
 IA devolve é conferido e limpo no servidor — tamanho de cada campo, quantos
 cartões no máximo — antes de chegar ao navegador.
 
+### A pasta grande de cada área
+
+Antes, cada documento virava uma pasta com o nome do próprio assunto, e a
+aba Cartões enchia de pasta com um baralho só. Agora a IA também diz **de
+que área é o material**: junto do nome do baralho, ela devolve `area`, uma
+das cinco siglas do currículo (`CL`, `CI`, `GO`, `PE`, `PR`). O servidor
+confere a sigla contra a lista — sigla inventada vira `""`, nunca uma pasta
+que o app não sabe desenhar — e pede o campo **antes** dos cartões no JSON
+de propósito: quando a resposta é cortada no meio do array, a área ainda
+está escrita no texto cru e `lerArea` a pesca de lá com regex, do mesmo
+jeito que `recuperarCartoesParciais` salva os cartões inteiros.
+
+No navegador, `pastaDaArea` (`parte12.jsx`) traduz a sigla no nome da pasta.
+Ela não escreve o nome oficial de cara: primeiro procura, entre as pastas
+que a pessoa já tem, uma que **seja** aquela área escrita de outro jeito —
+`PASTAS_DE_AREA` guarda os apelidos ("MEDICINA PREVENTIVA", "SAÚDE
+PÚBLICA", "GO E PREVENTIVA", a pasta antiga que juntava as duas) e
+`chavePasta` compara ignorando acento, caixa e pontuação. Só quando não
+acha nenhuma é que cria a pasta com o nome oficial. É o que impede
+"PREVENTIVA" de nascer ao lado de "Medicina Preventiva" na conta de quem já
+organizou tudo à mão.
+
+Sem área reconhecida, vale o comportamento antigo: uma pasta com o nome do
+assunto. `testar-pastas.mjs` roda contra `_pastas.mjs`, a cópia automática
+dessas três coisas, refeita pelo `extrair_pastas.py` a cada build.
+
 ### O estilo dos cartões
 
 A instrução da IA (`INSTRUCOES`, em `worker/api/flashcards-ia.js`) pede um
@@ -638,10 +744,122 @@ hora de salvar**, achando que já tinha virado `data-nome` quando não tinha.
 Agora ele tenta primeiro trazer a imagem para dentro do IndexedDB também
 nesses dois casos (um `fetch` do endereço, convertido para `data:` do mesmo
 jeito que uma imagem enviada por upload — necessário até para `blob:`, que
-não sobrevive a um recarregar da página) e, se isso falhar (CORS bloqueado,
-por exemplo), mantém o `src` original em vez de apagar. Só quem tem
-`data-nome` (ou seja, quem realmente foi guardado aqui dentro) tem o `src`
-removido ao salvar.
+não sobrevive a um recarregar da página) e, se isso falhar, mantém o `src`
+original em vez de apagar. Só quem tem `data-nome` (ou seja, quem realmente
+foi guardado aqui dentro) tem o `src` removido ao salvar.
+
+**Esse `fetch` direto falha na maioria dos casos que importam**, porque o
+site de origem não libera a leitura dos bytes por outro domínio: Notion,
+Google Docs e quase todo mundo. No caso do Notion isso era grave, porque o
+endereço da figura é assinado e **vence em cerca de uma hora**: pouco depois
+de colar, a imagem sumia e sobrava o texto alternativo. Por isso, quando o
+`fetch` direto é barrado, a `/api/buscar-imagem` busca no servidor e devolve
+em base64 (`trazerImagemDeFora`, em `parte17.jsx`). Só para quem está na
+conta, só http(s), só resposta que é imagem, com teto de 8MB e sem nomes que
+apontem para dentro da rede — é um caminho para trazer figura, não um proxy
+aberto, e o `testar-buscar-imagem.mjs` cobre cada uma dessas recusas.
+
+**"É imagem" não pode ser lido no cabeçalho.** A ponte recusava tudo que não
+viesse com um `Content-Type` de imagem conhecido — e o depósito do Notion
+manda a figura como `application/octet-stream`, bytes sem nome. Resultado:
+colar uma página inteira nunca trazia figura nenhuma, enquanto copiar a
+imagem sozinha (que põe os bytes na área de transferência, sem passar por
+aqui) funcionava. Era exatamente essa a queixa. Agora o cabeçalho vale
+quando diz um tipo conhecido, e senão quem decide são os **primeiros bytes**
+(`tipoPelosBytes`: PNG, JPEG, GIF, BMP, WEBP, AVIF/HEIC e SVG). HTML continua
+recusado de cara, sem baixar a página inteira.
+
+Duas outras coisas faziam a mesma figura voltar 403:
+
+- **O pedido não parecia um navegador.** CDN com proteção contra link de fora
+  recusa `User-Agent: CadenciaMed/1.0`. A ponte manda um `User-Agent` de
+  navegador e um `Referer` do próprio site da imagem.
+- **O endereço do Notion vem embrulhado**: `notion.so/image/<endereço real
+  codificado>`, e esse embrulho só abre com a sessão de quem copiou. O
+  `desembrulhar` tira o endereço de dentro — o do depósito, assinado e aberto
+  para quem tem o link — e é ele que é buscado. O desembrulhado passa pela
+  mesma checagem de endereço, senão viraria um jeito de contornar a lista de
+  nomes proibidos.
+
+**O bloco de destaque do Notion** (`<aside>`) chega de dois jeitos: como
+elemento, e aí aparecia sem destaque nenhum; ou com a tag escrita como texto,
+e aí `</aside>` aparecia escrito na anotação e ia parar no PDF. `virarDestaque`
+e `tirarTagsEscritas` resolvem os dois, no colar e também ao abrir uma
+anotação que já estava gravada com o defeito (`limparAnotacaoGravada`).
+
+**Figura que mora dentro do Notion não se busca por endereço nenhum.** Este
+foi o caso mais teimoso. O `src` colado é
+`notion.so/image/<endereço do depósito>?table=block&id=…`, e ele **não abre
+para ninguém de fora**: depende do cookie de sessão de quem copiou. Nem o
+servidor alcança, nem o próprio navegador — num `<img>` de outro site o
+cookie do Notion não vai junto, e é por isso que no lugar da figura não
+aparecia nem o ícone de imagem quebrada, só o vazio. Desembrulhar também não
+resolve: o endereço de dentro vem **sem assinatura**, e o depósito responde
+403 para pedido sem assinatura. Era esse 403 que chegava na tela como "o
+endereço da imagem expirou" — a mensagem mandava procurar no lugar errado,
+porque o endereço nunca chegou a valer.
+
+O caminho que funciona é pedir ao **próprio Notion**: `GET /v1/blocks/<id>`
+com o token de quem conectou a conta (o mesmo do cronograma, em
+`notion/{uid}`) devolve um endereço novo, assinado, que qualquer um com o
+link busca. `figuraDoNotion`, em `worker/api/buscar-imagem.js`. O token do
+Notion nunca volta para a página, e o teste cobre isso.
+
+**E de onde vem esse id?** Nem sempre do endereço. No Notion de hoje o
+`<img>` colado costuma apontar **direto** para o depósito na Amazon, sem
+assinatura e sem id nenhum na query — foi o aviso na tela, depois que ele
+passou a dizer a origem, que revelou isso ("de s3-us-west-2.amazonaws.com").
+Enquanto o código só olhava o embrulho `notion.so/image/…`
+(`blocoDoNotion`), o caminho pela API simplesmente nunca era usado. O id
+está no `<figure>` que embrulha a figura no HTML colado: `blocoQueEnvolve`
+sobe até seis níveis procurando um `id` com cara de UUID e
+`marcarBlocoNasFiguras` copia isso para um `data-bloco` no próprio `<img>`,
+ainda no HTML cru, porque o `insertHTML` do navegador pode mexer na árvore
+em volta. O navegador manda esse id junto com o endereço.
+
+A ordem é: tenta o endereço direto (barato, e funciona quando ele está
+assinado e no prazo); recusado com 401/403 e havendo id de bloco, pede o
+endereço novo ao Notion e tenta de novo. Endereço que já abre não gasta
+chamada nenhuma à API de lá.
+
+Quando não dá, a mensagem diz **o que fazer**, não só o que houve: sem o
+Notion conectado, conectar na aba Cronograma; página não compartilhada com a
+integração, o caminho exato no Notion (três pontinhos → Conexões → Cadência
+Med). E a caixa que fica no lugar da figura guarda o endereço original em
+`data-de`, então o botão **"Tentar as N figuras de novo"** refaz a busca sem
+precisar recolar a anotação inteira — que era o que sobrava para a pessoa
+fazer depois de resolver a causa.
+
+**A figura é trazida no COLAR, não na hora de salvar** (`internalizarImagens`).
+Esperar o salvamento já é esperar demais: o endereço do Notion vence em cerca
+de uma hora, e quem cola, lê um pouco e só depois volta perdia a figura. Se
+não der para trazer de jeito nenhum, o lugar dela vira uma caixa dizendo o que
+houve e o que fazer — um ícone de imagem quebrada não ensina nada.
+
+**Colar a imagem em si funciona sempre**, e antes não fazia nada: `aoColar`
+olha `clipboardData.files` antes do HTML. Copiar a figura (botão direito,
+copiar imagem) ou dar um print traz os bytes junto, sem depender de endereço,
+de CORS nem do site de origem. É a saída para figura que não dá para buscar.
+
+**A cor que vem colada** passa por `ajustarCoresColadas`. Texto copiado de
+site escuro chega com a cor dele grudada, um branco acinzentado: no editor
+escuro ninguém nota, no claro é cinza sobre branco. Cor sem cor (cinza,
+branco, preto) é só o "texto normal" do site de origem e sai fora, deixando o
+texto seguir o tema; cor com cor (o verde do "NORMAL", o vermelho do
+"ANORMAL") quer dizer alguma coisa e fica, só com a claridade puxada para uma
+faixa que se lê nos dois fundos.
+
+### Claro e escuro só da anotação
+
+O resto do painel é para consultar e o escuro cai bem; a anotação é para
+escrever e reler por muito tempo, e aí a escolha é pessoal. Ela tem o próprio
+interruptor (`data.notaTema`: `auto`, `light` ou `dark`), que começa seguindo
+o app e passa a mandar sozinho assim que a pessoa escolhe. No claro a letra é
+quase preta (`PAPEL_NOTA`, no `base.jsx`), não um cinza: cinza sobre branco
+cansa a vista.
+
+Vai por contexto (`TemaNotaContext`) e não por propriedade: o editor está três
+componentes abaixo de quem tem os dados.
 
 **Tela cheia e tamanho de fonte.** O botão de tela cheia (`Maximize2`, na
 barra da anotação) usa o mesmo `createPortal` do `ModalDrive` para escapar
@@ -671,13 +889,48 @@ regras de estilo (negrito no que decide a resposta, achado→diagnóstico, "se
 a prova disser"...), então esta função não precisa de instrução própria nem
 de rota nova.
 
-Os cartões caem direto numa das 4 pastas grandes que já existem em Cartões,
-sem perguntar: `PASTA_POR_AREA_NOTA`, em `parte17.jsx`, mapeia a área da
-aula (`CL`/`CI`/`GO`/`PE`/`PR`, as mesmas do currículo) para o nome exato da
-pasta — GO e Preventiva (`PR`) dividem a mesma pasta, "GO E PREVENTIVA",
-como o pedido original já descrevia. Se a pessoa tiver nomeado essas pastas
-com um nome diferente do esperado, os cartões criam uma pasta nova com o
-nome padrão em vez de entrar na pasta dela.
+Os cartões caem direto na pasta grande da área da aula, sem perguntar:
+`pastaDaArea` (`parte12.jsx`) traduz a sigla do currículo (`CL`/`CI`/`GO`/
+`PE`/`PR`) na pasta certa. É a mesma função que o montador por documento
+usa — ver "A pasta grande de cada área", acima.
+
+### Tela cheia não pode levar o texto embora
+
+Entrar em tela cheia move o editor para um portal (`createPortal`, pelo
+mesmo motivo do `ModalDrive`), e o React **desmonta e remonta** o
+`contentEditable`. O texto de uma anotação mora no DOM, não em estado —
+então ele ia junto: tudo que a pessoa tinha escrito ou colado desde que
+abriu a anotação sumia ao clicar no botão de tela cheia.
+
+`conteudoRef` guarda o HTML fora do DOM. `alternarCheia` tira a foto antes
+da troca, `aoMudar` a mantém em dia, e um `useLayoutEffect` em `[cheia]`
+devolve o conteúdo — `useLayoutEffect`, e não `useEffect`, para o editor não
+piscar vazio por um quadro.
+
+Duas armadilhas que o teste pegou:
+
+- **A foto tem de ser tirada depois de as imagens voltarem do IndexedDB.**
+  Tirada no início do efeito de abertura, ela devolvia a anotação sem figura
+  nenhuma na troca de tela.
+- **Reescrever o `innerHTML` apaga a seleção.** Sem cursor, o colar seguinte
+  não sabia onde entrar e comia o começo do texto. O cursor volta para o fim
+  do conteúdo, que é onde quem estava escrevendo espera continuar.
+
+### O tamanho de cada figura
+
+Uma figura colada chega do tamanho que era no site de origem, e não havia
+como mexer: ou cabia, ou ficava enorme. Clicar numa imagem dentro do editor
+seleciona ela (contorno na cor do tema) e abre uma régua na barra de
+ferramentas: P, M, G, Cheia, Original e "tirar".
+
+A largura vai em **porcentagem**, nunca em pixels. A mesma anotação é lida no
+computador e no celular, e uma figura de "420px" que fica boa numa tela
+estoura a outra. "Original" apaga a largura escrita e devolve a figura ao
+tamanho natural, com o `max-width: 100%` que ela já tinha.
+
+O contorno da seleção é escrito no `style` da própria imagem, então sai em
+dois lugares: na troca de seleção e no clone que vai para o salvamento
+(`prepararParaSalvar`). Senão ficaria gravado na anotação e sairia no PDF.
 
 ### Baixar em Word ou PDF, e enviar para o Google Drive
 
@@ -691,12 +944,36 @@ inline. Truque antigo, ainda válido.
 **PDF.** Aqui sim entra biblioteca: [jsPDF](https://github.com/parallax/jsPDF)
 e [html2canvas](https://html2canvas.hertzen.com), carregadas de um CDN só
 quando a pessoa pede (mesmo padrão do `carregarPdfJs`/`carregarMammoth`, em
-`parte12.jsx`). `doc.html()` tira uma "foto" do HTML formatado da anotação
-e embute como PDF — sem elas, um PDF de verdade exigiria escrever o layout
-de texto rico (negrito, cor, grifo, alinhamento, imagem) à mão, com a API
-de desenho do jsPDF. A troca: o texto do PDF gerado assim não é
-selecionável (é imagem), mas o visual bate exatamente com o que está na
-tela — para uma anotação de estudo, isso importa mais que texto buscável.
+`parte12.jsx`). `doc.html()` percorre o HTML formatado da anotação e escreve
+no PDF — sem isso, um PDF de verdade exigiria escrever o layout de texto rico
+(negrito, cor, grifo, alinhamento, imagem) à mão, com a API de desenho do
+jsPDF. O texto sai como texto, dá para selecionar e buscar, e as imagens vão
+junto.
+
+### A fonte do PDF da anotação
+
+O jsPDF escreve com as 14 fontes padrão do PDF, e **todas são de 8 bits**
+(WinAnsi). Acento passa, porque está na tabela. Seta, `≥`, `≤` e emoji não:
+saíam trocados por lixo, e não por um quadradinho — `→` virava `!’`, `≥`
+virava `”e`, `💡` virava `Ø=ÜI`. Numa anotação de medicina, cheia de seta de
+fisiopatologia, isso estragava o arquivo inteiro, e o defeito não aparecia
+em lugar nenhum antes de abrir o PDF.
+
+A saída é embutir uma fonte de verdade: a DejaVu, do jsDelivr, baixada só na
+primeira exportação e guardada pelo navegador depois. **Duas coisas precisam
+acontecer juntas**, e é o pulo do gato aqui:
+
+1. registrar a fonte no jsPDF (`addFileToVFS` + `addFont`), que é quem
+   desenha;
+2. colocar a **mesma** fonte na página, num `@font-face`, porque quem mede a
+   largura de cada palavra para quebrar a linha é o navegador. Medindo com
+   uma fonte e desenhando com outra, as palavras saem grudadas
+   ("DistúrbiosHipertensivosda").
+
+Emoji não existe em fonte de texto nenhuma, então ele é tirado do texto antes
+de exportar — na anotação continua. E se a fonte não baixar (sem rede), o PDF
+sai nas fontes padrão com os símbolos trocados por versões de 8 bits
+(`TROCAS_SEM_FONTE`): um `->` é pior que um `→`, mas é muito melhor que `!’`.
 
 O PDF sempre saía em branco: o elemento temporário usado para "fotografar"
 a anotação (`notaParaPdfBlob`) ficava em `left:-9999px`, fora da área da
@@ -892,11 +1169,20 @@ A senha nunca é guardada: fica gravado o PBKDF2 dela, com um sal sorteado por
 sala. A conferência é no servidor — no navegador bastaria abrir o código da
 página para entrar em qualquer sala.
 
-O ranking tem três recortes: **semana** (o padrão, porque é a corrida em que
-dá para virar o jogo), **mês** e **desde sempre**. Quem decide de que semana e
-de que mês se trata é o servidor, no fuso de São Paulo — deixar cada navegador
-decidir faria duas pessoas da mesma sala compararem semanas diferentes sem
-perceber.
+O ranking tem quatro recortes: **hoje**, **semana** (o padrão, porque é a
+corrida em que dá para virar o jogo), **mês** e **desde sempre**. Quem decide
+de que dia, de que semana e de que mês se trata é o servidor, no fuso de São
+Paulo — deixar cada navegador decidir faria duas pessoas da mesma sala
+compararem semanas diferentes sem perceber.
+
+O número do dia acompanha **qualquer** recorte, não só o dele: cada linha do
+ranking mostra quanto a pessoa fez hoje ao lado do total da semana. Quem
+lidera o mês pode não ter aberto o livro hoje, e é essa a informação que muda
+o que alguém faz agora.
+
+O próprio dia, no alto da aba (`MeuDia`), sai das sessões gravadas no
+aparelho e não do servidor: é o mesmo número que a aba Hoje mostra, aparece
+na hora e continua certo sem rede.
 
 Cada recorte é gravado com a chave do período junto. Quem estudou muito na
 semana passada e não abriu o app desde então aparece zerado nesta semana, com
@@ -943,6 +1229,183 @@ aparecem, já que a pessoa não pediu essa tentativa. O botão "Puxar do Google"
 continua funcionando a qualquer momento para puxar na hora. Desconectar
 (`gcal.desconectar`) desliga o `autoSync` — só liga de novo puxando manualmente
 uma vez.
+
+### Ligar a conta de vez
+
+A tentativa silenciosa acima depende de o navegador ainda ter a sessão do
+Google e de não estar barrando cookie de terceiros. **No celular e no modo
+aplicativo ela falha quase sempre**, e o resultado é a tela de autorizar
+aparecendo toda vez que a pessoa abre o site. Foi a reclamação que originou
+esta parte.
+
+A rota `/api/google` resolve pelo mesmo caminho do Notion: o navegador faz o
+fluxo de **código** (`initCodeClient`, uma janela, uma vez), manda o código
+para o servidor, e o servidor troca por um **token de atualização** usando o
+segredo da credencial. O token fica em `google/{uid}`, escrito e lido só pela
+conta de serviço, e **nunca volta para a página** — o teste
+`testar-google.mjs` cobre exatamente isso. Dali em diante o navegador pede
+`acao: "token"` e recebe um acesso novo, sem janela e sem depender de cookie
+de terceiros.
+
+Para funcionar, o Worker precisa de duas variáveis:
+
+| Variável | O que é |
+|---|---|
+| `GOOGLE_CLIENT_ID` | o mesmo ID que a página já usa em `CADENCIA_GOOGLE` |
+| `GOOGLE_CLIENT_SECRET` | o segredo da **mesma** credencial, no Google Cloud |
+
+A credencial precisa ser do tipo **Aplicativo da Web**, com o endereço do
+site em Origens JavaScript autorizadas (o que já era necessário antes).
+
+**Sem as duas variáveis nada quebra**: a rota responde `disponivel: false`, a
+página não oferece o botão e tudo continua como era, autorizando por sessão.
+
+Duas armadilhas que o código já trata:
+
+1. O Google só manda o token de atualização na **primeira** autorização de
+   cada conta. Por isso o pedido vai com `prompt: "consent"`: sem ele, quem
+   já tinha autorizado antes recebia um código que virava só token de acesso,
+   e a ligação permanente não saía do lugar sem ninguém entender por quê.
+2. Quando a pessoa revoga o acesso pela conta Google, a renovação passa a
+   responder `invalid_grant`. O token guardado é apagado na hora, senão o app
+   ficaria tentando com ele a cada abertura, para sempre.
+
+**Uma autorização, dois usos.** A ligação permanente pede
+`ESCOPO_PERMANENTE`, que é o da agenda **mais** o `drive.file`. Autorizar é o
+passo chato; fazer isso duas vezes, uma para a agenda e outra para o Drive,
+era chato em dobro por nada — e era o que fazia "enviar para o Drive" abrir
+janela toda vez, mesmo com a conta já ligada. O `useGoogleDrive` agora pede o
+token ao servidor antes de pensar em janela.
+
+Quem ligou a conta **antes** desta mudança tem uma autorização só da agenda,
+e o Drive responde 401/403 a esse token. Nesse caso o hook marca o servidor
+como "não serve para o Drive" nesta sessão, abre a janela uma vez e refaz o
+envio — em vez de devolver um erro que a pessoa não teria como entender.
+Religar a conta de vez passa a valer para os dois.
+
+**Quando a sincronização sozinha para, ela diz.** A tentativa silenciosa
+falhando era muda: a linha continuava dizendo "sincronizando sozinho a cada
+30 min" com uma hora velha embaixo, e a pessoa só descobria puxando na mão.
+Agora o hook devolve `autoParou`, e a aba Rotina troca a linha por um aviso
+com o botão de ligar a conta de vez do lado. A linha normal também passou a
+dizer a verdade inteira: "a cada 30 min, **com o site aberto**" — não há
+sincronização com o app fechado, e prometer isso seria pior do que não
+prometer nada.
+
+## Desempenho, Ciclo clínico e Configurações
+
+Três abas que arrumam coisas que já existiam espalhadas (`parte18.jsx`).
+
+**Desempenho.** As questões já eram gravadas em cada sessão (`questions` e
+`correct`, desde sempre), mas faltavam as duas pontas: só dava para
+lançá-las junto com tempo de estudo (o formulário de sessão exige um minuto
+no mínimo), e o acerto por matéria não aparecia em lugar nenhum — o
+Progresso mostrava só o total e a curva no tempo. Aqui o lançamento é só de
+questões, com o tempo opcional, e o resultado é lido por área e por matéria,
+**a mais fraca em primeiro**: esta tela existe para achar onde estudar, não
+para comemorar o que já está bom. Com o mesmo acerto, ganha quem fez mais
+questões, que é o dado mais firme.
+
+Nada de estrutura nova: tudo sai de `data.sessions`, então o que já estava
+lançado aparece na hora. Sessão sem questão nenhuma fica de fora da conta —
+uma aula não é desempenho ruim, e entrar na média puxaria tudo para baixo
+sem querer dizer nada. E sem questão nenhuma a tela diz isso, em vez de
+mostrar 0%: 0% e "não lancei nada" são coisas diferentes.
+
+**Ciclo clínico.** As matérias do ciclo são as de `data.cronogramaProprio`,
+e elas moram na mesma lista do currículo ativo (`montarCurriculo`). A aba
+nova é a **mesma tela de Matérias com a lista filtrada** — de propósito: a
+anotação, as etapas e o desempenho de cada aula são exatamente os mesmos,
+sem uma segunda implementação para manter em pé. `idsDoCiclo` separa as
+duas listas, e cada matéria aparece num lugar só. A aba só existe quando há
+cronograma próprio. Quem substituiu o currículo inteiro pelo ciclo deixa
+Matérias sem nenhuma aula; em vez de uma tela em branco, que parece defeito,
+ela diz onde as matérias foram parar e leva até lá.
+
+**Configurações.** Conta, plano, cupom, aparência, formato da tela, metas e
+backup, que estavam divididos entre o rodapé e a aba Progresso. O Progresso
+ficou só com os números. O esquema de revisão e as conexões (Google, Notion)
+continuam nas telas delas, com o contexto que explica cada uma — repetir o
+controle aqui criaria dois lugares para mexer na mesma coisa —, e
+Configurações só diz onde ficam.
+
+## O acabamento que uma varredura pegou
+
+Uma varredura do site inteiro, aba por aba, nas duas larguras e em conta
+nova, achou coisas que nenhum teste pegava porque nenhum teste olhava para
+elas. Ficam registradas aqui porque cada uma tem um porquê que não é óbvio.
+
+**Contraste dos tons apagados.** `--faint` e `--ghost` estavam em 2,7:1,
+abaixo dos 4,5:1 que texto exige. Duas armadilhas apareceram no conserto:
+
+1. O fundo contra o qual medir não é o `--bg`, é o **`--card3` composto**.
+   Ele é translúcido (`rgba(...,.88)` sobre o card2, que é `.72` sobre o
+   fundo), então acaba bem mais claro do que o valor escrito nele. Medir
+   o valor cru dava um número melhor do que a tela mostra, e foi por isso
+   que o primeiro conserto não bastou.
+2. **Trocar a cor do tema desfazia o conserto.** `ambienteDoTema` gira o
+   matiz preservando a claridade do HSL — mas claridade igual em HSL não é
+   luminância igual: um amarelo e um azul com o mesmo L têm contrastes
+   bem diferentes. Agora, depois de girar o matiz, `ateContrastar` mede o
+   contraste de verdade e ajusta cada tom de texto até o mínimo
+   (`CONTRASTE_MINIMO`), tema a tema. `faint` vai a 4,5:1 porque carrega
+   texto; `ghost` a 3:1, que é o mínimo de elemento de interface, porque
+   é ícone e contorno.
+
+**Alvos de toque.** A varredura acusou 43 botões pequenos em Matérias —
+**e era falso alarme**: a regra `.toque` já resolve, mas só dentro de
+`@media (pointer: coarse)`, e a medição rodava sem emular toque. Refeita
+num celular de verdade, sobraram só os de Cartões, que não tinham a
+classe. Vale a lição: medir acessibilidade sem emular o aparelho mede
+outra coisa.
+
+**Botão só com ícone não tem nome.** Quem usa leitor de tela ouve "botão"
+e acabou. `Btn` agora usa o `title` como nome acessível quando não há
+texto dentro — um lugar só para manter em dia, já que o título também é o
+que aparece ao parar o mouse.
+
+**Texto apontando para a aba errada.** A conta mudou de Progresso para
+Configurações e quatro telas continuaram mandando a pessoa para o lugar
+antigo. É o tipo de defeito que só aparece lendo o site inteiro, e o teste
+agora procura por ele.
+
+## Compartilhamento, buscador e páginas legais
+
+**Tags de compartilhamento.** Sem `og:`/`twitter:`, colar o link no
+WhatsApp ou no Instagram mostrava só o endereço cru. A imagem é o
+`cartao.png`, 1200x630 (a medida que as redes recortam sem cortar nada),
+**desenhada** pelo `gerar_cartao.py` e não fotografada de uma tela:
+captura de tela vira ilegível em miniatura. Dois detalhes que custaram
+tentativa: o brilho é desenhado pequeno e ampliado com LANCZOS (círculo
+desenhado no tamanho final vira um disco de borda dura), e a marca tem um
+halo assado no PNG que aparecia como retângulo — o alfa abaixo de 25% é
+zerado antes de colar.
+
+**robots.txt e sitemap.xml precisam existir como arquivo.** Sem eles, o
+"qualquer endereço devolve o index" fazia o buscador receber a página do
+app onde esperava regras.
+
+**Privacidade e termos são páginas soltas** (`gerar_legais.py`), fora do
+React: abrem sem carregar 1 MB, funcionam pelo endereço direto — que é o
+que se cola no checkout — e continuam no ar mesmo se o app quebrar. O
+texto sai dos fatos do próprio sistema (o que é guardado, onde, por
+quanto tempo); um modelo genérico descreveria outro produto.
+
+## O site abrindo sem internet
+
+Havia manifest e o site se dizia instalável, mas **não havia service
+worker**: sem ele o app não abre offline e o Android nem oferece instalar
+direito. Junto disso, o HTML é publicado com `no-store` de propósito (para
+uma publicação nova aparecer na hora), e o preço era rebaixar ~300 KB a
+cada abertura.
+
+`sw.js` resolve os dois com estratégias diferentes por tipo: **rede
+primeiro** para a navegação, então quem está online sempre vê a versão
+mais nova e quem está sem rede vê a última que funcionou; **cache
+primeiro** para ícone e manifest, que mudam pouco. O que nunca entra em
+cache é `/api/`: são respostas por pessoa, com token, e guardá-las seria
+mostrar dado de uma conta em outra. O próprio `sw.js` vai com `no-cache`,
+senão um worker velho preso no cache prenderia junto tudo o mais.
 
 ## Mentor
 

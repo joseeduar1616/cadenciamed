@@ -349,7 +349,7 @@ function Notion({ nuvem, subjects, data, setData, notify }) {
       <Card className="px-6 py-6">
         <H color="var(--neon2)" icon={<BookMarked size={16} />}>Cronograma do Notion</H>
         <Texto style={{ marginTop: 10 }}>
-          Entre na sua conta em Progresso para ligar o seu planner do Notion.
+          Entre na sua conta em Configurações para ligar o seu planner do Notion.
         </Texto>
       </Card>
     );

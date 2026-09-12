@@ -18,6 +18,9 @@ import { onRequest as notion } from "./api/notion.js";
 import { onRequest as plano } from "./api/plano.js";
 import { onRequest as mentor } from "./api/mentor.js";
 import { onRequest as cronogramaIa } from "./api/cronograma-ia.js";
+import { onRequest as lerFoto } from "./api/ler-foto.js";
+import { onRequest as buscarImagem } from "./api/buscar-imagem.js";
+import { onRequest as google } from "./api/google.js";
 
 const ROTAS = {
   "/api/assistente": assistente,
@@ -31,6 +34,9 @@ const ROTAS = {
   "/api/plano": plano,
   "/api/mentor": mentor,
   "/api/cronograma-ia": cronogramaIa,
+  "/api/ler-foto": lerFoto,
+  "/api/buscar-imagem": buscarImagem,
+  "/api/google": google,
 };
 
 /* ── quem pode chamar de outro endereço ────────────────────────────────

@@ -31,10 +31,16 @@ const DEFAULTS = {
   },
   pomoLog: [],
   simulados: {}, provas: [], habits: HABITS_SEED, habitLog: {},
-  rever: [], notes: {}, googleCal: { id: "", ultima: 0, autoSync: false },
+  rever: [], notes: {},
+  googleCal: { id: "", ultima: 0, autoSync: false, autoEnviar: true, opts: {}, enviados: {} },
   /* Cronograma que a pessoa recebeu do curso dela, em texto, para o
-     assistente organizar a rotina em cima do que ela realmente tem. */
-  cronograma: { nome: "", texto: "" },
+     assistente organizar a rotina em cima do que ela realmente tem.
+     As duas datas dizem quando esse período começa e quando acaba: sem elas
+     o assistente sabe o conteúdo mas não sabe o prazo. A data da prova não
+     está aqui de propósito, é a de sempre, em profile.examDate, que é quem
+     manda na projeção do painel inteiro. Ter duas seria ter duas contagens
+     regressivas discordando uma da outra. */
+  cronograma: { nome: "", texto: "", inicio: "", fim: "" },
   /* Currículo próprio, que substitui o padrão no todo ou por área. Ver
      normalize(), logo abaixo. */
   cronogramaProprio: [],
@@ -57,9 +63,15 @@ const DEFAULTS = {
   revisao: { esquema: "cadencia", dias: [7, 21, 60, 150] },
   /* aparência: cor de acento, fonte e tamanho do texto */
   tema: { cor: "cadencia", neon: "", neon2: "", fonte: "inter", tamanho: 1 },
+  /* Claro e escuro da anotação, à parte do resto: "auto" segue o app. */
+  notaTema: "auto",
 };
 
 const KEY = "cadencia:v3";
+
+/* Um dia no formato do <input type="date">, ou vazio. Serve para qualquer
+   data que venha de fora e vá virar conta de dias depois. */
+const diaValido = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? String(v) : "");
 
 function normalize(raw) {
   const d = raw && typeof raw === "object" ? raw : {};
@@ -120,12 +132,18 @@ function normalize(raw) {
     habits: arr(d.habits, HABITS_SEED), habitLog: obj(d.habitLog),
     rever: arr(d.rever, []), notes: obj(d.notes),
     mostrarDesempenho: d.mostrarDesempenho !== false,
+    notaTema: ["light", "dark"].indexOf(d.notaTema) >= 0 ? d.notaTema : "auto",
     cronograma: {
       nome: String(obj(d.cronograma).nome || "").slice(0, 80),
       /* Cortado aqui, e não só na hora de enviar: um arquivo enorme colado
          encheria o armazenamento do navegador e derrubaria o salvamento
          inteiro, não só o assistente. */
       texto: String(obj(d.cronograma).texto || "").slice(0, 20000),
+      /* Data solta vira vazio: o campo é um <input type="date">, então o que
+         vale é AAAA-MM-DD, e qualquer outra coisa só quebraria a conta de
+         dias mais adiante. */
+      inicio: diaValido(obj(d.cronograma).inicio),
+      fim: diaValido(obj(d.cronograma).fim),
     },
     /* Currículo próprio: substitui o padrão (curriculo.js) no todo ou só
        numa área, montado pela IA a partir do que a pessoa anexou em
@@ -161,6 +179,19 @@ function normalize(raw) {
       id: typeof gc.id === "string" ? gc.id : "",
       ultima: Number(gc.ultima) || 0,
       autoSync: !!gc.autoSync,
+      /* Mão dupla: manda para o Google o que muda aqui. Ligado por padrão,
+         então o que conta é a recusa explícita. */
+      autoEnviar: gc.autoEnviar !== false,
+      /* Quais grupos de evento sobem, do último envio pelo botão. */
+      opts: obj(gc.opts),
+      /* O que já subiu: id do evento → "grupo:marca do conteúdo". Sem isto
+         na volta do disco, toda abertura reenviaria a agenda inteira.
+         Filtrado porque é mapa grande e vem da nuvem: valor que não for
+         texto viraria comparação estranha lá na frente. */
+      enviados: Object.entries(obj(gc.enviados))
+        .filter(([, v]) => typeof v === "string")
+        .slice(0, 3000)
+        .reduce((m, [k, v]) => { m[k] = v; return m; }, {}),
     },
     /* Os cartões precisam sobreviver ao recarregar a página: como tudo passa
        por aqui na volta do disco e da nuvem, o que não for copiado se perde. */
@@ -340,7 +371,7 @@ async function gravarBruto(k, v) {
 function diagnostico(e) {
   const t = String((e && (e.name || e.code)) || "") + " " + String((e && e.message) || "");
   if (/quota|exceed|\b22\b/i.test(t)) {
-    return "O espaço de armazenamento do navegador encheu. Baixe um backup em Progresso e apague parte do histórico.";
+    return "O espaço de armazenamento do navegador encheu. Baixe um backup em Configurações e apague parte do histórico.";
   }
   if (/security|access|denied|not allowed/i.test(t)) {
     return "O navegador bloqueou o armazenamento nesta página. Costuma acontecer em aba anônima, ou ao abrir o arquivo direto do computador.";
@@ -466,8 +497,16 @@ function Btn({ children, onClick, tone = "quiet", disabled, className = "", titl
     danger: { bg: "transparent", fg: T.bad, bd: soft("var(--bad)", 35) },
   };
   const t = map[tone] || map.quiet;
+  /* Botão só com ícone não tem nome nenhum para quem usa leitor de tela:
+     ouve "botão" e acabou. Quando não há texto dentro, o título vira o
+     nome — é o mesmo texto que já aparece ao parar o mouse em cima, então
+     não há um segundo lugar para manter em dia. */
+  const soIcone = !React.Children.toArray(children).some(
+    (c) => typeof c === "string" || typeof c === "number",
+  );
   return (
-    <button type="button" title={title} onClick={onClick} disabled={disabled}
+    <button type="button" title={title} aria-label={soIcone ? title : undefined}
+      onClick={onClick} disabled={disabled}
       className={`inline-flex items-center justify-center gap-2 rounded-full ${className}`}
       style={{
         background: t.bg, color: t.fg, border: `1px solid ${t.bd}`,

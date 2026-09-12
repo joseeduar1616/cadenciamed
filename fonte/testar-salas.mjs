@@ -159,6 +159,7 @@ else falha('sala inexistente: ' + JSON.stringify(r));
    segunda chance de errar do mesmo jeito. */
 const SEMANA = mod.recorteAtual('semana').chave;
 const MES = mod.recorteAtual('mes').chave;
+const DIA = mod.recorteAtual('hoje').chave;
 
 /* Bia estudou mais no acumulado; Ana estudou mais nesta semana. É a troca de
    liderança entre os recortes que prova que o filtro faz alguma coisa. */
@@ -169,6 +170,8 @@ PERFIS['uid-ana'] = {
   semanaMinutos: { doubleValue: 300 }, semanaQuestoes: { doubleValue: 80 }, semanaAcertos: { doubleValue: 60 },
   mesChave: { stringValue: MES },
   mesMinutos: { doubleValue: 500 }, mesQuestoes: { doubleValue: 120 }, mesAcertos: { doubleValue: 90 },
+  diaChave: { stringValue: DIA },
+  diaMinutos: { doubleValue: 20 }, diaQuestoes: { doubleValue: 10 }, diaAcertos: { doubleValue: 8 },
   atualizadoEm: { doubleValue: Date.now() },
 };
 PERFIS['uid-bia'] = {
@@ -178,6 +181,10 @@ PERFIS['uid-bia'] = {
   semanaMinutos: { doubleValue: 120 }, semanaQuestoes: { doubleValue: 40 }, semanaAcertos: { doubleValue: 30 },
   mesChave: { stringValue: MES },
   mesMinutos: { doubleValue: 800 }, mesQuestoes: { doubleValue: 90 }, mesAcertos: { doubleValue: 81 },
+  /* Bia estudou hoje e Ana quase não: no recorte do dia a ordem vira outra,
+     que é o que a aba mostra quando alguém pergunta "quem já começou hoje". */
+  diaChave: { stringValue: DIA },
+  diaMinutos: { doubleValue: 95 }, diaQuestoes: { doubleValue: 30 }, diaAcertos: { doubleValue: 15 },
   atualizadoEm: { doubleValue: Date.now() },
 };
 
@@ -206,6 +213,30 @@ r = await pedir({ token: 't', acao: 'ranking', nome: 'r3-clinica', periodo: 'tot
 lista = r.corpo.ranking || [];
 if (lista[0].nome === 'Bia' && lista[0].minutos === 900) ok('o total continua sendo o acumulado de sempre');
 else falha('ranking total: ' + JSON.stringify(lista));
+
+/* ── o dia ───────────────────────────────────────────────────────────── */
+r = await pedir({ token: 't', acao: 'ranking', nome: 'r3-clinica', periodo: 'hoje' });
+lista = r.corpo.ranking || [];
+if (r.corpo.sala.periodo === 'dia' && r.corpo.sala.rotulo === 'hoje') ok('o recorte do dia existe e vem rotulado');
+else falha('recorte do dia: ' + JSON.stringify(r.corpo.sala));
+if (lista[0].nome === 'Bia' && lista[0].minutos === 95) ok('no dia lidera quem estudou hoje, com os minutos de hoje');
+else falha('ranking do dia: ' + JSON.stringify(lista));
+
+/* o dia acompanha qualquer recorte: na semana, cada linha ainda diz quanto
+   a pessoa fez hoje, que é o que muda o que ela faz agora */
+r = await pedir({ token: 't', acao: 'ranking', nome: 'r3-clinica', periodo: 'semana' });
+lista = r.corpo.ranking || [];
+const naSemana = Object.fromEntries(lista.map((x) => [x.nome, x]));
+if (naSemana.Bia.hoje.minutos === 95 && naSemana.Ana.hoje.minutos === 20) ok('o número de hoje vai junto mesmo no ranking da semana');
+else falha('hoje dentro da semana: ' + JSON.stringify(lista.map((x) => [x.nome, x.hoje])));
+
+/* dia de ontem não passa por dia de hoje */
+PERFIS['uid-ana'].diaChave = { stringValue: '2000-01-01' };
+r = await pedir({ token: 't', acao: 'ranking', nome: 'r3-clinica', periodo: 'hoje' });
+lista = r.corpo.ranking || [];
+if ((lista.find((x) => x.nome === 'Ana') || {}).minutos === 0) ok('número de outro dia não conta como de hoje');
+else falha('dia velho contou: ' + JSON.stringify(lista));
+PERFIS['uid-ana'].diaChave = { stringValue: DIA };
 
 /* período inventado não pode derrubar a rota nem virar outro recorte */
 r = await pedir({ token: 't', acao: 'ranking', nome: 'r3-clinica', periodo: 'trimestre' });

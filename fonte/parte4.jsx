@@ -340,11 +340,29 @@ function Rotina({ data, setData, gcal, today }) {
           </div>
         </div>
         {gcal && gcal.autoSync ? (
-          <Mini style={{ marginTop: 10 }}>
-            sincronizando sozinho a cada 30 min{gcal.ultima
-              ? ` · última vez às ${pad(new Date(gcal.ultima).getHours())}:${pad(new Date(gcal.ultima).getMinutes())}`
-              : ""}
-          </Mini>
+          gcal.autoParou ? (
+            /* Parar de sincronizar sozinho é o tipo de coisa que não pode
+               acontecer em silêncio: a agenda fica velha e parece certa. */
+            <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+              <Mini style={{ color: T.warn }}>
+                {gcal.logado
+                  ? "a sincronização sozinha parou: falta ligar a conta do Google de vez"
+                  : "a sincronização sozinha parou: entre na sua conta do Cadência para ela voltar"}
+                {gcal.ultima
+                  ? ` · a última foi às ${pad(new Date(gcal.ultima).getHours())}:${pad(new Date(gcal.ultima).getMinutes())}`
+                  : ""}
+              </Mini>
+              {gcal.podeLigarDeVez ? (
+                <Btn size="sm" tone="primary" onClick={gcal.ligarDeVez}>Ligar a conta de vez</Btn>
+              ) : null}
+            </div>
+          ) : (
+            <Mini style={{ marginTop: 10 }}>
+              sincronizando sozinho a cada 30 min, com o site aberto{gcal.ultima
+                ? ` · última vez às ${pad(new Date(gcal.ultima).getHours())}:${pad(new Date(gcal.ultima).getMinutes())}`
+                : ""}
+            </Mini>
+          )
         ) : null}
         {gcal && gcal.erro ? <Label style={{ marginTop: 12, color: T.bad }}>{gcal.erro}</Label> : null}
 

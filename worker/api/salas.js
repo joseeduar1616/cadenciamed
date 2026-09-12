@@ -150,6 +150,16 @@ async function perfisDe(token, uids) {
       presencaEm: numero(f.presencaEm),
       presencaMin: numero(f.presencaMin),
       total: { minutos: numero(f.minutos), questoes: numero(f.questoes), acertos: numero(f.acertos) },
+      /* O dia é o recorte mais curto e o que mais muda: é o que responde
+         "quem já começou hoje", que é a pergunta que faz alguém abrir a aba
+         de manhã. Vem com a data junto, como os outros, senão o número de
+         ontem passaria por número de hoje para quem não abriu o app ainda. */
+      dia: {
+        chave: texto(f.diaChave),
+        minutos: numero(f.diaMinutos),
+        questoes: numero(f.diaQuestoes),
+        acertos: numero(f.diaAcertos),
+      },
       semana: {
         chave: texto(f.semanaChave),
         minutos: numero(f.semanaMinutos),
@@ -255,6 +265,7 @@ function inicioDaSemana(iso) {
 
 export function recorteAtual(periodo) {
   const hoje = hojeNoFuso();
+  if (periodo === "hoje") return { campo: "dia", chave: hoje, rotulo: "hoje" };
   if (periodo === "mes") return { campo: "mes", chave: hoje.slice(0, 7), rotulo: "neste mês" };
   if (periodo === "total") return { campo: "total", chave: null, rotulo: "desde sempre" };
   return { campo: "semana", chave: inicioDaSemana(hoje), rotulo: "nesta semana" };
@@ -262,6 +273,7 @@ export function recorteAtual(periodo) {
 
 export function montarRanking(sala, perfis, eu, periodo, agora = Date.now()) {
   const recorte = recorteAtual(periodo);
+  const doDia = recorteAtual("hoje");
 
   const linhas = sala.membros.map((uid) => {
     const p = perfis[uid] || {};
@@ -290,11 +302,22 @@ export function montarRanking(sala, perfis, eu, periodo, agora = Date.now()) {
       ? Math.max(0, Math.round((p.presencaMin || 0) + (agora - p.presencaEm) / 60000))
       : 0;
 
+    /* O dia vai junto em qualquer recorte: na tela ele aparece ao lado do
+       número da semana, para dar de olho quem já estudou hoje sem trocar de
+       aba. Quando o recorte escolhido já é o dia, é o mesmo número. */
+    const hoje = (p.dia || {}).chave === doDia.chave && !escondido
+      ? {
+        minutos: Math.max(0, Math.round(p.dia.minutos || 0)),
+        questoes: Math.max(0, Math.round(p.dia.questoes || 0)),
+      }
+      : { minutos: 0, questoes: 0 };
+
     return {
       uid,
       nome: p.nome || "sem nome",
       /* Horas líquidas: só o tempo lançado em sessão, sem contar pausa. */
       minutos: vale ? Math.max(0, Math.round(bloco.minutos || 0)) : 0,
+      hoje,
       questoes,
       acertos,
       pct: questoes ? Math.round((acertos / questoes) * 100) : null,

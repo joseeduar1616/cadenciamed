@@ -16,10 +16,20 @@ const PEDIDOS = [
   ['JetBrains Mono', 'JetBrains+Mono:wght@400;500;700'],
 ];
 
-/* User-Agent de navegador moderno: sem ele o Google devolve TTF em vez de
-   WOFF2, que é bem maior. */
-const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 '
-  + '(KHTML, like Gecko) Chrome/122.0 Safari/537.36';
+/* User-Agent de um Chrome antigo, de propósito.
+ *
+ * Para navegador moderno o Google devolve fonte variável: um arquivo só
+ * cobrindo todos os pesos. O Chromium até desenha certo, mas na hora de
+ * imprimir ele instancia o peso pedido e grava as letras como Type3, que é
+ * glifo desenhado, não fonte de verdade. O texto continua selecionável e o
+ * desenho fica igual, mas quem abre o PDF num editor não consegue mexer no
+ * texto, e é justamente disso que este material precisa.
+ *
+ * Este UA não anuncia suporte a fonte variável, então vem um arquivo
+ * estático por peso e o PDF sai com fonte embutida de verdade. Continua
+ * WOFF2: o TTF só apareceria com um UA bem mais velho. */
+const UA = 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 '
+  + '(KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36';
 
 async function baixar(url, bin) {
   const r = await fetch(url, { headers: { 'User-Agent': UA } });
@@ -46,7 +56,11 @@ export async function cssDasFontes() {
       const arquivo = path.join(CACHE, path.basename(m[1]));
       if (!fs.existsSync(arquivo)) fs.writeFileSync(arquivo, await baixar(m[1], true));
       const b64 = fs.readFileSync(arquivo).toString('base64');
-      saida += bloco.replace(m[0], `url(data:font/woff2;base64,${b64}) format('woff2')`) + '\n';
+      /* Troca só o endereço. O bloco que veio do Google já termina com
+         format('woff2'), e acrescentar outro deixava a linha com o
+         descritor repetido: CSS inválido, regra inteira descartada. Os dois
+         PDF saíram assim, em fonte de reserva, sem nada denunciar. */
+      saida += bloco.replace(m[0], `url(data:font/woff2;base64,${b64})`) + '\n';
     }
     console.log(`  ${nome}: ${blocos.length} corte(s)`);
   }

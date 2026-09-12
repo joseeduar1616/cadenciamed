@@ -147,6 +147,17 @@ html, body {
   text-transform: uppercase; color: ${COR.neon}; display: flex; align-items: center; gap: 3mm; }
 .olho::before { content: ''; width: 8mm; height: .3mm; background: currentColor; flex-shrink: 0; }
 
+/* ── modo sem texto ─────────────────────────────────────────────────
+   Para o PowerPoint, cada página é fotografada com as letras invisíveis e
+   o texto entra de novo por cima, em caixa editável. Aqui só as letras
+   somem: painel, borda, brilho e figura continuam. O risco é o que herda
+   currentColor, e neste material é só o risco do rótulo. */
+body.sem-texto *, body.sem-texto *::before, body.sem-texto *::after {
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+}
+body.sem-texto .olho::before { background: ${COR.neon} !important; }
+
 h1.tit { font-family: 'Inter', sans-serif; font-weight: 800; text-transform: uppercase;
   letter-spacing: -.025em; line-height: 1.0; font-size: 34pt; }
 h2.tit { font-family: 'Inter', sans-serif; font-weight: 800; text-transform: uppercase;

@@ -21,18 +21,33 @@ const CORES_GRIFO_NOTA = ["#FFF59D", "#A5D6A7", "#90CAF9", "#F48FB1", "#FFCC80"]
    só aceita os 7 tamanhos históricos do HTML (1 a 7), então o truque de
    sempre é pedir o maior (7) e depois trocar cada <font size="7"> criado
    pelo px exato que a pessoa escolheu — aplicarTamanhoFonte, abaixo. */
+/* ── o tamanho de cada figura ─────────────────────────────────────────
+ *
+ * Uma imagem colada chega do tamanho que era no site de origem, e antes
+ * disto não havia como mexer: ou cabia, ou ficava enorme. Clicar na figura
+ * dentro da anotação seleciona ela e abre esta régua.
+ *
+ * A largura vai em PORCENTAGEM, e não em pixels, de propósito: a mesma
+ * anotação é lida no computador e no celular, e uma figura de "420px" que
+ * fica boa numa tela estoura a outra. O "original" tira a largura escrita e
+ * devolve a figura ao tamanho natural, com o teto de 100% que ela já tinha.
+ */
+const LARGURAS_FIGURA = [
+  { id: "p", nome: "P", largura: "25%" },
+  { id: "m", nome: "M", largura: "50%" },
+  { id: "g", nome: "G", largura: "75%" },
+  { id: "gg", nome: "Cheia", largura: "100%" },
+  { id: "orig", nome: "Original", largura: "" },
+];
+
+const CONTORNO_FIGURA = "2px solid var(--neon)";
+
 const TAMANHOS_FONTE_NOTA = [
   { id: "pq", nome: "Pequena", px: 12 },
   { id: "normal", nome: "Normal", px: 14.5 },
   { id: "grande", nome: "Grande", px: 18 },
   { id: "enorme", nome: "Enorme", px: 24 },
 ];
-
-/* As 4 pastas grandes que já existem na aba Cartões, uma por área do
-   currículo — GO e Preventiva dividem a mesma, como já é feito lá. Os
-   flashcards gerados a partir de uma anotação caem direto numa destas, sem
-   perguntar: a área da aula já diz qual é, sem ambiguidade nenhuma. */
-const PASTA_POR_AREA_NOTA = { CI: "CIRURGIA", CL: "CLINICA MÉDICA", PE: "PEDIATRIA", GO: "GO E PREVENTIVA", PR: "GO E PREVENTIVA" };
 
 /* Uma anotação só com imagem, sem texto nenhum, ainda é uma anotação de
    verdade — sem o "ou <img" aqui, ela reaparecia como "sem anotação". Usada
@@ -74,6 +89,70 @@ function carregarJsPdf() {
   return jsPdfPromessa;
 }
 
+/* ── a fonte do PDF ───────────────────────────────────────────────────
+ *
+ * O jsPDF desenha o texto com as 14 fontes padrão do PDF, e todas elas são
+ * de 8 bits (WinAnsi). Acento passa, porque está na tabela; seta, ≥, ≤ e
+ * emoji não passam, e saíam trocados por lixo: "→" virava "!’", "≥" virava
+ * "”e", "💡" virava "Ø=ÜI". Numa anotação de medicina, cheia de seta de
+ * fisiopatologia, isso estragava o arquivo inteiro.
+ *
+ * A saída é embutir uma fonte de verdade. A DejaVu cobre seta, matemática,
+ * grego e o resto do que aparece numa anotação; são 1,4MB pelos dois cortes,
+ * baixados só na primeira exportação e guardados pelo navegador depois.
+ *
+ * A MESMA fonte precisa ir para o navegador, num @font-face: quem mede a
+ * largura de cada palavra na hora de quebrar a linha é ele, e quem desenha é
+ * o jsPDF. Medindo com uma fonte e desenhando com outra, as palavras saíam
+ * grudadas umas nas outras ("DistúrbiosHipertensivosda"). */
+const FONTE_PDF = "NotaPDF";
+const FONTE_PDF_CDN = "https://cdn.jsdelivr.net/npm/dejavu-fonts-ttf@2.37.3/ttf/";
+
+let fontePdfPromessa = null;
+function carregarFontePdf() {
+  if (fontePdfPromessa) return fontePdfPromessa;
+  fontePdfPromessa = (async () => {
+    const baixar = async (arquivo) => {
+      const r = await fetch(FONTE_PDF_CDN + arquivo);
+      if (!r.ok) throw new Error(`fonte ${arquivo}: ${r.status}`);
+      const bytes = new Uint8Array(await r.arrayBuffer());
+      /* pedaço a pedaço: String.fromCharCode com 700 mil argumentos de uma
+         vez estoura a pilha de chamadas do navegador */
+      let bruto = "";
+      for (let i = 0; i < bytes.length; i += 8192) {
+        bruto += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+      }
+      return window.btoa(bruto);
+    };
+    const [normal, negrito] = await Promise.all([
+      baixar("DejaVuSans.ttf"), baixar("DejaVuSans-Bold.ttf"),
+    ]);
+    return { normal, negrito };
+  })().catch((e) => { fontePdfPromessa = null; throw e; });
+  return fontePdfPromessa;
+}
+
+/* Sem a fonte (a pessoa está sem rede, por exemplo) o PDF sai nas fontes
+   padrão, e aí é melhor trocar o símbolo por uma versão que a tabela de 8
+   bits tem do que deixar virar lixo. Emoji não tem substituto: sai fora. */
+const TROCAS_SEM_FONTE = [
+  [/[→➡➔]/g, "->"], [/[⇒⟹]/g, "=>"],
+  [/[←⇐]/g, "<-"], [/↔/g, "<->"],
+  [/≥/g, ">="], [/≤/g, "<="], [/≠/g, "!="], [/≈/g, "~"],
+  [/×/g, "x"], [/[–—]/g, "-"], [/…/g, "..."],
+  [/[“”]/g, '"'], [/[‘’]/g, "'"],
+];
+
+function semSimbolosDeFora(texto) {
+  let s = String(texto || "");
+  for (const [de, para] of TROCAS_SEM_FONTE) s = s.replace(de, para);
+  return s;
+}
+
+/* Emoji não existe em fonte de texto nenhuma: com a DejaVu ele viraria um
+   quadradinho vazio. Fora do PDF ele continua na anotação. */
+const EMOJI = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F1E6}-\u{1F1FF}\u{2B00}-\u{2BFF}]/gu;
+
 let html2canvasPromessa = null;
 function carregarHtml2Canvas() {
   if (html2canvasPromessa) return html2canvasPromessa;
@@ -102,9 +181,36 @@ function notaParaWordBlob(tituloAula, htmlCorpo) {
   return new Blob([html], { type: "application/msword" });
 }
 
+/* Troca o texto de dentro do HTML sem tocar nas tags: a mesma limpeza
+   aplicada em cima do innerHTML cru estragaria atributo e endereço de
+   imagem. */
+function mexerNoTexto(html, mudar) {
+  const div = document.createElement("div");
+  div.innerHTML = String(html || "");
+  const passeio = document.createTreeWalker(div, NodeFilter.SHOW_TEXT);
+  const nos = [];
+  for (let n = passeio.nextNode(); n; n = passeio.nextNode()) nos.push(n);
+  for (const n of nos) n.nodeValue = mudar(n.nodeValue);
+  return div.innerHTML;
+}
+
 async function notaParaPdfBlob(tituloAula, htmlCorpo) {
   const JsPDF = await carregarJsPdf();
   const html2canvas = await carregarHtml2Canvas();
+
+  /* A fonte é o que faz seta e ≥ saírem certos. Se ela não vier, o PDF sai
+     assim mesmo, com os símbolos trocados por versões de 8 bits: melhor um
+     "->" do que um "!’". */
+  let fonte = null;
+  try { fonte = await carregarFontePdf(); } catch (e) { fonte = null; }
+
+  let corpo = mexerNoTexto(htmlCorpo, (t) => t.replace(EMOJI, ""));
+  let titulo = String(tituloAula || "").replace(EMOJI, "");
+  if (!fonte) {
+    corpo = mexerNoTexto(corpo, semSimbolosDeFora);
+    titulo = semSimbolosDeFora(titulo);
+  }
+
   const container = document.createElement("div");
   /* Nada de "left:-9999px": um elemento em coordenada negativa nunca chega
      a ser pintado em lugar nenhum (a página começa em 0,0; não dá para
@@ -113,12 +219,44 @@ async function notaParaPdfBlob(tituloAula, htmlCorpo) {
      dentro da área visível (0,0), na frente de tudo por um instante (por
      isso o z-index gigante), o que é um preço bem menor que o PDF nunca
      sair certo. */
+  const familia = fonte ? `${FONTE_PDF},Arial,sans-serif` : "Arial,Helvetica,sans-serif";
   container.style.cssText = "position:fixed;left:0;top:0;z-index:2147483647;width:700px;padding:0;background:#fff;color:#111;"
-    + "font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5;pointer-events:none;";
-  container.innerHTML = `<h2 style="margin:0 0 14px">${escaparHtml(tituloAula)}</h2>${htmlCorpo}`;
+    + `font-family:${familia};font-size:13px;line-height:1.5;pointer-events:none;`;
+  container.innerHTML = `<h2 style="margin:0 0 14px">${escaparHtml(titulo)}</h2>${corpo}`;
+
+  /* A regra da fonte fica na página só enquanto o PDF é montado. */
+  let estilo = null;
+  if (fonte) {
+    estilo = document.createElement("style");
+    estilo.textContent = `@font-face{font-family:${FONTE_PDF};font-weight:400;font-style:normal;`
+      + `src:url(data:font/ttf;base64,${fonte.normal}) format('truetype')}`
+      + `@font-face{font-family:${FONTE_PDF};font-weight:700;font-style:normal;`
+      + `src:url(data:font/ttf;base64,${fonte.negrito}) format('truetype')}`;
+    document.head.appendChild(estilo);
+  }
+
   document.body.appendChild(container);
   try {
+    if (fonte) {
+      /* Sem esperar a fonte ficar pronta, a primeira medição sai na fonte de
+         reserva e as palavras saem grudadas. */
+      try {
+        await Promise.all([
+          document.fonts.load(`13px ${FONTE_PDF}`),
+          document.fonts.load(`bold 13px ${FONTE_PDF}`),
+        ]);
+        await document.fonts.ready;
+      } catch (e) { /* navegador sem a API: segue e aceita o risco */ }
+    }
+
     const doc = new JsPDF({ unit: "pt", format: "a4" });
+    if (fonte) {
+      doc.addFileToVFS(`${FONTE_PDF}.ttf`, fonte.normal);
+      doc.addFont(`${FONTE_PDF}.ttf`, FONTE_PDF, "normal");
+      doc.addFileToVFS(`${FONTE_PDF}-Bold.ttf`, fonte.negrito);
+      doc.addFont(`${FONTE_PDF}-Bold.ttf`, FONTE_PDF, "bold");
+      doc.setFont(FONTE_PDF, "normal");
+    }
     await new Promise((resolve, reject) => {
       try {
         doc.html(container, {
@@ -131,6 +269,7 @@ async function notaParaPdfBlob(tituloAula, htmlCorpo) {
     return doc.output("blob");
   } finally {
     document.body.removeChild(container);
+    if (estilo) document.head.removeChild(estilo);
   }
 }
 
@@ -143,6 +282,211 @@ function baixarBlob(nome, blob) {
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     return true;
   } catch (e) { return false; }
+}
+
+/* Tira script, iframe e atributos de evento (onerror, onclick...) de HTML
+   colado de fora. A nota é só do próprio dono e nunca é mostrada para outra
+   pessoa (nem o mentor a alcança — ver worker/api/mentor.js), mas colar um
+   trecho de uma página maliciosa não pode virar código rodando na conta de
+   quem colou. */
+/* Pede ao servidor os bytes de uma imagem que o navegador não consegue ler
+   por causa do CORS. Devolve o base64, ou vazio se não deu. */
+/* O id do bloco do Notion que embrulha esta figura no HTML colado.
+ *
+ * O <img> do Notion aponta direto para o depósito na Amazon, sem
+ * assinatura, e por isso ninguém de fora consegue buscar. Mas o <figure>
+ * em volta carrega o id do bloco, e com ele o servidor pede ao Notion um
+ * endereço novo daquela mesma figura. Sem isto, o caminho pela API de lá
+ * simplesmente nunca era usado. */
+const UUID = /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i;
+
+function blocoQueEnvolve(img) {
+  const guardado = img.getAttribute("data-bloco");
+  if (guardado) return guardado;
+  let el = img;
+  for (let i = 0; el && i < 6; i += 1) {
+    const id = el.getAttribute && el.getAttribute("id");
+    if (id && UUID.test(id)) return id;
+    el = el.parentElement;
+  }
+  return "";
+}
+
+/* Copia o id do bloco para dentro do próprio <img>, ainda no HTML cru.
+   Depende de menos coisas: o insertHTML do navegador pode mexer na árvore
+   em volta, e um data- no elemento certo sobrevive a isso. */
+function marcarBlocoNasFiguras(div) {
+  div.querySelectorAll("img").forEach((img) => {
+    if (img.getAttribute("data-bloco")) return;
+    const id = blocoQueEnvolve(img);
+    if (id) img.setAttribute("data-bloco", id);
+  });
+}
+
+async function trazerImagemDeFora(nuvem, endereco, bloco) {
+  if (!/^https?:/i.test(endereco)) return { erro: "endereço que não é da web." };
+  let token = "";
+  try {
+    if (nuvem && nuvem.sdk && nuvem.sdk.auth && nuvem.sdk.auth.currentUser) {
+      token = await nuvem.sdk.auth.currentUser.getIdToken();
+    }
+  } catch (e) { /* sem conta, o servidor recusa e a imagem fica como está */ }
+  if (!token) return { erro: "entre na sua conta para as figuras coladas ficarem guardadas." };
+  const { dados, erro } = await chamarApi("/api/buscar-imagem", { token, url: endereco, bloco: bloco || "" }, "Trazer a imagem");
+  if (erro) return { erro };
+  if (dados && dados.dados) return { dados: dados.dados };
+  return { erro: (dados && dados.erro) || "não consegui trazer essa figura." };
+}
+
+/* Uma imagem de fora virando base64, do jeito mais barato para o mais caro:
+ * primeiro o próprio navegador, que resolve blob: e sites que liberam CORS;
+ * depois o servidor, que é o caminho do Notion e da maioria dos sites.
+ */
+async function imagemComoDataUri(nuvem, endereco, bloco) {
+  if (!endereco) return { erro: "figura sem endereço." };
+  if (endereco.startsWith("data:")) return { dados: endereco };
+  try {
+    const resp = await fetch(endereco);
+    if (resp.ok) {
+      const blob = await resp.blob();
+      if (/^image\//i.test(blob.type || "")) {
+        return {
+          dados: await new Promise((resolve, reject) => {
+            const rd = new FileReader();
+            rd.onload = () => resolve(String(rd.result || ""));
+            rd.onerror = () => reject(new Error("leitura falhou"));
+            rd.readAsDataURL(blob);
+          }),
+        };
+      }
+    }
+  } catch (e) { /* CORS, quase sempre: segue para o servidor */ }
+  return trazerImagemDeFora(nuvem, endereco, bloco);
+}
+
+/* No lugar da figura que não deu para trazer, uma caixa dizendo o que houve
+   e o que fazer. Um ícone de imagem quebrada não ensina nada, e era o que a
+   pessoa via. */
+function caixaDeFiguraPerdida(motivo, endereco, bloco) {
+  const caixa = document.createElement("div");
+  caixa.setAttribute("data-figura-perdida", "1");
+  /* O endereço fica guardado na caixa para dar para tentar de novo depois
+     (conectar o Notion, por exemplo) sem ter de recolar a anotação
+     inteira — que era o que sobrava para a pessoa fazer. */
+  if (endereco) caixa.setAttribute("data-de", endereco);
+  if (bloco) caixa.setAttribute("data-bloco", bloco);
+  caixa.setAttribute("style",
+    "border:1px dashed rgba(178,59,59,.45);background:rgba(178,59,59,.08);border-radius:8px;"
+    + "padding:10px 12px;margin:8px 0;font-size:13px;color:#B23B3B");
+  /* O endereço (só o nome do site, não a query inteira, que é enorme e
+     assinada) fica escrito no aviso: sem isso, duas causas bem diferentes
+     produziam a mesma frase na tela e não havia como saber qual era. */
+  let onde = "";
+  try { onde = endereco ? new URL(endereco).hostname : ""; } catch (e) { /* endereço estranho, segue sem */ }
+  caixa.textContent = `Figura não trazida${onde ? ` (de ${onde})` : ""}: ${motivo} `
+    + "Copie a imagem sozinha (botão direito nela, copiar imagem) e cole aqui.";
+  if (endereco) caixa.setAttribute("title", endereco);
+  return caixa;
+}
+
+/* Traz para dentro da anotação toda imagem que ainda aponta para fora.
+ *
+ * Roda no COLAR, e não só na hora de salvar, por dois motivos: a pessoa vê
+ * o que aconteceu na hora, e o endereço da figura do Notion vence em cerca
+ * de uma hora — esperar o salvamento já é esperar demais quando alguém cola,
+ * lê um pouco e só depois volta. */
+async function internalizarImagens(raiz, nuvem, aviso) {
+  const imgs = [...raiz.querySelectorAll("img")]
+    .filter((im) => !im.getAttribute("data-nome"))
+    .filter((im) => /^(https?:|blob:)/i.test(im.getAttribute("src") || ""));
+  if (!imgs.length) return { trazidas: 0, perdidas: 0 };
+
+  let trazidas = 0;
+  let perdidas = 0;
+  for (let i = 0; i < imgs.length; i += 1) {
+    const img = imgs[i];
+    if (aviso) aviso(imgs.length > 1 ? `trazendo figura ${i + 1} de ${imgs.length}…` : "trazendo a figura…");
+    const r = await imagemComoDataUri(nuvem, img.getAttribute("src") || "", blocoQueEnvolve(img));
+    if (r.dados) {
+      img.setAttribute("src", r.dados);
+      img.removeAttribute("data-bloco");
+      img.style.maxWidth = "100%";
+      trazidas += 1;
+      continue;
+    }
+    perdidas += 1;
+    /* Se a figura pelo menos aparece, vale mais deixá-la aí com o aviso do
+       que apagar o que a pessoa está vendo. Se nem aparece, some com o ícone
+       quebrado e põe a explicação no lugar. */
+    const de = img.getAttribute("src") || "";
+    const doBloco = img.getAttribute("data-bloco") || "";
+    if (!img.naturalWidth) img.replaceWith(caixaDeFiguraPerdida(r.erro || "", de, doBloco));
+    else img.after(caixaDeFiguraPerdida(r.erro || "", de, doBloco));
+  }
+  if (aviso) aviso("");
+  return { trazidas, perdidas };
+}
+
+/* Desfaz as caixas de figura perdida, devolvendo cada <img> ao lugar onde
+   estava. Serve para tentar de novo depois que a causa foi resolvida (o
+   Notion conectado, por exemplo). Devolve quantas voltaram. */
+function desfazerCaixasPerdidas(raiz) {
+  const caixas = [...raiz.querySelectorAll("[data-figura-perdida][data-de]")];
+  for (const caixa of caixas) {
+    const img = document.createElement("img");
+    img.setAttribute("src", caixa.getAttribute("data-de"));
+    const bloco = caixa.getAttribute("data-bloco");
+    if (bloco) img.setAttribute("data-bloco", bloco);
+    img.style.maxWidth = "100%";
+    caixa.replaceWith(img);
+  }
+  /* Caixa sem endereço guardado (anotação antiga) não tem como voltar; some
+     junto, senão o aviso fica para sempre mesmo depois de resolvido. */
+  raiz.querySelectorAll("[data-figura-perdida]:not([data-de])").forEach((c) => c.remove());
+  return caixas.length;
+}
+
+/* ── o destaque do Notion ─────────────────────────────────────────────
+ *
+ * O Notion escreve o bloco de destaque (aquele com a lampadinha) como
+ * <aside>. Copiado de lá, ele chega de dois jeitos: como elemento de
+ * verdade, e aí o editor mostra o conteúdo sem nenhum destaque; ou como as
+ * palavras "<aside>" e "</aside>" escritas no meio do texto, que é o que
+ * acontece quando o que veio na área de transferência foi a versão em
+ * markdown. Nos dois casos o resultado era ruim: no segundo, "</aside>"
+ * aparecia escrito na anotação e ia parar no PDF.
+ *
+ * Aqui os dois viram a mesma coisa: uma caixa com barra na lateral, que é o
+ * que o destaque quer dizer. */
+const ESTILO_DESTAQUE = "border-left:3px solid #A182E6;background:rgba(161,130,230,.10);"
+  + "padding:8px 12px;margin:10px 0;border-radius:0 6px 6px 0";
+
+function virarDestaque(div) {
+  div.querySelectorAll("aside").forEach((el) => {
+    const caixa = document.createElement("div");
+    caixa.setAttribute("style", ESTILO_DESTAQUE);
+    while (el.firstChild) caixa.appendChild(el.firstChild);
+    el.replaceWith(caixa);
+  });
+}
+
+/* As linhas soltas com a tag escrita como texto. Some com elas em vez de
+   tentar reconstruir o bloco: adivinhar onde ele começa e acaba em texto
+   corrido erraria mais do que acertaria, e o que incomoda é a tag à vista. */
+function tirarTagsEscritas(div) {
+  const passeio = document.createTreeWalker(div, NodeFilter.SHOW_TEXT);
+  const nos = [];
+  for (let n = passeio.nextNode(); n; n = passeio.nextNode()) nos.push(n);
+  for (const n of nos) {
+    if (!/<\/?(aside|figure|figcaption|details|summary)>/i.test(n.nodeValue)) continue;
+    n.nodeValue = n.nodeValue
+      .replace(/<\/?(aside|figure|figcaption|details|summary)>/gi, "")
+      .replace(/^[ \t]+|[ \t]+$/g, "");
+  }
+  /* parágrafo que ficou só com a tag dentro sai junto */
+  div.querySelectorAll("p,div,li").forEach((el) => {
+    if (!el.children.length && !el.textContent.trim()) el.remove();
+  });
 }
 
 /* Tira script, iframe e atributos de evento (onerror, onclick...) de HTML
@@ -165,6 +509,95 @@ function limparHtmlColado(html) {
       }
     }
   });
+  virarDestaque(div);
+  tirarTagsEscritas(div);
+  recuperarImagensSemSrc(div);
+  marcarBlocoNasFiguras(div);
+  ajustarCoresColadas(div);
+  return div.innerHTML;
+}
+
+/* ── a cor que vem junto do texto colado ──────────────────────────────
+ *
+ * Copiado de um site de tema escuro (o Notion, por exemplo), o texto chega
+ * com a cor dele grudada: um branco acinzentado, escrito no próprio
+ * elemento. No editor escuro isso passa despercebido; no claro é cinza
+ * claro sobre branco, praticamente invisível. Era a reclamação de "as
+ * fontes estão cinza".
+ *
+ * A regra separa duas coisas que parecem uma só:
+ *
+ * - cor sem cor (cinza, branco, preto): é só o "texto normal" do site de
+ *   origem. Sai fora, e o texto passa a seguir o tema da anotação, que é o
+ *   que a pessoa escolheu. É o que conserta o cinza.
+ * - cor com cor (o verde do "NORMAL", o vermelho do "ANORMAL"): isso quer
+ *   dizer alguma coisa e fica. Só a claridade é puxada para uma faixa que
+ *   se lê nos dois fundos, senão um amarelo-claro some no branco.
+ */
+function corDeTexto(valor) {
+  const m = String(valor || "").match(/-?\d*\.?\d+/g);
+  if (!m || m.length < 3) return null;
+  const [r, g, b] = m.slice(0, 3).map(Number);
+  if (m.length >= 4 && Number(m[3]) < 0.35) return null;   // quase transparente
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const l = (max + min) / 2 / 255;
+  const s = max === min ? 0 : (max - min) / (255 - Math.abs(max + min - 255));
+  return { r, g, b, s, l };
+}
+
+function ajustarCoresColadas(div) {
+  div.querySelectorAll("[style]").forEach((el) => {
+    const cor = corDeTexto(el.style.color);
+    if (cor) {
+      if (cor.s < 0.18) el.style.color = "";           // cinza, branco ou preto: fora
+      else {
+        /* fica colorido, mas numa claridade que se lê no branco e no escuro */
+        const alvo = Math.min(0.62, Math.max(0.34, cor.l));
+        if (Math.abs(alvo - cor.l) > 0.02) {
+          const f = alvo / (cor.l || 0.0001);
+          const ajusta = (v) => Math.round(Math.min(255, Math.max(0, v * f)));
+          el.style.color = `rgb(${ajusta(cor.r)}, ${ajusta(cor.g)}, ${ajusta(cor.b)})`;
+        }
+      }
+    }
+    /* Grifo escuro vira invisível no papel branco, e o texto por cima some
+       junto: melhor perder o grifo do que perder a frase. */
+    const fundo = corDeTexto(el.style.backgroundColor);
+    if (fundo && fundo.l < 0.35) el.style.backgroundColor = "";
+  });
+}
+
+/* Muitos sites entregam a figura com o endereço fora do src: em data-src,
+   porque a imagem só carrega quando entra na tela, ou em srcset, com vários
+   tamanhos. Copiado de lá, o <img> chega sem src nenhum e não aparece nunca.
+   Aqui o primeiro endereço que existir vira o src. */
+function recuperarImagensSemSrc(div) {
+  div.querySelectorAll("img").forEach((img) => {
+    /* Imagem nossa, guardada no IndexedDB: ela é gravada SEM src de
+       propósito, e o src volta na hora de abrir (lerMidia). Apagar aqui
+       jogaria fora toda figura já guardada — foi o que o teste pegou. */
+    if (img.getAttribute("data-nome")) return;
+    const src = (img.getAttribute("src") || "").trim();
+    if (src) return;
+    const alternativo = img.getAttribute("data-src")
+      || img.getAttribute("data-original")
+      || img.getAttribute("data-lazy-src")
+      || (img.getAttribute("srcset") || "").split(",")[0].trim().split(/\s+/)[0];
+    if (alternativo) img.setAttribute("src", alternativo);
+    else img.remove();          // <img> sem endereço nenhum é só um ícone quebrado
+  });
+}
+
+/* A mesma limpeza, para anotação que já está gravada com a tag à vista de
+   antes desta correção. Roda ao abrir a anotação, e só mexe se houver o que
+   mexer, para não marcar como alterada uma nota que está boa. */
+function limparAnotacaoGravada(html) {
+  const s = String(html || "");
+  if (!/<aside|&lt;\/?aside&gt;|&lt;\/?figcaption&gt;/i.test(s)) return s;
+  const div = document.createElement("div");
+  div.innerHTML = s;
+  virarDestaque(div);
+  tirarTagsEscritas(div);
   return div.innerHTML;
 }
 
@@ -207,8 +640,8 @@ function TiraDeCores({ cores, onEscolher, comBranco }) {
    createPortal o modal fica preso dentro da .rise que anima a troca de
    aba, que vira um "containing block" para position:fixed — o mesmo motivo
    pelo qual o estudo de cartões em tela cheia usa portal (parte12.jsx). */
-function ModalDrive({ tituloAula, gerarBlob, sugestaoNome, notify, onFechar }) {
-  const drive = useGoogleDrive();
+function ModalDrive({ tituloAula, gerarBlob, sugestaoNome, notify, nuvem, onFechar }) {
+  const drive = useGoogleDrive(nuvem);
   const [caminho, setCaminho] = useState([{ id: "root", nome: "Meu Drive" }]);
   const [pastas, setPastas] = useState(null);
   const [novaPasta, setNovaPasta] = useState("");
@@ -327,7 +760,7 @@ function ModalDrive({ tituloAula, gerarBlob, sugestaoNome, notify, onFechar }) {
   ), document.body);
 }
 
-function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, notify, setData, nuvem }) {
+function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, notify, setData, nuvem, pastas }) {
   const [aberto, setAberto] = useState(false);
   const [pronto, setPronto] = useState(false);
   const [sujo, setSujo] = useState(false);
@@ -336,6 +769,25 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
   const [tamanhoAberto, setTamanhoAberto] = useState(false);
   const [cheia, setCheia] = useState(false);
   const [gerando, setGerando] = useState(false);
+  /* "trazendo figura 2 de 5…", enquanto o colar busca as imagens */
+  const [statusImagem, setStatusImagem] = useState("");
+  /* A figura que a pessoa clicou dentro da anotação, para a régua de
+     tamanho saber em quem mexer. É o elemento em si, não um índice: o
+     conteúdo do editor muda o tempo todo por baixo. */
+  const [figura, setFigura] = useState(null);
+  /* O que está escrito agora, guardado fora do DOM.
+   *
+   * Entrar e sair da tela cheia troca o editor de lugar na árvore (vai para
+   * um portal, no body), e o React desmonta e remonta o contentEditable. O
+   * texto mora no DOM, não em estado — então ele ia junto, e tudo que a
+   * pessoa tinha escrito ou colado desde que abriu a anotação sumia. Aqui
+   * ele é copiado antes da troca e devolvido depois. */
+  const conteudoRef = useRef(null);
+  /* Quantas figuras ficaram pelo caminho, para o botão de tentar de novo
+     só aparecer quando há o que tentar. */
+  const [perdidas, setPerdidas] = useState(0);
+  const tema = useTemaNota();
+  const papel = PAPEL_NOTA[tema.efetivo === "light" ? "light" : "dark"];
   const editorRef = useRef(null);
   const salvarRef = useRef(null);
   const arquivoRef = useRef(null);
@@ -356,7 +808,7 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
       notify("A IA não conseguiu montar cartões a partir dessa anotação.");
       return;
     }
-    const pasta = PASTA_POR_AREA_NOTA[area] || PASTA_SOLTA;
+    const pasta = pastaDaArea(pastas, area) || PASTA_SOLTA;
     const novos = dados.cartoes.map((c) => novoCartao(c.frente, c.verso, subjectId, titulo, pasta));
     setData((p) => ({ ...p, flash: [...novos, ...(p.flash || [])], pastas: registrarPasta(p.pastas, pasta) }));
     notify(`${novos.length} cartõe${novos.length === 1 ? "" : "s"} gerado${novos.length === 1 ? "" : "s"} em "${pasta}".`
@@ -397,7 +849,7 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
     (async () => {
       const raiz = editorRef.current;
       if (!raiz) return;
-      raiz.innerHTML = (anotacao && anotacao.html) || "";
+      raiz.innerHTML = limparAnotacaoGravada((anotacao && anotacao.html) || "");
       const imgs = [...raiz.querySelectorAll("img[data-nome]")];
       for (const img of imgs) {
         try {
@@ -405,15 +857,28 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
           if (vivo && uri) img.src = uri;
         } catch (e) { /* essa imagem sumiu do IndexedDB, segue sem ela */ }
       }
-      if (vivo) setPronto(true);
+      if (vivo) {
+        /* só agora, com as imagens de volta: a foto tirada antes disso
+           devolveria a anotação sem figura nenhuma na troca de tela. */
+        conteudoRef.current = raiz.innerHTML;
+        setPerdidas(raiz.querySelectorAll("[data-figura-perdida]").length);
+        setPronto(true);
+      }
     })();
-    return () => { vivo = false; if (salvarRef.current) window.clearTimeout(salvarRef.current); };
+    return () => {
+      vivo = false;
+      setFigura(null);
+      conteudoRef.current = null;
+      if (salvarRef.current) window.clearTimeout(salvarRef.current);
+    };
   }, [aberto]);
 
   const prepararParaSalvar = async () => {
     const raiz = editorRef.current;
     if (!raiz) return "";
     const imgs = [...raiz.querySelectorAll("img")];
+    let falhouImagem = 0;
+    let avisouImagem = false;
     for (const img of imgs) {
       if (img.getAttribute("data-nome")) continue;   // já guardada antes
       let src = img.getAttribute("src") || "";
@@ -425,16 +890,13 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
          página). Falhando (CORS bloqueado, por exemplo), segue com o
          endereço original abaixo, em vez de simplesmente apagar. */
       if (/^(https?:|blob:)/i.test(src)) {
-        try {
-          const resp = await fetch(src);
-          const blob = await resp.blob();
-          src = await new Promise((resolve, reject) => {
-            const rd = new FileReader();
-            rd.onload = () => resolve(String(rd.result || ""));
-            rd.onerror = () => reject(new Error("leitura falhou"));
-            rd.readAsDataURL(blob);
-          });
-        } catch (e) { /* fica com o endereço original, guardado abaixo */ }
+        /* O colar já tenta trazer a figura na hora; isto aqui é a segunda
+           chance, para o que entrou por outro caminho (arrastar, desfazer,
+           anotação antiga). Quem sabe fazer isso é o imagemComoDataUri:
+           navegador primeiro, servidor depois. */
+        const r = await imagemComoDataUri(nuvem, src);
+        if (r.dados) src = r.dados;
+        else if (!avisouImagem) { avisouImagem = true; falhouImagem += 1; }
       }
       if (src.startsWith("data:")) {
         const nome = `nota-${uid()}`;
@@ -450,10 +912,18 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
        não virou data-nome (endereço externo que não deu para trazer para
        cá) mantém o src: apagar o dela também jogaria a imagem fora à toa. */
     clone.querySelectorAll("img[data-nome]").forEach((img) => img.removeAttribute("src"));
+    /* o contorno é só a marca de "esta figura está escolhida agora" — não
+       pode ficar gravado na anotação nem sair no PDF */
+    clone.querySelectorAll("img").forEach((img) => { img.style.outline = ""; });
+    if (falhouImagem) {
+      notify("Uma figura colada não pôde ser trazida para dentro da anotação e "
+        + "continua dependendo do site de origem. Se ela sumir, copie de novo de lá.");
+    }
     return clone.innerHTML;
   };
 
   const aoMudar = () => {
+    if (editorRef.current) conteudoRef.current = editorRef.current.innerHTML;
     setSujo(true);
     if (salvarRef.current) window.clearTimeout(salvarRef.current);
     salvarRef.current = window.setTimeout(async () => {
@@ -489,27 +959,18 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
     aoMudar();
   };
 
-  const aoColar = (e) => {
-    const html = e.clipboardData && e.clipboardData.getData("text/html");
-    if (!html) return;   // sem HTML: deixa colar como texto puro, do jeito padrão
-    e.preventDefault();
-    document.execCommand("insertHTML", false, limparHtmlColado(html));
-    aoMudar();
-  };
-
-  const inserirImagem = async (e) => {
-    const f = e.target.files && e.target.files[0];
-    e.target.value = "";
-    if (!f) return;
-    if (!/^image\//.test(f.type)) { notify("Escolha um arquivo de imagem."); return; }
-    if (f.size > 5 * 1024 * 1024) { notify("Imagem grande demais (máx. 5 MB)."); return; }
+  /* Um arquivo de imagem entrando na anotação: o mesmo caminho para o botão
+     de inserir, para o colar e para o arrastar. */
+  const inserirArquivoDeImagem = async (f) => {
+    if (!f || !/^image\//.test(f.type)) { notify("Escolha um arquivo de imagem."); return false; }
+    if (f.size > 5 * 1024 * 1024) { notify("Imagem grande demais (máx. 5 MB)."); return false; }
     const dataUri = await new Promise((resolve, reject) => {
       const rd = new FileReader();
       rd.onload = () => resolve(String(rd.result || ""));
       rd.onerror = () => reject(new Error("leitura falhou"));
       rd.readAsDataURL(f);
     }).catch(() => null);
-    if (!dataUri) { notify("Não consegui ler essa imagem."); return; }
+    if (!dataUri) { notify("Não consegui ler essa imagem."); return false; }
     if (editorRef.current) editorRef.current.focus();
     document.execCommand("insertImage", false, dataUri);
     if (editorRef.current) {
@@ -517,6 +978,132 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
         img.style.maxWidth = "100%"; img.style.borderRadius = "10px"; img.style.margin = "8px 0";
       });
     }
+    return true;
+  };
+
+  const aoColar = async (e) => {
+    const ct = e.clipboardData;
+    if (!ct) return;
+
+    /* A imagem em si na área de transferência (copiar imagem, print de tela,
+       recorte). É o caminho que sempre funciona, porque os bytes já estão na
+       mão: não depende de endereço, de CORS nem do site de origem. Antes
+       disso ser tratado aqui, colar uma imagem simplesmente não fazia nada. */
+    const figuras = [...(ct.files || [])].filter((f) => /^image\//i.test(f.type));
+    if (figuras.length) {
+      e.preventDefault();
+      for (const f of figuras) await inserirArquivoDeImagem(f);
+      aoMudar();
+      return;
+    }
+
+    const html = ct.getData("text/html");
+    if (!html) return;   // sem HTML: deixa colar como texto puro, do jeito padrão
+    e.preventDefault();
+    document.execCommand("insertHTML", false, limparHtmlColado(html));
+
+    /* As figuras vêm apontando para o site de origem. Trazer agora, e não só
+       na hora de salvar: a pessoa vê o resultado no ato, e o endereço da
+       figura do Notion vence em cerca de uma hora. */
+    if (editorRef.current) {
+      const r = await internalizarImagens(editorRef.current, nuvem, setStatusImagem);
+      if (r.perdidas) {
+        notify(r.trazidas
+          ? `${r.trazidas} figura(s) trazidas, ${r.perdidas} não. Veja o aviso no texto.`
+          : "Não consegui trazer as figuras. Veja o aviso no texto.");
+      } else if (r.trazidas) {
+        notify(`${r.trazidas} figura${r.trazidas === 1 ? "" : "s"} guardada${r.trazidas === 1 ? "" : "s"} dentro da anotação.`);
+      }
+      setPerdidas(editorRef.current.querySelectorAll("[data-figura-perdida]").length);
+    }
+    aoMudar();
+  };
+
+  /* Tenta trazer de novo as figuras que ficaram pelo caminho, sem precisar
+     recolar a anotação inteira. É o que fazer depois de conectar o Notion,
+     ou depois de compartilhar a página com a integração. */
+  const tentarFigurasDeNovo = async () => {
+    const raiz = editorRef.current;
+    if (!raiz) return;
+    const quantas = desfazerCaixasPerdidas(raiz);
+    if (!quantas) { setPerdidas(0); return; }
+    const r = await internalizarImagens(raiz, nuvem, setStatusImagem);
+    setPerdidas(raiz.querySelectorAll("[data-figura-perdida]").length);
+    notify(r.trazidas
+      ? `${r.trazidas} figura${r.trazidas === 1 ? "" : "s"} trazida${r.trazidas === 1 ? "" : "s"} agora.`
+      : "As figuras continuam sem vir. Veja o motivo no aviso, dentro do texto.");
+    aoMudar();
+  };
+
+  const inserirImagem = async (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    if (await inserirArquivoDeImagem(f)) aoMudar();
+  };
+
+  /* Clicar numa figura seleciona ela; clicar em qualquer outro lugar
+     solta. O contorno é escrito no style da própria imagem, então tem de
+     sair de novo na troca — e sai também no clone que vai para o
+     salvamento (prepararParaSalvar), para não ficar gravado. */
+  const escolherFigura = (el) => {
+    setFigura((antiga) => {
+      if (antiga && antiga !== el) antiga.style.outline = "";
+      if (el) el.style.outline = CONTORNO_FIGURA;
+      return el;
+    });
+  };
+
+  /* Guarda o texto antes de trocar, porque a troca remonta o editor. */
+  const alternarCheia = () => {
+    if (editorRef.current) conteudoRef.current = editorRef.current.innerHTML;
+    setFigura(null);
+    setCheia((v) => !v);
+  };
+
+  /* useLayoutEffect, e não useEffect: devolver o texto antes de a tela
+     pintar evita o editor aparecer vazio por um quadro. */
+  useLayoutEffect(() => {
+    if (!aberto || conteudoRef.current === null) return;
+    const raiz = editorRef.current;
+    if (!raiz) return;
+    raiz.innerHTML = conteudoRef.current;
+    /* Reescrever o innerHTML apaga a seleção, e sem cursor o próximo colar
+       não sabe onde entrar. Quem entra em tela cheia está no meio de
+       escrever: o cursor volta para o fim do texto. */
+    try {
+      const faixa = document.createRange();
+      faixa.selectNodeContents(raiz);
+      faixa.collapse(false);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(faixa);
+      raiz.focus();
+    } catch (e) { /* sem seleção possível, segue sem cursor */ }
+  }, [cheia]);
+
+  const aoClicarNoEditor = (e) => {
+    const alvo = e.target;
+    escolherFigura(alvo && alvo.tagName === "IMG" ? alvo : null);
+  };
+
+  const larguraDaFigura = (largura) => {
+    if (!figura) return;
+    if (largura) {
+      figura.style.width = largura;
+      figura.style.height = "auto";
+    } else {
+      figura.style.width = "";
+      figura.style.height = "";
+    }
+    figura.style.maxWidth = "100%";
+    aoMudar();
+  };
+
+  const tirarFigura = () => {
+    if (!figura) return;
+    figura.remove();
+    setFigura(null);
     aoMudar();
   };
 
@@ -539,10 +1126,16 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
       <div className="flex items-center justify-between">
         <Label>Anotação</Label>
         <div className="flex items-center gap-2">
+          {statusImagem ? <Mini style={{ color: "var(--neon)" }}>{statusImagem}</Mini> : null}
           {sujo ? <Mini>salvando…</Mini> : null}
+          {/* Claro e escuro só desta caixa. Texto longo se lê melhor no
+              papel de cada um, e o resto do painel continua como está. */}
+          <BotaoFerramenta icon={tema.claro ? <Moon size={15} /> : <Sun size={15} />}
+            title={tema.claro ? "Anotação no escuro" : "Anotação no claro"}
+            onClick={() => tema.definir(tema.claro ? "dark" : "light")} />
           <BotaoFerramenta icon={cheia ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
-            title={cheia ? "Sair da tela cheia" : "Tela cheia"} onClick={() => setCheia((v) => !v)} />
-          <Btn size="sm" tone="outline" onClick={() => (cheia ? setCheia(false) : setAberto(false))}>fechar</Btn>
+            title={cheia ? "Sair da tela cheia" : "Tela cheia"} onClick={alternarCheia} />
+          <Btn size="sm" tone="outline" onClick={() => (cheia ? alternarCheia() : setAberto(false))}>fechar</Btn>
         </div>
       </div>
 
@@ -567,6 +1160,26 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
           onClick={() => arquivoRef.current && arquivoRef.current.click()} />
         <input ref={arquivoRef} type="file" accept="image/*" onChange={inserirImagem} style={{ display: "none" }} />
 
+        {/* Só aparece com uma figura escolhida: é uma régua para aquela
+            imagem, não uma ferramenta do texto. */}
+        {figura ? (
+          <div className="mt-2 w-full pt-2 flex items-center gap-1.5 flex-wrap" style={{ borderTop: `1px solid ${T.line}` }}>
+            <Mini style={{ marginRight: 4 }}>tamanho da figura</Mini>
+            {LARGURAS_FIGURA.map((t) => (
+              <button key={t.id} type="button" onMouseDown={(e) => { e.preventDefault(); larguraDaFigura(t.largura); }}
+                className="rounded-lg px-2.5 py-1"
+                style={{ background: T.card3, border: `1px solid ${T.line}`, color: T.ink, cursor: "pointer", fontSize: 13 }}>
+                {t.nome}
+              </button>
+            ))}
+            <button type="button" onMouseDown={(e) => { e.preventDefault(); tirarFigura(); }}
+              className="rounded-lg px-2.5 py-1"
+              style={{ background: soft("var(--bad)", 12), border: `1px solid ${soft("var(--bad)", 34)}`, color: T.bad, cursor: "pointer", fontSize: 13 }}>
+              tirar
+            </button>
+          </div>
+        ) : null}
+
         {tamanhoAberto ? (
           <div className="mt-2 w-full pt-2 flex items-center gap-1.5 flex-wrap" style={{ borderTop: `1px solid ${T.line}` }}>
             {TAMANHOS_FONTE_NOTA.map((t) => (
@@ -590,22 +1203,27 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
       </div>
 
       <div ref={editorRef} contentEditable suppressContentEditableWarning
-        onInput={aoMudar} onPaste={aoColar}
+        onInput={aoMudar} onPaste={aoColar} onClick={aoClicarNoEditor}
         className="rounded-xl px-4 py-3"
-        style={cheia ? {
-          flex: 1, minHeight: 0, overflowY: "auto", fontSize: 14.5, lineHeight: 1.6,
-          color: T.ink, background: T.bg, border: `1px solid ${T.line}`, outline: "none",
-        } : {
-          minHeight: 140, maxHeight: 420, overflowY: "auto", fontSize: 14.5, lineHeight: 1.6,
-          color: T.ink, background: T.bg, border: `1px solid ${T.line}`, outline: "none",
+        style={{
+          fontSize: 14.5, lineHeight: 1.6, overflowY: "auto", outline: "none",
+          color: papel.tinta, background: papel.fundo, border: `1px solid ${papel.linha}`,
+          ...(cheia
+            ? { flex: 1, minHeight: 0 }
+            : { minHeight: 140, maxHeight: 420 }),
         }} />
       {!pronto ? <Mini>carregando…</Mini> : null}
 
       <div className="flex items-center gap-2 flex-wrap">
+        {perdidas ? (
+          <Btn size="sm" tone="outline" onClick={tentarFigurasDeNovo}>
+            <ImagePlus size={14} /> Tentar as {perdidas} figura{perdidas === 1 ? "" : "s"} de novo
+          </Btn>
+        ) : null}
         <Btn size="sm" tone="outline" disabled={gerando} onClick={gerarFlashcards}>
           <Sparkles size={14} /> {gerando ? "Gerando…" : "Gerar flashcards com IA"}
         </Btn>
-        <Mini>vão para a pasta "{PASTA_POR_AREA_NOTA[area] || PASTA_SOLTA}", em Cartões</Mini>
+        <Mini>vão para a pasta "{pastaDaArea(pastas, area) || PASTA_SOLTA}", em Cartões</Mini>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap pt-2" style={{ borderTop: `1px solid ${T.line}` }}>
@@ -622,7 +1240,7 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
 
       {modalDrive ? (
         <ModalDrive tituloAula={titulo} sugestaoNome={nomeArquivo} gerarBlob={gerarParaDrive}
-          notify={notify} onFechar={() => setModalDrive(false)} />
+          notify={notify} nuvem={nuvem} onFechar={() => setModalDrive(false)} />
       ) : null}
     </div>
   );

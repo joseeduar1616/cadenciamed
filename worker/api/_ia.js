@@ -11,11 +11,19 @@ import { contaDeServico, tokenDeAcesso, validoAte, ehDono } from "./_comum.js";
 
 /* Modelo padrão do Gemini.
  *
- * O Google aposenta modelo sem aviso: o gemini-2.5-flash parou de aceitar
- * conta nova e o assistente passou a devolver a recusa da própria API. Se
- * acontecer de novo, não precisa recompilar nem publicar: cadastre
- * GEMINI_MODELO nas variáveis do Worker com o nome que a mensagem de erro
- * indicar, e ela ganha deste padrão. */
+ * O Flash é o corte rápido e barato da família, que é o que estas rotas
+ * pedem: responder uma dúvida de estudo, separar um cronograma em aulas,
+ * transcrever a foto de um calendário. Nenhuma delas precisa do modelo
+ * grande, e o grande custa algumas vezes mais por pedido.
+ *
+ * O Google aposenta modelo sem aviso, e já aconteceu duas vezes aqui: o
+ * gemini-2.5-flash parou de aceitar conta nova, e depois o gemini-1.5-flash
+ * deixou de ser reconhecido para chave de projeto novo. Por isso o padrão
+ * anda junto com o que está no ar: quando o Google aposentar este também,
+ * não precisa recompilar nem publicar na hora — cadastre GEMINI_MODELO nas
+ * variáveis do Worker com o nome que a mensagem de erro indicar, e ela ganha
+ * deste padrão. Depois vale trazer o nome novo para cá, senão o código e o
+ * site passam a discordar em silêncio. */
 export const GEMINI_PADRAO = "gemini-3.6-flash";
 
 /* Quem pode usar a IA: o dono e quem tem plano em dia.
@@ -74,6 +82,31 @@ export function recado(status, real, provedor, modeloUsado) {
   return `O serviço respondeu com erro ${status}.`;
 }
 
+/* ── mensagem com imagem ───────────────────────────────────────────────
+ *
+ * O content de uma mensagem pode ser texto puro, como sempre foi, ou uma
+ * lista de pedaços: { texto } e { imagem: { tipo, dados } }, com os dados
+ * em base64 sem o prefixo "data:". É o que a leitura de foto usa.
+ *
+ * Os dois provedores aceitam imagem, cada um com o seu formato, e é só isso
+ * que estas duas funções fazem: traduzir a mesma lista para cada um. */
+const pedacos = (conteudo) => (
+  typeof conteudo === "string" ? [{ texto: conteudo }] : (conteudo || [])
+);
+
+function partesGemini(conteudo) {
+  return pedacos(conteudo).map((p) => (p.imagem
+    ? { inline_data: { mime_type: p.imagem.tipo, data: p.imagem.dados } }
+    : { text: p.texto || "" }));
+}
+
+function partesAnthropic(conteudo) {
+  if (typeof conteudo === "string") return conteudo;
+  return pedacos(conteudo).map((p) => (p.imagem
+    ? { type: "image", source: { type: "base64", media_type: p.imagem.tipo, data: p.imagem.dados } }
+    : { type: "text", text: p.texto || "" }));
+}
+
 /* ── Gemini ────────────────────────────────────────────────────────────
    O Gemini chama de "model" o que a Anthropic chama de "assistant", e as
    instruções do sistema vão num campo separado, fora da conversa. */
@@ -87,7 +120,7 @@ export async function chamarGemini(chave, modelo, { sistema, mensagens, maxSaida
         system_instruction: { parts: [{ text: sistema }] },
         contents: mensagens.map((m) => ({
           role: m.role === "assistant" ? "model" : "user",
-          parts: [{ text: m.content }],
+          parts: partesGemini(m.content),
         })),
         generationConfig: { maxOutputTokens: maxSaida },
       }),
@@ -131,7 +164,10 @@ export async function chamarAnthropic(chave, modelo, { sistema, mensagens, maxSa
       "x-api-key": chave,
       "anthropic-version": "2023-06-01",
     },
-    body: JSON.stringify({ model: modelo, max_tokens: maxSaida, system: sistema, messages: mensagens }),
+    body: JSON.stringify({
+      model: modelo, max_tokens: maxSaida, system: sistema,
+      messages: mensagens.map((m) => ({ role: m.role, content: partesAnthropic(m.content) })),
+    }),
   });
 
   if (!r.ok) {
