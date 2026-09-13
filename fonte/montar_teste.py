@@ -1,8 +1,12 @@
-"""Monta um teste.html igual ao index.html, só que com o plano liberado.
+"""Monta um teste.html igual ao index.html, com o plano liberado e a conta
+de dono ligada.
 
-Serve para o teste automático conseguir abrir as abas pagas. O arquivo de
-produção não é tocado: a troca acontece numa cópia do app.jsx, e o teste.html
-não faz parte da pasta de publicação.
+Serve para o teste automático conseguir abrir as abas pagas e as que só o
+dono enxerga. Sem isso o navegador do teste entra deslogado, sem rede e sem
+Firebase, e essas abas nem aparecem na barra.
+
+O arquivo de produção não é tocado: as trocas acontecem numa cópia do
+app.jsx, e o teste.html não faz parte da pasta de publicação.
 """
 import os, re, subprocess, shutil
 
@@ -13,6 +17,14 @@ patch, n = re.subn(r'const pro = assinatura\.pro;',
                    'const pro = true;   /* build de teste */', fonte)
 if n != 1:
     raise SystemExit('não achei a linha do paywall em app.jsx')
+
+# As abas do dono (Assistente, Treino) dependem do e-mail de quem entrou, e
+# o teste roda deslogado. Quem decide de verdade continua sendo o servidor,
+# em cada rota; aqui é só para a barra mostrar a aba e o teste chegar nela.
+patch, n = re.subn(r'const souDono = ehDono\(nuvem\.usuario\);',
+                   'const souDono = true;   /* build de teste */', patch)
+if n != 1:
+    raise SystemExit('não achei a linha do souDono em app.jsx')
 
 os.makedirs('_teste', exist_ok=True)
 open('_teste/app.jsx', 'w', encoding='utf-8').write(patch)

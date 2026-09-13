@@ -20,7 +20,12 @@ const liberado = path.basename(alvo) === 'teste.html';
    assina, então é procurada pelos dois nomes. */
 const ABAS = ['Hoje', 'Foco', 'Matérias', 'Cronograma', 'Temas', 'Cartões',
               'Revisões', 'Agenda', 'Amigos', 'Metas', 'Desempenho', 'Progresso',
-              'Treino', 'Plano|Assinar', 'Configurações'];
+              'Plano|Assinar', 'Configurações'];
+
+/* Abas que só a conta do dono enxerga. No build de teste elas existem,
+   porque o montar_teste.py liga o dono; no arquivo de produção, aberto
+   deslogado, elas não podem estar na barra. */
+const ABAS_DO_DONO = ['Treino'];
 
 const erros = [];
 const passos = [];
@@ -120,12 +125,23 @@ else {
 }
 
 /* todas as abas renderizam alguma coisa */
-for (const aba of ABAS) {
+for (const aba of (liberado ? [...ABAS, ...ABAS_DO_DONO] : ABAS)) {
   if (!(await ir(aba))) continue;
   const t = await texto();
   if (t.length < 20) falha(`aba ${aba} renderizou vazia`);
   else if (liberado && /Recurso do plano completo/.test(t)) falha(`aba ${aba} ficou bloqueada no build de teste`);
   else ok(`aba ${aba}: ${t.length} caracteres`);
+}
+
+/* Quem não é o dono não pode nem ver a porta. O servidor recusa a montagem
+   de treino para qualquer outra conta, e deixar a aba na barra seria
+   prometer o que a rota não entrega. */
+if (!liberado) {
+  for (const aba of ABAS_DO_DONO) {
+    const n = await pag.locator(`nav button:has-text("${aba}")`).count();
+    if (n === 0) ok(`a aba ${aba} não aparece para quem não é o dono`);
+    else falha(`a aba ${aba} apareceu para quem não entrou na conta`);
+  }
 }
 
 /* ── aba Cronograma: a escolha do que o painel segue ──────────────────
@@ -1215,7 +1231,7 @@ if (liberado) {
    isso mesmo é a que ninguém vai testar de véspera de prova. O caminho
    inteiro passa aqui: criar plano, pôr exercício, registrar série e
    sobreviver ao recarregar. */
-{
+if (liberado) {
   await ir('Treino');
   await pag.locator('main button:has-text("Plano")').first().click();
   await pag.waitForTimeout(300);
@@ -1325,7 +1341,9 @@ else falha(`a barra não voltou (${Math.round(larguraDeVolta)} vs ${Math.round(l
 
   /* 2. Botão só com ícone não tem nome nenhum para leitor de tela. */
   const semNome = [];
-  for (const aba of ['Hoje', 'Metas', 'Cartões', 'Desempenho', 'Treino', 'Configurações']) {
+  const varrer = ['Hoje', 'Metas', 'Cartões', 'Desempenho', 'Configurações'];
+  if (liberado) varrer.push(...ABAS_DO_DONO);
+  for (const aba of varrer) {
     if (!(await ir(aba))) continue;
     const n = await pag.evaluate(() => [...document.querySelectorAll('main button')]
       .filter((b) => !((b.getAttribute('aria-label') || b.textContent || '').trim())).length);

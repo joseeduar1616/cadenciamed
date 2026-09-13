@@ -21,6 +21,7 @@ import { onRequest as cronogramaIa } from "./api/cronograma-ia.js";
 import { onRequest as lerFoto } from "./api/ler-foto.js";
 import { onRequest as buscarImagem } from "./api/buscar-imagem.js";
 import { onRequest as google } from "./api/google.js";
+import { onRequest as treinoIa } from "./api/treino-ia.js";
 
 const ROTAS = {
   "/api/assistente": assistente,
@@ -37,6 +38,7 @@ const ROTAS = {
   "/api/ler-foto": lerFoto,
   "/api/buscar-imagem": buscarImagem,
   "/api/google": google,
+  "/api/treino-ia": treinoIa,
 };
 
 /* ── quem pode chamar de outro endereço ────────────────────────────────

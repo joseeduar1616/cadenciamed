@@ -5,6 +5,10 @@
  * experiência e equipamento, e devolve uma divisão de treino em JSON que o
  * navegador transforma na aba Treino. A chave da IA nunca sai do servidor.
  *
+ * Só a conta do dono usa esta rota. Prescrever exercício para quem a gente
+ * não conhece é outro assunto, com outro risco, então isto não entra no
+ * plano pago junto com o resto.
+ *
  * Por que JSON estruturado e não texto corrido: o plano vira dado de
  * verdade no app (série, repetição, descanso, grupo muscular), porque é
  * isso que permite contar volume por grupo, achar platô e desenhar a
@@ -15,8 +19,8 @@
  * é montado no navegador como busca no YouTube pelo nome do exercício —
  * busca sempre funciona, link inventado morre.
  */
-import { json, quemPede, corpoJson } from "./_comum.js";
-import { podeUsar, escolherProvedor, modeloAtual, chamarIA } from "./_ia.js";
+import { json, quemPede, corpoJson, ehDono } from "./_comum.js";
+import { escolherProvedor, modeloAtual, chamarIA } from "./_ia.js";
 
 const MAX_SAIDA = 9000;
 const MAX_DIAS = 7;
@@ -91,8 +95,13 @@ export async function onRequest({ request, env }) {
   if (!corpo.token) return json({ erro: "Entre na sua conta para usar esta função." }, 403);
   const pessoa = await quemPede(corpo.token, env.FIREBASE_API_KEY);
   if (!pessoa) return json({ erro: "Sua sessão expirou. Entre de novo." }, 403);
-  const permissao = await podeUsar(pessoa, env);
-  if (!permissao.ok) return json({ erro: permissao.erro }, 403);
+  /* Montar treino é função do dono da plataforma, e não do plano pago:
+     prescrever exercício para quem a gente não conhece é outro assunto,
+     com outro risco. A conferência é aqui, no servidor, e não na tela —
+     esconder a aba é conveniência, não é o que protege. */
+  if (!ehDono(pessoa.email)) {
+    return json({ erro: "Esta função está disponível apenas para a conta do administrador." }, 403);
+  }
 
   const p = corpo.perfil && typeof corpo.perfil === "object" ? corpo.perfil : {};
   const dias = inteiro(p.dias, 1, MAX_DIAS, 0);
