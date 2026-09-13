@@ -45,13 +45,24 @@ await pag.addInitScript(() => {
   window.CADENCIA_GOOGLE = { clientId: 'teste.apps.googleusercontent.com' };
   window.__pedidosGoogle = [];
   const anotar = (tipo, extra) => window.__pedidosGoogle.push({ tipo, extra: extra || null });
+  /* O Google de mentira responde de verdade quando alguém pede: assim o
+     teste segue adiante e consegue exercitar o que vem depois da
+     autorização, que é a parte que escreve na agenda. */
   window.google = {
     accounts: {
       oauth2: {
-        initTokenClient: () => ({
-          requestAccessToken: (o) => anotar('token', (o && o.prompt) === '' ? 'prompt vazio' : 'com prompt'),
+        initTokenClient: (cfg) => ({
+          requestAccessToken: (o) => {
+            anotar('token', (o && o.prompt) === '' ? 'prompt vazio' : 'com prompt');
+            window.setTimeout(() => cfg.callback({ access_token: 'token-de-teste', expires_in: 3600 }), 10);
+          },
         }),
-        initCodeClient: () => ({ requestCode: () => anotar('codigo') }),
+        initCodeClient: (cfg) => ({
+          requestCode: () => {
+            anotar('codigo');
+            window.setTimeout(() => cfg.callback({ code: 'codigo-de-teste' }), 10);
+          },
+        }),
         revoke: () => undefined,
       },
     },
@@ -64,6 +75,19 @@ await pag.addInitScript(() => {
       googleCal: { id: 'agenda-de-teste', autoSync: true, ultima: 1 },
     }));
   } catch (e) { /* sem localStorage não há o que semear */ }
+});
+
+/* A agenda do Google, de mentira: anota o que chega e responde o mínimo
+   para o app seguir em frente. */
+const naAgenda = [];
+await pag.route('https://www.googleapis.com/calendar/v3/**', (rota) => {
+  const req = rota.request();
+  const url = new URL(req.url());
+  naAgenda.push({ metodo: req.method(), caminho: url.pathname.replace('/calendar/v3', '') });
+  let corpo = '{}';
+  if (req.method() === 'POST' && /\/calendars$/.test(url.pathname)) corpo = '{"id":"cal-de-teste"}';
+  else if (/\/events\?/.test(req.url()) || /\/events$/.test(url.pathname) && req.method() === 'GET') corpo = '{"items":[]}';
+  rota.fulfill({ status: 200, contentType: 'application/json', body: corpo });
 });
 
 await pag.goto('file://' + alvo, { waitUntil: 'load' });
@@ -121,12 +145,51 @@ if (await abas.count() > 0) {
   const botao = pag.locator('button:has-text("Conectar ao Google Agenda")');
   if (await botao.count() > 0) {
     await botao.first().click();
-    await pag.waitForTimeout(1200);
+    await pag.waitForTimeout(1500);
     const depois = await pag.evaluate(() => window.__pedidosGoogle || []);
     if (depois.length > 0) ok('clicar em conectar ainda abre a autorização do Google');
     else falha('clicar em conectar não pediu nada ao Google');
   } else falha('não achei o botão de conectar ao Google na aba Metas');
 } else falha('não achei a aba Metas');
+
+/* ── mão dupla: mexer na Agenda tem de chegar ao Google sozinho ──────
+   Este é o defeito que o commit anterior deixou passar: o envio
+   automático só rodava com a conta ligada de vez. Quem tinha autorizado
+   na sessão mexia na agenda, nada subia, e nada avisava que não ia
+   subir. Aqui não há conta do Cadência, só o token da sessão — que é
+   exatamente o caso que estava parado. */
+naAgenda.length = 0;
+if (await pag.locator('nav button:has-text("Agenda")').count() > 0) {
+  await pag.locator('nav button:has-text("Agenda")').first().click();
+  await pag.waitForTimeout(500);
+  await pag.locator('button:has-text("Novo bloco")').first().click();
+  await pag.waitForTimeout(300);
+  await pag.locator('input[placeholder="Ex.: enfermaria clínica médica"]').fill('Plantão que tem de subir');
+  await pag.locator('button:has-text("Adicionar bloco")').first().click();
+  /* a espera do envio automático é de 6 s; 11 dão folga para a fila */
+  await pag.waitForTimeout(11000);
+
+  const escritas = naAgenda.filter((c) => c.metodo === 'POST' || c.metodo === 'PUT');
+  if (escritas.some((c) => /\/events$/.test(c.caminho))) {
+    ok('criar um bloco na Agenda sobe para o Google sozinho, sem clicar em sincronizar');
+  } else {
+    falha(`criar um bloco não subiu nada: o Google só recebeu ${naAgenda.map((c) => `${c.metodo} ${c.caminho}`).join(', ') || 'nada'}`);
+  }
+
+  /* E não pode sair janela nenhuma por causa disso. */
+  const pedidosNoFim = await pag.evaluate(() => (window.__pedidosGoogle || []).length);
+  const antesDoBloco = 1;   // só o clique em conectar, lá em cima
+  if (pedidosNoFim <= antesDoBloco) ok('o envio automático não abriu nenhuma tela do Google');
+  else falha('o envio automático abriu a tela do Google');
+
+  /* Mandar de novo o que já está lá seria reescrever a agenda inteira a
+     cada tecla: depois da primeira subida, parado, não sobe mais nada. */
+  naAgenda.length = 0;
+  await pag.waitForTimeout(9000);
+  if (naAgenda.filter((c) => c.metodo === 'POST' || c.metodo === 'PUT').length === 0) {
+    ok('sem mudança nova, nada é reenviado ao Google');
+  } else falha('o envio automático ficou reescrevendo evento que não mudou');
+} else falha('não achei a aba Agenda');
 
 await navegador.close();
 console.log(passos.join('\n'));

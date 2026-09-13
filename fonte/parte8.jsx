@@ -529,7 +529,7 @@ export default function Cadencia() {
     ...(souDono || pro ? [{ id: "assistente", label: "Assistente", acc: "var(--neon)" }] : []),
     { id: "cartoes", label: "Cartões", acc: "var(--neon)", badge: cartoesHoje },
     { id: "revisoes", label: "Revisões", acc: "var(--ok)", badge: late.length },
-    { id: "rotina", label: "Rotina", acc: "var(--a-PE)" },
+    { id: "rotina", label: "Agenda", acc: "var(--a-PE)" },
     { id: "amigos", label: "Amigos", acc: "var(--neon2)" },
     ...(mentorInfo.mentor ? [{ id: "mentor", label: "Mentor", acc: "var(--neon2)" }] : []),
     { id: "metas", label: "Metas", acc: "var(--warn)" },

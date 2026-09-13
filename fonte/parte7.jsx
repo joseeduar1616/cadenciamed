@@ -227,7 +227,7 @@ function Metas({ data, setData, today, qWeek, notify, ladder, gcal }) {
 
         {/* Mão dupla. Só aparece com a conta ligada de vez porque é a única
             situação em que dá para escrever na agenda sem abrir janela. */}
-        {gcal && gcal.disponivel && gcal.permanente ? (
+        {gcal && gcal.disponivel && gcal.podeEnviar ? (
           <label className="mt-4 flex items-start gap-3 rounded-2xl px-4 py-3"
             style={{ background: T.card2, cursor: "pointer" }}>
             <input type="checkbox" checked={!!gcal.autoEnviar} style={{ marginTop: 3, flexShrink: 0 }}
@@ -239,8 +239,10 @@ function Metas({ data, setData, today, qWeek, notify, ladder, gcal }) {
               <Mini style={{ marginTop: 2, lineHeight: 1.6 }}>
                 {gcal.enviandoAuto
                   ? "enviando para o Google agora…"
-                  : "o que você criar ou apagar aqui, e o que o assistente marcar, "
-                    + `aparece em ${NOME_AGENDA} poucos segundos depois`}
+                  : `o que você criar ou apagar aqui, e o que o assistente marcar, aparece em ${NOME_AGENDA} poucos segundos depois`}
+                {!gcal.enviandoAuto && !gcal.permanente
+                  ? " · só enquanto esta autorização durar; ligue a conta de vez para valer sempre"
+                  : ""}
               </Mini>
             </span>
           </label>

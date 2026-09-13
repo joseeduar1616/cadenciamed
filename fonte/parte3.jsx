@@ -541,7 +541,15 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
         client_id: GOOGLE_CFG.clientId,
         scope: ESCOPO_GC,
         callback: (r) => {
-          if (r && r.access_token) { setToken(r.access_token); resolve(r.access_token); return; }
+          if (r && r.access_token) {
+            /* Sem anotar o vencimento, garantirToken devolvia este token
+               para sempre: uma hora depois ele já não vale e toda chamada
+               ao Google voltava 401 sem ninguém entender por quê. */
+            validade.current = Date.now() + Math.max(0, Number(r.expires_in || 3600) - 60) * 1000;
+            setToken(r.access_token);
+            resolve(r.access_token);
+            return;
+          }
           /* O Google devolve o motivo em r.error quando recusa o pedido, e
              engolir isso deixava só "não concluída" na tela. */
           const motivo = (r && (r.error_description || r.error)) || "";
@@ -839,6 +847,16 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
    * a alternativa seria justamente a janela que ninguém pediu.
    */
   const autoEnviar = !!(data.googleCal && data.googleCal.autoEnviar !== false);
+  /* Dá para escrever no Google sem abrir janela nenhuma?
+   *
+   * Com a conta ligada de vez, sempre: o token vem do servidor. Sem ela,
+   * dá enquanto o token desta sessão ainda vale — e mandar durante a
+   * sessão é muito melhor do que não mandar nunca. Exigir a ligação
+   * permanente aqui era o motivo de a mão dupla não sair do lugar para
+   * quem ainda não tinha ligado a conta: a pessoa mexia na agenda, nada
+   * subia, e não havia aviso nenhum de que não ia subir. */
+  const tokenVale = !!token && (!validade.current || validade.current > Date.now());
+  const podeEnviarCalado = permanente === true || tokenVale;
   const [enviandoAuto, setEnviandoAuto] = useState(false);
   const ocupadoAuto = useRef(false);
   const agendaRef = useRef("");
@@ -852,7 +870,7 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
   garantirAgendaRef.current = garantirAgenda;
 
   const autoMapa = useMemo(() => {
-    if (!GOOGLE_CFG || !autoSync || !autoEnviar || permanente !== true) return { chave: "" };
+    if (!GOOGLE_CFG || !autoSync || !autoEnviar || !podeEnviarCalado) return { chave: "" };
     const opts = { ...AUTO_PADRAO, ...((data.googleCal && data.googleCal.opts) || null) };
     const lista = eventosGoogle({
       routine: data.routine, agenda: data.agenda, ladder, simulados: data.simulados,
@@ -862,7 +880,7 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
     /* A chave é texto de propósito: ladder e agenda são arrays novos a cada
        rerrenderização, e depender deles reiniciaria a espera para sempre. */
     return { chave: JSON.stringify([opts, agora]), lista, opts };
-  }, [autoSync, autoEnviar, permanente, data.googleCal, data.routine, data.agenda,
+  }, [autoSync, autoEnviar, podeEnviarCalado, data.googleCal, data.routine, data.agenda,
     data.simulados, data.profile.examDate, ladder, today]);
 
   useEffect(() => {
@@ -885,21 +903,34 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
         const cal = agendaRef.current || await garantirAgendaRef.current(tk);
         agendaRef.current = cal;
         const feitas = { ...antes };
+        /* Token vencido ou revogado: insistir com ele é erro em todo evento
+           da fila. Larga o token, para a rodada, e a mão dupla volta na
+           próxima autorização — ou já na próxima mudança, se a conta
+           estiver ligada de vez e o servidor puder dar outro. */
+        let morreu = false;
+        const caiu = (r) => {
+          if (r.status !== 401 && r.status !== 403) return false;
+          morreu = true;
+          return true;
+        };
         for (const ev of subir) {
-          if (cancelado) break;
+          if (cancelado || morreu) break;
           const corpo = corpoDoEvento(ev);
           let r = await chamar(tk, `/calendars/${encodeURIComponent(cal)}/events`, "POST", corpo);
           if (r.status === 409) {
             r = await chamar(tk, `/calendars/${encodeURIComponent(cal)}/events/${ev.id}`, "PUT", corpo);
           }
+          if (caiu(r)) break;
           if (r.ok) feitas[ev.id] = agora[ev.id];
         }
         for (const id of apagar) {
-          if (cancelado) break;
+          if (cancelado || morreu) break;
           const r = await chamar(tk, `/calendars/${encodeURIComponent(cal)}/events/${id}`, "DELETE");
+          if (caiu(r)) break;
           /* 404 e 410 são "já não está lá", que é exatamente o que se queria */
           if (r.ok || r.status === 404 || r.status === 410) delete feitas[id];
         }
+        if (morreu) { validade.current = 0; setToken(null); setAutoParou(true); }
         marcasRef.current = feitas;
         if (!cancelado) {
           setData((p) => ({
@@ -922,7 +953,7 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
   return {
     disponivel: !!GOOGLE_CFG, pronto, conectado: !!token, ocupado, progresso, erro,
     sincronizar, importarRotina, desconectar, autoSync, autoParou,
-    autoEnviar, mudarAutoEnviar, enviandoAuto,
+    autoEnviar, mudarAutoEnviar, enviandoAuto, podeEnviar: podeEnviarCalado,
     /* permanente: true já ligado de vez, false não dá (ou foi desligado),
        null ainda não perguntei ao servidor. */
     permanente, ligarDeVez, podeLigarDeVez: logado && permanente !== false, logado,

@@ -19,7 +19,7 @@ const liberado = path.basename(alvo) === 'teste.html';
 /* A última aba se chama "Plano" para quem assina e "Assinar" para quem não
    assina, então é procurada pelos dois nomes. */
 const ABAS = ['Hoje', 'Foco', 'Matérias', 'Cronograma', 'Temas', 'Cartões',
-              'Revisões', 'Rotina', 'Amigos', 'Metas', 'Desempenho', 'Progresso',
+              'Revisões', 'Agenda', 'Amigos', 'Metas', 'Desempenho', 'Progresso',
               'Plano|Assinar', 'Configurações'];
 
 const erros = [];
@@ -1064,7 +1064,7 @@ if (liberado) {
   ok('aparência voltou ao padrão');
 
   /* ── rotina: criar bloco, marcar cumprido, ver o dia e a semana ──── */
-  await ir('Rotina');
+  await ir('Agenda');
   await pag.locator('button:has-text("Novo bloco")').first().click();
   await pag.waitForTimeout(300);
   await pag.locator('input[placeholder="Ex.: enfermaria clínica médica"]').fill('Bloco que precisa sobreviver');
@@ -1112,7 +1112,7 @@ if (liberado) {
 
   /* O que foi cumprido na agenda passa pelo normalize na volta do disco:
      sem estar copiado lá, some a cada recarregar sem avisar. */
-  await ir('Rotina');
+  await ir('Agenda');
   const rotinaDepois = await texto();
   if (/Bloco que precisa sobreviver/.test(rotinaDepois)) ok('os blocos da agenda sobrevivem ao recarregar');
   else falha('os blocos da agenda sumiram depois de recarregar');
@@ -1139,7 +1139,7 @@ if (liberado) {
      campo cair, o disco ainda teria o texto injetado aqui. Mexer em algo
      obriga a gravar por cima, e aí o que está no disco é o que sobreviveu
      à volta pelo normalize. */
-  await ir('Rotina');
+  await ir('Agenda');
   await pag.locator('button:has-text("Novo bloco")').first().click();
   await pag.waitForTimeout(300);
   await pag.locator('input[placeholder="Ex.: enfermaria clínica médica"]').fill('Bloco que força a gravação');
