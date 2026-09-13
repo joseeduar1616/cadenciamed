@@ -23,7 +23,7 @@ python3 gerar_legais.py
 echo "── juntando os pedaços ─────────────────────────────"
 cat base.jsx parte2.jsx parte3.jsx parte10.jsx parte11.jsx parte13.jsx \
     parte12.jsx parte17.jsx parte4.jsx parte5.jsx parte6.jsx parte7.jsx parte9.jsx \
-    parte14.jsx parte15.jsx parte16.jsx parte18.jsx parte8.jsx > app.jsx
+    parte14.jsx parte15.jsx parte16.jsx parte18.jsx parte19.jsx parte8.jsx > app.jsx
 
 echo "── compilando ──────────────────────────────────────"
 npx esbuild main.jsx --bundle --minify --format=iife --loader:.jsx=jsx \
@@ -42,6 +42,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   python3 extrair_cores.py
   python3 extrair_pastas.py
   python3 extrair_agenda.py
+  python3 extrair_treino.py
   echo "── teste no navegador ──────────────────────────────"
   python3 montar_teste.py > /dev/null
   node testar.mjs
@@ -51,6 +52,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-assistente.mjs
   node testar-flashcards-ia.mjs
   node testar-cronograma-ia.mjs
+  node testar-treino-ia.mjs
   node testar-ler-foto.mjs
   node testar-buscar-imagem.mjs
   node testar-google.mjs
@@ -59,6 +61,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-pastas.mjs
   node testar-agenda.mjs
   node testar-janela-google.mjs
+  node testar-treino.mjs
   node testar-recorte-pdf.mjs
   node testar-cupom.mjs
   node testar-acessos.mjs

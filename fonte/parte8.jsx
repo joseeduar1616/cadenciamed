@@ -534,6 +534,7 @@ export default function Cadencia() {
     ...(mentorInfo.mentor ? [{ id: "mentor", label: "Mentor", acc: "var(--neon2)" }] : []),
     { id: "metas", label: "Metas", acc: "var(--warn)" },
     { id: "desempenho", label: "Desempenho", acc: "var(--a-CI)" },
+    { id: "treino", label: "Treino", acc: "var(--ok)" },
     { id: "progresso", label: "Progresso", acc: "var(--a-CI)" },
     { id: "planos", label: pro ? "Plano" : "Assinar", acc: "var(--neon2)" },
     { id: "config", label: "Configurações", acc: "var(--dim)" },
@@ -926,6 +927,7 @@ export default function Cadencia() {
               {tab === "metas" && pro && <Metas {...{ data, setData, today, qWeek, notify, ladder, gcal }} />}
               {tab === "mentor" && mentorInfo.mentor && <Mentor {...{ nuvem, notify, mentorInfo }} />}
               {tab === "desempenho" && <Desempenho {...{ data, today, addSession, delSession, notify }} />}
+              {tab === "treino" && <Treino {...{ data, setData, notify, today, nuvem }} />}
               {tab === "progresso" && <Progresso {...{ data, byDay, today, totals, subjects }} />}
               {tab === "config" && <Configuracoes {...{ data, setData, today, notify, nuvem, pro, aoLiberar: assinatura.recarregar, irPara: setTab }} />}
             </div>

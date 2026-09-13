@@ -33,6 +33,9 @@ const DEFAULTS = {
   simulados: {}, provas: [], habits: HABITS_SEED, habitLog: {},
   rever: [], notes: {},
   googleCal: { id: "", ultima: 0, autoSync: false, autoEnviar: true, opts: {}, enviados: {} },
+  /* Academia. Fica separado de tudo que é estudo de propósito: não conta
+     hora, não entra no cronograma, não mexe em meta semanal. */
+  treino: { perfil: {}, planos: [], planoAtivo: "", emCurso: null, sessoes: [], medidas: [] },
   /* Cronograma que a pessoa recebeu do curso dela, em texto, para o
      assistente organizar a rotina em cima do que ela realmente tem.
      As duas datas dizem quando esse período começa e quando acaba: sem elas
@@ -73,12 +76,106 @@ const KEY = "cadencia:v3";
    data que venha de fora e vá virar conta de dias depois. */
 const diaValido = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? String(v) : "");
 
+/* A aba Treino na volta do disco e da nuvem.
+ *
+ * Vale a mesma regra de tudo aqui: o que não for copiado se perde. Escrito
+ * à parte porque é o único ramo com três níveis de lista dentro de lista
+ * (plano → dia → exercício), e enfiar isso no meio do normalize deixaria a
+ * função ilegível.
+ *
+ * Os tetos não são desconfiança do app, são do que vem da nuvem: um
+ * documento adulterado ou corrompido com cem mil séries travaria a aba
+ * inteira na hora de desenhar o gráfico. */
+function normalizarTreino(tr) {
+  const o = (x) => (x && typeof x === "object" && !Array.isArray(x) ? x : {});
+  const a = (x) => (Array.isArray(x) ? x : []);
+  const txt = (v, n) => String(v == null ? "" : v).trim().slice(0, n);
+  const num = (v, min, max, padrao) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n >= min && n <= max ? n : padrao;
+  };
+
+  const exercicio = (e) => ({
+    id: txt(o(e).id, 30) || uid(),
+    nome: txt(o(e).nome, 60),
+    grupo: txt(o(e).grupo, 20),
+    series: num(o(e).series, 1, 10, 3),
+    reps: txt(o(e).reps, 12) || "8-12",
+    descanso: num(o(e).descanso, 15, 600, 90),
+    observacao: txt(o(e).observacao, 160),
+    video: txt(o(e).video, 200),
+  });
+
+  const serieFeita = (s) => ({
+    id: txt(o(s).id, 30) || uid(),
+    exId: txt(o(s).exId, 30),
+    exNome: txt(o(s).exNome, 60),
+    grupo: txt(o(s).grupo, 20),
+    peso: num(o(s).peso, 0, 1000, 0),
+    reps: num(o(s).reps, 1, 999, 1),
+    em: num(o(s).em, 0, 4102444800000, 0),
+  });
+
+  const sessao = (s) => ({
+    id: txt(o(s).id, 30) || uid(),
+    data: txt(o(s).data, 10),
+    planoId: txt(o(s).planoId, 30),
+    diaId: txt(o(s).diaId, 30),
+    nome: txt(o(s).nome, 40),
+    inicio: num(o(s).inicio, 0, 4102444800000, 0),
+    fim: num(o(s).fim, 0, 4102444800000, 0),
+    series: a(o(s).series).slice(0, 400).map(serieFeita).filter((x) => x.exNome),
+  });
+
+  const medida = (m) => {
+    const saida = { id: txt(o(m).id, 30) || uid(), data: txt(o(m).data, 10) };
+    for (const k of ["peso", "abdome", "cintura", "quadril", "peito", "ombro",
+      "braco", "antebraco", "coxa", "panturrilha"]) {
+      const v = Number(o(m)[k]);
+      if (Number.isFinite(v) && v > 0 && v < 1000) saida[k] = v;
+    }
+    return saida;
+  };
+
+  const p = o(tr.perfil);
+  const emCurso = o(tr.emCurso);
+  return {
+    perfil: {
+      objetivo: txt(p.objetivo, 600),
+      dias: num(p.dias, 1, 7, 3),
+      nivel: txt(p.nivel, 30),
+      minutos: txt(p.minutos, 10),
+      equipamento: txt(p.equipamento, 600),
+      limitacoes: txt(p.limitacoes, 600),
+      observacoes: txt(p.observacoes, 600),
+    },
+    planos: a(tr.planos).slice(0, 20).map((pl) => ({
+      id: txt(o(pl).id, 30) || uid(),
+      nome: txt(o(pl).nome, 50) || "Meu treino",
+      aviso: txt(o(pl).aviso, 400),
+      criadoEm: num(o(pl).criadoEm, 0, 4102444800000, 0),
+      dias: a(o(pl).dias).slice(0, 7).map((d) => ({
+        id: txt(o(d).id, 30) || uid(),
+        nome: txt(o(d).nome, 40),
+        exercicios: a(o(d).exercicios).slice(0, 20).map(exercicio).filter((e) => e.nome),
+      })),
+    })),
+    planoAtivo: txt(tr.planoAtivo, 30),
+    /* O treino em andamento sobrevive a fechar o app no meio da série:
+       quem está na academia não fica com o site aberto o tempo todo. */
+    emCurso: emCurso.id ? sessao(emCurso) : null,
+    sessoes: a(tr.sessoes).slice(0, 1500).map(sessao).filter((s) => s.data),
+    medidas: a(tr.medidas).slice(0, 2000).map(medida).filter((m) => m.data),
+  };
+}
+
 function normalize(raw) {
   const d = raw && typeof raw === "object" ? raw : {};
   const g = d.goals || {}, p = d.pomo || {}, pr = d.profile || {};
   const obj = (x) => (x && typeof x === "object" && !Array.isArray(x) ? x : {});
   const arr = (x, f) => (Array.isArray(x) ? x : f);
   const gc = obj(d.googleCal);
+  const tr = obj(d.treino);
   const rv = obj(d.revisao), tm = obj(d.tema);
   const hex = (v) => (/^#[0-9a-fA-F]{6}$/.test(v) ? v : "");
 
@@ -193,6 +290,7 @@ function normalize(raw) {
         .slice(0, 3000)
         .reduce((m, [k, v]) => { m[k] = v; return m; }, {}),
     },
+    treino: normalizarTreino(tr),
     /* Os cartões precisam sobreviver ao recarregar a página: como tudo passa
        por aqui na volta do disco e da nuvem, o que não for copiado se perde. */
     flash: arr(d.flash, []),

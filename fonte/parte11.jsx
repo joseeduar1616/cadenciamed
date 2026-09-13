@@ -36,6 +36,7 @@ const RECURSOS_PRO = {
   revisoes: "A escada de revisão espaçada, com os prazos de cada aula",
   temas: "O cronograma por especialidade, com o radar das áreas",
   rotina: "Agenda da semana e do dia, com o Google Agenda junto",
+  treino: "Academia: plano, execução, medidas do corpo e evolução de carga",
   amigos: "Salas com seus amigos e ranking de horas, questões e acerto",
   metas: "Simulados, provas resolvidas, hábitos e exportação da agenda",
   nuvem: "Seus dados sincronizados em todos os aparelhos",

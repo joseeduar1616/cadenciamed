@@ -20,7 +20,7 @@ const liberado = path.basename(alvo) === 'teste.html';
    assina, então é procurada pelos dois nomes. */
 const ABAS = ['Hoje', 'Foco', 'Matérias', 'Cronograma', 'Temas', 'Cartões',
               'Revisões', 'Agenda', 'Amigos', 'Metas', 'Desempenho', 'Progresso',
-              'Plano|Assinar', 'Configurações'];
+              'Treino', 'Plano|Assinar', 'Configurações'];
 
 const erros = [];
 const passos = [];
@@ -1160,6 +1160,69 @@ if (liberado) {
   else falha('o envio automático voltou a ligar sozinho depois de recarregar');
 }
 
+/* ── treino: montar, executar e guardar ──────────────────────────────
+   A aba da academia é a única que não tem nada a ver com estudo, e por
+   isso mesmo é a que ninguém vai testar de véspera de prova. O caminho
+   inteiro passa aqui: criar plano, pôr exercício, registrar série e
+   sobreviver ao recarregar. */
+{
+  await ir('Treino');
+  await pag.locator('main button:has-text("Plano")').first().click();
+  await pag.waitForTimeout(300);
+  await pag.locator('button:has-text("Criar um plano na mão")').first().click();
+  await pag.waitForTimeout(400);
+  await pag.locator('button:has-text("dia")').first().click();
+  await pag.waitForTimeout(300);
+  await pag.locator('button[aria-label="Adicionar exercício"]').first().click();
+  await pag.waitForTimeout(300);
+  if (/Exercício novo/.test(await texto())) ok('treino: dá para montar um plano na mão');
+  else falha('treino: o exercício novo não apareceu no plano');
+
+  await pag.locator('main button:has-text("Hoje")').first().click();
+  await pag.waitForTimeout(300);
+  await pag.locator('main button:has-text("Treino A")').first().click();
+  await pag.waitForTimeout(400);
+  await pag.locator('input[aria-label="Peso"]').first().fill('60');
+  await pag.locator('input[aria-label="Repetições"]').first().fill('10');
+  await pag.locator('button:has-text("série 1")').first().click();
+  await pag.waitForTimeout(400);
+  if (/60 kg × 10/.test(await texto())) ok('treino: a série registrada aparece com peso e repetição');
+  else falha('treino: a série registrada não apareceu');
+
+  /* O descanso não pode começar sozinho: quem está no meio da série não
+     pediu cronômetro nenhum. */
+  if (await pag.locator('button:has-text("descansar")').count() > 0) ok('treino: o descanso espera ser pedido');
+  else falha('treino: não achei o botão de descanso');
+
+  await pag.locator('button:has-text("Encerrar e salvar")').first().click();
+  await pag.waitForTimeout(600);
+  await pag.locator('main button:has-text("Cargas")').first().click();
+  await pag.waitForTimeout(500);
+  const cargas = await texto();
+  /* innerText devolve o texto já transformado pelo CSS, e os títulos do
+     app são maiúsculos: sem o /i esta comparação nunca bate. */
+  if (/volume dos últimos 7 dias/i.test(cargas)) ok('treino: o volume da semana aparece depois do primeiro treino');
+  else falha('treino: a aba de cargas não mostrou o volume');
+  if (/Peito|Sem grupo/.test(cargas)) ok('treino: a série entrou na conta de volume');
+  else falha('treino: a série não entrou na conta de volume');
+
+  /* Nada disso pode passar pelo normalize e sumir. */
+  await pag.waitForTimeout(2600);
+  await pag.reload({ waitUntil: 'load' });
+  await pag.waitForTimeout(2200);
+  await ir('Treino');
+  await pag.locator('main button:has-text("Cargas")').first().click();
+  await pag.waitForTimeout(500);
+  if (/volume dos últimos 7 dias/i.test(await texto())) ok('treino: o treino registrado sobrevive ao recarregar');
+  else falha('treino: o treino registrado sumiu depois de recarregar');
+
+  /* E não pode ter virado hora de estudo: a academia não entra na meta. */
+  await ir('Progresso');
+  const prog = await texto();
+  if (!/Treino A/.test(prog)) ok('treino: a academia não aparece no progresso de estudo');
+  else falha('treino: o treino vazou para o progresso de estudo');
+}
+
 /* ── barra lateral ────────────────────────────────────────────────── */
 const lateral = pag.locator('aside[aria-label="Navegação"]');
 if (await lateral.count() === 1) ok('a barra lateral existe');
@@ -1212,7 +1275,7 @@ else falha(`a barra não voltou (${Math.round(larguraDeVolta)} vs ${Math.round(l
 
   /* 2. Botão só com ícone não tem nome nenhum para leitor de tela. */
   const semNome = [];
-  for (const aba of ['Hoje', 'Metas', 'Cartões', 'Desempenho', 'Configurações']) {
+  for (const aba of ['Hoje', 'Metas', 'Cartões', 'Desempenho', 'Treino', 'Configurações']) {
     if (!(await ir(aba))) continue;
     const n = await pag.evaluate(() => [...document.querySelectorAll('main button')]
       .filter((b) => !((b.getAttribute('aria-label') || b.textContent || '').trim())).length);
