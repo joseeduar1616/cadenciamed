@@ -124,6 +124,39 @@ const corpo = await r3.json().catch(() => null);
 if (corpo && corpo.erro) ok('erro dentro da rota volta como JSON explicado');
 else falha('erro dentro da rota não virou JSON: ' + r3.status);
 
+/* ── toda rota escrita está ligada no roteador ────────────────────────
+ *
+ * A /api/treino-ia existiu por um dia inteiro sem estar aqui: o arquivo
+ * pronto, o teste dela passando, e o botão na tela devolvendo "não
+ * consegui falar com o servidor". O roteador é uma lista escrita à mão, e
+ * esquecer uma linha dela não quebra teste nenhum dos outros — só a
+ * função nova, em produção, para quem for usar.
+ *
+ * Esta verificação lê a pasta e cobra a lista. Arquivos com "_" na frente
+ * são peças compartilhadas, não rotas.
+ */
+{
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const pasta = path.resolve('../worker/api');
+  const arquivos = fs.readdirSync(pasta)
+    .filter((n) => n.endsWith('.js') && !n.startsWith('_'))
+    .map((n) => '/api/' + n.replace(/\.js$/, ''))
+    .sort();
+
+  const fonte = fs.readFileSync(path.resolve('../worker/index.js'), 'utf8');
+  const registradas = [...fonte.matchAll(/"(\/api\/[a-z0-9-]+)"\s*:/g)].map((m) => m[1]).sort();
+
+  const faltando = arquivos.filter((r) => registradas.indexOf(r) < 0);
+  const sobrando = registradas.filter((r) => arquivos.indexOf(r) < 0);
+
+  if (faltando.length === 0) ok(`toda rota da pasta está no roteador (${arquivos.length})`);
+  else falha('rota escrita e não ligada no roteador: ' + faltando.join(', '));
+
+  if (sobrando.length === 0) ok('o roteador não aponta para rota que não existe');
+  else falha('o roteador aponta para arquivo que não existe: ' + sobrando.join(', '));
+}
+
 console.log(passos.join('\n'));
 console.log('\n' + (erros.length ? `${erros.length} PROBLEMA(S):\n` + erros.join('\n') : 'nenhum erro'));
 if (erros.length) process.exitCode = 1;

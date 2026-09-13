@@ -78,8 +78,21 @@ const texto = (v) => (v && v.stringValue) || "";
 const numero = (v) => Number((v && (v.doubleValue || v.integerValue)) || 0);
 const lista = (v) => (((v && v.arrayValue) || {}).values || []).map(texto).filter(Boolean);
 
-async function lerSala(token, slug) {
-  const r = await fetch(`${BASE_FIRESTORE}/salas/${slug}`, {
+/* ── duas famílias de sala, em coleções separadas ─────────────────────
+ *
+ * "salas" é o estudo; "salasTreino" é a academia. São mundos diferentes:
+ * quem estuda com você não é necessariamente quem treina com você, e
+ * misturar os dois obrigaria todo mundo a ver o mural da academia de gente
+ * que só entrou para comparar horas de estudo.
+ *
+ * Coleção separada, e não um campo "tipo" dentro da mesma: assim o nome da
+ * sala pode se repetir entre as duas (dá para ter "Turma 2026" nas duas
+ * sem uma atrapalhar a outra) e uma consulta nunca alcança a outra família
+ * por engano. */
+const COLECAO = (tipo) => (String(tipo) === "treino" ? "salasTreino" : "salas");
+
+async function lerSala(token, col, slug) {
+  const r = await fetch(`${BASE_FIRESTORE}/${col}/${slug}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!r.ok) return null;
@@ -112,8 +125,8 @@ async function lerSala(token, slug) {
    perder uma das duas entradas, porque cada uma lê a lista e regrava o que
    leu. Numa sala de amigos isso custa clicar em "entrar" de novo, então
    não vale a complicação de uma transação do Firestore. */
-async function gravarSala(token, sala) {
-  const r = await fetch(`${BASE_FIRESTORE}/salas/${sala.slug}`, {
+async function gravarSala(token, col, sala) {
+  const r = await fetch(`${BASE_FIRESTORE}/${col}/${sala.slug}`, {
     method: "PATCH",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -202,12 +215,12 @@ async function perfisDe(token, uids) {
  * uma das duas, porque cada chamada lê a lista e regrava o que leu — é o
  * mesmo acerto já feito na lista de membros, e o preço é digitar de novo.
  */
-const CAMINHO_RECADOS = (slug) => `${BASE_FIRESTORE}/salas/${slug}/mensagens/log`;
+const CAMINHO_RECADOS = (col, slug) => `${BASE_FIRESTORE}/${col}/${slug}/mensagens/log`;
 
 const mapa = (v) => ((v && v.mapValue) || {}).fields || {};
 
-async function lerRecados(token, slug) {
-  const r = await fetch(CAMINHO_RECADOS(slug), {
+async function lerRecados(token, col, slug) {
+  const r = await fetch(CAMINHO_RECADOS(col, slug), {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!r.ok) return [];                       // 404 é sala sem conversa ainda
@@ -225,8 +238,8 @@ async function lerRecados(token, slug) {
   return itens.filter((x) => x.texto);
 }
 
-async function gravarRecados(token, slug, itens) {
-  const r = await fetch(CAMINHO_RECADOS(slug), {
+async function gravarRecados(token, col, slug, itens) {
+  const r = await fetch(CAMINHO_RECADOS(col, slug), {
     method: "PATCH",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -254,8 +267,8 @@ async function gravarRecados(token, slug, itens) {
 /* Apagar a sala não apaga o que está pendurado nela: no Firestore, a
    subcoleção sobrevive ao documento pai e ficaria de herança para a próxima
    sala de mesmo nome. */
-async function apagarRecados(token, slug) {
-  await fetch(CAMINHO_RECADOS(slug), {
+async function apagarRecados(token, col, slug) {
+  await fetch(CAMINHO_RECADOS(col, slug), {
     method: "DELETE", headers: { Authorization: `Bearer ${token}` },
   }).catch(() => {});
 }
@@ -278,16 +291,16 @@ async function apagarRecados(token, slug) {
  * rota, que já sabe quem está pedindo, e o navegador não alcança a
  * coleção direto.
  */
-const CAMINHO_MURAL = (slug) => `${BASE_FIRESTORE}/salas/${slug}/treinos/mural`;
-const CAMINHO_FOTO = (slug, id) => `${BASE_FIRESTORE}/salas/${slug}/fotos/${id}`;
+const CAMINHO_MURAL = (col, slug) => `${BASE_FIRESTORE}/${col}/${slug}/treinos/mural`;
+const CAMINHO_FOTO = (col, slug, id) => `${BASE_FIRESTORE}/${col}/${slug}/fotos/${id}`;
 const MAX_TREINOS = 60;
 /* Uma foto de treino reduzida no navegador dá uns 100 KB em base64. O teto
    aqui é folga para foto grande, e barreira para quem tentar mandar um
    arquivo inteiro por aqui: o documento do Firestore não passa de 1 MB. */
 const MAX_FOTO_B64 = 700000;
 
-async function lerMural(token, slug) {
-  const r = await fetch(CAMINHO_MURAL(slug), { headers: { Authorization: `Bearer ${token}` } });
+async function lerMural(token, col, slug) {
+  const r = await fetch(CAMINHO_MURAL(col, slug), { headers: { Authorization: `Bearer ${token}` } });
   if (!r.ok) return [];                       // 404 é sala sem treino ainda
   const j = await r.json().catch(() => null);
   const f = (j || {}).fields || {};
@@ -309,8 +322,8 @@ async function lerMural(token, slug) {
   }).filter((x) => x.id);
 }
 
-async function gravarMural(token, slug, itens) {
-  const r = await fetch(CAMINHO_MURAL(slug), {
+async function gravarMural(token, col, slug, itens) {
+  const r = await fetch(CAMINHO_MURAL(col, slug), {
     method: "PATCH",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -342,8 +355,8 @@ async function gravarMural(token, slug, itens) {
   return r.ok;
 }
 
-async function gravarFoto(token, slug, id, b64) {
-  const r = await fetch(CAMINHO_FOTO(slug, id), {
+async function gravarFoto(token, col, slug, id, b64) {
+  const r = await fetch(CAMINHO_FOTO(col, slug, id), {
     method: "PATCH",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ fields: { b64: { stringValue: b64 } } }),
@@ -351,17 +364,129 @@ async function gravarFoto(token, slug, id, b64) {
   return r.ok;
 }
 
-async function lerFoto(token, slug, id) {
-  const r = await fetch(CAMINHO_FOTO(slug, id), { headers: { Authorization: `Bearer ${token}` } });
+async function lerFoto(token, col, slug, id) {
+  const r = await fetch(CAMINHO_FOTO(col, slug, id), { headers: { Authorization: `Bearer ${token}` } });
   if (!r.ok) return "";
   const j = await r.json().catch(() => null);
   return texto(((j || {}).fields || {}).b64);
 }
 
-async function apagarFoto(token, slug, id) {
-  await fetch(CAMINHO_FOTO(slug, id), {
+async function apagarFoto(token, col, slug, id) {
+  await fetch(CAMINHO_FOTO(col, slug, id), {
     method: "DELETE", headers: { Authorization: `Bearer ${token}` },
   }).catch(() => {});
+}
+
+/* ── simulados da sala ────────────────────────────────────────────────
+ *
+ * Um documento só, salas/{slug}/simulados/lista, com os simulados da sala
+ * e o resultado de cada pessoa dentro de cada um.
+ *
+ * A regra que dá nome à coisa: só vê o resultado dos outros quem lançou o
+ * próprio. E ela vive AQUI, no servidor, não na tela. Esconder no
+ * navegador não esconderia nada — bastaria abrir a aba de rede para ler o
+ * número de todo mundo. Quem não lançou recebe uma resposta que nem traz
+ * os números, e não uma resposta completa com um cadeado desenhado por
+ * cima.
+ *
+ * É uma troca, e é de propósito: sem ela o simulado da sala viraria um
+ * lugar onde se observa o desempenho alheio sem expor o próprio.
+ */
+const CAMINHO_SIMULADOS = (col, slug) => `${BASE_FIRESTORE}/${col}/${slug}/simulados/lista`;
+const MAX_SIMULADOS = 40;
+
+async function lerSimulados(token, col, slug) {
+  const r = await fetch(CAMINHO_SIMULADOS(col, slug), { headers: { Authorization: `Bearer ${token}` } });
+  if (!r.ok) return [];
+  const j = await r.json().catch(() => null);
+  const f = (j || {}).fields || {};
+  return (((f.itens || {}).arrayValue || {}).values || []).map((v) => {
+    const m = mapa(v);
+    const res = mapa(m.resultados);
+    const resultados = {};
+    for (const [uid, val] of Object.entries(res)) {
+      const rm = mapa(val);
+      resultados[uid] = { acertos: numero(rm.acertos), em: numero(rm.em) };
+    }
+    return {
+      id: texto(m.id),
+      nome: texto(m.nome),
+      data: texto(m.data),
+      total: numero(m.total),
+      porQuem: texto(m.porQuem),
+      criadoEm: numero(m.criadoEm),
+      resultados,
+    };
+  }).filter((x) => x.id);
+}
+
+async function gravarSimulados(token, col, slug, itens) {
+  const r = await fetch(CAMINHO_SIMULADOS(col, slug), {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      fields: {
+        itens: {
+          arrayValue: {
+            values: itens.map((x) => ({
+              mapValue: {
+                fields: {
+                  id: { stringValue: x.id },
+                  nome: { stringValue: x.nome },
+                  data: { stringValue: x.data },
+                  total: { doubleValue: x.total },
+                  porQuem: { stringValue: x.porQuem },
+                  criadoEm: { doubleValue: x.criadoEm },
+                  resultados: {
+                    mapValue: {
+                      fields: Object.entries(x.resultados).reduce((m, [uid, v]) => {
+                        m[uid] = {
+                          mapValue: {
+                            fields: {
+                              acertos: { doubleValue: v.acertos },
+                              em: { doubleValue: v.em },
+                            },
+                          },
+                        };
+                        return m;
+                      }, {}),
+                    },
+                  },
+                },
+              },
+            })),
+          },
+        },
+      },
+    }),
+  });
+  return r.ok;
+}
+
+/* Um simulado como a tela precisa dele, para uma pessoa.
+ *
+ * Quem ainda não lançou recebe só o próprio vazio e quantas pessoas já
+ * lançaram — o suficiente para saber que há gente lá, e nada do resultado
+ * de ninguém. */
+function simuladoParaMim(sim, perfis, eu) {
+  const meu = sim.resultados[eu] || null;
+  const base = {
+    id: sim.id, nome: sim.nome, data: sim.data, total: sim.total,
+    porQuem: sim.porQuem, criadoEm: sim.criadoEm,
+    quantos: Object.keys(sim.resultados).length,
+    meu: meu ? { acertos: meu.acertos, pct: sim.total ? Math.round((meu.acertos / sim.total) * 100) : null } : null,
+  };
+  if (!meu) return { ...base, liberado: false, linhas: [] };
+
+  const linhas = Object.entries(sim.resultados).map(([uid, v]) => ({
+    uid,
+    nome: (perfis[uid] && perfis[uid].nome) || "Alguém",
+    acertos: v.acertos,
+    pct: sim.total ? Math.round((v.acertos / sim.total) * 100) : null,
+    souEu: uid === eu,
+  })).sort((a, b) => b.acertos - a.acertos);
+  let n = 0;
+  return { ...base, liberado: true, linhas: linhas.map((x) => ({ ...x, posicao: (n += 1) })) };
 }
 
 /* O placar da academia. Conta treino, tempo e séries dos últimos 7 dias,
@@ -544,6 +669,12 @@ export async function onRequest({ request, env }) {
 
   const acao = String(corpo.acao || "minhas");
 
+  /* Em qual família de sala esta chamada mexe: estudo (padrão) ou treino.
+     Vem do pedido porque as duas telas são diferentes e cada uma sabe da
+     sua; o servidor não tem como adivinhar, e errar aqui faria a aba de
+     treino escrever no mural do estudo. */
+  const col = COLECAO(corpo.tipo);
+
   /* ── as salas de quem está pedindo ─────────────────────────────────── */
   if (acao === "minhas") {
     const r = await fetch(`${BASE_FIRESTORE}:runQuery`, {
@@ -551,7 +682,7 @@ export async function onRequest({ request, env }) {
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         structuredQuery: {
-          from: [{ collectionId: "salas" }],
+          from: [{ collectionId: col }],
           where: {
             fieldFilter: {
               field: { fieldPath: "membros" }, op: "ARRAY_CONTAINS",
@@ -585,7 +716,7 @@ export async function onRequest({ request, env }) {
     const senha = String(corpo.senha || "");
     if (senha.length < 4) return json({ erro: "A senha precisa ter pelo menos 4 caracteres." }, 400);
 
-    if (await lerSala(token, slug)) {
+    if (await lerSala(token, col, slug)) {
       return json({ erro: "Já existe uma sala com esse nome. Escolha outro, ou entre nela com a senha." }, 409);
     }
 
@@ -599,11 +730,11 @@ export async function onRequest({ request, env }) {
       criadaEm: Date.now(),
       membros: [pessoa.uid],
     };
-    if (!await gravarSala(token, sala)) return json({ erro: "Não consegui criar a sala." }, 500);
+    if (!await gravarSala(token, col, sala)) return json({ erro: "Não consegui criar a sala." }, 500);
     return json({ ok: true, slug, nome: sala.nome, mensagem: `Sala "${sala.nome}" criada.` });
   }
 
-  const sala = await lerSala(token, slug);
+  const sala = await lerSala(token, col, slug);
   if (!sala) return json({ erro: "Não achei sala com esse nome." }, 404);
 
   /* ── entra ─────────────────────────────────────────────────────────── */
@@ -617,7 +748,7 @@ export async function onRequest({ request, env }) {
         return json({ erro: `Esta sala já tem ${MAX_MEMBROS} pessoas, que é o limite.` }, 409);
       }
       sala.membros = [...sala.membros, pessoa.uid];
-      if (!await gravarSala(token, sala)) return json({ erro: "Não consegui entrar." }, 500);
+      if (!await gravarSala(token, col, sala)) return json({ erro: "Não consegui entrar." }, 500);
     }
     return json({ ok: true, slug, nome: sala.nome, mensagem: `Você está em "${sala.nome}".` });
   }
@@ -632,16 +763,19 @@ export async function onRequest({ request, env }) {
     sala.membros = sala.membros.filter((x) => x !== pessoa.uid);
     if (!sala.membros.length) {
       /* Sala vazia é sala que ninguém mais abre, e o nome fica preso. */
-      await apagarRecados(token, slug);
+      await apagarRecados(token, col, slug);
       /* O mural e as fotos são subcoleções: sobrevivem ao documento da
          sala e ficariam de herança para a próxima sala de mesmo nome. */
-      for (const t of await lerMural(token, slug)) {
-        if (t.temFoto) await apagarFoto(token, slug, t.id);
+      for (const t of await lerMural(token, col, slug)) {
+        if (t.temFoto) await apagarFoto(token, col, slug, t.id);
       }
-      await fetch(CAMINHO_MURAL(slug), {
+      await fetch(CAMINHO_MURAL(col, slug), {
         method: "DELETE", headers: { Authorization: `Bearer ${token}` },
       }).catch(() => {});
-      await fetch(`${BASE_FIRESTORE}/salas/${slug}`, {
+      await fetch(CAMINHO_SIMULADOS(col, slug), {
+        method: "DELETE", headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+      await fetch(`${BASE_FIRESTORE}/${col}/${slug}`, {
         method: "DELETE", headers: { Authorization: `Bearer ${token}` },
       });
       return json({ ok: true, mensagem: "Você saiu, e a sala foi encerrada por ficar vazia." });
@@ -649,7 +783,7 @@ export async function onRequest({ request, env }) {
     /* Quem criou a sala saiu: a pessoa mais antiga que ficou assume, senão
        ninguém consegue mais encerrar a sala. */
     if (sala.dono === pessoa.uid) sala.dono = sala.membros[0];
-    if (!await gravarSala(token, sala)) return json({ erro: "Não consegui sair." }, 500);
+    if (!await gravarSala(token, col, sala)) return json({ erro: "Não consegui sair." }, 500);
     return json({ ok: true, mensagem: `Você saiu de "${sala.nome}".` });
   }
 
@@ -674,7 +808,7 @@ export async function onRequest({ request, env }) {
     sala.focoInicio = minutos ? Date.now() : 0;
     sala.focoMin = minutos;
     sala.focoPor = minutos ? String(meu.nome || "").slice(0, 40) : "";
-    if (!await gravarSala(token, sala)) return json({ erro: "Não consegui combinar o foco agora." }, 502);
+    if (!await gravarSala(token, col, sala)) return json({ erro: "Não consegui combinar o foco agora." }, 502);
     return json({ ok: true, foco: focoDaSala(sala) });
   }
 
@@ -694,7 +828,7 @@ export async function onRequest({ request, env }) {
     sala.jamUrl = url;
     sala.jamPor = url ? String(meu.nome || "").slice(0, 40) : "";
     sala.jamEm = url ? Date.now() : 0;
-    if (!await gravarSala(token, sala)) return json({ erro: "Não consegui guardar o link agora." }, 502);
+    if (!await gravarSala(token, col, sala)) return json({ erro: "Não consegui guardar o link agora." }, 502);
     return json({ ok: true, jam: jamDaSala(sala) });
   }
 
@@ -728,25 +862,25 @@ export async function onRequest({ request, env }) {
     };
     /* A foto vai primeiro: se ela falhar, o mural não fica com um treino
        que promete foto e não tem. */
-    if (foto && !await gravarFoto(token, slug, id, foto)) {
+    if (foto && !await gravarFoto(token, col, slug, id, foto)) {
       return json({ erro: "Não consegui guardar a foto agora." }, 502);
     }
-    const antes = await lerMural(token, slug);
+    const antes = await lerMural(token, col, slug);
     const depois = [...antes, item].slice(-MAX_TREINOS);
     /* O mural guarda os últimos, e a foto do que saiu vai junto: senão a
        coleção de fotos cresceria para sempre, invisível. */
     for (const velho of antes.slice(0, Math.max(0, antes.length + 1 - MAX_TREINOS))) {
-      if (velho.temFoto) await apagarFoto(token, slug, velho.id);
+      if (velho.temFoto) await apagarFoto(token, col, slug, velho.id);
     }
-    if (!await gravarMural(token, slug, depois)) {
-      if (foto) await apagarFoto(token, slug, id);
+    if (!await gravarMural(token, col, slug, depois)) {
+      if (foto) await apagarFoto(token, col, slug, id);
       return json({ erro: "Não consegui postar o treino agora." }, 502);
     }
     return json({ ok: true, treino: item });
   }
 
   if (acao === "treino-mural") {
-    const itens = await lerMural(token, slug);
+    const itens = await lerMural(token, col, slug);
     const perfis = await perfisDe(token, sala.membros);
     const desde = Date.now() - 7 * 86400000;
     return json({
@@ -760,12 +894,12 @@ export async function onRequest({ request, env }) {
   if (acao === "treino-foto") {
     const id = String(corpo.id || "").slice(0, 40);
     if (!id) return json({ erro: "Faltou dizer qual treino." }, 400);
-    return json({ ok: true, foto: await lerFoto(token, slug, id) });
+    return json({ ok: true, foto: await lerFoto(token, col, slug, id) });
   }
 
   if (acao === "treino-apagar") {
     const id = String(corpo.id || "").slice(0, 40);
-    const itens = await lerMural(token, slug);
+    const itens = await lerMural(token, col, slug);
     const alvo = itens.find((x) => x.id === id);
     if (!alvo) return json({ erro: "Esse treino já não está no mural." }, 404);
     /* Só quem postou, ou quem criou a sala. Deixar qualquer pessoa apagar
@@ -773,8 +907,87 @@ export async function onRequest({ request, env }) {
     if (alvo.uid !== pessoa.uid && sala.dono !== pessoa.uid) {
       return json({ erro: "Só quem postou pode apagar." }, 403);
     }
-    if (alvo.temFoto) await apagarFoto(token, slug, id);
-    if (!await gravarMural(token, slug, itens.filter((x) => x.id !== id))) {
+    if (alvo.temFoto) await apagarFoto(token, col, slug, id);
+    if (!await gravarMural(token, col, slug, itens.filter((x) => x.id !== id))) {
+      return json({ erro: "Não consegui apagar agora." }, 502);
+    }
+    return json({ ok: true });
+  }
+
+  /* ── simulados da sala ─────────────────────────────────────────────
+   *
+   * Só vê o resultado dos outros quem lançou o próprio, e quem decide isso
+   * é esta rota. Filtrar na tela não filtraria nada: o número já teria
+   * chegado ao navegador.
+   */
+  if (acao === "sim-listar") {
+    const itens = await lerSimulados(token, col, slug);
+    const perfis = await perfisDe(token, sala.membros);
+    return json({
+      ok: true,
+      simulados: itens
+        .slice()
+        .sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : b.criadoEm - a.criadoEm))
+        .map((x) => simuladoParaMim(x, perfis, pessoa.uid)),
+    });
+  }
+
+  if (acao === "sim-criar") {
+    /* "titulo", e não "nome": corpo.nome já é o nome da sala em toda esta
+       rota, e reaproveitar a chave trocaria um pelo outro em silêncio. */
+    const nome = String(corpo.titulo || "").replace(/\s+/g, " ").trim().slice(0, 60);
+    const total = Math.round(Number(corpo.total) || 0);
+    if (!nome) return json({ erro: "Dê um nome ao simulado." }, 400);
+    if (!(total >= 1 && total <= 500)) return json({ erro: "Quantas questões tinha o simulado? (1 a 500)" }, 400);
+    const itens = await lerSimulados(token, col, slug);
+    if (itens.length >= MAX_SIMULADOS) {
+      return json({ erro: `A sala já tem ${MAX_SIMULADOS} simulados. Apague algum antes de criar outro.` }, 400);
+    }
+    const meu = (await perfisDe(token, [pessoa.uid]))[pessoa.uid] || {};
+    const novo = {
+      id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`,
+      nome,
+      data: String(corpo.data || "").slice(0, 10) || hojeNoFuso(),
+      total,
+      porQuem: String(meu.nome || "").slice(0, 40),
+      criadoEm: Date.now(),
+      resultados: {},
+    };
+    if (!await gravarSimulados(token, col, slug, [...itens, novo])) {
+      return json({ erro: "Não consegui criar o simulado agora." }, 502);
+    }
+    return json({ ok: true, id: novo.id });
+  }
+
+  if (acao === "sim-lancar") {
+    const id = String(corpo.id || "").slice(0, 40);
+    const itens = await lerSimulados(token, col, slug);
+    const alvo = itens.find((x) => x.id === id);
+    if (!alvo) return json({ erro: "Esse simulado não está mais na sala." }, 404);
+    const acertos = Math.round(Number(corpo.acertos));
+    if (!(acertos >= 0 && acertos <= alvo.total)) {
+      return json({ erro: `Os acertos vão de 0 a ${alvo.total}.` }, 400);
+    }
+    alvo.resultados[pessoa.uid] = { acertos, em: Date.now() };
+    if (!await gravarSimulados(token, col, slug, itens)) {
+      return json({ erro: "Não consegui lançar o resultado agora." }, 502);
+    }
+    const perfis = await perfisDe(token, sala.membros);
+    return json({ ok: true, simulado: simuladoParaMim(alvo, perfis, pessoa.uid) });
+  }
+
+  if (acao === "sim-apagar") {
+    const id = String(corpo.id || "").slice(0, 40);
+    const itens = await lerSimulados(token, col, slug);
+    const alvo = itens.find((x) => x.id === id);
+    if (!alvo) return json({ erro: "Esse simulado já não está na sala." }, 404);
+    /* Apagar um simulado apaga o resultado de todo mundo junto, então só
+       quem criou a sala pode. Deixar qualquer pessoa apagar o placar em que
+       está perdendo seria o fim da graça. */
+    if (sala.dono !== pessoa.uid) {
+      return json({ erro: "Só quem criou a sala pode apagar um simulado." }, 403);
+    }
+    if (!await gravarSimulados(token, col, slug, itens.filter((x) => x.id !== id))) {
       return json({ erro: "Não consegui apagar agora." }, 502);
     }
     return json({ ok: true });
@@ -798,7 +1011,7 @@ export async function onRequest({ request, env }) {
 
   /* ── recados ───────────────────────────────────────────────────────── */
   if (acao === "recados") {
-    return json({ ok: true, recados: await lerRecados(token, slug) });
+    return json({ ok: true, recados: await lerRecados(token, col, slug) });
   }
 
   if (acao === "dizer") {
@@ -811,7 +1024,7 @@ export async function onRequest({ request, env }) {
        manda deixaria qualquer pessoa da sala assinar como outra. */
     const meu = (await perfisDe(token, [pessoa.uid]))[pessoa.uid] || {};
 
-    const antes = await lerRecados(token, slug);
+    const antes = await lerRecados(token, col, slug);
     const itens = [...antes, {
       uid: pessoa.uid,
       nome: (meu.nome || "sem nome").slice(0, 40),
@@ -819,7 +1032,7 @@ export async function onRequest({ request, env }) {
       em: Date.now(),
     }].slice(-MAX_MENSAGENS);
 
-    if (!await gravarRecados(token, slug, itens)) {
+    if (!await gravarRecados(token, col, slug, itens)) {
       return json({ erro: "Não consegui mandar sua mensagem." }, 500);
     }
     return json({ ok: true, recados: itens });

@@ -958,7 +958,7 @@ function FotoDoTreino({ nuvem, slug, id }) {
     if (!aberta || b64 !== null) return undefined;
     let vivo = true;
     (async () => {
-      const j = await falarComSalas(nuvem, { acao: "treino-foto", nome: slug, id });
+      const j = await falarComSalas(nuvem, { tipo: "treino", acao: "treino-foto", nome: slug, id });
       if (vivo) setB64((j && j.foto) || "");
     })();
     return () => { vivo = false; };
@@ -976,6 +976,80 @@ function FotoDoTreino({ nuvem, slug, id }) {
   return (
     <img src={`data:image/jpeg;base64,${b64}`} alt="Foto do treino"
       style={{ width: "100%", maxWidth: 420, borderRadius: 14, display: "block" }} />
+  );
+}
+
+/* Criar ou entrar numa sala DE TREINO.
+ *
+ * Sala própria, com nome e senha próprios, e não a mesma do estudo: quem
+ * estuda com você não é necessariamente quem treina com você, e juntar as
+ * duas obrigaria o pessoal do grupo de estudo a ver o mural da academia de
+ * gente que só entrou para comparar horas de prova.
+ *
+ * A tela é a mesma da aba Amigos de propósito — nome, senha, entrar ou
+ * criar —, porque quem já entrou numa sala de estudo não precisa aprender
+ * um segundo jeito de fazer a mesma coisa. */
+function SalaDeTreino({ nuvem, notify, aoEntrar, erro: erroDeFora }) {
+  const [form, setForm] = useState({ nome: "", senha: "" });
+  const [modo, setModo] = useState("entrar");
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState("");
+
+  const enviar = async () => {
+    if (!form.nome.trim()) { setErro("Escreva o nome da sala."); return; }
+    if (form.senha.length < 4) { setErro("A senha precisa ter pelo menos 4 caracteres."); return; }
+    setOcupado(true); setErro("");
+    const j = await falarComSalas(nuvem, {
+      tipo: "treino", acao: modo, nome: form.nome.trim(), senha: form.senha,
+    });
+    setOcupado(false);
+    if (j.erro) { setErro(j.erro); return; }
+    notify(j.mensagem || "Pronto.");
+    setForm({ nome: "", senha: "" });
+    aoEntrar(j.slug);
+  };
+
+  return (
+    <Card className="px-6 py-6" brilho="var(--neon2)">
+      <H color="var(--neon2)" icon={<Trophy size={16} />}>Sala de treino</H>
+      <Texto style={{ marginTop: 10 }}>
+        Combine um nome e uma senha com quem treina com você. É uma sala só da
+        academia, separada das salas de estudo: aqui entra quem você quiser puxar
+        para o treino, e não precisa ser a mesma turma da prova.
+      </Texto>
+
+      <div className="mt-5 flex gap-2">
+        {[["entrar", "Entrar numa sala"], ["criar", "Criar uma sala"]].map(([id, rotulo]) => (
+          <Btn key={id} size="sm" tone={modo === id ? "primary" : "quiet"} onClick={() => setModo(id)}>
+            {rotulo}
+          </Btn>
+        ))}
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <Label>Nome da sala</Label>
+          <TextInput style={{ marginTop: 6 }} value={form.nome} placeholder="Ex.: treino da madrugada"
+            onChange={(e) => setForm((p) => ({ ...p, nome: e.target.value }))} />
+        </div>
+        <div>
+          <Label>Senha</Label>
+          <TextInput style={{ marginTop: 6 }} type="password" value={form.senha}
+            placeholder="pelo menos 4 caracteres"
+            onChange={(e) => setForm((p) => ({ ...p, senha: e.target.value }))}
+            onKeyDown={(e) => { if (e.key === "Enter") enviar(); }} />
+        </div>
+      </div>
+
+      <div className="mt-5">
+        <Btn tone="primary" disabled={ocupado} onClick={enviar}>
+          {ocupado ? "Um instante…" : modo === "criar" ? "Criar a sala" : "Entrar na sala"}
+        </Btn>
+      </div>
+      {erro || erroDeFora ? (
+        <Label style={{ marginTop: 12, color: T.bad }}>{erro || erroDeFora}</Label>
+      ) : null}
+    </Card>
   );
 }
 
@@ -1006,21 +1080,18 @@ function Competicao({ treino, nuvem, notify }) {
     return { nome: ultimo.nome || "Treino", minutos, series: (ultimo.series || []).length, volume: Math.round(volume) };
   }, [ultimo]);
 
-  useEffect(() => {
-    let vivo = true;
-    (async () => {
-      const j = await falarComSalas(refNuvem.current, { acao: "minhas" });
-      if (!vivo) return;
-      if (j.erro) { setErro(j.erro); setSalas([]); return; }
-      setSalas(j.salas || []);
-      setSlug((p) => p || ((j.salas || [])[0] || {}).slug || "");
-    })();
-    return () => { vivo = false; };
-  }, [meuUid]);
+  const recarregarSalas = useCallback(async (escolher) => {
+    const j = await falarComSalas(refNuvem.current, { tipo: "treino", acao: "minhas" });
+    if (j.erro) { setErro(j.erro); setSalas([]); return; }
+    setSalas(j.salas || []);
+    setSlug((p) => escolher || p || ((j.salas || [])[0] || {}).slug || "");
+  }, []);
+
+  useEffect(() => { recarregarSalas(); }, [meuUid, recarregarSalas]);
 
   const carregar = useCallback(async (qual) => {
     if (!qual) return;
-    const j = await falarComSalas(refNuvem.current, { acao: "treino-mural", nome: qual });
+    const j = await falarComSalas(refNuvem.current, { tipo: "treino", acao: "treino-mural", nome: qual });
     if (j.erro) { setErro(j.erro); return; }
     setMural(j.mural || []);
     setPlacar(j.placar || []);
@@ -1033,7 +1104,7 @@ function Competicao({ treino, nuvem, notify }) {
     if (!resumo) return;
     setOcupado(true); setErro("");
     const j = await falarComSalas(refNuvem.current, {
-      acao: "treino-postar", nome: slug,
+      tipo: "treino", acao: "treino-postar", nome: slug,
       texto: recado, treino: resumo.nome, minutos: resumo.minutos,
       series: resumo.series, volume: resumo.volume, foto: foto || "",
     });
@@ -1046,26 +1117,27 @@ function Competicao({ treino, nuvem, notify }) {
 
   if (salas === null) return <Card className="px-6 py-6"><Mini>carregando as suas salas…</Mini></Card>;
 
-  if (!salas.length) {
-    return (
-      <Card className="px-6 py-6">
-        <Blank icon={<Trophy size={22} />} title="Sem sala ainda"
-          hint="A competição usa a mesma sala de amigos do estudo. Crie ou entre numa na aba Amigos e ela aparece aqui." />
-        {erro ? <Label style={{ marginTop: 12, color: T.bad }}>{erro}</Label> : null}
-      </Card>
-    );
-  }
+  if (!salas.length) return <SalaDeTreino {...{ nuvem, notify, aoEntrar: recarregarSalas, erro }} />;
 
   return (
     <div className="flex flex-col gap-5">
       <Card className="px-6 py-6" brilho="var(--neon2)">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <H color="var(--neon2)" icon={<Trophy size={16} />}>Competição de treino</H>
-          {salas.length > 1 ? (
-            <select value={slug} onChange={(e) => setSlug(e.target.value)} style={{ ...inp, maxWidth: 220 }}>
-              {salas.map((s) => <option key={s.slug} value={s.slug}>{s.nome}</option>)}
-            </select>
-          ) : null}
+          <div className="flex items-center gap-2 flex-wrap">
+            {salas.length > 1 ? (
+              <select value={slug} onChange={(e) => setSlug(e.target.value)} style={{ ...inp, maxWidth: 200 }}>
+                {salas.map((s) => <option key={s.slug} value={s.slug}>{s.nome}</option>)}
+              </select>
+            ) : null}
+            <Btn size="sm" tone="outline" onClick={async () => {
+              const j = await falarComSalas(refNuvem.current, { tipo: "treino", acao: "sair", nome: slug });
+              if (j.erro) { setErro(j.erro); return; }
+              notify(j.mensagem || "Você saiu da sala.");
+              setSlug(""); setMural(null); setPlacar([]);
+              recarregarSalas("");
+            }}>sair</Btn>
+          </div>
         </div>
         <Label style={{ marginTop: 6, lineHeight: 1.6 }}>
           Últimos 7 dias, pela mesma sala do estudo. Só conta treino postado.
@@ -1151,7 +1223,7 @@ function Competicao({ treino, nuvem, notify }) {
                 {t.uid === meuUid ? (
                   <button type="button" aria-label="Apagar do mural" className="toque"
                     onClick={async () => {
-                      const j = await falarComSalas(refNuvem.current, { acao: "treino-apagar", nome: slug, id: t.id });
+                      const j = await falarComSalas(refNuvem.current, { tipo: "treino", acao: "treino-apagar", nome: slug, id: t.id });
                       if (j.erro) { setErro(j.erro); return; }
                       carregar(slug);
                     }}

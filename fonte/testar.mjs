@@ -20,7 +20,7 @@ const liberado = path.basename(alvo) === 'teste.html';
    assina, então é procurada pelos dois nomes. */
 const ABAS = ['Hoje', 'Foco', 'Matérias', 'Cronograma', 'Temas', 'Cartões',
               'Revisões', 'Agenda', 'Amigos', 'Metas', 'Desempenho', 'Progresso',
-              'Treino', 'Plano|Assinar', 'Configurações'];
+              'Treino', 'Simulados', 'Plano|Assinar', 'Configurações'];
 
 const erros = [];
 const passos = [];

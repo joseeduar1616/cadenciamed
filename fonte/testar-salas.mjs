@@ -37,11 +37,17 @@ globalThis.fetch = async (url, opcoes = {}) => {
 
   if (u.includes(':runQuery')) {
     const corpo = JSON.parse(opcoes.body);
+    const col = corpo.structuredQuery.from[0].collectionId;
     const uid = corpo.structuredQuery.where.fieldFilter.value.stringValue;
+    /* A consulta é por coleção: a sala de treino não pode aparecer na lista
+       do estudo nem o contrário. */
     const achadas = Object.entries(SALAS)
+      .filter(([chave]) => (col === 'salas' ? chave.indexOf(':') < 0 : chave.startsWith(col + ':')))
       .filter(([, doc]) => (doc.fields.membros.arrayValue.values || [])
         .some((v) => v.stringValue === uid))
-      .map(([slug, doc]) => ({ document: { name: 'p/documents/salas/' + slug, fields: doc.fields } }));
+      .map(([chave, doc]) => ({
+        document: { name: 'p/documents/' + col + '/' + chave.split(':').pop(), fields: doc.fields },
+      }));
     return json(achadas.length ? achadas : [{ readTime: 'agora' }]);
   }
 
@@ -64,9 +70,9 @@ globalThis.fetch = async (url, opcoes = {}) => {
   /* Os recados moram pendurados na sala, num documento só. Vem antes da
      regra da sala porque o caminho começa igual — e se a rota errar o
      endereço, é aqui que o teste percebe, em vez de devolver a sala. */
-  const c = /\/documents\/salas\/([^/?]+)\/mensagens\/log$/.exec(u);
+  const c = /\/documents\/(salas|salasTreino)\/([^/?]+)\/mensagens\/log$/.exec(u);
   if (c) {
-    const slug = c[1];
+    const slug = chaveDe(c[1], c[2]);
     const metodo = opcoes.method || 'GET';
     if (metodo === 'GET') return RECADOS[slug] ? json(RECADOS[slug]) : json({ error: {} }, 404);
     if (metodo === 'DELETE') { delete RECADOS[slug]; return json({}); }
@@ -76,9 +82,19 @@ globalThis.fetch = async (url, opcoes = {}) => {
 
   /* O mural de treino e as fotos, pelo mesmo motivo dos recados: o
      caminho começa igual ao da sala e tem de ser testado antes. */
-  const mu = /\/documents\/salas\/([^/?]+)\/treinos\/mural$/.exec(u);
+  const si = /\/documents\/(salas|salasTreino)\/([^/?]+)\/simulados\/lista$/.exec(u);
+  if (si) {
+    const slug = chaveDe(si[1], si[2]);
+    const metodo = opcoes.method || 'GET';
+    if (metodo === 'GET') return SIMULADOS[slug] ? json(SIMULADOS[slug]) : json({ error: {} }, 404);
+    if (metodo === 'DELETE') { delete SIMULADOS[slug]; return json({}); }
+    SIMULADOS[slug] = JSON.parse(opcoes.body);
+    return json({ name: slug });
+  }
+
+  const mu = /\/documents\/(salas|salasTreino)\/([^/?]+)\/treinos\/mural$/.exec(u);
   if (mu) {
-    const slug = mu[1];
+    const slug = chaveDe(mu[1], mu[2]);
     const metodo = opcoes.method || 'GET';
     if (metodo === 'GET') return MURAIS[slug] ? json(MURAIS[slug]) : json({ error: {} }, 404);
     if (metodo === 'DELETE') { delete MURAIS[slug]; return json({}); }
@@ -86,9 +102,9 @@ globalThis.fetch = async (url, opcoes = {}) => {
     return json({ name: slug });
   }
 
-  const ft = /\/documents\/salas\/([^/?]+)\/fotos\/([^/?]+)$/.exec(u);
+  const ft = /\/documents\/(salas|salasTreino)\/([^/?]+)\/fotos\/([^/?]+)$/.exec(u);
   if (ft) {
-    const chave = ft[1] + '/' + ft[2];
+    const chave = chaveDe(ft[1], ft[2]) + '/' + ft[3];
     const metodo = opcoes.method || 'GET';
     if (metodo === 'GET') return FOTOS[chave] ? json(FOTOS[chave]) : json({ error: {} }, 404);
     if (metodo === 'DELETE') { delete FOTOS[chave]; return json({}); }
@@ -96,9 +112,9 @@ globalThis.fetch = async (url, opcoes = {}) => {
     return json({ name: chave });
   }
 
-  const m = /\/documents\/salas\/([^/?]+)(?:\?|$)/.exec(u);
+  const m = /\/documents\/(salas|salasTreino)\/([^/?]+)(?:\?|$)/.exec(u);
   if (m) {
-    const slug = m[1];
+    const slug = chaveDe(m[1], m[2]);
     const metodo = opcoes.method || 'GET';
     if (metodo === 'GET') return SALAS[slug] ? json(SALAS[slug]) : json({ error: {} }, 404);
     if (metodo === 'DELETE') { delete SALAS[slug]; return json({}); }
@@ -124,6 +140,11 @@ const pedir = async (corpo, metodo = 'POST') => {
 };
 
 const como = (email, uid) => { QUEM = { email, localId: uid }; };
+/* As duas famílias de sala moram em coleções separadas no Firestore. Aqui
+   elas dividem o mesmo objeto, com a de treino marcada na chave: assim
+   tudo que já era testado continua achando a sala pelo slug puro. */
+const chaveDe = (col, slug) => (col === 'salas' ? slug : col + ':' + slug);
+const SIMULADOS = {};
 const MURAIS = {};
 const FOTOS = {};
 const membros = (slug) => (SALAS[slug].fields.membros.arrayValue.values || []).map((v) => v.stringValue);
@@ -441,6 +462,122 @@ else falha('focar sem ser membro: ' + JSON.stringify(r));
 r = await pedir({ token: 't', acao: 'jam', nome: 'r3-clinica', url: 'https://open.spotify.com/x' });
 if (r.status === 403) ok('quem não está na sala não posta Jam nela');
 else falha('jam sem ser membro: ' + JSON.stringify(r));
+
+/* ── simulados: só vê quem mostra ────────────────────────────────────
+   A regra inteira da aba vive no servidor, e é isso que estes testes
+   cobram. Se ela morasse na tela, esconder o número não esconderia nada:
+   ele já teria chegado ao navegador, e bastaria abrir a aba de rede. */
+como('ana@email.com', 'uid-ana');
+
+let rs = await pedir({ token: 't', acao: 'sim-criar', nome: 'r3-clinica', titulo: 'Simulado USP', total: 100 });
+if (rs.corpo.ok && rs.corpo.id) ok('dá para criar um simulado na sala');
+else falha('criar simulado: ' + JSON.stringify(rs));
+const idSim = rs.corpo.id;
+
+for (const [t, q] of [['', 100], ['Sem questões', 0], ['Demais', 900]]) {
+  rs = await pedir({ token: 't', acao: 'sim-criar', nome: 'r3-clinica', titulo: t, total: q });
+  if (rs.status !== 400) { falha(`aceitou simulado "${t}" com ${q} questões`); break; }
+}
+if (rs.status === 400) ok('simulado sem nome ou com número impossível de questões é recusado');
+
+/* Ana ainda não lançou: não pode ver nada de ninguém. */
+rs = await pedir({ token: 't', acao: 'sim-listar', nome: 'r3-clinica' });
+let sim = (rs.corpo.simulados || [])[0];
+if (sim && sim.liberado === false && sim.linhas.length === 0) ok('quem não lançou não recebe resultado de ninguém');
+else falha('veio resultado sem ter lançado: ' + JSON.stringify(sim));
+
+como('bia@email.com', 'uid-bia');
+rs = await pedir({ token: 't', acao: 'sim-lancar', nome: 'r3-clinica', id: idSim, acertos: 82 });
+if (rs.corpo.ok) ok('dá para lançar o próprio acerto');
+else falha('lançar: ' + JSON.stringify(rs));
+
+/* Bia lançou, mas é a única: vê só a si mesma, o que é o correto. */
+if (rs.corpo.simulado.liberado && rs.corpo.simulado.linhas.length === 1) ok('quem lançou vê o placar, mesmo sozinho');
+else falha('placar de quem lançou: ' + JSON.stringify(rs.corpo.simulado));
+
+/* Ana continua sem ver, mesmo agora que existe resultado para ver. */
+como('ana@email.com', 'uid-ana');
+rs = await pedir({ token: 't', acao: 'sim-listar', nome: 'r3-clinica' });
+sim = (rs.corpo.simulados || [])[0];
+if (sim.liberado === false && sim.linhas.length === 0) ok('existir resultado de outro não libera quem não lançou');
+else falha('vazou o resultado da Bia: ' + JSON.stringify(sim));
+/* Mas dá para saber que tem gente lá: é o que convida a lançar. */
+if (sim.quantos === 1) ok('quem não lançou vê quantos já lançaram, sem os números');
+else falha('a contagem de quem lançou saiu ' + sim.quantos);
+/* E o número da Bia não pode estar escondido em canto nenhum da resposta. */
+if (!JSON.stringify(rs.corpo).includes('82')) ok('o acerto do outro não viaja escondido na resposta');
+else falha('o número do outro veio na resposta, só não desenhado');
+
+rs = await pedir({ token: 't', acao: 'sim-lancar', nome: 'r3-clinica', id: idSim, acertos: 91 });
+if (rs.corpo.simulado.liberado && rs.corpo.simulado.linhas.length === 2) ok('lançar o próprio abre o placar dos outros');
+else falha('depois de lançar: ' + JSON.stringify(rs.corpo.simulado));
+if (rs.corpo.simulado.linhas[0].acertos === 91) ok('o placar vem em ordem de acerto');
+else falha('ordem do placar: ' + JSON.stringify(rs.corpo.simulado.linhas));
+
+/* Acerto fora do possível é do tipo que passa despercebido e estraga o
+   placar de todo mundo. */
+for (const n of [-1, 101, 9999]) {
+  rs = await pedir({ token: 't', acao: 'sim-lancar', nome: 'r3-clinica', id: idSim, acertos: n });
+  if (rs.status !== 400) { falha('aceitou ' + n + ' acertos em 100 questões'); break; }
+}
+if (rs.status === 400) ok('acerto maior que o total, ou negativo, é recusado');
+
+/* Apagar um simulado apaga o resultado de todo mundo: só quem criou a
+   sala pode. */
+como('bia@email.com', 'uid-bia');
+rs = await pedir({ token: 't', acao: 'sim-apagar', nome: 'r3-clinica', id: idSim });
+if (rs.status === 403) ok('quem não criou a sala não apaga simulado dos outros');
+else falha('apagar sem ser dono: ' + JSON.stringify(rs));
+
+como('dani@email.com', 'uid-dani');
+rs = await pedir({ token: 't', acao: 'sim-listar', nome: 'r3-clinica' });
+if (rs.status === 403) ok('quem não está na sala não vê os simulados dela');
+else falha('simulados sem ser membro: ' + JSON.stringify(rs));
+
+como('ana@email.com', 'uid-ana');
+rs = await pedir({ token: 't', acao: 'sim-apagar', nome: 'r3-clinica', id: idSim });
+if (rs.corpo.ok) ok('quem criou a sala apaga o simulado');
+else falha('apagar sendo dono: ' + JSON.stringify(rs));
+
+/* ── sala de treino é outro mundo ────────────────────────────────────
+   Quem estuda com você não é necessariamente quem treina com você. As
+   duas famílias vivem em coleções separadas, e o teste cobra isso pelos
+   dois lados: o nome pode se repetir, e uma lista nunca traz a outra. */
+como('ana@email.com', 'uid-ana');
+
+let rt = await pedir({ token: 't', acao: 'criar', tipo: 'treino', nome: 'r3 clinica', senha: 'segredo1' });
+if (rt.corpo.ok) ok('dá para criar uma sala de treino com o mesmo nome de uma de estudo');
+else falha('criar sala de treino: ' + JSON.stringify(rt));
+
+rt = await pedir({ token: 't', acao: 'minhas' });
+const soEstudo = (rt.corpo.salas || []).length;
+rt = await pedir({ token: 't', acao: 'minhas', tipo: 'treino' });
+const soTreino = (rt.corpo.salas || []).length;
+if (soEstudo === 1 && soTreino === 1) ok('cada lista traz só as salas da sua família');
+else falha(`as listas se misturaram: estudo ${soEstudo}, treino ${soTreino}`);
+
+/* Postar no mural de treino não pode encostar na sala de estudo de mesmo
+   nome, e o recado do estudo não pode aparecer na sala de treino. */
+rt = await pedir({
+  token: 't', acao: 'treino-postar', tipo: 'treino', nome: 'r3-clinica',
+  treino: 'Pernas', minutos: 40, series: 12, volume: 5000,
+});
+if (rt.corpo.ok) ok('dá para postar treino na sala de treino');
+else falha('postar na sala de treino: ' + JSON.stringify(rt));
+
+rt = await pedir({ token: 't', acao: 'treino-mural', nome: 'r3-clinica' });
+const noEstudo = (rt.corpo.mural || []).length;
+rt = await pedir({ token: 't', acao: 'treino-mural', tipo: 'treino', nome: 'r3-clinica' });
+const noTreino = (rt.corpo.mural || []).length;
+if (noTreino === 1 && noEstudo === 0) ok('o mural da academia não aparece na sala de estudo de mesmo nome');
+else falha(`os murais se misturaram: estudo ${noEstudo}, treino ${noTreino}`);
+
+/* E quem entrou só no estudo não é membro do treino. */
+como('bia@email.com', 'uid-bia');
+rt = await pedir({ token: 't', acao: 'treino-mural', tipo: 'treino', nome: 'r3-clinica' });
+if (rt.status === 403) ok('estar na sala de estudo não dá acesso à sala de treino de mesmo nome');
+else falha('vazou entre as famílias: ' + JSON.stringify(rt));
+como('ana@email.com', 'uid-ana');
 
 /* ── competição de treino ───────────────────────────────────────────── */
 como('ana@email.com', 'uid-ana');

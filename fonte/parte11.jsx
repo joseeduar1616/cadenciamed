@@ -37,12 +37,13 @@ const RECURSOS_PRO = {
   temas: "O cronograma por especialidade, com o radar das áreas",
   rotina: "Agenda da semana e do dia, com o Google Agenda junto",
   treino: "Academia: plano, execução, medidas do corpo e evolução de carga",
+  simulados: "Comparar acerto de simulado com quem estuda com você",
   amigos: "Salas com seus amigos e ranking de horas, questões e acerto",
   metas: "Simulados, provas resolvidas, hábitos e exportação da agenda",
   nuvem: "Seus dados sincronizados em todos os aparelhos",
   projecao: "Ritmo e projeção até a prova",
 };
-const ABAS_PRO = ["cartoes", "revisoes", "temas", "rotina", "amigos", "metas"];
+const ABAS_PRO = ["cartoes", "revisoes", "temas", "rotina", "amigos", "metas", "simulados"];
 
 /* Abas que só o administrador enxerga. O servidor faz a mesma checagem,
    então esconder aqui é conveniência, não é o que protege. */

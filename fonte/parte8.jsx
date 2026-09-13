@@ -530,7 +530,8 @@ export default function Cadencia() {
     revisoes: "a escada de revisão", rotina: "a semana e o Google Agenda",
     amigos: "quem estuda com você", mentor: "os seus alunos",
     metas: "simulados, provas e hábitos", desempenho: "acerto por área e matéria",
-    treino: "academia, fora da conta do estudo", progresso: "o caminho até aqui",
+    treino: "academia, fora da conta do estudo", simulados: "acerto contra os amigos",
+    progresso: "o caminho até aqui",
     planos: "assinatura", config: "tudo que dá para ajustar",
   };
 
@@ -550,6 +551,7 @@ export default function Cadencia() {
     { id: "metas", label: "Metas", acc: "var(--warn)" },
     { id: "desempenho", label: "Desempenho", acc: "var(--a-CI)" },
     { id: "treino", label: "Treino", acc: "var(--ok)" },
+    { id: "simulados", label: "Simulados", acc: "var(--a-CI)" },
     { id: "progresso", label: "Progresso", acc: "var(--a-CI)" },
     { id: "planos", label: pro ? "Plano" : "Assinar", acc: "var(--neon2)" },
     { id: "config", label: "Configurações", acc: "var(--dim)" },
@@ -998,6 +1000,8 @@ export default function Cadencia() {
               {tab === "mentor" && mentorInfo.mentor && <Mentor {...{ nuvem, notify, mentorInfo }} />}
               {tab === "desempenho" && <Desempenho {...{ data, today, addSession, delSession, notify }} />}
               {tab === "treino" && <Treino {...{ data, setData, notify, today, nuvem }} />}
+              {tab === "simulados" && pro && <Simulados {...{ nuvem, notify, irPara: setTab }} />}
+              {tab === "simulados" && !pro && <Bloqueado recurso={RECURSOS_PRO.simulados} onVerPlanos={() => setTab("planos")} />}
               {tab === "progresso" && <Progresso {...{ data, byDay, today, totals, subjects }} />}
               {tab === "config" && <Configuracoes {...{ data, setData, today, notify, nuvem, pro, aoLiberar: assinatura.recarregar, irPara: setTab }} />}
             </div>
