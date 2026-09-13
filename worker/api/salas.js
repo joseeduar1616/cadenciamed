@@ -260,6 +260,137 @@ async function apagarRecados(token, slug) {
   }).catch(() => {});
 }
 
+/* ── competição de treino ─────────────────────────────────────────────
+ *
+ * A mesma sala serve para as duas coisas: quem estuda junto costuma ser
+ * quem treina junto, e uma segunda sala só para academia seria mais um
+ * nome e mais uma senha para combinar.
+ *
+ * A divisão em dois documentos é por causa da foto. O mural
+ * (salas/{slug}/treinos/mural) guarda só o que a lista precisa mostrar —
+ * quem, quando, quanto tempo, quantas séries —, e cada foto mora sozinha
+ * em salas/{slug}/fotos/{id}. Assim a lista abre leve e a foto só desce
+ * quando alguém olha; com tudo junto, trinta treinos com foto estourariam
+ * o teto de um megabyte por documento do Firestore, e o mural inteiro
+ * deixaria de carregar por causa do último treino postado.
+ *
+ * A foto fica visível só para quem está na sala: quem lê o mural é a
+ * rota, que já sabe quem está pedindo, e o navegador não alcança a
+ * coleção direto.
+ */
+const CAMINHO_MURAL = (slug) => `${BASE_FIRESTORE}/salas/${slug}/treinos/mural`;
+const CAMINHO_FOTO = (slug, id) => `${BASE_FIRESTORE}/salas/${slug}/fotos/${id}`;
+const MAX_TREINOS = 60;
+/* Uma foto de treino reduzida no navegador dá uns 100 KB em base64. O teto
+   aqui é folga para foto grande, e barreira para quem tentar mandar um
+   arquivo inteiro por aqui: o documento do Firestore não passa de 1 MB. */
+const MAX_FOTO_B64 = 700000;
+
+async function lerMural(token, slug) {
+  const r = await fetch(CAMINHO_MURAL(slug), { headers: { Authorization: `Bearer ${token}` } });
+  if (!r.ok) return [];                       // 404 é sala sem treino ainda
+  const j = await r.json().catch(() => null);
+  const f = (j || {}).fields || {};
+  return (((f.itens || {}).arrayValue || {}).values || []).map((v) => {
+    const m = mapa(v);
+    return {
+      id: texto(m.id),
+      uid: texto(m.uid),
+      nome: texto(m.nome),
+      texto: texto(m.texto),
+      treino: texto(m.treino),
+      minutos: numero(m.minutos),
+      series: numero(m.series),
+      volume: numero(m.volume),
+      temFoto: texto(m.temFoto) === "1",
+      dia: texto(m.dia),
+      em: numero(m.em),
+    };
+  }).filter((x) => x.id);
+}
+
+async function gravarMural(token, slug, itens) {
+  const r = await fetch(CAMINHO_MURAL(slug), {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      fields: {
+        itens: {
+          arrayValue: {
+            values: itens.map((x) => ({
+              mapValue: {
+                fields: {
+                  id: { stringValue: x.id },
+                  uid: { stringValue: x.uid },
+                  nome: { stringValue: x.nome },
+                  texto: { stringValue: x.texto },
+                  treino: { stringValue: x.treino },
+                  minutos: { doubleValue: x.minutos },
+                  series: { doubleValue: x.series },
+                  volume: { doubleValue: x.volume },
+                  temFoto: { stringValue: x.temFoto ? "1" : "" },
+                  dia: { stringValue: x.dia },
+                  em: { doubleValue: x.em },
+                },
+              },
+            })),
+          },
+        },
+      },
+    }),
+  });
+  return r.ok;
+}
+
+async function gravarFoto(token, slug, id, b64) {
+  const r = await fetch(CAMINHO_FOTO(slug, id), {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ fields: { b64: { stringValue: b64 } } }),
+  });
+  return r.ok;
+}
+
+async function lerFoto(token, slug, id) {
+  const r = await fetch(CAMINHO_FOTO(slug, id), { headers: { Authorization: `Bearer ${token}` } });
+  if (!r.ok) return "";
+  const j = await r.json().catch(() => null);
+  return texto(((j || {}).fields || {}).b64);
+}
+
+async function apagarFoto(token, slug, id) {
+  await fetch(CAMINHO_FOTO(slug, id), {
+    method: "DELETE", headers: { Authorization: `Bearer ${token}` },
+  }).catch(() => {});
+}
+
+/* O placar da academia. Conta treino, tempo e séries dos últimos 7 dias,
+   que é o recorte em que dá para virar o jogo — igual ao do estudo. */
+function placarDeTreino(itens, membros, perfis, eu, desde) {
+  const por = new Map();
+  for (const uid of membros) {
+    por.set(uid, {
+      uid,
+      nome: (perfis[uid] && perfis[uid].nome) || "Alguém",
+      treinos: 0, minutos: 0, series: 0, volume: 0,
+      souEu: uid === eu,
+    });
+  }
+  for (const t of itens) {
+    if (t.em < desde) continue;
+    const linha = por.get(t.uid);
+    if (!linha) continue;                      // quem saiu da sala não pontua
+    linha.treinos += 1;
+    linha.minutos += t.minutos;
+    linha.series += t.series;
+    linha.volume += t.volume;
+  }
+  const linhas = [...por.values()].sort((a, b) => b.treinos - a.treinos
+    || b.series - a.series || b.minutos - a.minutos);
+  let n = 0;
+  return linhas.map((x) => ({ ...x, posicao: x.treinos ? (n += 1) : null }));
+}
+
 /* ── de que semana e de que mês estamos falando ────────────────────────
  *
  * O recorte precisa ser o mesmo para todo mundo da sala, então quem decide é
@@ -502,6 +633,14 @@ export async function onRequest({ request, env }) {
     if (!sala.membros.length) {
       /* Sala vazia é sala que ninguém mais abre, e o nome fica preso. */
       await apagarRecados(token, slug);
+      /* O mural e as fotos são subcoleções: sobrevivem ao documento da
+         sala e ficariam de herança para a próxima sala de mesmo nome. */
+      for (const t of await lerMural(token, slug)) {
+        if (t.temFoto) await apagarFoto(token, slug, t.id);
+      }
+      await fetch(CAMINHO_MURAL(slug), {
+        method: "DELETE", headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
       await fetch(`${BASE_FIRESTORE}/salas/${slug}`, {
         method: "DELETE", headers: { Authorization: `Bearer ${token}` },
       });
@@ -557,6 +696,88 @@ export async function onRequest({ request, env }) {
     sala.jamEm = url ? Date.now() : 0;
     if (!await gravarSala(token, sala)) return json({ erro: "Não consegui guardar o link agora." }, 502);
     return json({ ok: true, jam: jamDaSala(sala) });
+  }
+
+  /* ── competição de treino ──────────────────────────────────────────
+   *
+   * Postar é o que pontua, e é isso que faz o placar funcionar: ninguém
+   * consegue somar treino sem dizer para a sala que treinou. Os números
+   * (tempo, séries, volume) vêm do que o app registrou no aparelho, então
+   * são conferíveis por quem os leu; a foto é a prova social, como no
+   * GymRats, e não entra em conta nenhuma.
+   */
+  if (acao === "treino-postar") {
+    const meu = (await perfisDe(token, [pessoa.uid]))[pessoa.uid] || {};
+    const foto = String(corpo.foto || "");
+    if (foto.length > MAX_FOTO_B64) {
+      return json({ erro: "Essa foto ficou grande demais. Tente de novo com uma foto menor." }, 400);
+    }
+    const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    const item = {
+      id,
+      uid: pessoa.uid,
+      nome: String(meu.nome || "").slice(0, 40),
+      texto: String(corpo.texto || "").replace(/\s+/g, " ").trim().slice(0, 200),
+      treino: String(corpo.treino || "").replace(/\s+/g, " ").trim().slice(0, 40),
+      minutos: Math.max(0, Math.min(600, Math.round(Number(corpo.minutos) || 0))),
+      series: Math.max(0, Math.min(400, Math.round(Number(corpo.series) || 0))),
+      volume: Math.max(0, Math.min(500000, Math.round(Number(corpo.volume) || 0))),
+      temFoto: !!foto,
+      dia: hojeNoFuso(),
+      em: Date.now(),
+    };
+    /* A foto vai primeiro: se ela falhar, o mural não fica com um treino
+       que promete foto e não tem. */
+    if (foto && !await gravarFoto(token, slug, id, foto)) {
+      return json({ erro: "Não consegui guardar a foto agora." }, 502);
+    }
+    const antes = await lerMural(token, slug);
+    const depois = [...antes, item].slice(-MAX_TREINOS);
+    /* O mural guarda os últimos, e a foto do que saiu vai junto: senão a
+       coleção de fotos cresceria para sempre, invisível. */
+    for (const velho of antes.slice(0, Math.max(0, antes.length + 1 - MAX_TREINOS))) {
+      if (velho.temFoto) await apagarFoto(token, slug, velho.id);
+    }
+    if (!await gravarMural(token, slug, depois)) {
+      if (foto) await apagarFoto(token, slug, id);
+      return json({ erro: "Não consegui postar o treino agora." }, 502);
+    }
+    return json({ ok: true, treino: item });
+  }
+
+  if (acao === "treino-mural") {
+    const itens = await lerMural(token, slug);
+    const perfis = await perfisDe(token, sala.membros);
+    const desde = Date.now() - 7 * 86400000;
+    return json({
+      ok: true,
+      mural: itens.slice().reverse(),
+      placar: placarDeTreino(itens, sala.membros, perfis, pessoa.uid, desde),
+    });
+  }
+
+  /* A foto desce sozinha, uma por vez: é o que mantém o mural leve. */
+  if (acao === "treino-foto") {
+    const id = String(corpo.id || "").slice(0, 40);
+    if (!id) return json({ erro: "Faltou dizer qual treino." }, 400);
+    return json({ ok: true, foto: await lerFoto(token, slug, id) });
+  }
+
+  if (acao === "treino-apagar") {
+    const id = String(corpo.id || "").slice(0, 40);
+    const itens = await lerMural(token, slug);
+    const alvo = itens.find((x) => x.id === id);
+    if (!alvo) return json({ erro: "Esse treino já não está no mural." }, 404);
+    /* Só quem postou, ou quem criou a sala. Deixar qualquer pessoa apagar
+       treino dos outros transformaria o mural em briga. */
+    if (alvo.uid !== pessoa.uid && sala.dono !== pessoa.uid) {
+      return json({ erro: "Só quem postou pode apagar." }, 403);
+    }
+    if (alvo.temFoto) await apagarFoto(token, slug, id);
+    if (!await gravarMural(token, slug, itens.filter((x) => x.id !== id))) {
+      return json({ erro: "Não consegui apagar agora." }, 502);
+    }
+    return json({ ok: true });
   }
 
   /* ── ranking ───────────────────────────────────────────────────────── */

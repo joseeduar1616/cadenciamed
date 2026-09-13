@@ -74,6 +74,28 @@ globalThis.fetch = async (url, opcoes = {}) => {
     return json({ name: slug });
   }
 
+  /* O mural de treino e as fotos, pelo mesmo motivo dos recados: o
+     caminho começa igual ao da sala e tem de ser testado antes. */
+  const mu = /\/documents\/salas\/([^/?]+)\/treinos\/mural$/.exec(u);
+  if (mu) {
+    const slug = mu[1];
+    const metodo = opcoes.method || 'GET';
+    if (metodo === 'GET') return MURAIS[slug] ? json(MURAIS[slug]) : json({ error: {} }, 404);
+    if (metodo === 'DELETE') { delete MURAIS[slug]; return json({}); }
+    MURAIS[slug] = JSON.parse(opcoes.body);
+    return json({ name: slug });
+  }
+
+  const ft = /\/documents\/salas\/([^/?]+)\/fotos\/([^/?]+)$/.exec(u);
+  if (ft) {
+    const chave = ft[1] + '/' + ft[2];
+    const metodo = opcoes.method || 'GET';
+    if (metodo === 'GET') return FOTOS[chave] ? json(FOTOS[chave]) : json({ error: {} }, 404);
+    if (metodo === 'DELETE') { delete FOTOS[chave]; return json({}); }
+    FOTOS[chave] = JSON.parse(opcoes.body);
+    return json({ name: chave });
+  }
+
   const m = /\/documents\/salas\/([^/?]+)(?:\?|$)/.exec(u);
   if (m) {
     const slug = m[1];
@@ -102,6 +124,8 @@ const pedir = async (corpo, metodo = 'POST') => {
 };
 
 const como = (email, uid) => { QUEM = { email, localId: uid }; };
+const MURAIS = {};
+const FOTOS = {};
 const membros = (slug) => (SALAS[slug].fields.membros.arrayValue.values || []).map((v) => v.stringValue);
 
 /* ── apelido da sala ─────────────────────────────────────────────────── */
@@ -417,6 +441,80 @@ else falha('focar sem ser membro: ' + JSON.stringify(r));
 r = await pedir({ token: 't', acao: 'jam', nome: 'r3-clinica', url: 'https://open.spotify.com/x' });
 if (r.status === 403) ok('quem não está na sala não posta Jam nela');
 else falha('jam sem ser membro: ' + JSON.stringify(r));
+
+/* ── competição de treino ───────────────────────────────────────────── */
+como('ana@email.com', 'uid-ana');
+
+r = await pedir({
+  token: 't', acao: 'treino-postar', nome: 'r3-clinica',
+  treino: 'Costas e bíceps', minutos: 54, series: 18, volume: 9200,
+  texto: 'puxada pesada hoje', foto: 'Zm90bw==',
+});
+if (r.corpo.ok && r.corpo.treino.id) ok('dá para postar um treino na sala');
+else falha('postar treino: ' + JSON.stringify(r));
+const idPostado = r.corpo.treino.id;
+if (r.corpo.treino.nome !== 'Fulano') ok('quem postou é dito pelo perfil, não pelo pedido');
+
+r = await pedir({ token: 't', acao: 'treino-mural', nome: 'r3-clinica' });
+if ((r.corpo.mural || []).length === 1 && r.corpo.mural[0].series === 18) ok('o treino postado aparece no mural');
+else falha('mural: ' + JSON.stringify(r.corpo.mural));
+
+/* A lista é o que abre primeiro, num celular no 4G da academia: ela não
+   pode trazer as fotos junto. */
+if (r.corpo.mural[0].foto === undefined && r.corpo.mural[0].temFoto === true) {
+  ok('o mural diz que tem foto, mas não desce a foto junto');
+} else falha('o mural veio com a foto dentro: ' + Object.keys(r.corpo.mural[0]).join(', '));
+
+r = await pedir({ token: 't', acao: 'treino-foto', nome: 'r3-clinica', id: idPostado });
+if (r.corpo.foto === 'Zm90bw==') ok('a foto desce sozinha, quando alguém abre');
+else falha('foto: ' + JSON.stringify(r.corpo));
+
+r = await pedir({ token: 't', acao: 'treino-mural', nome: 'r3-clinica' });
+const eu = (r.corpo.placar || []).find((x) => x.souEu);
+if (eu && eu.treinos === 1 && eu.series === 18) ok('o placar conta o treino de quem postou');
+else falha('placar: ' + JSON.stringify(r.corpo.placar));
+if ((r.corpo.placar || []).every((x) => x.treinos || x.posicao === null)) {
+  ok('quem não postou nada fica sem posição, em vez de aparecer em último');
+} else falha('posição de quem não postou: ' + JSON.stringify(r.corpo.placar));
+
+/* Número absurdo no pedido não pode virar liderança no placar. */
+r = await pedir({
+  token: 't', acao: 'treino-postar', nome: 'r3-clinica',
+  treino: 'Impossível', minutos: 99999, series: 9999, volume: 99999999,
+});
+if (r.corpo.treino.minutos <= 600 && r.corpo.treino.series <= 400) ok('tempo e séries absurdos são cortados no possível');
+else falha('aceitou número absurdo: ' + JSON.stringify(r.corpo.treino));
+
+/* A foto tem teto: o documento do Firestore não passa de 1 MB, e sem isto
+   o mural inteiro deixaria de carregar por causa de um post. */
+r = await pedir({
+  token: 't', acao: 'treino-postar', nome: 'r3-clinica',
+  treino: 'Gigante', foto: 'x'.repeat(800000),
+});
+if (r.status === 400) ok('foto grande demais é recusada antes de gravar');
+else falha('foto gigante: ' + JSON.stringify(r).slice(0, 200));
+
+/* Só quem postou apaga. */
+como('bia@email.com', 'uid-bia');
+r = await pedir({ token: 't', acao: 'treino-apagar', nome: 'r3-clinica', id: idPostado });
+if (r.status === 403) ok('ninguém apaga o treino de outra pessoa');
+else falha('apagar de outro: ' + JSON.stringify(r));
+
+como('ana@email.com', 'uid-ana');
+r = await pedir({ token: 't', acao: 'treino-apagar', nome: 'r3-clinica', id: idPostado });
+if (r.corpo.ok) ok('quem postou apaga o próprio treino');
+else falha('apagar o próprio: ' + JSON.stringify(r));
+r = await pedir({ token: 't', acao: 'treino-foto', nome: 'r3-clinica', id: idPostado });
+if (!r.corpo.foto) ok('apagar o treino leva a foto junto');
+else falha('a foto ficou órfã depois de apagar o treino');
+
+como('dani@email.com', 'uid-dani');
+r = await pedir({ token: 't', acao: 'treino-mural', nome: 'r3-clinica' });
+if (r.status === 403) ok('quem não está na sala não vê o mural de treino');
+else falha('mural sem ser membro: ' + JSON.stringify(r));
+r = await pedir({ token: 't', acao: 'treino-postar', nome: 'r3-clinica', treino: 'x' });
+if (r.status === 403) ok('quem não está na sala não posta treino nela');
+else falha('postar sem ser membro: ' + JSON.stringify(r));
 
 /* ── minhas salas ────────────────────────────────────────────────────── */
 como('ana@email.com', 'uid-ana');

@@ -909,6 +909,269 @@ function Cargas({ treino, today }) {
   );
 }
 
+/* ── competição ────────────────────────────────────────────────────────
+ *
+ * A mesma sala de amigos do estudo, usada para a academia: quem estuda
+ * junto costuma ser quem treina junto, e uma segunda sala só para treino
+ * seria mais um nome e mais uma senha para combinar. Quem ainda não tem
+ * sala nenhuma é mandado para a aba Amigos, que é onde se cria.
+ *
+ * Postar é o que pontua. Ninguém soma treino no placar sem dizer para a
+ * sala que treinou — é isso que faz a competição valer alguma coisa.
+ *
+ * A foto é opcional e é prova social, como no GymRats: não entra em conta
+ * nenhuma, e só é vista por quem está na sala. Ela desce uma por vez,
+ * quando alguém abre, e não junto da lista: trinta fotos de uma vez
+ * fariam o mural demorar para abrir num celular no 4G da academia.
+ */
+const LADO_FOTO_TREINO = 900;
+const QUALIDADE_FOTO_TREINO = 0.6;
+
+/* Menor que a foto do cronograma de propósito: lá o que importa é ler
+   letra miúda, aqui é reconhecer que a pessoa estava na academia. */
+function reduzirFotoDeTreino(arquivo) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(arquivo);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const fator = Math.min(1, LADO_FOTO_TREINO / Math.max(img.width, img.height));
+      const c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round(img.width * fator));
+      c.height = Math.max(1, Math.round(img.height * fator));
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      resolve(c.toDataURL("image/jpeg", QUALIDADE_FOTO_TREINO).split(",")[1]);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Não consegui abrir essa imagem. Se for foto do iPhone, mande como JPEG."));
+    };
+    img.src = url;
+  });
+}
+
+function FotoDoTreino({ nuvem, slug, id }) {
+  const [b64, setB64] = useState(null);
+  const [aberta, setAberta] = useState(false);
+
+  useEffect(() => {
+    if (!aberta || b64 !== null) return undefined;
+    let vivo = true;
+    (async () => {
+      const j = await falarComSalas(nuvem, { acao: "treino-foto", nome: slug, id });
+      if (vivo) setB64((j && j.foto) || "");
+    })();
+    return () => { vivo = false; };
+  }, [aberta, b64, nuvem, slug, id]);
+
+  if (!aberta) {
+    return (
+      <Btn size="sm" tone="outline" onClick={() => setAberta(true)}>
+        <Camera size={13} /> ver a foto
+      </Btn>
+    );
+  }
+  if (b64 === null) return <Mini>carregando a foto…</Mini>;
+  if (!b64) return <Mini>a foto não está mais disponível</Mini>;
+  return (
+    <img src={`data:image/jpeg;base64,${b64}`} alt="Foto do treino"
+      style={{ width: "100%", maxWidth: 420, borderRadius: 14, display: "block" }} />
+  );
+}
+
+function Competicao({ treino, nuvem, notify }) {
+  const [salas, setSalas] = useState(null);
+  const [slug, setSlug] = useState("");
+  const [mural, setMural] = useState(null);
+  const [placar, setPlacar] = useState([]);
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState("");
+  const [recado, setRecado] = useState("");
+  const [foto, setFoto] = useState(null);
+  const arquivoRef = useRef(null);
+  const refNuvem = useRef(nuvem);
+  refNuvem.current = nuvem;
+  const meuUid = nuvem && nuvem.usuario ? nuvem.usuario.uid : "";
+
+  /* O último treino registrado no aparelho é o que vai para o mural: os
+     números vêm do que foi realmente anotado série a série, não de um
+     campo que dá para preencher com qualquer coisa. */
+  const ultimo = (treino.sessoes || [])[0] || null;
+  const resumo = useMemo(() => {
+    if (!ultimo) return null;
+    const minutos = ultimo.fim && ultimo.inicio
+      ? Math.max(0, Math.round((ultimo.fim - ultimo.inicio) / 60000)) : 0;
+    const volume = (ultimo.series || []).reduce(
+      (a, x) => a + (Number(x.peso) || 0) * (Number(x.reps) || 0), 0);
+    return { nome: ultimo.nome || "Treino", minutos, series: (ultimo.series || []).length, volume: Math.round(volume) };
+  }, [ultimo]);
+
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      const j = await falarComSalas(refNuvem.current, { acao: "minhas" });
+      if (!vivo) return;
+      if (j.erro) { setErro(j.erro); setSalas([]); return; }
+      setSalas(j.salas || []);
+      setSlug((p) => p || ((j.salas || [])[0] || {}).slug || "");
+    })();
+    return () => { vivo = false; };
+  }, [meuUid]);
+
+  const carregar = useCallback(async (qual) => {
+    if (!qual) return;
+    const j = await falarComSalas(refNuvem.current, { acao: "treino-mural", nome: qual });
+    if (j.erro) { setErro(j.erro); return; }
+    setMural(j.mural || []);
+    setPlacar(j.placar || []);
+    setErro("");
+  }, []);
+
+  useEffect(() => { carregar(slug); }, [slug, carregar]);
+
+  const postar = async () => {
+    if (!resumo) return;
+    setOcupado(true); setErro("");
+    const j = await falarComSalas(refNuvem.current, {
+      acao: "treino-postar", nome: slug,
+      texto: recado, treino: resumo.nome, minutos: resumo.minutos,
+      series: resumo.series, volume: resumo.volume, foto: foto || "",
+    });
+    setOcupado(false);
+    if (j.erro) { setErro(j.erro); return; }
+    setRecado(""); setFoto(null);
+    notify("Treino postado na sala.");
+    carregar(slug);
+  };
+
+  if (salas === null) return <Card className="px-6 py-6"><Mini>carregando as suas salas…</Mini></Card>;
+
+  if (!salas.length) {
+    return (
+      <Card className="px-6 py-6">
+        <Blank icon={<Trophy size={22} />} title="Sem sala ainda"
+          hint="A competição usa a mesma sala de amigos do estudo. Crie ou entre numa na aba Amigos e ela aparece aqui." />
+        {erro ? <Label style={{ marginTop: 12, color: T.bad }}>{erro}</Label> : null}
+      </Card>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      <Card className="px-6 py-6" brilho="var(--neon2)">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <H color="var(--neon2)" icon={<Trophy size={16} />}>Competição de treino</H>
+          {salas.length > 1 ? (
+            <select value={slug} onChange={(e) => setSlug(e.target.value)} style={{ ...inp, maxWidth: 220 }}>
+              {salas.map((s) => <option key={s.slug} value={s.slug}>{s.nome}</option>)}
+            </select>
+          ) : null}
+        </div>
+        <Label style={{ marginTop: 6, lineHeight: 1.6 }}>
+          Últimos 7 dias, pela mesma sala do estudo. Só conta treino postado.
+        </Label>
+
+        <div className="mt-5 flex flex-col gap-2">
+          {placar.map((x) => (
+            <div key={x.uid} className="rounded-2xl px-4 py-3 flex items-center gap-3"
+              style={{ background: x.souEu ? soft("var(--neon2)", 12) : T.card2 }}>
+              <span style={{ fontFamily: F_MONO, fontSize: 15, color: T.ghost, minWidth: 22 }}>
+                {x.posicao || "—"}
+              </span>
+              <Face nome={x.nome} cor={corDoNome(x.nome)} tamanho={32} forte={x.souEu} />
+              <span className="flex-1 min-w-0">
+                <span style={{ display: "block", fontSize: 15, fontWeight: x.souEu ? 700 : 600 }}>{x.nome}</span>
+                <Mini>{x.treinos} treino{x.treinos === 1 ? "" : "s"} · {x.series} séries · {fmtMin(x.minutos)}</Mini>
+              </span>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card className="px-6 py-6">
+        <H size={18} color="var(--a-PE)" icon={<Camera size={16} />}>Postar o último treino</H>
+        {!resumo ? (
+          <Blank icon={<Dumbbell size={22} />} title="Nenhum treino registrado"
+            hint="Faça um treino na aba Hoje, anotando as séries, e ele aparece aqui para postar." />
+        ) : (
+          <>
+            <Mini style={{ marginTop: 8 }}>
+              {resumo.nome} · {resumo.series} séries · {fmtMin(resumo.minutos)}
+              {resumo.volume ? ` · ${resumo.volume.toLocaleString("pt-BR")} kg` : ""}
+            </Mini>
+            <div className="mt-4">
+              <TextInput value={recado} placeholder="Escreva algo (opcional)"
+                onChange={(e) => setRecado(e.target.value.slice(0, 200))} />
+            </div>
+            <input ref={arquivoRef} type="file" hidden accept="image/*"
+              onChange={async (e) => {
+                const arq = (e.target.files || [])[0];
+                e.target.value = "";
+                if (!arq) return;
+                setErro("");
+                try { setFoto(await reduzirFotoDeTreino(arq)); }
+                catch (err) { setErro((err && err.message) || "Não consegui ler essa foto."); }
+              }} />
+            <div className="mt-4 flex flex-wrap gap-2 items-center">
+              <Btn size="sm" onClick={() => arquivoRef.current && arquivoRef.current.click()}>
+                <Camera size={14} /> {foto ? "trocar a foto" : "pôr uma foto"}
+              </Btn>
+              {foto ? <Btn size="sm" tone="outline" onClick={() => setFoto(null)}>tirar a foto</Btn> : null}
+              <Btn tone="primary" size="sm" disabled={ocupado} onClick={postar}>
+                {ocupado ? "Postando…" : "Postar na sala"}
+              </Btn>
+            </div>
+            {foto ? (
+              <img src={`data:image/jpeg;base64,${foto}`} alt="Foto escolhida"
+                className="mt-4" style={{ width: "100%", maxWidth: 260, borderRadius: 14, display: "block" }} />
+            ) : null}
+          </>
+        )}
+        {erro ? <Label style={{ marginTop: 12, color: T.bad }}>{erro}</Label> : null}
+      </Card>
+
+      <Card className="px-6 py-6">
+        <H size={18} color="var(--neon2)" icon={<Users size={16} />}>Mural da sala</H>
+        {mural === null ? <Mini style={{ marginTop: 10 }}>carregando…</Mini> : null}
+        {mural && !mural.length ? (
+          <Blank icon={<Camera size={22} />} title="Mural vazio"
+            hint="Poste o seu treino e puxe os outros junto." />
+        ) : null}
+        <div className="mt-4 flex flex-col gap-3">
+          {(mural || []).map((t) => (
+            <div key={t.id} className="rounded-2xl px-4 py-4" style={{ background: T.card2 }}>
+              <div className="flex items-center gap-3">
+                <Face nome={t.nome} cor={corDoNome(t.nome)} tamanho={32} />
+                <span className="flex-1 min-w-0">
+                  <span style={{ display: "block", fontSize: 15, fontWeight: 600 }}>{t.nome}</span>
+                  <Mini>
+                    {t.treino || "Treino"} · {t.series} séries · {fmtMin(t.minutos)} · {horaCurta(t.em)}
+                  </Mini>
+                </span>
+                {t.uid === meuUid ? (
+                  <button type="button" aria-label="Apagar do mural" className="toque"
+                    onClick={async () => {
+                      const j = await falarComSalas(refNuvem.current, { acao: "treino-apagar", nome: slug, id: t.id });
+                      if (j.erro) { setErro(j.erro); return; }
+                      carregar(slug);
+                    }}
+                    style={{ background: "none", border: "none", color: T.ghost, cursor: "pointer" }}>
+                    <Trash2 size={13} />
+                  </button>
+                ) : null}
+              </div>
+              {t.texto ? <Texto style={{ marginTop: 8 }}>{t.texto}</Texto> : null}
+              {t.temFoto ? (
+                <div className="mt-3"><FotoDoTreino nuvem={refNuvem.current} slug={slug} id={t.id} /></div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 /* ── a aba ───────────────────────────────────────────────────────────── */
 
 function Treino({ data, setData, notify, today, nuvem }) {
@@ -920,7 +1183,8 @@ function Treino({ data, setData, notify, today, nuvem }) {
   );
   const plano = (treino.planos || []).find((p) => p.id === treino.planoAtivo) || (treino.planos || [])[0];
 
-  const VISTAS = [["hoje", "Hoje"], ["plano", "Plano"], ["corpo", "Corpo"], ["cargas", "Cargas"]];
+  const VISTAS = [["hoje", "Hoje"], ["plano", "Plano"], ["corpo", "Corpo"],
+    ["cargas", "Cargas"], ["sala", "Competição"]];
 
   return (
     <div className="flex flex-col gap-5">
@@ -959,6 +1223,7 @@ function Treino({ data, setData, notify, today, nuvem }) {
       ) : null}
       {vista === "corpo" ? <Medidas {...{ treino, gravar, notify, today }} /> : null}
       {vista === "cargas" ? <Cargas {...{ treino, today }} /> : null}
+      {vista === "sala" ? <Competicao {...{ treino, nuvem, notify }} /> : null}
     </div>
   );
 }
