@@ -1160,6 +1160,56 @@ if (liberado) {
   else falha('o envio automático voltou a ligar sozinho depois de recarregar');
 }
 
+/* ── estilo do cartão ────────────────────────────────────────────────
+   Quem estuda por flashcard passa horas nesta tela; a escolha de letra e
+   tamanho é acessibilidade, não enfeite, e perder isso no recarregar é
+   perder a tela de estudo de quem precisou aumentar a fonte. */
+{
+  await ir('Cartões');
+  const antes = await pag.evaluate(() => {
+    const el = [...document.querySelectorAll('main span')]
+      .find((x) => /tríade da síndrome nefrítica/i.test(x.textContent || ''));
+    return el ? getComputedStyle(el).fontSize : '';
+  });
+  /* No arquivo de produção a aba Cartões é paga e abre bloqueada, então o
+     cartão de estilo nem existe. Aí não há o que testar, e exigir que
+     exista transformaria "esta conta não assina" em falha de teste. */
+  const temEstilo = !!antes;
+  if (temEstilo) ok('estilo do cartão: a prévia existe na aba Cartões');
+  else ok('estilo do cartão: aba paga e bloqueada, nada a conferir aqui');
+  if (temEstilo) {
+  await pag.locator('main button:has-text("Enorme")').first().click();
+  await pag.waitForTimeout(300);
+  const depois = await pag.evaluate(() => {
+    const el = [...document.querySelectorAll('main span')]
+      .find((x) => /tríade da síndrome nefrítica/i.test(x.textContent || ''));
+    return el ? getComputedStyle(el).fontSize : '';
+  });
+  if (parseFloat(depois) > parseFloat(antes)) ok('estilo do cartão: escolher "Enorme" aumenta a letra na prévia');
+  else falha(`estilo do cartão: a letra não mudou (${antes} → ${depois})`);
+
+  await pag.locator('main button:has-text("Serifada")').first().click();
+  await pag.waitForTimeout(300);
+  await pag.locator('main button:has-text("Aurora")').first().click();
+  await pag.waitForTimeout(2600);
+  await pag.reload({ waitUntil: 'load' });
+  await pag.waitForTimeout(2200);
+  const guardado = await pag.evaluate(() => {
+    const d = JSON.parse(window.localStorage.getItem('cadencia:v3') || '{}');
+    return d.cartaoEstilo || {};
+  });
+  if (guardado.tamanho === 'enorme' && guardado.fonte === 'serif' && guardado.fundo === 'aurora') {
+    ok('estilo do cartão: letra, tamanho e fundo sobrevivem ao recarregar');
+  } else falha('estilo do cartão: a escolha sumiu: ' + JSON.stringify(guardado));
+
+  /* De volta ao normal, para não atrapalhar as medidas das outras telas. */
+  await ir('Cartões');
+  await pag.locator('main button:has-text("Normal")').first().click();
+  await pag.locator('main button:has-text("Limpo")').first().click();
+  await pag.waitForTimeout(300);
+  }
+}
+
 /* ── treino: montar, executar e guardar ──────────────────────────────
    A aba da academia é a única que não tem nada a ver com estudo, e por
    isso mesmo é a que ninguém vai testar de véspera de prova. O caminho

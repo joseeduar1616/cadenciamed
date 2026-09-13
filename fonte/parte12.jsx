@@ -724,6 +724,150 @@ function MontarFlashcardsIA({ setData, notify, nuvem, pastas }) {
   );
 }
 
+/* ── o visual do cartão ────────────────────────────────────────────────
+ *
+ * Quem estuda por flashcard passa horas olhando para esta tela, e o que
+ * serve para uma pessoa atrapalha outra: tem quem precise de letra grande,
+ * quem leia melhor em serifada, quem ache o fundo liso sem graça e quem
+ * ache qualquer arte no fundo uma distração.
+ *
+ * Tudo aqui é CSS: nenhuma imagem, nenhum arquivo para baixar. O cartão já
+ * abre sem internet, e uma arte de fundo em PNG desfaria isso. As artes
+ * usam as cores do tema, então trocar a cor do site leva o cartão junto, e
+ * funcionam no claro e no escuro sem uma segunda versão.
+ */
+const FUNDOS_CARTAO = [
+  { id: "limpo", nome: "Limpo", arte: () => ({}) },
+  {
+    id: "aurora",
+    nome: "Aurora",
+    arte: () => ({
+      backgroundImage:
+        `radial-gradient(70% 55% at 18% 0%, ${soft("var(--neon)", 16)} 0%, transparent 70%),`
+        + `radial-gradient(60% 50% at 92% 12%, ${soft("var(--neon2)", 18)} 0%, transparent 72%)`,
+    }),
+  },
+  {
+    id: "grade",
+    nome: "Grade",
+    arte: () => ({
+      backgroundImage:
+        `linear-gradient(${soft("var(--line2)", 55)} 1px, transparent 1px),`
+        + `linear-gradient(90deg, ${soft("var(--line2)", 55)} 1px, transparent 1px)`,
+      backgroundSize: "34px 34px, 34px 34px",
+    }),
+  },
+  {
+    id: "vinheta",
+    nome: "Vinheta",
+    arte: () => ({
+      backgroundImage: `radial-gradient(120% 85% at 50% 42%, transparent 45%, ${soft("var(--bg)", 70)} 100%)`,
+    }),
+  },
+  {
+    id: "fita",
+    nome: "Fita",
+    arte: () => ({
+      backgroundImage:
+        `repeating-linear-gradient(135deg, ${soft("var(--neon)", 7)} 0 12px, transparent 12px 30px)`,
+    }),
+  },
+];
+
+/* Multiplicador em cima dos tamanhos que o cartão já usava. Guardar o
+   multiplicador, e não o tamanho em pixel, é o que mantém a diferença
+   entre pergunta e resposta e a adaptação à largura da tela: os tamanhos
+   são clamp(), e trocá-los por um número fixo faria a pergunta caber na
+   tela grande e estourar no celular. */
+const TAMANHOS_CARTAO = [
+  { id: "pequeno", nome: "Pequeno", fator: 0.85 },
+  { id: "normal", nome: "Normal", fator: 1 },
+  { id: "grande", nome: "Grande", fator: 1.18 },
+  { id: "enorme", nome: "Enorme", fator: 1.4 },
+];
+
+const FONTES_CARTAO = [
+  { id: "app", nome: "A do app", pilha: "var(--f-ui)" },
+  { id: "serif", nome: "Serifada", pilha: "var(--f-serif)" },
+  { id: "mono", nome: "Monoespaçada", pilha: "var(--f-mono)" },
+  { id: "sistema", nome: "Do aparelho", pilha: '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif' },
+];
+
+const ESTILO_PADRAO = { fonte: "app", tamanho: "normal", fundo: "limpo", alinhar: "centro" };
+
+const estiloDoCartao = (data) => ({ ...ESTILO_PADRAO, ...((data && data.cartaoEstilo) || null) });
+
+const fatorDoEstilo = (e) =>
+  (TAMANHOS_CARTAO.find((t) => t.id === e.tamanho) || TAMANHOS_CARTAO[1]).fator;
+
+const fonteDoEstilo = (e) =>
+  (FONTES_CARTAO.find((f) => f.id === e.fonte) || FONTES_CARTAO[0]).pilha;
+
+const arteDoEstilo = (e) =>
+  (FUNDOS_CARTAO.find((f) => f.id === e.fundo) || FUNDOS_CARTAO[0]).arte();
+
+/* clamp(a, b, c) multiplicado: os três números crescem juntos, então a
+   regra de "cabe na tela pequena, não fica minúsculo na grande" continua
+   valendo em qualquer tamanho escolhido. */
+function escalarClamp(valor, fator) {
+  if (fator === 1) return valor;
+  if (typeof valor === "number") return Math.round(valor * fator);
+  return String(valor).replace(/(\d+(?:\.\d+)?)(px|vw)/g,
+    (_, n, un) => `${Math.round(Number(n) * fator * 10) / 10}${un}`);
+}
+
+function EstiloDoCartao({ data, setData }) {
+  const e = estiloDoCartao(data);
+  const mudar = (k, v) => setData((p) => ({ ...p, cartaoEstilo: { ...estiloDoCartao(p), [k]: v } }));
+  const fator = fatorDoEstilo(e);
+
+  const Linha = ({ titulo, itens, campo }) => (
+    <div>
+      <Label>{titulo}</Label>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {itens.map((x) => (
+          <Btn key={x.id} size="sm" tone={e[campo] === x.id ? "primary" : "quiet"}
+            onClick={() => mudar(campo, x.id)}>{x.nome}</Btn>
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <Card className="px-6 py-6">
+      <H color="var(--neon)" icon={<Palette size={16} />}>Estilo do cartão</H>
+      <Label style={{ marginTop: 6 }}>vale para a tela de estudo, e fica guardado na sua conta</Label>
+
+      {/* A prévia usa exatamente o que a tela de estudo usa: um exemplo que
+          não passa pelo mesmo caminho mente sobre o resultado. */}
+      <div className="mt-5 rounded-2xl" style={{
+        background: T.card2, border: `1px solid ${T.line}`,
+        padding: "26px 20px", textAlign: e.alinhar === "esquerda" ? "left" : "center",
+        fontFamily: fonteDoEstilo(e), ...arteDoEstilo(e),
+      }}>
+        <span style={{
+          display: "block", color: T.ink, lineHeight: 1.4,
+          fontWeight: 650, fontSize: escalarClamp("clamp(22px, 4.4vw, 34px)", fator),
+        }}>Qual a tríade da síndrome nefrítica?</span>
+        <div style={{ height: 1, background: T.line, margin: "20px auto", maxWidth: 180 }} />
+        <span style={{
+          display: "block", color: T.ink, lineHeight: 1.5,
+          fontWeight: 550, fontSize: escalarClamp("clamp(19px, 3.6vw, 27px)", fator),
+        }}>Hematúria, hipertensão e edema.</span>
+      </div>
+
+      <div className="mt-5 flex flex-col gap-4">
+        <Linha titulo="Letra" itens={FONTES_CARTAO} campo="fonte" />
+        <Linha titulo="Tamanho" itens={TAMANHOS_CARTAO} campo="tamanho" />
+        <Linha titulo="Fundo" itens={FUNDOS_CARTAO} campo="fundo" />
+        <Linha titulo="Alinhamento"
+          itens={[{ id: "centro", nome: "Centralizado" }, { id: "esquerda", nome: "À esquerda" }]}
+          campo="alinhar" />
+      </div>
+    </Card>
+  );
+}
+
 function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
   const ativo = useAtivo();
   const [modo, setModo] = useState("painel");   // painel | estudo | criar
@@ -1046,6 +1190,11 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
 
   const apagar = (id) => setData((p) => ({ ...p, flash: (p.flash || []).filter((c) => c.id !== id) }));
 
+  /* O visual escolhido em "Estilo do cartão", lido uma vez e usado tanto
+     pela pergunta quanto pela resposta. */
+  const estilo = estiloDoCartao(data);
+  const fatorCartao = fatorDoEstilo(estilo);
+
   /* ── modo de estudo ─────────────────────────────────────────────── */
   if (modo === "estudo") {
     if (!atual) {
@@ -1137,8 +1286,13 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
             display: "flex", flexDirection: "column",
             alignItems: "center", justifyContent: "flex-start",
             padding: "28px 20px",
+            fontFamily: fonteDoEstilo(estilo),
+            ...arteDoEstilo(estilo),
           }}>
-          <div style={{ width: "100%", maxWidth: 760, textAlign: "center" }}>
+          <div style={{
+            width: "100%", maxWidth: 760,
+            textAlign: estilo.alinhar === "esquerda" ? "left" : "center",
+          }}>
             {aula ? (
               <div className="flex items-center justify-center gap-2" style={{ marginBottom: 22 }}>
                 <Chip area={aula.area} small />
@@ -1151,7 +1305,7 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
             <LadoDoCartao
               texto={atual.frente}
               imagens={atual.imgFrente}
-              tamanho={virado ? "clamp(17px, 3vw, 21px)" : "clamp(22px, 4.4vw, 34px)"}
+              tamanho={escalarClamp(virado ? "clamp(17px, 3vw, 21px)" : "clamp(22px, 4.4vw, 34px)", fatorCartao)}
               peso={virado ? 500 : 650}
               altura={virado ? 200 : 320} />
 
@@ -1164,7 +1318,7 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
                 <LadoDoCartao
                   texto={atual.verso}
                   imagens={atual.imgVerso}
-                  tamanho="clamp(19px, 3.6vw, 27px)"
+                  tamanho={escalarClamp("clamp(19px, 3.6vw, 27px)", fatorCartao)}
                   peso={550}
                   altura={340} />
               </>
@@ -1549,6 +1703,8 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
           <MontarFlashcardsIA setData={setData} notify={notify} nuvem={nuvem} pastas={data.pastas} />
         </div>
       </Card>
+
+      <EstiloDoCartao data={data} setData={setData} />
 
       <Publicados nuvem={nuvem} souDono={souDono} setData={setData}
         notify={notify} publicados={publicados} recarregar={carregarPublicados} />

@@ -36,6 +36,8 @@ const DEFAULTS = {
   /* Academia. Fica separado de tudo que é estudo de propósito: não conta
      hora, não entra no cronograma, não mexe em meta semanal. */
   treino: { perfil: {}, planos: [], planoAtivo: "", emCurso: null, sessoes: [], medidas: [] },
+  /* Como o cartão de flashcard aparece na tela de estudo. */
+  cartaoEstilo: { fonte: "app", tamanho: "normal", fundo: "limpo", alinhar: "centro" },
   /* Cronograma que a pessoa recebeu do curso dela, em texto, para o
      assistente organizar a rotina em cima do que ela realmente tem.
      As duas datas dizem quando esse período começa e quando acaba: sem elas
@@ -291,6 +293,20 @@ function normalize(raw) {
         .reduce((m, [k, v]) => { m[k] = v; return m; }, {}),
     },
     treino: normalizarTreino(tr),
+    /* O estilo do cartão passa por aqui como o resto: o que não for
+       copiado se perde na volta do disco. Os valores são conferidos contra
+       a lista de opções na hora de desenhar, então aqui basta serem texto
+       curto — uma opção que não existe mais cai no padrão sozinha. */
+    cartaoEstilo: (() => {
+      const ce = obj(d.cartaoEstilo);
+      const t = (v, padrao) => (typeof v === "string" && v.length <= 20 ? v : padrao);
+      return {
+        fonte: t(ce.fonte, "app"),
+        tamanho: t(ce.tamanho, "normal"),
+        fundo: t(ce.fundo, "limpo"),
+        alinhar: t(ce.alinhar, "centro"),
+      };
+    })(),
     /* Os cartões precisam sobreviver ao recarregar a página: como tudo passa
        por aqui na volta do disco e da nuvem, o que não for copiado se perde. */
     flash: arr(d.flash, []),
