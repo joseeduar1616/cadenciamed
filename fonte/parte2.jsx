@@ -576,6 +576,10 @@ function Texto({ children, style }) {
 }
 
 /* Títulos em caixa alta e bem espaçados, como nas referências */
+/* O fio à direita vem da página de entrada, onde cada capítulo abre com
+   um risco antes do olho-de-seção. Aqui ele fecha a linha em vez de
+   abri-la: o ícone já marca o começo, e um segundo risco antes dele
+   deixaria o título com duas aberturas. */
 function H({ children, size = 20, color, icon }) {
   return (
     <h2 className="flex items-center gap-2.5" style={{
@@ -590,6 +594,7 @@ function H({ children, size = 20, color, icon }) {
         }}>{icon}</span>
       ) : null}
       {children}
+      <span aria-hidden="true" className="fio-h" />
     </h2>
   );
 }
@@ -604,6 +609,11 @@ function Num({ children, size = 34, color = T.ink, weight = 600 }) {
 }
 
 function Btn({ children, onClick, tone = "quiet", disabled, className = "", title, size = "md" }) {
+  /* O primário usa a classe .btn-neon (no estilo geral, em parte8.jsx),
+     que é a mesma gradiente do botão da página de entrada — inclusive a
+     inversão no tema claro, onde as duas cores de acento são escuras e a
+     letra quase preta ficaria sem contraste. O fundo aqui embaixo é a
+     reserva de quem não tiver a classe. */
   const map = {
     primary: { bg: T.ink, fg: T.bg2, bd: "transparent" },
     quiet: { bg: T.card2, fg: T.ink, bd: T.line },
@@ -621,9 +631,15 @@ function Btn({ children, onClick, tone = "quiet", disabled, className = "", titl
   return (
     <button type="button" title={title} aria-label={soIcone ? title : undefined}
       onClick={onClick} disabled={disabled}
-      className={`inline-flex items-center justify-center gap-2 rounded-full ${className}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-full ${tone === "primary" ? "btn-neon " : ""}${className}`}
       style={{
-        background: t.bg, color: t.fg, border: `1px solid ${t.bd}`,
+        /* O primário não leva cor nenhuma daqui: quem pinta é a .btn-neon.
+           Escrever "background" inline zera o background-image da classe
+           (o atalho apaga as camadas), e o botão saía branco chapado em vez
+           da gradiente; a cor da letra tem o mesmo problema, e no tema
+           claro ela precisa ser branca, coisa que só a classe sabe. */
+        ...(tone === "primary" ? {} : { background: t.bg, color: t.fg }),
+        border: `1px solid ${t.bd}`,
         padding: size === "sm" ? "7px 14px" : "11px 19px",
         fontFamily: F_UI, fontSize: size === "sm" ? 14 : 15, fontWeight: 600,
         opacity: disabled ? 0.35 : 1, cursor: disabled ? "not-allowed" : "pointer",

@@ -1273,6 +1273,63 @@ if (liberado) {
   else falha('treino: o treino vazou para o progresso de estudo');
 }
 
+/* ── o visual trazido da página de entrada ───────────────────────────
+   A tela que recebe quem chega tinha uma linguagem própria e o app por
+   dentro não tinha nada dela. Estas três peças são o que mudou, e as três
+   quebram de um jeito silencioso: a capa some, o fio vira um traço solto,
+   e o botão principal fica branco chapado porque um "background" inline
+   apaga o background-image da classe. */
+{
+  await ir('Cartões');
+  const capa = await pag.evaluate(() => {
+    const t = document.querySelector('main .capa-t');
+    const olho = document.querySelector('main .capa-olho');
+    return { titulo: t ? t.innerText.trim() : '', olho: olho ? olho.innerText.trim() : '' };
+  });
+  if (/cart/i.test(capa.titulo)) ok('design: cada aba abre com o nome dela em título grande');
+  else falha('design: não achei a capa da aba: ' + JSON.stringify(capa));
+  if (capa.olho) ok('design: a capa traz o olho-de-seção em monoespaçada');
+  else falha('design: a capa veio sem o olho-de-seção');
+
+  const botao = await pag.evaluate(() => {
+    const b = document.querySelector('main .btn-neon');
+    if (!b) return null;
+    const cs = getComputedStyle(b);
+    return { img: cs.backgroundImage, cor: cs.color };
+  });
+  if (botao && /linear-gradient/.test(botao.img)) ok('design: o botão principal usa a gradiente da marca');
+  else falha('design: o botão principal perdeu a gradiente: ' + JSON.stringify(botao));
+
+  /* No tema claro as duas cores de acento são escuras, e a letra quase
+     preta do tema escuro ficaria ilegível por cima delas. */
+  const antesTema = await pag.evaluate(() => document.documentElement.getAttribute('data-theme'));
+  await pag.evaluate(() => {
+    const b = [...document.querySelectorAll('button')].find((x) =>
+      /claro|escuro|tema/i.test((x.getAttribute('aria-label') || '') + (x.getAttribute('title') || '')));
+    if (b) b.click();
+  });
+  await pag.waitForTimeout(700);
+  const noOutroTema = await pag.evaluate(() => {
+    const b = document.querySelector('main .btn-neon');
+    return b ? { tema: document.documentElement.getAttribute('data-theme'), cor: getComputedStyle(b).color } : null;
+  });
+  if (noOutroTema && noOutroTema.cor !== botao.cor) {
+    ok(`design: o botão principal troca a cor da letra entre os temas (${botao.cor} → ${noOutroTema.cor})`);
+  } else falha('design: a letra do botão principal não mudou ao trocar de tema: ' + JSON.stringify(noOutroTema));
+
+  /* Devolve o tema como estava, para as medidas seguintes não mudarem de
+     fundo no meio do caminho. */
+  await pag.evaluate(() => {
+    const b = [...document.querySelectorAll('button')].find((x) =>
+      /claro|escuro|tema/i.test((x.getAttribute('aria-label') || '') + (x.getAttribute('title') || '')));
+    if (b) b.click();
+  });
+  await pag.waitForTimeout(700);
+  const voltou = await pag.evaluate(() => document.documentElement.getAttribute('data-theme'));
+  if (voltou === antesTema) ok('design: o tema volta ao que era');
+  else falha(`design: o tema não voltou (${antesTema} → ${voltou})`);
+}
+
 /* ── barra lateral ────────────────────────────────────────────────── */
 const lateral = pag.locator('aside[aria-label="Navegação"]');
 if (await lateral.count() === 1) ok('a barra lateral existe');

@@ -23,6 +23,8 @@ DO_APP = {
     'aba', 'aovivo', 'aura', 'aura-a', 'aura-b', 'aura-c', 'aura-d', 'brilhar',
     'breathe', 'marca', 'nota', 'pulso', 'rise', 'vidro',
     'toque', 'toque-larg', 'pe',
+    # o visual trazido da página de entrada, no <style> do parte8.jsx
+    'btn-neon', 'fio-h', 'capa-aba', 'capa-olho', 'capa-t', 'surge',
 }
 
 # A página de entrada tem estilo próprio, escrito no <style> dela, e são

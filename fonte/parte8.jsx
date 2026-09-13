@@ -519,6 +519,21 @@ export default function Cadencia() {
   const [menuFixo, setMenuFixo] = useState(true);
   useEffect(() => { if (!estreita) setMenuAberto(false); }, [estreita]);
 
+  /* O olho-de-seção de cada aba: a frase curta em monoespaçada que abre o
+     conteúdo, como cada capítulo da página de entrada. Aba sem frase abre
+     só com o título, que já basta. */
+  const OLHOS = {
+    hoje: "o dia de hoje", foco: "cronômetro e sessões",
+    materias: "as 90 aulas da residência", clinico: "o seu ciclo clínico",
+    cronograma: "de onde vêm as suas aulas", temas: "por especialidade",
+    assistente: "pergunte sobre o seu progresso", cartoes: "repetição espaçada",
+    revisoes: "a escada de revisão", rotina: "a semana e o Google Agenda",
+    amigos: "quem estuda com você", mentor: "os seus alunos",
+    metas: "simulados, provas e hábitos", desempenho: "acerto por área e matéria",
+    treino: "academia, fora da conta do estudo", progresso: "o caminho até aqui",
+    planos: "assinatura", config: "tudo que dá para ajustar",
+  };
+
   const TABS = [
     { id: "hoje", label: "Hoje", acc: "var(--a-CL)" },
     { id: "foco", label: "Foco", acc: "var(--a-PR)" },
@@ -763,6 +778,53 @@ export default function Cadencia() {
           box-shadow:0 0 0 1px color-mix(in srgb,var(--neon) 10%,transparent),
                      0 24px 60px -30px color-mix(in srgb,var(--neon2) 70%,transparent)}
         .vidro:hover::after{opacity:1}
+        /* ── o visual da página de entrada, trazido para dentro ────────
+           A tela que recebe quem chega tinha uma linguagem própria — botão
+           com a gradiente da marca, título grande com olho-de-seção em
+           monoespaçada, revelação suave — e o app por dentro não tinha
+           nada disso. Estas três classes são as mesmas peças, escritas
+           para valer em qualquer aba. */
+
+        /* Botão principal: a gradiente da marca, como o da entrada. */
+        .btn-neon{background-image:linear-gradient(112deg,var(--neon),var(--neon2));
+          color:#08050F;border-color:transparent;
+          transition:transform .2s cubic-bezier(.2,.8,.2,1),box-shadow .3s,opacity .15s}
+        /* No tema claro as duas cores de acento são escuras (são as mesmas
+           nos dois fundos), e a letra quase preta por cima do roxo ficava
+           sem contraste. Lá o botão inverte, igual à página de entrada. */
+        [data-theme="light"] .btn-neon{
+          background-image:linear-gradient(112deg,color-mix(in srgb,var(--neon) 84%,black),var(--neon2));
+          color:#FFFFFF}
+        .btn-neon:hover:not(:disabled){transform:translateY(-2px);
+          box-shadow:0 16px 42px -16px var(--neon2)}
+        .btn-neon:active:not(:disabled){transform:translateY(0) scale(.985)}
+        @media(prefers-reduced-motion:reduce){
+          .btn-neon:hover:not(:disabled){transform:none}}
+
+        /* O fio que fecha o título de cada painel, à direita. Some no
+           celular: lá a linha do título já ocupa a largura inteira e o fio
+           só empurraria o texto. */
+        .fio-h{display:none;flex:1;height:1px;min-width:24px;
+          background:linear-gradient(90deg,currentColor,transparent);opacity:.28}
+        @media(min-width:520px){.fio-h{display:block}}
+
+        /* Cabeçalho da aba, com o olho-de-seção em monoespaçada. */
+        .capa-aba{display:flex;flex-direction:column;gap:7px;margin-bottom:4px}
+        .capa-olho{display:flex;align-items:center;gap:10px;font-family:var(--f-mono);
+          font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--ghost)}
+        .capa-olho::before{content:"";width:22px;height:1px;background:currentColor;flex-shrink:0}
+        .capa-t{font-family:var(--f-ui);font-weight:800;letter-spacing:-0.02em;
+          text-transform:uppercase;line-height:1.03;margin:0;color:var(--ink);
+          font-size:clamp(26px,4.6vw,40px)}
+        .capa-t em{font-style:normal;
+          background:linear-gradient(104deg,var(--neon),var(--neon2));
+          -webkit-background-clip:text;background-clip:text;color:transparent}
+
+        /* Troca de aba: sobe de leve em vez de pular. */
+        @keyframes surge{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+        .surge{animation:surge .34s cubic-bezier(.2,.8,.2,1) both}
+        @media(prefers-reduced-motion:reduce){.surge{animation:none}}
+
         /* navegação: a aba escolhida acende e ganha um risco de luz embaixo */
         .aba{position:relative;transition:color .2s,background .22s,text-shadow .22s}
         .aba::after{content:"";position:absolute;left:22%;right:22%;bottom:2px;height:1px;
@@ -898,7 +960,15 @@ export default function Cadencia() {
           </header>
 
           <main className="px-5 sm:px-8 pb-16">
-            <div className="mx-auto rise" style={{ maxWidth: LARGURA }} key={tab}>
+            <div className="mx-auto rise surge" style={{ maxWidth: LARGURA }} key={tab}>
+              {/* Cabeçalho da aba, na tipografia da página de entrada. Antes
+                  o conteúdo começava direto no primeiro painel, e em telas
+                  grandes não havia nada dizendo onde a pessoa estava além do
+                  item aceso na barra lateral. */}
+              <div className="capa-aba">
+                {OLHOS[tab] ? <span className="capa-olho">{OLHOS[tab]}</span> : null}
+                <h1 className="capa-t">{(TABS.find((t) => t.id === tab) || {}).label || ""}</h1>
+              </div>
               {tab === "hoje" && <Hoje {...{ data, setData, today, minToday, minWeek, qWeek, streak, late, done, bonusDone, addSession, delSession, notify, go: setTab, blocosHoje, projecao: pro ? projecao : null, pro, verPlanos: () => setTab("planos"), cartoesHoje }} />}
               {tab === "foco" && <Foco {...{ data, setData, today, P, subjectId: pomoSubject, setSubjectId: setPomoSubject }} />}
               {tab === "materias" && <Materias {...{ subjects: subjectsResidencia, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, salvarAnotacao, notify, setData, nuvem, pastas: data.pastas, vazioEm: subjectsClinico.length ? "clinico" : null, irPara: setTab }} />}
