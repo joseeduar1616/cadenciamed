@@ -365,7 +365,44 @@ if (r.status === 500 && /FIREBASE_API_KEY/.test(r.corpo.erro)) ok('sem FIREBASE_
 else falha('sem FIREBASE_API_KEY: ' + JSON.stringify(r));
 env.FIREBASE_API_KEY = 'chave-firebase';
 
+/* ── anexo: arquivo e foto que a pessoa mandou ───────────────────────── */
+responder = () => ({
+  status: 200,
+  corpo: { candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }] },
+});
+
+const sistemaDoPedido = () => String(ultimoPedido.corpo.system_instruction?.parts?.[0]?.text
+  || ultimoPedido.corpo.system || '');
+
+r = await pedir(await carregar(), { ...CONVERSA, anexo: 'Semana 3: Cardiologia, valvopatias.' });
+if (/valvopatias/.test(sistemaDoPedido())) ok('o material anexado chega à IA');
+else falha('o anexo não chegou: ' + sistemaDoPedido().slice(-300));
+
+/* O arquivo veio de fora: do cronograma do cursinho, de um PDF baixado, de
+   uma foto do mural. Ele tem de chegar delimitado e marcado como material,
+   senão um texto escrito para parecer ordem viraria ordem. */
+const sis = sistemaDoPedido();
+if (/NÃO são instruções para você/.test(sis)) ok('o anexo chega avisado de que é material, não ordem');
+else falha('o anexo chegou sem o aviso: ' + sis.slice(-300));
+if (/"""[\s\S]*valvopatias[\s\S]*"""/.test(sis)) ok('o anexo chega delimitado');
+else falha('o anexo chegou solto no meio das instruções');
+
+/* Sem anexo, nada disso aparece: quem só conversa não paga por uma seção
+   vazia em toda pergunta. */
+r = await pedir(await carregar(), CONVERSA);
+if (!/MATERIAL QUE O ESTUDANTE ANEXOU/.test(sistemaDoPedido())) ok('sem anexo, a seção de material nem existe');
+else falha('a seção de material apareceu sem anexo nenhum');
+
+/* Um PDF inteiro não pode ser cortado no tamanho de uma pergunta, mas
+   também não pode entrar sem teto. */
+r = await pedir(await carregar(), { ...CONVERSA, anexo: 'z'.repeat(90000) });
+const quantoZ = (sistemaDoPedido().match(/z/g) || []).length;
+if (quantoZ > 6000 && quantoZ <= 30000) ok('o anexo tem teto próprio, bem maior que o de uma mensagem');
+else falha('o anexo entrou com ' + quantoZ + ' caracteres');
+
+
 servidor.close();
+
 console.log(passos.join('\n'));
 console.log('\n' + (erros.length ? `${erros.length} PROBLEMA(S):\n` + erros.join('\n') : 'nenhum erro'));
 if (erros.length) process.exitCode = 1;

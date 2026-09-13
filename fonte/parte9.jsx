@@ -939,11 +939,66 @@ function acharMateriaPorNome(nomeLivre, subjects) {
   return melhorScore >= LIMIAR_SESSAO_CHAT ? melhor : null;
 }
 
+/* ── anexos do assistente ──────────────────────────────────────────────
+ *
+ * Perguntar sobre um arquivo era copiar e colar o conteúdo na mão, o que
+ * na prática queria dizer não perguntar. Agora o arquivo vira texto no
+ * próprio navegador e viaja junto da pergunta.
+ *
+ * Cada tipo tem o seu caminho, e todos já existiam no app:
+ *   PDF e Word  → os mesmos leitores do montador de flashcards
+ *   texto e md  → direto, sem leitor nenhum
+ *   imagem      → /api/ler-foto, a IA que enxerga, e o que volta é texto
+ *
+ * Imagem vira texto de propósito, em vez de subir a foto para o
+ * assistente: a rota do assistente é de conversa, o custo por imagem em
+ * toda mensagem seguinte seria pago de novo a cada pergunta, e o que
+ * importa num cronograma fotografado ou num slide é o que está escrito.
+ */
+const TETO_ANEXO = 30000;      // o mesmo teto da rota, para o corte ser visível aqui
+const MAX_ANEXOS = 4;
+
+async function textoDeAnexo(arquivo, nuvem, aviso) {
+  const nome = String(arquivo.name || "arquivo");
+  const tipo = String(arquivo.type || "");
+  const min = nome.toLowerCase();
+
+  if (tipo === "application/pdf" || min.endsWith(".pdf")) {
+    return { texto: await lerPdfParaTexto(arquivo, aviso) };
+  }
+  if (min.endsWith(".docx") || tipo.includes("wordprocessingml")) {
+    return { texto: await lerDocxParaTexto(arquivo, aviso) };
+  }
+  if (tipo.startsWith("image/")) {
+    const r = await lerFotosComIA(nuvem, [arquivo], aviso);
+    if (r.erro) return { erro: r.erro };
+    return { texto: r.texto || "", cortado: !!r.cortado };
+  }
+  if (tipo.startsWith("text/") || /\.(txt|md|csv|json)$/.test(min)) {
+    aviso("lendo o arquivo");
+    return { texto: await arquivo.text() };
+  }
+  return { erro: `Não sei ler "${nome}". Mande PDF, Word, texto ou uma imagem.` };
+}
+
+/* O material anexado, junto, do jeito que a rota recebe. O nome de cada
+   arquivo vai junto porque muda a resposta: "segundo o cronograma.pdf" é
+   uma coisa, "segundo a foto do mural" é outra. */
+function juntarAnexos(anexos) {
+  return anexos
+    .map((a) => `--- ${a.nome} ---\n${a.texto}`)
+    .join("\n\n")
+    .slice(0, TETO_ANEXO);
+}
+
 function Assistente({ data, setData, subjects, ladder, today, totals, minWeek, qWeek, notify, nuvem }) {
   const [msgs, setMsgs] = useState([]);
   const [txt, setTxt] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState("");
+  const [anexos, setAnexos] = useState([]);
+  const [lendo, setLendo] = useState("");
+  const arquivoRef = useRef(null);
   const fim = useRef(null);
   const ativo = useAtivo();
 
@@ -1029,6 +1084,7 @@ function Assistente({ data, setData, subjects, ladder, today, totals, minWeek, q
         token: tokenFirebase,
         contexto: resumoParaIA({ subjects, ladder, data, today, totals, minWeek, qWeek, totalBonus: ativo.totalBonus }),
         instrucoes: INSTRUCOES_IA,
+        anexo: anexos.length ? juntarAnexos(anexos) : "",
         mensagens: historico.slice(-14).map((m) => ({
           role: m.papel === "user" ? "user" : "assistant",
           content: m.texto,
@@ -1045,7 +1101,7 @@ function Assistente({ data, setData, subjects, ladder, today, totals, minWeek, q
     } catch (e) {
       setErro("Não consegui falar com o assistente. Verifique a conexão.");
     } finally { setOcupado(false); }
-  }, [txt, ocupado, msgs, subjects, ladder, data, today, totals, minWeek, qWeek, aplicarAcoes, notify, nuvem]);
+  }, [txt, ocupado, msgs, anexos, subjects, ladder, data, today, totals, minWeek, qWeek, aplicarAcoes, notify, nuvem]);
 
   const sugestoes = [
     "O que eu deveria estudar hoje?",
@@ -1131,7 +1187,56 @@ function Assistente({ data, setData, subjects, ladder, today, totals, minWeek, q
           </div>
         ) : null}
 
+        {anexos.length || lendo ? (
+          <div className="px-5 sm:px-6 pb-1 flex flex-wrap gap-2 items-center">
+            {anexos.map((a) => (
+              <span key={a.id} className="rounded-full px-3 py-1.5 flex items-center gap-2"
+                style={{ background: soft("var(--neon)", 14), color: T.ink, fontSize: 13 }}>
+                <FileText size={12} />
+                {a.nome}
+                <Mini>{Math.round(a.texto.length / 100) / 10} mil letras</Mini>
+                <button type="button" aria-label={`Tirar ${a.nome}`} onClick={() => setAnexos((p) => p.filter((x) => x.id !== a.id))}
+                  style={{ background: "none", border: "none", color: T.ghost, cursor: "pointer", padding: 0 }}>
+                  <X size={12} />
+                </button>
+              </span>
+            ))}
+            {lendo ? <Mini style={{ color: T.neon }}>{lendo}…</Mini> : null}
+          </div>
+        ) : null}
+        {anexos.length ? (
+          <div className="px-5 sm:px-6 pb-1">
+            <Mini style={{ lineHeight: 1.6 }}>
+              o material vai junto de cada pergunta enquanto estiver aqui · tire quando terminar
+            </Mini>
+          </div>
+        ) : null}
+
         <div className="px-5 sm:px-6 py-4 flex gap-2" style={{ borderTop: `1px solid ${T.line}` }}>
+          <input ref={arquivoRef} type="file" hidden multiple
+            accept=".pdf,.docx,.txt,.md,.csv,application/pdf,text/plain,image/*"
+            onChange={async (e) => {
+              const escolhidos = [...(e.target.files || [])].slice(0, MAX_ANEXOS - anexos.length);
+              e.target.value = "";
+              if (!escolhidos.length) return;
+              setErro("");
+              for (const arq of escolhidos) {
+                try {
+                  const r = await textoDeAnexo(arq, nuvem, (m) => setLendo(`${arq.name}: ${m}`));
+                  if (r.erro) { setErro(r.erro); continue; }
+                  const limpo = String(r.texto || "").trim();
+                  if (!limpo) { setErro(`Não achei texto em "${arq.name}".`); continue; }
+                  setAnexos((p) => [...p, { id: uid(), nome: arq.name, texto: limpo }]);
+                } catch (err) {
+                  setErro((err && err.message) || `Não consegui ler "${arq.name}".`);
+                }
+              }
+              setLendo("");
+            }} />
+          <Btn title="Anexar arquivo ou imagem" disabled={ocupado || !!lendo || anexos.length >= MAX_ANEXOS}
+            onClick={() => arquivoRef.current && arquivoRef.current.click()}>
+            <ImagePlus size={16} />
+          </Btn>
           <TextInput value={txt} placeholder="Escreva sua pergunta" disabled={ocupado}
             onChange={(e) => setTxt(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }} />
