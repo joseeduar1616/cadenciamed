@@ -14,7 +14,7 @@ import {
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify,
   Palette, Highlighter, ImagePlus, NotebookPen, FileDown, FolderInput,
   Folder, FolderPlus, ALargeSmall, Camera, Flag, CalendarClock,
-  Dumbbell, Timer, Ruler, TrendingUp, Youtube, Calculator,
+  Dumbbell, Timer, Ruler, TrendingUp, Youtube, Calculator, Music,
 } from "lucide-react";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip,

@@ -93,6 +93,18 @@ async function lerSala(token, slug) {
     dono: texto(f.dono),
     criadaEm: numero(f.criadaEm),
     membros: lista(f.membros),
+    /* Estudar juntos: um cronômetro só, combinado pela sala. Fica na
+       própria sala e não em coleção nova porque é um dado só, vale para
+       todo mundo ao mesmo tempo e morre quando o tempo acaba. */
+    focoInicio: numero(f.focoInicio),
+    focoMin: numero(f.focoMin),
+    focoPor: texto(f.focoPor),
+    /* O link da Jam do Spotify. O site não cria Jam nenhuma: não existe
+       API pública para isso. Quem cria é o app do Spotify, e aqui só mora
+       o link para a sala inteira abrir o mesmo. */
+    jamUrl: texto(f.jamUrl),
+    jamPor: texto(f.jamPor),
+    jamEm: numero(f.jamEm),
   };
 }
 
@@ -112,6 +124,12 @@ async function gravarSala(token, sala) {
         dono: { stringValue: sala.dono },
         criadaEm: { doubleValue: sala.criadaEm },
         membros: { arrayValue: { values: sala.membros.map((x) => ({ stringValue: x })) } },
+        focoInicio: { doubleValue: sala.focoInicio || 0 },
+        focoMin: { doubleValue: sala.focoMin || 0 },
+        focoPor: { stringValue: sala.focoPor || "" },
+        jamUrl: { stringValue: sala.jamUrl || "" },
+        jamPor: { stringValue: sala.jamPor || "" },
+        jamEm: { doubleValue: sala.jamEm || 0 },
       },
     }),
   });
@@ -345,6 +363,34 @@ export function montarRanking(sala, perfis, eu, periodo, agora = Date.now()) {
   };
 }
 
+/* O foco em conjunto como a tela precisa dele: quanto falta, em segundos.
+   Vencido é o mesmo que não existir — assim ninguém precisa desligar. */
+function focoDaSala(sala) {
+  const fim = (sala.focoInicio || 0) + (sala.focoMin || 0) * 60000;
+  const resta = fim - Date.now();
+  if (!sala.focoInicio || !sala.focoMin || resta <= 0) return null;
+  return {
+    por: sala.focoPor || "", minutos: sala.focoMin,
+    inicio: sala.focoInicio, restaSeg: Math.ceil(resta / 1000),
+  };
+}
+
+/* Só endereço do próprio Spotify. Sem isto, o campo viraria um jeito de
+   mandar qualquer link para a sala inteira de uma vez. */
+function ehLinkDoSpotify(url) {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "https:") return false;
+    return u.hostname === "open.spotify.com" || u.hostname === "spotify.link"
+      || u.hostname === "www.spotify.link";
+  } catch (e) { return false; }
+}
+
+function jamDaSala(sala) {
+  if (!sala.jamUrl) return null;
+  return { url: sala.jamUrl, por: sala.jamPor || "", em: sala.jamEm || 0 };
+}
+
 export async function onRequest({ request, env }) {
   if (request.method !== "POST") return json({ erro: "Método não permitido." }, 405);
 
@@ -468,6 +514,51 @@ export async function onRequest({ request, env }) {
     return json({ ok: true, mensagem: `Você saiu de "${sala.nome}".` });
   }
 
+  /* ── estudar juntos ────────────────────────────────────────────────
+   *
+   * Um cronômetro só, combinado pela sala: quem entra vê quanto falta e
+   * começa o próprio Foco no mesmo instante. Só isso, e de propósito: o
+   * que faz estudar junto funcionar é começar e parar na mesma hora, não
+   * uma chamada de vídeo.
+   *
+   * Termina sozinho quando o tempo acaba — o navegador compara a hora, e
+   * ninguém precisa "desligar". É o mesmo motivo de a presença ter hora
+   * em vez de um aviso de saída: fechar a aba não avisa ninguém. */
+  if (acao === "focar") {
+    const minutos = Math.round(Number(corpo.minutos) || 0);
+    if (minutos && (minutos < 5 || minutos > 180)) {
+      return json({ erro: "O foco em conjunto vai de 5 a 180 minutos." }, 400);
+    }
+    /* O nome vem do perfil, não do pedido: aceitar o nome que o navegador
+       manda deixaria qualquer pessoa da sala assinar como outra. */
+    const meu = (await perfisDe(token, [pessoa.uid]))[pessoa.uid] || {};
+    sala.focoInicio = minutos ? Date.now() : 0;
+    sala.focoMin = minutos;
+    sala.focoPor = minutos ? String(meu.nome || "").slice(0, 40) : "";
+    if (!await gravarSala(token, sala)) return json({ erro: "Não consegui combinar o foco agora." }, 502);
+    return json({ ok: true, foco: focoDaSala(sala) });
+  }
+
+  /* ── a Jam do Spotify ──────────────────────────────────────────────
+   *
+   * O site NÃO cria Jam: o Spotify não tem API pública para isso. Quem
+   * cria é o app do Spotify, no aparelho de quem começou; aqui mora só o
+   * link, para a sala inteira abrir o mesmo. Guardar outro endereço
+   * qualquer aqui viraria um jeito de mandar link para a sala toda, então
+   * só passa endereço do próprio Spotify. */
+  if (acao === "jam") {
+    const url = String(corpo.url || "").trim().slice(0, 300);
+    if (url && !ehLinkDoSpotify(url)) {
+      return json({ erro: "Cole um link do Spotify (open.spotify.com ou spotify.link)." }, 400);
+    }
+    const meu = (await perfisDe(token, [pessoa.uid]))[pessoa.uid] || {};
+    sala.jamUrl = url;
+    sala.jamPor = url ? String(meu.nome || "").slice(0, 40) : "";
+    sala.jamEm = url ? Date.now() : 0;
+    if (!await gravarSala(token, sala)) return json({ erro: "Não consegui guardar o link agora." }, 502);
+    return json({ ok: true, jam: jamDaSala(sala) });
+  }
+
   /* ── ranking ───────────────────────────────────────────────────────── */
   if (acao === "ranking") {
     const perfis = await perfisDe(token, sala.membros);
@@ -479,6 +570,8 @@ export async function onRequest({ request, env }) {
         periodo: recorte.campo, rotulo: recorte.rotulo,
       },
       ranking: linhas,
+      foco: focoDaSala(sala),
+      jam: jamDaSala(sala),
     });
   }
 

@@ -349,6 +349,75 @@ r = await pedir({ token: 't', acao: 'dizer', nome: 'r3-clinica', texto: 'oi' });
 if (r.status === 403) ok('quem não está na sala não escreve nela');
 else falha('dizer sem ser membro: ' + JSON.stringify(r));
 
+/* ── estudar juntos: foco combinado e Jam ────────────────────────────── */
+como('ana@email.com', 'uid-ana');
+
+r = await pedir({ token: 't', acao: 'focar', nome: 'r3-clinica', minutos: 50 });
+if (r.corpo.ok && r.corpo.foco && r.corpo.foco.minutos === 50) ok('dá para combinar um foco com a sala');
+else falha('focar: ' + JSON.stringify(r));
+
+r = await pedir({ token: 't', acao: 'ranking', nome: 'r3-clinica' });
+if (r.corpo.foco && r.corpo.foco.restaSeg > 0) ok('o foco combinado chega junto com o ranking, com o tempo que falta');
+else falha('foco no ranking: ' + JSON.stringify(r.corpo.foco));
+/* O nome de quem combinou vem do perfil guardado, nunca do pedido: senão
+   qualquer pessoa da sala assinaria como outra. */
+r = await pedir({ token: 't', acao: 'focar', nome: 'r3-clinica', minutos: 25, por: 'Fulano Inventado' });
+if (r.corpo.foco.por !== 'Fulano Inventado') ok('quem combinou o foco é dito pelo perfil, não pelo pedido');
+else falha('aceitou o nome que veio no pedido: ' + r.corpo.foco.por);
+
+for (const m of [1, 4, 181, 999]) {
+  r = await pedir({ token: 't', acao: 'focar', nome: 'r3-clinica', minutos: m });
+  if (r.status !== 400) { falha('aceitou foco de ' + m + ' minutos'); break; }
+}
+if (r.status === 400) ok('foco curto demais ou longo demais é recusado');
+
+r = await pedir({ token: 't', acao: 'focar', nome: 'r3-clinica', minutos: 0 });
+if (r.corpo.ok && r.corpo.foco === null) ok('dá para encerrar o foco para a sala inteira');
+else falha('encerrar foco: ' + JSON.stringify(r));
+
+/* Foco vencido é o mesmo que foco nenhum: ninguém precisa desligar, e
+   fechar a aba não avisa ninguém. */
+await pedir({ token: 't', acao: 'focar', nome: 'r3-clinica', minutos: 5 });
+SALAS['r3-clinica'].fields.focoInicio = { doubleValue: Date.now() - 10 * 60000 };
+r = await pedir({ token: 't', acao: 'ranking', nome: 'r3-clinica' });
+if (r.corpo.foco === null) ok('foco que já venceu some sozinho, sem ninguém desligar');
+else falha('foco vencido continuou de pé: ' + JSON.stringify(r.corpo.foco));
+
+r = await pedir({ token: 't', acao: 'jam', nome: 'r3-clinica', url: 'https://open.spotify.com/playlist/abc' });
+if (r.corpo.ok && r.corpo.jam && /open.spotify.com/.test(r.corpo.jam.url)) ok('dá para combinar o link da Jam do Spotify');
+else falha('jam: ' + JSON.stringify(r));
+
+/* O campo não pode virar um jeito de mandar qualquer link para a sala
+   inteira de uma vez. */
+for (const u of ['https://exemplo.com/virus', 'http://open.spotify.com/x', 'javascript:alert(1)',
+  'https://open.spotify.com.mal.com/x', 'não é link']) {
+  r = await pedir({ token: 't', acao: 'jam', nome: 'r3-clinica', url: u });
+  if (r.status !== 400) { falha('aceitou como Jam do Spotify: ' + u); break; }
+}
+if (r.status === 400) ok('só link do próprio Spotify entra como Jam');
+
+r = await pedir({ token: 't', acao: 'ranking', nome: 'r3-clinica' });
+if (r.corpo.jam && r.corpo.jam.url) ok('o link recusado não derrubou o que já estava combinado');
+else falha('a Jam sumiu depois de um link recusado: ' + JSON.stringify(r.corpo.jam));
+
+r = await pedir({ token: 't', acao: 'jam', nome: 'r3-clinica', url: '' });
+if (r.corpo.ok && r.corpo.jam === null) ok('dá para tirar a Jam da sala');
+else falha('tirar jam: ' + JSON.stringify(r));
+
+/* Nem foco nem Jam podem ter derrubado o resto da sala: o PATCH do
+   Firestore troca o documento inteiro, e campo que não for regravado some. */
+r = await pedir({ token: 't', acao: 'ranking', nome: 'r3-clinica' });
+if ((r.corpo.ranking || []).length === 3) ok('mexer no foco e na Jam não apaga os membros da sala');
+else falha('a sala perdeu membros: ' + JSON.stringify(r.corpo.ranking));
+
+como('dani@email.com', 'uid-dani');
+r = await pedir({ token: 't', acao: 'focar', nome: 'r3-clinica', minutos: 25 });
+if (r.status === 403) ok('quem não está na sala não combina foco nela');
+else falha('focar sem ser membro: ' + JSON.stringify(r));
+r = await pedir({ token: 't', acao: 'jam', nome: 'r3-clinica', url: 'https://open.spotify.com/x' });
+if (r.status === 403) ok('quem não está na sala não posta Jam nela');
+else falha('jam sem ser membro: ' + JSON.stringify(r));
+
 /* ── minhas salas ────────────────────────────────────────────────────── */
 como('ana@email.com', 'uid-ana');
 r = await pedir({ token: 't', acao: 'minhas' });

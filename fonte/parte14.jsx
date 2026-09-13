@@ -472,6 +472,134 @@ function horaCurta(em) {
   return mesmoDia ? hora : `${d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} ${hora}`;
 }
 
+/* ── estudar juntos ────────────────────────────────────────────────────
+ *
+ * Duas coisas pequenas que, juntas, fazem a sala virar mesa de estudo:
+ *
+ * 1. Um foco combinado. Alguém marca 25, 50 ou 90 minutos e a sala inteira
+ *    vê o mesmo relógio correndo. O que faz estudar junto funcionar é
+ *    começar e parar na mesma hora — não é chamada de vídeo, não é ver a
+ *    cara do outro. O relógio termina sozinho quando o tempo acaba, porque
+ *    fechar a aba não avisa ninguém.
+ *
+ * 2. A Jam do Spotify. E aqui a verdade importa: o Spotify NÃO tem API
+ *    pública para criar ou entrar numa Jam. Quem cria é o app do Spotify,
+ *    no aparelho de quem começou. O que o site faz é guardar o link para a
+ *    sala inteira abrir o mesmo — e só aceita endereço do próprio Spotify,
+ *    senão o campo viraria um jeito de mandar qualquer link para todo
+ *    mundo de uma vez.
+ */
+function EstudarJuntos({ nuvem, slug, foco, jam, estudando, aoMudar, notify, irPara }) {
+  const [ocupado, setOcupado] = useState("");
+  const [link, setLink] = useState("");
+  const [erro, setErro] = useState("");
+  const [agora, setAgora] = useState(Date.now());
+
+  /* O relógio anda aqui, e não no servidor: o ranking só recarrega de
+     tempos em tempos, e um contador que só mexesse nessa hora andaria aos
+     pulos de meio minuto. */
+  const fim = foco ? foco.inicio + foco.minutos * 60000 : 0;
+  const resta = fim ? Math.max(0, Math.ceil((fim - agora) / 1000)) : 0;
+  useEffect(() => {
+    if (!fim) return undefined;
+    const t = window.setInterval(() => setAgora(Date.now()), 500);
+    return () => window.clearInterval(t);
+  }, [fim]);
+
+  const mandar = async (corpo, oQue) => {
+    setOcupado(oQue); setErro("");
+    const j = await falarComSalas(nuvem, { ...corpo, nome: slug });
+    setOcupado("");
+    if (j.erro) { setErro(j.erro); return null; }
+    aoMudar(j);
+    return j;
+  };
+
+  const combinar = async (minutos) => {
+    const j = await mandar({ acao: "focar", minutos }, "foco");
+    if (j) notify(`Foco de ${minutos} min combinado com a sala.`);
+  };
+
+  return (
+    <Card className="px-6 py-6" brilho="var(--neon)">
+      <H color="var(--neon)" icon={<Users size={16} />}>Estudar juntos</H>
+
+      {foco && resta > 0 ? (
+        <div className="mt-4 rounded-2xl px-4 py-4"
+          style={{ background: soft("var(--neon)", 12), border: `1px solid ${soft("var(--neon)", 30)}` }}>
+          <div className="flex items-center gap-3 flex-wrap">
+            <span style={{ fontFamily: F_MONO, fontSize: 30, fontWeight: 600, color: T.neon }}>
+              {fmtRelogio(resta)}
+            </span>
+            <span className="flex-1 min-w-0">
+              <Mini>
+                foco de {foco.minutos} min{foco.por ? `, combinado por ${foco.por}` : ""}
+                {estudando ? ` · ${estudando} estudando agora` : ""}
+              </Mini>
+            </span>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {irPara ? <Btn size="sm" tone="primary" onClick={() => irPara("foco")}>abrir o meu Foco</Btn> : null}
+            <Btn size="sm" tone="outline" disabled={ocupado === "foco"}
+              onClick={() => mandar({ acao: "focar", minutos: 0 }, "foco")}>encerrar para a sala</Btn>
+          </div>
+        </div>
+      ) : (
+        <>
+          <Texto style={{ marginTop: 10 }}>
+            Marque um tempo e todo mundo da sala vê o mesmo relógio. Começar e parar
+            na mesma hora é o que faz estudar junto valer, mesmo cada um na sua casa.
+          </Texto>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {[25, 50, 90].map((m) => (
+              <Btn key={m} size="sm" tone={m === 50 ? "primary" : "quiet"} disabled={ocupado === "foco"}
+                onClick={() => combinar(m)}>{m} min</Btn>
+            ))}
+          </div>
+        </>
+      )}
+
+      <div className="mt-5 pt-5" style={{ borderTop: `1px solid ${T.line}` }}>
+        <Label>Ouvir junto</Label>
+        {jam ? (
+          <div className="mt-3 flex items-center gap-2 flex-wrap">
+            <a href={jam.url} target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-2 rounded-full toque"
+              style={{
+                background: T.ink, color: T.bg2, border: "1px solid transparent",
+                padding: "7px 14px", fontSize: 14, fontWeight: 600, textDecoration: "none",
+              }}>
+              <Music size={14} /> Abrir no Spotify
+            </a>
+            <Mini>{jam.por ? `posto por ${jam.por}` : ""}</Mini>
+            <Btn size="sm" tone="outline" disabled={ocupado === "jam"}
+              onClick={() => mandar({ acao: "jam", url: "" }, "jam")}>tirar</Btn>
+          </div>
+        ) : (
+          <>
+            <Mini style={{ marginTop: 6, lineHeight: 1.6 }}>
+              Comece a Jam no aplicativo do Spotify, toque em compartilhar e cole o
+              link aqui. A Jam é do Spotify: nenhum site consegue criar uma por
+              fora, então o que dá para fazer é a sala abrir o mesmo link.
+            </Mini>
+            <div className="mt-3 flex items-center gap-2 flex-wrap">
+              <TextInput style={{ flex: 1, minWidth: 200 }} value={link}
+                placeholder="https://open.spotify.com/..."
+                onChange={(e) => setLink(e.target.value)} />
+              <Btn size="sm" tone="primary" disabled={!link.trim() || ocupado === "jam"}
+                onClick={async () => {
+                  const j = await mandar({ acao: "jam", url: link.trim() }, "jam");
+                  if (j) { setLink(""); notify("Link da Jam combinado com a sala."); }
+                }}>combinar</Btn>
+            </div>
+          </>
+        )}
+      </div>
+      {erro ? <Label style={{ marginTop: 12, color: T.bad }}>{erro}</Label> : null}
+    </Card>
+  );
+}
+
 /* Os recados da sala.
  *
  * Vai e volta pelo servidor, como o resto: pelas regras do Firestore o
@@ -583,11 +711,12 @@ function Recados({ nuvem, slug, quem }) {
   );
 }
 
-function Amigos({ nuvem, notify, data, setData }) {
+function Amigos({ nuvem, notify, data, setData, irPara }) {
   const [salas, setSalas] = useState(null);
   const [atual, setAtual] = useState(null);        // slug escolhido
   const [ranking, setRanking] = useState(null);
   const [cabecalho, setCabecalho] = useState(null);
+  const [juntos, setJuntos] = useState({ foco: null, jam: null });
   const [form, setForm] = useState({ nome: "", senha: "" });
   const [modo, setModo] = useState("entrar");      // entrar | criar
   /* A semana é a corrida que interessa: dá para virar o jogo. O mês e o
@@ -632,11 +761,12 @@ function Amigos({ nuvem, notify, data, setData }) {
     if (j.erro) { if (!silencioso) setErro(j.erro); return; }
     setRanking(j.ranking || []);
     setCabecalho(j.sala || null);
+    setJuntos({ foco: j.foco || null, jam: j.jam || null });
     setErro("");
   }, [periodo]);
 
   useEffect(() => {
-    if (!atual) { setRanking(null); setCabecalho(null); return undefined; }
+    if (!atual) { setRanking(null); setCabecalho(null); setJuntos({ foco: null, jam: null }); return undefined; }
     carregarRanking(atual);
     const t = setInterval(() => carregarRanking(atual, true), RITMO_RANKING);
     return () => clearInterval(t);
@@ -843,6 +973,14 @@ function Amigos({ nuvem, notify, data, setData }) {
         <Card className="px-6 py-6"><Label>carregando o ranking…</Label></Card>
       ) : null}
 
+      {atual && ranking ? (
+        <EstudarJuntos nuvem={nuvem} slug={atual} foco={juntos.foco} jam={juntos.jam}
+          estudando={estudandoAgora} notify={notify} irPara={irPara}
+          aoMudar={(j) => setJuntos((p) => ({
+            foco: j.foco !== undefined ? j.foco : p.foco,
+            jam: j.jam !== undefined ? j.jam : p.jam,
+          }))} />
+      ) : null}
       {atual && ranking ? <Recados nuvem={nuvem} slug={atual} quem={quem} /> : null}
     </div>
   );

@@ -923,7 +923,7 @@ export default function Cadencia() {
               {tab === "revisoes" && pro && <Revisoes {...{ rows: ladder, toggleStep, resetCycle, data, setData, degraus, notify }} />}
               {tab === "rotina" && pro && <Rotina {...{ data, setData, gcal, today }} />}
               {tab === "amigos" && !pro && <Bloqueado recurso={RECURSOS_PRO.amigos} onVerPlanos={() => setTab("planos")} />}
-              {tab === "amigos" && pro && <Amigos {...{ nuvem, notify, data, setData }} />}
+              {tab === "amigos" && pro && <Amigos {...{ nuvem, notify, data, setData, irPara: setTab }} />}
               {tab === "metas" && pro && <Metas {...{ data, setData, today, qWeek, notify, ladder, gcal }} />}
               {tab === "mentor" && mentorInfo.mentor && <Mentor {...{ nuvem, notify, mentorInfo }} />}
               {tab === "desempenho" && <Desempenho {...{ data, today, addSession, delSession, notify }} />}
