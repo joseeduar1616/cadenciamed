@@ -931,6 +931,15 @@ function EstiloDoCartao({ data, setData }) {
   );
 }
 
+/* Quantos cartões a lista desenha de uma vez.
+ *
+ * Sem teto ela desenhava a coleção inteira, e uma coleção de verdade passa
+ * fácil de mil cartões depois de alguns PDFs. Cada cartão é um Card com
+ * dois textos, etiquetas e botões; mil deles derrubam o Safari do iPhone
+ * antes de a tela terminar de pintar. Quarenta cabem numa rolada e chegam
+ * em qualquer aparelho. */
+const POR_PAGINA = 40;
+
 function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
   const ativo = useAtivo();
   const [modo, setModo] = useState("painel");   // painel | estudo | criar
@@ -1252,6 +1261,12 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
   };
 
   const apagar = (id) => setData((p) => ({ ...p, flash: (p.flash || []).filter((c) => c.id !== id) }));
+
+  /* Quantos cartões estão desenhados agora. Volta ao começo quando a busca
+     ou o filtro mudam: continuar em 200 depois de filtrar para 3 seria
+     desenhar uma lista que não existe mais. */
+  const [quantos, setQuantos] = useState(POR_PAGINA);
+  useEffect(() => { setQuantos(POR_PAGINA); }, [busca, filtro, baralhoAtivo, pastaAtiva]);
 
   /* O visual escolhido em "Estilo do cartão", lido uma vez e usado tanto
      pela pergunta quanto pela resposta. */
@@ -1890,7 +1905,7 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
           </div>
 
           <div className="flex flex-col gap-2">
-            {lista.map((c) => {
+            {lista.slice(0, quantos).map((c) => {
               const aula = c.subjectId ? ativo.byId[c.subjectId] : null;
               const venceu = (c.prox || today) <= today;
               const e = estagio(c);
@@ -1902,9 +1917,9 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
                       background: e === "firme" ? T.ok : e === "aprendendo" ? T.warn : "var(--a-GO)",
                     }} />
                     <div className="flex-1 min-w-0">
-                      <LadoDoCartao texto={c.frente} imagens={c.imgFrente} tamanho={15} peso={600} altura={120} />
+                      <LadoDoCartao texto={c.frente} imagens={c.imgFrente} tamanho={15} peso={600} altura={120} semFiguras />
                       <div style={{ marginTop: 4, opacity: 0.75 }}>
-                        <LadoDoCartao texto={c.verso} imagens={c.imgVerso} tamanho={14} peso={500} altura={120} />
+                        <LadoDoCartao texto={c.verso} imagens={c.imgVerso} tamanho={14} peso={500} altura={120} semFiguras />
                       </div>
                       <Mini style={{ marginTop: 6 }}>
                         {c.baralho && c.baralho !== BARALHO_PADRAO ? `${c.baralho} · ` : ""}
@@ -1922,6 +1937,13 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
                 </Card>
               );
             })}
+            {lista.length > quantos ? (
+              <div className="flex justify-center mt-2">
+                <Btn size="sm" onClick={() => setQuantos((q) => q + POR_PAGINA)}>
+                  mostrar mais {Math.min(POR_PAGINA, lista.length - quantos)} de {lista.length}
+                </Btn>
+              </div>
+            ) : null}
             {lista.length === 0 ? (
               <Card><Blank icon={<Search size={22} />} title="Nada neste filtro" hint="Tente outra busca." /></Card>
             ) : null}

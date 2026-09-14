@@ -40,7 +40,24 @@ async function guardarMidia(nome, dataUri) {
   });
 }
 
+/* As imagens já lidas do depósito, para não reler a cada troca de cartão.
+ *
+ * COM TETO, e o teto é a razão de ser deste comentário: cada figura é um
+ * data URI de algumas centenas de KB, e um Map sem limite guarda todas as
+ * que passaram pela tela desde que o app abriu. Num iPhone isso termina
+ * com o Safari matando a página — "um problema ocorreu repetidamente" —,
+ * e a conta de quem gerou flashcards de PDF cheio de figura chega lá
+ * rápido. Sai a mais antiga, que é a menos provável de voltar à tela. */
+const MAX_CACHE_MIDIA = 40;
 const cacheMidia = new Map();
+
+function guardarNoCache(nome, uri) {
+  cacheMidia.delete(nome);
+  cacheMidia.set(nome, uri);
+  while (cacheMidia.size > MAX_CACHE_MIDIA) {
+    cacheMidia.delete(cacheMidia.keys().next().value);
+  }
+}
 
 async function lerMidia(nome) {
   if (cacheMidia.has(nome)) return cacheMidia.get(nome);
@@ -57,7 +74,7 @@ async function lerMidia(nome) {
        falha de um instante virar permanente: bastava a leitura acontecer
        antes de a importação terminar de gravar, e aquela imagem ficava
        "indisponível" para sempre, mesmo já estando no banco. */
-    if (v) cacheMidia.set(nome, v);
+    if (v) guardarNoCache(nome, v);
     return v;
   } catch (e) { return null; }
 }
@@ -290,7 +307,29 @@ function comNegrito(texto, chave) {
 }
 
 /* Texto de um lado do cartão, com as imagens no lugar dos marcadores */
-function LadoDoCartao({ texto, imagens, tamanho, peso, altura, entrelinha = 1 }) {
+/* No lugar da figura, na lista: diz que ela existe sem carregá-la. */
+function EtiquetaFigura() {
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 5, marginTop: 4,
+      padding: "2px 8px", borderRadius: 999, fontSize: 11.5,
+      background: soft("var(--neon)", 12), color: T.dim,
+    }}>
+      <ImagePlus size={11} /> com figura
+    </span>
+  );
+}
+
+/* Texto de um lado do cartão, com as imagens no lugar dos marcadores.
+ *
+ * "semFiguras" troca cada figura por uma etiqueta. É o que a LISTA de
+ * cartões usa, e não é economia de espaço: a lista desenha todos os
+ * cartões de uma vez, e cada figura é um data URI de centenas de KB
+ * mantido em memória enquanto estiver na tela. Com algumas centenas de
+ * cartões com figura — o resultado normal de gerar flashcards de um PDF —
+ * o Safari do iPhone mata a página. Na tela de ESTUDO a figura aparece
+ * inteira, porque lá é um cartão por vez. */
+function LadoDoCartao({ texto, imagens, tamanho, peso, altura, entrelinha = 1, semFiguras }) {
   const partes = String(texto || "").split(/(\[\[img:[^\]]+\]\])/g);
   const soltas = (imagens || []).filter(
     (n) => String(texto || "").indexOf(`[[img:${n}]]`) < 0
@@ -299,7 +338,7 @@ function LadoDoCartao({ texto, imagens, tamanho, peso, altura, entrelinha = 1 })
     <>
       {partes.map((p, i) => {
         const m = p.match(/^\[\[img:([^\]]+)\]\]$/);
-        if (m) return <Figura key={i} nome={m[1]} altura={altura} />;
+        if (m) return semFiguras ? <EtiquetaFigura key={i} /> : <Figura key={i} nome={m[1]} altura={altura} />;
         if (!p.trim()) return null;
         return (
           <span key={i} style={{
@@ -308,7 +347,9 @@ function LadoDoCartao({ texto, imagens, tamanho, peso, altura, entrelinha = 1 })
           }}>{comNegrito(p, `n${i}`)}</span>
         );
       })}
-      {soltas.map((n) => <Figura key={n} nome={n} altura={altura} />)}
+      {soltas.map((n) => (semFiguras
+        ? <EtiquetaFigura key={n} />
+        : <Figura key={n} nome={n} altura={altura} />))}
     </>
   );
 }

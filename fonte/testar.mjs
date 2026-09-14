@@ -1160,6 +1160,70 @@ if (liberado) {
   else falha('o envio automático voltou a ligar sozinho depois de recarregar');
 }
 
+/* ── a lista de cartões não pode derrubar o celular ──────────────────
+   Uma coleção de verdade passa de mil cartões depois de alguns PDFs, e
+   cada figura é um data URI de centenas de KB. A lista desenhava todos os
+   cartões e carregava todas as figuras de uma vez: no Safari do iPhone
+   isso vira "um problema ocorreu repetidamente", que é o navegador
+   matando a página por memória. */
+{
+  await pag.evaluate(() => {
+    const d = JSON.parse(window.localStorage.getItem('cadencia:v3') || '{}');
+    d.flash = Array.from({ length: 300 }, (_, i) => ({
+      id: 'massa' + i,
+      frente: `Pergunta ${i} [[img:fig-${i}.jpg]]`,
+      verso: `Resposta ${i}`,
+      baralho: 'Massa', pasta: 'Massa',
+      prox: '2020-01-01', inter: 0, facil: 2.5, reps: 0,
+    }));
+    window.localStorage.setItem('cadencia:v3', JSON.stringify(d));
+  });
+  await pag.reload({ waitUntil: 'load' });
+  await pag.waitForTimeout(2400);
+  await ir('Cartões');
+  await pag.waitForTimeout(900);
+
+  const medida = await pag.evaluate(() => ({
+    cartoes: document.querySelectorAll('main .vidro').length,
+    imagens: document.querySelectorAll('main img').length,
+    etiquetas: [...document.querySelectorAll('main span')]
+      .filter((x) => /com figura/i.test(x.textContent || '')).length,
+    texto: document.querySelector('main').innerText,
+  }));
+
+  /* No arquivo de produção a aba Cartões é paga e abre bloqueada: não há
+     lista nenhuma, e cobrar que exista transformaria "esta conta não
+     assina" em falha de teste. */
+  const temLista = /Pergunta \d/.test(medida.texto) || /mostrar mais/i.test(medida.texto);
+  if (!temLista) {
+    ok('lista de cartões: aba paga e bloqueada, nada a medir aqui');
+  } else {
+  if (medida.imagens === 0) ok('lista de cartões: nenhuma figura é carregada na lista');
+  else falha(`lista de cartões: ${medida.imagens} figura(s) carregada(s) na lista`);
+
+  if (medida.etiquetas > 0) ok('lista de cartões: a figura vira etiqueta, então dá para saber que existe');
+  else falha('lista de cartões: a figura sumiu sem deixar aviso');
+
+  if (/mostrar mais/i.test(medida.texto)) ok('lista de cartões: 300 cartões viram uma página com "mostrar mais"');
+  else falha('lista de cartões: não achei a paginação com 300 cartões');
+
+  /* O número que importa: quantos cartões foram realmente desenhados. */
+  const desenhados = await pag.evaluate(() =>
+    [...document.querySelectorAll('main')].length && document.querySelectorAll('main .vidro').length);
+  if (desenhados < 120) ok(`lista de cartões: só ${desenhados} painéis desenhados, e não os 300`);
+  else falha(`lista de cartões: desenhou ${desenhados} painéis de uma vez`);
+  }
+
+  /* Devolve a coleção ao que era, para as telas seguintes. */
+  await pag.evaluate(() => {
+    const d = JSON.parse(window.localStorage.getItem('cadencia:v3') || '{}');
+    d.flash = (d.flash || []).filter((c) => !String(c.id).startsWith('massa'));
+    window.localStorage.setItem('cadencia:v3', JSON.stringify(d));
+  });
+  await pag.reload({ waitUntil: 'load' });
+  await pag.waitForTimeout(2400);
+}
+
 /* ── estilo do cartão ────────────────────────────────────────────────
    Quem estuda por flashcard passa horas nesta tela; a escolha de letra e
    tamanho é acessibilidade, não enfeite, e perder isso no recarregar é
