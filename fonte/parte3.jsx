@@ -1024,9 +1024,14 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
     autoEnviar, mudarAutoEnviar, enviandoAuto, podeEnviar: podeEnviarCalado,
     /* permanente: true já ligado de vez, false não dá (ou foi desligado),
        null ainda não perguntei ao servidor. */
-    /* podeLigarDeVez é "dá para oferecer o botão", e não "já está
-       ligada": quem nunca ligou é exatamente quem precisa dele. */
-    permanente, ligarDeVez, podeLigarDeVez: logado && servidorLiga !== false, logado,
+    /* podeLigarDeVez é "dá para oferecer o botão", e não "já está ligada":
+       quem nunca ligou é exatamente quem precisa dele.
+       E agora basta estar com a conta do Cadência aberta. Esconder o botão
+       quando o servidor diz que não sabe ligar parecia educado e criou o
+       pior dos mundos: o aviso pedia para ligar a conta e não havia nada
+       para clicar. Se o servidor não souber, o clique diz isso com todas as
+       letras — uma mensagem clara é melhor que um botão que não existe. */
+    permanente, ligarDeVez, podeLigarDeVez: logado, logado,
     servidorLiga,
     ultima: (data.googleCal && data.googleCal.ultima) || 0,
   };

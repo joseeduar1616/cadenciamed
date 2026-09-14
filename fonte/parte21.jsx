@@ -232,6 +232,69 @@ function SaudeDoSite({ nuvem }) {
   );
 }
 
+/* O que o servidor responde sobre a ligação permanente do Google, cru.
+ *
+ * Existe porque "o Google não conecta" é a queixa mais difícil de
+ * diagnosticar à distância: o mesmo sintoma na tela sai de conta não
+ * ligada, credencial faltando no servidor, janela bloqueada pelo navegador
+ * e origem não liberada no console do Google. Estas três linhas separam os
+ * quatro casos em um clique. */
+function DiagnosticoGoogle({ nuvem }) {
+  const [r, setR] = useState(null);
+  const [ocupado, setOcupado] = useState(false);
+  const refNuvem = useRef(nuvem);
+  refNuvem.current = nuvem;
+
+  const conferir = async () => {
+    setOcupado(true);
+    let token = "";
+    try {
+      const n = refNuvem.current;
+      if (n && n.sdk && n.sdk.auth && n.sdk.auth.currentUser) {
+        token = await n.sdk.auth.currentUser.getIdToken();
+      }
+    } catch (e) { /* segue */ }
+    const { dados, erro } = await chamarApi("/api/google", { acao: "estado", token }, "A ligação com o Google");
+    setR(erro ? { erro } : (dados || {}));
+    setOcupado(false);
+  };
+
+  const linha = (rotulo, valor, bom) => (
+    <div className="flex items-center justify-between gap-3 rounded-2xl px-4 py-2.5"
+      style={{ background: T.card2 }}>
+      <Mini>{rotulo}</Mini>
+      <span style={{ fontFamily: F_MONO, fontSize: 13, color: bom ? T.ok : T.warn }}>{valor}</span>
+    </div>
+  );
+
+  return (
+    <Card className="px-6 py-6">
+      <H size={18} color="var(--a-GO)" icon={<CalendarDays size={16} />}>Google, por dentro</H>
+      <Label style={{ marginTop: 6, lineHeight: 1.6 }}>
+        O que o servidor responde sobre a sua ligação permanente.
+      </Label>
+      <div className="mt-4">
+        <Btn size="sm" disabled={ocupado} onClick={conferir}>
+          <RefreshCw size={14} /> {ocupado ? "Conferindo…" : "Conferir agora"}
+        </Btn>
+      </div>
+      {r ? (
+        <div className="mt-4 flex flex-col gap-2">
+          {linha("este site sabe ligar de vez", r.disponivel === false ? "não" : "sim", r.disponivel !== false)}
+          {linha("a sua conta está ligada", r.ligado ? "sim" : "não", !!r.ligado)}
+          {r.email ? linha("conta do Google ligada", r.email, true) : null}
+          {r.erro ? linha("erro", String(r.erro).slice(0, 80), false) : null}
+          <Mini style={{ marginTop: 6, lineHeight: 1.6 }}>
+            "sabe ligar" em não quer dizer GOOGLE_CLIENT_ID ou GOOGLE_CLIENT_SECRET
+            faltando no Worker. "sua conta ligada" em não com "sabe ligar" em sim quer
+            dizer que falta clicar em Ligar a conta de vez na aba Agenda.
+          </Mini>
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
 function PainelDesenvolvedor({ nuvem, notify }) {
   return (
     <div className="flex flex-col gap-5">
@@ -245,6 +308,7 @@ function PainelDesenvolvedor({ nuvem, notify }) {
       <Cupons nuvem={nuvem} notify={notify} />
       <PainelDono nuvem={nuvem} notify={notify} />
       <SaudeDoSite nuvem={nuvem} />
+      <DiagnosticoGoogle nuvem={nuvem} />
     </div>
   );
 }

@@ -1294,6 +1294,26 @@ if (liberado) {
   else falha('treino: o treino vazou para o progresso de estudo');
 }
 
+/* ── o service worker muda de nome a cada publicação ─────────────────
+   O sw.js era copiado igualzinho toda vez, e o navegador só troca de
+   service worker quando o arquivo muda. Com ele sempre idêntico o cache
+   antigo nunca era jogado fora, e quem tinha o site instalado no celular
+   podia continuar vendo uma versão velha depois de publicar. */
+{
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const publicado = path.resolve('../publicar/sw.js');
+  if (fs.existsSync(publicado)) {
+    const versao = (fs.readFileSync(publicado, 'utf8').match(/const VERSAO = "([^"]+)"/) || [])[1] || '';
+    if (/^cadencia-[0-9a-f]{6,}$/.test(versao)) ok(`o service worker publicado leva o carimbo do build (${versao})`);
+    else falha('o service worker publicado saiu sem carimbo: ' + versao);
+
+    const fonte = fs.readFileSync(path.resolve('sw.js'), 'utf8');
+    if (/const VERSAO = "cadencia-v1"/.test(fonte)) ok('o sw.js da fonte continua legível, sem carimbo dentro');
+    else falha('o carimbo vazou para o arquivo da fonte');
+  } else ok('sem pasta publicada aqui, nada a conferir no service worker');
+}
+
 /* ── cada aba com o seu ícone ────────────────────────────────────────
    A barra lateral existe para achar a aba de relance, sem ler. Duas abas
    com o mesmo desenho desfazem isso, e é exatamente o que acontecia com

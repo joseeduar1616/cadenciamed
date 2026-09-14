@@ -45,8 +45,35 @@ faltando = [f for f in ARQUIVOS if not os.path.exists(f)]
 if faltando:
     raise SystemExit('faltam arquivos: ' + ', '.join(faltando))
 
+# ── carimbo de versão no service worker ───────────────────────────────────
+#
+# O sw.js era copiado igualzinho a cada publicação, e o navegador só troca
+# de service worker quando o ARQUIVO muda. Com ele sempre idêntico, o nome
+# do cache ("cadencia-v1") nunca mudava e o cache antigo nunca era jogado
+# fora — e quem tinha o site instalado no celular podia continuar vendo uma
+# versão velha depois de uma publicação.
+#
+# O carimbo é o resumo do index.html, então ele só muda quando o app muda
+# de verdade: publicar duas vezes sem mexer em nada não força ninguém a
+# baixar tudo de novo.
+import hashlib
+
+def carimbar_sw(texto):
+    marca = hashlib.sha256(open('index.html', 'rb').read()).hexdigest()[:10]
+    novo, trocas = re.subn(r'const VERSAO = "[^"]*";',
+                           'const VERSAO = "cadencia-%s";' % marca, texto)
+    if trocas != 1:
+        raise SystemExit('não achei a linha do VERSAO no sw.js')
+    return novo
+
+
 total = 0
 for f in ARQUIVOS:
+    if f == 'sw.js':
+        conteudo = carimbar_sw(open(f, encoding='utf-8').read())
+        open(os.path.join(DESTINO, f), 'w', encoding='utf-8').write(conteudo)
+        total += len(conteudo.encode())
+        continue
     shutil.copy(f, os.path.join(DESTINO, f))
     total += os.path.getsize(f)
 # ── cabeçalhos, no formato que o Cloudflare Pages lê ──────────────────────
