@@ -15,6 +15,7 @@
 import {
   json, corpoJson, quemPede, contaDeServico, tokenDeAcesso,
   gravarAssinatura, validoAte, validadeDoPlano, concederMentor, DIAS,
+  BASE_FIRESTORE,
 } from "./_comum.js";
 
 const CUPONS_PADRAO = "secdamocada:semanal,medeasysoft:anual";
@@ -32,6 +33,31 @@ function lerCupons(env) {
     fora[cod] = DIAS[plano] ? plano : "anual";
   }
   return fora;
+}
+
+/* Um cupom criado pelo painel do dono. Null quando não existe — aí quem
+   responde é a variável de ambiente. */
+async function cupomDoBanco(token, codigo) {
+  const r = await fetch(`${BASE_FIRESTORE}/cupons/${encodeURIComponent(codigo)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) return null;
+  const j = await r.json().catch(() => null);
+  const f = (j || {}).fields || {};
+  const num = (v) => Number((v || {}).doubleValue || (v || {}).integerValue || 0);
+  const plano = (f.plano || {}).stringValue || "";
+  return plano ? { plano, usos: num(f.usos), maxUsos: num(f.maxUsos) } : null;
+}
+
+/* Conta mais um uso. Best-effort de propósito: se esta gravação falhar, a
+   pessoa já recebeu o acesso e seria pior desfazer isso do que perder uma
+   unidade na contagem. */
+async function contarUso(token, codigo, usos) {
+  await fetch(`${BASE_FIRESTORE}/cupons/${encodeURIComponent(codigo)}?updateMask.fieldPaths=usos`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ fields: { usos: { doubleValue: usos + 1 } } }),
+  }).catch(() => {});
 }
 
 export async function onRequest({ request, env }) {
@@ -63,17 +89,27 @@ export async function onRequest({ request, env }) {
     return json({ ok: true, mentor: true, mensagem: "Cupom aceito! Agora você é mentor(a) — a aba Mentor apareceu no menu." });
   }
 
-  const plano = lerCupons(env)[codigo];
-  /* Sem dizer se o código existe mas expirou, ou se nunca existiu: quanto
-     menos pista, menos vale a pena ficar tentando adivinhar. */
-  if (!plano) return json({ erro: "Cupom inválido." }, 404);
-
   const conta = contaDeServico(env);
   if (!conta) return json({ erro: "Conta de serviço inválida." }, 500);
 
   let token;
   try { token = await tokenDeAcesso(conta); }
   catch (e) { return json({ erro: "Não consegui autenticar no banco." }, 500); }
+
+  /* O banco primeiro, a variável de ambiente depois.
+     Os cupons criados pelo painel moram em cupons/{codigo}; a variável
+     CUPONS continua valendo como reserva, para os cupons antigos não
+     morrerem de um dia para o outro. */
+  const doBanco = await cupomDoBanco(token, codigo);
+  const plano = doBanco ? doBanco.plano : lerCupons(env)[codigo];
+  /* Sem dizer se o código existe mas expirou, ou se nunca existiu: quanto
+     menos pista, menos vale a pena ficar tentando adivinhar. */
+  if (!plano) return json({ erro: "Cupom inválido." }, 404);
+  /* Cupom de parceria costuma ter cota. Zero quer dizer sem limite, que é
+     o caso do cupom de divulgação. */
+  if (doBanco && doBanco.maxUsos > 0 && doBanco.usos >= doBanco.maxUsos) {
+    return json({ erro: "Esse cupom já foi todo usado." }, 410);
+  }
 
   /* Já tem plano em dia? Então o cupom não é gasto à toa. */
   if (await validoAte(token, pessoa.uid) > Date.now()) {
@@ -89,6 +125,7 @@ export async function onRequest({ request, env }) {
     cupom: { stringValue: codigo },
     atualizadoEm: { doubleValue: Date.now() },
   });
+  if (gravou && doBanco) await contarUso(token, codigo, doBanco.usos);
   if (!gravou) return json({ erro: "Não consegui liberar. Tente de novo." }, 500);
 
   return json({

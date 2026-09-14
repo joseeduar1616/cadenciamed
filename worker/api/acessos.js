@@ -58,6 +58,107 @@ export async function onRequest({ request, env }) {
 
   const acao = String(corpo.acao || "listar");
 
+  /* ── cupons ────────────────────────────────────────────────────────
+   *
+   * Antes os cupons viviam numa variável de ambiente do Worker: criar um
+   * era editar a variável e publicar de novo. Agora moram no banco, em
+   * cupons/{codigo}, e dão para criar da própria tela.
+   *
+   * A variável CUPONS continua valendo como reserva, para os cupons
+   * antigos não morrerem de um dia para o outro — quem confere é o
+   * /api/cupom, que olha o banco primeiro.
+   *
+   * O código é guardado em minúsculas porque é assim que ele é conferido
+   * no resgate: "MEDEASY" e "medeasy" têm de ser o mesmo cupom, senão a
+   * pessoa digita certo e ouve que não existe.
+   */
+  if (acao === "cupons") {
+    const r = await fetch(`${BASE_FIRESTORE}/cupons?pageSize=200`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!r.ok) return json({ ok: true, cupons: [] });
+    const j = await r.json().catch(() => null);
+    const cupons = ((j || {}).documents || []).map((d) => {
+      const f = d.fields || {};
+      return {
+        codigo: d.name.split("/").pop(),
+        plano: (f.plano || {}).stringValue || "",
+        usos: Number((f.usos || {}).doubleValue || (f.usos || {}).integerValue || 0),
+        maxUsos: Number((f.maxUsos || {}).doubleValue || (f.maxUsos || {}).integerValue || 0),
+        criadoEm: Number((f.criadoEm || {}).doubleValue || 0),
+      };
+    }).sort((a, b) => b.criadoEm - a.criadoEm);
+    return json({ ok: true, cupons });
+  }
+
+  if (acao === "cupom-criar") {
+    const codigo = String(corpo.codigo || "").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 30);
+    const plano = String(corpo.plano || "").toLowerCase();
+    if (codigo.length < 4) return json({ erro: "O código precisa ter pelo menos 4 letras ou números." }, 400);
+    if (!DIAS[plano]) return json({ erro: "Plano desconhecido. Use semanal, mensal, anual ou vitalicio." }, 400);
+    /* 0 = sem limite. É o padrão do cupom de divulgação, que é o caso
+       comum; o limite existe para o cupom de parceria, que tem cota. */
+    const maxUsos = Math.max(0, Math.min(100000, Math.round(Number(corpo.maxUsos) || 0)));
+
+    const ja = await fetch(`${BASE_FIRESTORE}/cupons/${codigo}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (ja.ok) return json({ erro: "Já existe um cupom com esse código." }, 409);
+
+    const r = await fetch(`${BASE_FIRESTORE}/cupons/${codigo}`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fields: {
+          plano: { stringValue: plano },
+          usos: { doubleValue: 0 },
+          maxUsos: { doubleValue: maxUsos },
+          criadoEm: { doubleValue: Date.now() },
+        },
+      }),
+    });
+    if (!r.ok) return json({ erro: "Não consegui criar o cupom." }, 502);
+    return json({ ok: true, codigo, plano, maxUsos });
+  }
+
+  if (acao === "cupom-apagar") {
+    const codigo = String(corpo.codigo || "").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 30);
+    const r = await fetch(`${BASE_FIRESTORE}/cupons/${codigo}`, {
+      method: "DELETE", headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!r.ok) return json({ erro: "Não consegui apagar o cupom." }, 502);
+    return json({ ok: true });
+  }
+
+  /* ── saúde do site ─────────────────────────────────────────────────
+   *
+   * Diz quais variáveis do Worker estão preenchidas — NUNCA o conteúdo
+   * delas. Só o "tem ou não tem" já responde a maior parte das perguntas
+   * de "por que essa função parou": a ligação permanente do Google, a
+   * chave da IA e a conta de serviço quebram exatamente assim, e do lado
+   * de fora isso aparece como um erro genérico de conexão.
+   *
+   * Devolver o valor seria transformar esta tela no lugar mais fácil de
+   * roubar as chaves do site inteiro. */
+  if (acao === "saude") {
+    const tem = (v) => !!(v && String(v).trim());
+    return json({
+      ok: true,
+      variaveis: [
+        ["FIREBASE_API_KEY", tem(env.FIREBASE_API_KEY)],
+        ["FIREBASE_SERVICE_ACCOUNT", tem(env.FIREBASE_SERVICE_ACCOUNT)],
+        ["GEMINI_API_KEY", tem(env.GEMINI_API_KEY)],
+        ["ANTHROPIC_API_KEY", tem(env.ANTHROPIC_API_KEY)],
+        ["GOOGLE_CLIENT_ID", tem(env.GOOGLE_CLIENT_ID)],
+        ["GOOGLE_CLIENT_SECRET", tem(env.GOOGLE_CLIENT_SECRET)],
+        ["NOTION_CLIENT_ID", tem(env.NOTION_CLIENT_ID)],
+        ["NOTION_CLIENT_SECRET", tem(env.NOTION_CLIENT_SECRET)],
+        ["CUPONS", tem(env.CUPONS)],
+        ["GEMINI_MODELO", tem(env.GEMINI_MODELO)],
+      ],
+    });
+  }
+
   /* ── lista quem tem acesso ─────────────────────────────────────────── */
   if (acao === "listar") {
     const r = await fetch(`${BASE_FIRESTORE}/assinaturas?pageSize=300`, {

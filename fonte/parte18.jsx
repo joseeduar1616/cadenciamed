@@ -467,8 +467,8 @@ function Configuracoes({ data, setData, today, notify, nuvem, pro, aoLiberar, ir
     <div className="flex flex-col gap-5">
       <ContaNuvem nuvem={nuvem} notify={notify} />
       {nuvem.usuario && !pro ? <Cupom nuvem={nuvem} notify={notify} aoLiberar={aoLiberar} /> : null}
-      {ehDono(nuvem.usuario) ? <PainelDono nuvem={nuvem} notify={notify} /> : null}
 
+      <Lembretes data={data} setData={setData} notify={notify} />
       <Aparencia data={data} setData={setData} />
       <EscolhaLayout data={data} setData={setData} />
       <MetasDoEstudo data={data} setData={setData} />
@@ -499,6 +499,10 @@ function Configuracoes({ data, setData, today, notify, nuvem, pro, aoLiberar, ir
       </Card>
 
       <SeusDados data={data} setData={setData} today={today} notify={notify} />
+
+      {/* Ferramenta de obra fica no fim: quem abre Configurações quer
+          mexer na conta e na aparência, não em cupom. */}
+      {ehDono(nuvem.usuario) ? <PainelDesenvolvedor nuvem={nuvem} notify={notify} /> : null}
     </div>
   );
 }

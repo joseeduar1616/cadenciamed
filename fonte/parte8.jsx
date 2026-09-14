@@ -6,11 +6,19 @@
    fecha sozinha ao escolher.
    ═══════════════════════════════════════════════════════════════════ */
 
+/* Um ícone por aba, e todos diferentes.
+ *
+ * Faltava metade das abas aqui, e toda aba de fora caía na mesma reserva
+ * (Layers): Cartões e Desempenho ficavam com o mesmo desenho na barra, que
+ * é justamente o que a barra existe para evitar — achar a aba de relance
+ * sem ler. Quem entrar com aba nova põe o ícone dela aqui. */
 const ICONE_ABA = {
-  hoje: CalendarDays, foco: Target, materias: ListChecks, temas: Stethoscope,
-  cronograma: GraduationCap,
-  assistente: Sparkles, cartoes: Layers, revisoes: RotateCcw, rotina: Coffee,
-  amigos: Users, metas: Flame, progresso: BarChart3, planos: Zap,
+  hoje: CalendarDays, foco: Target, materias: ListChecks, clinico: BookMarked,
+  cronograma: GraduationCap, temas: Stethoscope,
+  assistente: Sparkles, cartoes: Layers, revisoes: RotateCcw,
+  rotina: CalendarClock, amigos: Users, mentor: User,
+  metas: Flame, desempenho: BarChart3, treino: Dumbbell, simulados: Flag,
+  progresso: TrendingUp, planos: Zap, config: Settings2,
 };
 
 /* Diz se a tela é estreita. A escolha "forçar celular" no rodapé manda
@@ -534,6 +542,16 @@ export default function Cadencia() {
     progresso: "o caminho até aqui",
     planos: "assinatura", config: "tudo que dá para ajustar",
   };
+
+  /* Os lembretes do navegador. Ficam aqui, na raiz, e não na tela de
+     Configurações: eles precisam rodar com qualquer aba aberta, e a de
+     Configurações é justamente a que ninguém deixa aberta. */
+  useLembretes({
+    ligado: !!(data.lembretes && data.lembretes.ligado),
+    vencendoHoje: late.length,
+    blocosHoje,
+    today,
+  });
 
   const TABS = [
     { id: "hoje", label: "Hoje", acc: "var(--a-CL)" },

@@ -772,6 +772,53 @@ const FUNDOS_CARTAO = [
         `repeating-linear-gradient(135deg, ${soft("var(--neon)", 7)} 0 12px, transparent 12px 30px)`,
     }),
   },
+  {
+    id: "pontos",
+    nome: "Pontilhado",
+    arte: () => ({
+      backgroundImage: `radial-gradient(${soft("var(--line2)", 75)} 1px, transparent 1px)`,
+      backgroundSize: "22px 22px",
+    }),
+  },
+  {
+    id: "papel",
+    nome: "Caderno",
+    arte: () => ({
+      backgroundImage: `repeating-linear-gradient(180deg, transparent 0 31px, ${soft("var(--line)", 80)} 31px 32px)`,
+    }),
+  },
+  {
+    id: "aurora2",
+    nome: "Brasa",
+    arte: () => ({
+      backgroundImage:
+        `radial-gradient(80% 60% at 50% 108%, ${soft("var(--neon2)", 22)} 0%, transparent 72%)`,
+    }),
+  },
+  {
+    id: "moldura",
+    nome: "Moldura",
+    arte: () => ({
+      backgroundImage: "none",
+      boxShadow: `inset 0 0 0 1px ${soft("var(--neon)", 30)}, inset 0 0 0 7px ${soft("var(--neon)", 7)}`,
+    }),
+  },
+];
+
+/* Peso da letra da pergunta. Tem quem leia melhor com a pergunta em peso
+   normal, e tem quem queira ela gritando na tela. */
+const PESOS_CARTAO = [
+  { id: "leve", nome: "Leve", frente: 500, verso: 400 },
+  { id: "normal", nome: "Normal", frente: 650, verso: 550 },
+  { id: "forte", nome: "Forte", frente: 800, verso: 650 },
+];
+
+/* Espaço entre as linhas. Texto de cartão com imagem no meio pede mais
+   respiro; cartão de uma linha só pede menos. */
+const ALTURAS_CARTAO = [
+  { id: "apertado", nome: "Apertado", fator: 0.86 },
+  { id: "normal", nome: "Normal", fator: 1 },
+  { id: "solto", nome: "Solto", fator: 1.2 },
 ];
 
 /* Multiplicador em cima dos tamanhos que o cartão já usava. Guardar o
@@ -791,9 +838,17 @@ const FONTES_CARTAO = [
   { id: "serif", nome: "Serifada", pilha: "var(--f-serif)" },
   { id: "mono", nome: "Monoespaçada", pilha: "var(--f-mono)" },
   { id: "sistema", nome: "Do aparelho", pilha: '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif' },
+  /* Georgia e Verdana vêm com praticamente todo sistema, e são as duas
+     escolhas clássicas de quem lê muito texto na tela: uma serifada de
+     letra larga, uma sem serifa de letra aberta. Nada para baixar. */
+  { id: "leitura", nome: "Leitura", pilha: 'Georgia,"Times New Roman",serif' },
+  { id: "aberta", nome: "Aberta", pilha: 'Verdana,Geneva,sans-serif' },
 ];
 
-const ESTILO_PADRAO = { fonte: "app", tamanho: "normal", fundo: "limpo", alinhar: "centro" };
+const ESTILO_PADRAO = {
+  fonte: "app", tamanho: "normal", fundo: "limpo", alinhar: "centro",
+  peso: "normal", altura: "normal",
+};
 
 const estiloDoCartao = (data) => ({ ...ESTILO_PADRAO, ...((data && data.cartaoEstilo) || null) });
 
@@ -805,6 +860,12 @@ const fonteDoEstilo = (e) =>
 
 const arteDoEstilo = (e) =>
   (FUNDOS_CARTAO.find((f) => f.id === e.fundo) || FUNDOS_CARTAO[0]).arte();
+
+const pesoDoEstilo = (e) =>
+  (PESOS_CARTAO.find((p) => p.id === e.peso) || PESOS_CARTAO[1]);
+
+const alturaDoEstilo = (e) =>
+  (ALTURAS_CARTAO.find((a) => a.id === e.altura) || ALTURAS_CARTAO[1]).fator;
 
 /* clamp(a, b, c) multiplicado: os três números crescem juntos, então a
    regra de "cabe na tela pequena, não fica minúsculo na grande" continua
@@ -846,19 +907,21 @@ function EstiloDoCartao({ data, setData }) {
         fontFamily: fonteDoEstilo(e), ...arteDoEstilo(e),
       }}>
         <span style={{
-          display: "block", color: T.ink, lineHeight: 1.4,
-          fontWeight: 650, fontSize: escalarClamp("clamp(22px, 4.4vw, 34px)", fator),
+          display: "block", color: T.ink, lineHeight: 1.4 * alturaDoEstilo(e),
+          fontWeight: pesoDoEstilo(e).frente, fontSize: escalarClamp("clamp(22px, 4.4vw, 34px)", fator),
         }}>Qual a tríade da síndrome nefrítica?</span>
         <div style={{ height: 1, background: T.line, margin: "20px auto", maxWidth: 180 }} />
         <span style={{
-          display: "block", color: T.ink, lineHeight: 1.5,
-          fontWeight: 550, fontSize: escalarClamp("clamp(19px, 3.6vw, 27px)", fator),
+          display: "block", color: T.ink, lineHeight: 1.5 * alturaDoEstilo(e),
+          fontWeight: pesoDoEstilo(e).verso, fontSize: escalarClamp("clamp(19px, 3.6vw, 27px)", fator),
         }}>Hematúria, hipertensão e edema.</span>
       </div>
 
       <div className="mt-5 flex flex-col gap-4">
         <Linha titulo="Letra" itens={FONTES_CARTAO} campo="fonte" />
         <Linha titulo="Tamanho" itens={TAMANHOS_CARTAO} campo="tamanho" />
+        <Linha titulo="Peso" itens={PESOS_CARTAO} campo="peso" />
+        <Linha titulo="Entrelinha" itens={ALTURAS_CARTAO} campo="altura" />
         <Linha titulo="Fundo" itens={FUNDOS_CARTAO} campo="fundo" />
         <Linha titulo="Alinhamento"
           itens={[{ id: "centro", nome: "Centralizado" }, { id: "esquerda", nome: "À esquerda" }]}
@@ -1306,7 +1369,8 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
               texto={atual.frente}
               imagens={atual.imgFrente}
               tamanho={escalarClamp(virado ? "clamp(17px, 3vw, 21px)" : "clamp(22px, 4.4vw, 34px)", fatorCartao)}
-              peso={virado ? 500 : 650}
+              peso={virado ? pesoDoEstilo(estilo).verso : pesoDoEstilo(estilo).frente}
+              entrelinha={alturaDoEstilo(estilo)}
               altura={virado ? 200 : 320} />
 
             {virado ? (
@@ -1319,7 +1383,8 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
                   texto={atual.verso}
                   imagens={atual.imgVerso}
                   tamanho={escalarClamp("clamp(19px, 3.6vw, 27px)", fatorCartao)}
-                  peso={550}
+                  peso={pesoDoEstilo(estilo).verso}
+                  entrelinha={alturaDoEstilo(estilo)}
                   altura={340} />
               </>
             ) : (

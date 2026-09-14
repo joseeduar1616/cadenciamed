@@ -155,6 +155,79 @@ function NovoSimulado({ aoCriar, hoje }) {
   );
 }
 
+/* Criar ou entrar numa sala DE SIMULADO.
+ *
+ * Sala própria, com nome e senha próprios. Quem faz os mesmos simulados
+ * que você não é necessariamente quem estuda com você nem quem treina com
+ * você: costuma ser quem faz o mesmo cursinho, ou quem presta a mesma
+ * prova. Juntar tudo numa sala só obrigaria cada grupo a ver o placar dos
+ * outros dois.
+ *
+ * A tela é a mesma das outras duas de propósito: quem já entrou numa sala
+ * não precisa aprender um segundo jeito de fazer a mesma coisa. */
+function SalaDeSimulado({ nuvem, notify, aoEntrar, erro: erroDeFora }) {
+  const [form, setForm] = useState({ nome: "", senha: "" });
+  const [modo, setModo] = useState("entrar");
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState("");
+
+  const enviar = async () => {
+    if (!form.nome.trim()) { setErro("Escreva o nome da sala."); return; }
+    if (form.senha.length < 4) { setErro("A senha precisa ter pelo menos 4 caracteres."); return; }
+    setOcupado(true); setErro("");
+    const j = await falarComSalas(nuvem, {
+      tipo: "simulado", acao: modo, nome: form.nome.trim(), senha: form.senha,
+    });
+    setOcupado(false);
+    if (j.erro) { setErro(j.erro); return; }
+    notify(j.mensagem || "Pronto.");
+    setForm({ nome: "", senha: "" });
+    aoEntrar(j.slug);
+  };
+
+  return (
+    <Card className="px-6 py-6" brilho="var(--a-CI)">
+      <H color="var(--a-CI)" icon={<Flag size={16} />}>Sala de simulados</H>
+      <Texto style={{ marginTop: 10 }}>
+        Combine um nome e uma senha com quem faz os mesmos simulados que você. É
+        uma sala só de simulado, separada das salas de estudo e das de treino.
+      </Texto>
+
+      <div className="mt-5 flex gap-2">
+        {[["entrar", "Entrar numa sala"], ["criar", "Criar uma sala"]].map(([id, rotulo]) => (
+          <Btn key={id} size="sm" tone={modo === id ? "primary" : "quiet"} onClick={() => setModo(id)}>
+            {rotulo}
+          </Btn>
+        ))}
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <Label>Nome da sala</Label>
+          <TextInput style={{ marginTop: 6 }} value={form.nome} placeholder="Ex.: turma do Medcurso"
+            onChange={(e) => setForm((p) => ({ ...p, nome: e.target.value }))} />
+        </div>
+        <div>
+          <Label>Senha</Label>
+          <TextInput style={{ marginTop: 6 }} type="password" value={form.senha}
+            placeholder="pelo menos 4 caracteres"
+            onChange={(e) => setForm((p) => ({ ...p, senha: e.target.value }))}
+            onKeyDown={(e) => { if (e.key === "Enter") enviar(); }} />
+        </div>
+      </div>
+
+      <div className="mt-5">
+        <Btn tone="primary" disabled={ocupado} onClick={enviar}>
+          {ocupado ? "Um instante…" : modo === "criar" ? "Criar a sala" : "Entrar na sala"}
+        </Btn>
+      </div>
+      {erro || erroDeFora ? (
+        <Label style={{ marginTop: 12, color: T.bad }}>{erro || erroDeFora}</Label>
+      ) : null}
+    </Card>
+  );
+}
+
 function Simulados({ nuvem, notify, irPara }) {
   const [salas, setSalas] = useState(null);
   const [slug, setSlug] = useState("");
@@ -167,28 +240,24 @@ function Simulados({ nuvem, notify, irPara }) {
   const logado = !!(nuvem && nuvem.usuario);
   const meuUid = logado ? nuvem.usuario.uid : "";
 
-  useEffect(() => {
-    if (!meuUid) return;
-    let vivo = true;
-    (async () => {
-      const j = await falarComSalas(refNuvem.current, { acao: "minhas" });
-      if (!vivo) return;
-      if (j.erro) { setErro(j.erro); setSalas([]); return; }
-      setSalas(j.salas || []);
-      setSlug((p) => p || ((j.salas || [])[0] || {}).slug || "");
-    })();
-    return () => { vivo = false; };
-  }, [meuUid]);
+  const recarregarSalas = useCallback(async (escolher) => {
+    const j = await falarComSalas(refNuvem.current, { tipo: "simulado", acao: "minhas" });
+    if (j.erro) { setErro(j.erro); setSalas([]); return; }
+    setSalas(j.salas || []);
+    setSlug((p) => escolher || p || ((j.salas || [])[0] || {}).slug || "");
+  }, []);
+
+  useEffect(() => { if (meuUid) recarregarSalas(); }, [meuUid, recarregarSalas]);
 
   const carregar = useCallback(async (qual) => {
     if (!qual) return;
-    const j = await falarComSalas(refNuvem.current, { acao: "sim-listar", nome: qual });
+    const j = await falarComSalas(refNuvem.current, { tipo: "simulado", acao: "sim-listar", nome: qual });
     if (j.erro) { setErro(j.erro); return; }
     setLista(j.simulados || []);
     setErro("");
     /* Quem criou a sala é quem pode apagar simulado. O cabeçalho do
        ranking já sabe disso, então vem de lá em vez de um campo novo. */
-    const r = await falarComSalas(refNuvem.current, { acao: "ranking", nome: qual });
+    const r = await falarComSalas(refNuvem.current, { tipo: "simulado", acao: "ranking", nome: qual });
     setSouDono(!!(r && r.sala && r.sala.souDono));
   }, []);
 
@@ -216,21 +285,10 @@ function Simulados({ nuvem, notify, irPara }) {
 
   if (salas === null) return <Card className="px-6 py-6"><Mini>carregando as suas salas…</Mini></Card>;
 
-  if (!salas.length) {
-    return (
-      <Card className="px-6 py-6">
-        <Blank icon={<Flag size={22} />} title="Sem sala ainda"
-          hint="Os simulados são comparados dentro das suas salas de estudo. Crie ou entre numa na aba Amigos." />
-        <div className="mt-4">
-          <Btn tone="primary" onClick={() => irPara && irPara("amigos")}>Ir para Amigos</Btn>
-        </div>
-        {erro ? <Label style={{ marginTop: 12, color: T.bad }}>{erro}</Label> : null}
-      </Card>
-    );
-  }
+  if (!salas.length) return <SalaDeSimulado {...{ nuvem, notify, aoEntrar: recarregarSalas, erro }} />;
 
   const mandar = async (corpo) => {
-    const j = await falarComSalas(refNuvem.current, { ...corpo, nome: slug });
+    const j = await falarComSalas(refNuvem.current, { tipo: "simulado", ...corpo, nome: slug });
     if (j.erro) { setErro(j.erro); return false; }
     setErro("");
     await carregar(slug);

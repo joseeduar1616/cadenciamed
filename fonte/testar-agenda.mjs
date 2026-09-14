@@ -18,7 +18,7 @@ const ok = (m) => passos.push('ok   ' + m);
 const falha = (m) => { passos.push('FALHA ' + m); erros.push(m); };
 
 const {
-  corpoDoEvento, marcaDoEvento, marcasDaLista, diferencaDaAgenda,
+  corpoDoEvento, marcaDoEvento, marcasDaLista, diferencaDaAgenda, depoisDaLigacao,
   AUTO_PADRAO, LIMITE_AUTO,
 } = await import('./_agenda.mjs');
 
@@ -150,6 +150,43 @@ const bloco = (id, cat, rotulo) => ({
 {
   if (LIMITE_AUTO > 0 && LIMITE_AUTO <= 2000) ok(`o envio silencioso para em ${LIMITE_AUTO} mudanças`);
   else falha(`o limite do envio silencioso está estranho: ${LIMITE_AUTO}`);
+}
+
+/* ── ligar a conta nunca pode terminar em nada ───────────────────────
+   Esta regra existe por causa de um defeito que tirou o Google do ar para
+   quem já usava: a conta que já autorizou o site alguma vez recebe do
+   Google um código que não vira autorização permanente, o servidor
+   explicava isso, e a página parava ali. Conectar com o token de uma hora
+   é pior que a ligação permanente e é muito melhor que não conectar. */
+{
+  const ok1 = depoisDaLigacao({ acesso: 'abc123', expiraEm: 1 });
+  if (ok1.permanente === true && ok1.token === 'abc123' && !ok1.tentarAntigo) {
+    ok('ligação que deu certo devolve o token e marca a conta como ligada');
+  } else falha('ligação boa saiu ' + JSON.stringify(ok1));
+
+  /* O caso que quebrou. */
+  const jaAutorizou = depoisDaLigacao({
+    erro: 'O Google não devolveu a autorização permanente...', semAtualizacao: true,
+  });
+  if (jaAutorizou.tentarAntigo) ok('conta que já tinha autorizado antes ainda consegue conectar pelo caminho antigo');
+  else falha('a conta que já autorizou ficou sem caminho nenhum');
+  if (jaAutorizou.permanente === null) ok('esse caso não marca a conta como ligada nem como impossível');
+  else falha('mexeu no estado da ligação sem motivo: ' + jaAutorizou.permanente);
+
+  const semServidor = depoisDaLigacao({ erro: 'não configurado', disponivel: false });
+  if (semServidor.permanente === false && semServidor.tentarAntigo) {
+    ok('site sem a ligação permanente configurada cai no caminho antigo, e para de oferecer');
+  } else falha('sem servidor saiu ' + JSON.stringify(semServidor));
+
+  const ligouSemToken = depoisDaLigacao({ ok: true, ligado: true });
+  if (ligouSemToken.permanente === true && ligouSemToken.tentarAntigo) {
+    ok('ligou mas não veio token: fica ligada e ainda assim conecta agora');
+  } else falha('ligou sem token saiu ' + JSON.stringify(ligouSemToken));
+
+  for (const ruim of [null, undefined, {}, { erro: 'qualquer coisa' }]) {
+    if (!depoisDaLigacao(ruim).tentarAntigo) { falha('parou sem conectar em ' + JSON.stringify(ruim)); break; }
+  }
+  ok('resposta vazia, estranha ou com erro qualquer sempre sobra o caminho antigo');
 }
 
 console.log(passos.join('\n'));

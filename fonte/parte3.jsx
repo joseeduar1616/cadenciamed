@@ -360,6 +360,27 @@ function diferencaDaAgenda(lista, antes, opts) {
   return { agora, subir, apagar };
 }
 
+/* O que fazer depois de mandar o código ao servidor.
+ *
+ * A regra é uma só, e é a que faltava: NUNCA parar sem conectar. Quando a
+ * conta já autorizou o site alguma vez, o Google devolve um código que não
+ * vira autorização permanente; o servidor explica isso, e a página chegou a
+ * parar aí — resultado, quem já usava o Google no site simplesmente não
+ * conseguia mais conectar. Conectar com o token de uma hora é pior que a
+ * ligação permanente e é muito melhor que não conectar.
+ *
+ * "tentarAntigo" quer dizer: siga para o fluxo de token, o de uma hora.
+ * "permanente" é o que a tela passa a mostrar: true ligada, false o site
+ * não tem isso configurado, null não mudou nada.
+ */
+function depoisDaLigacao(r) {
+  if (!r || r.erro) {
+    return { permanente: r && r.disponivel === false ? false : null, token: "", tentarAntigo: true };
+  }
+  const token = String(r.acesso || "");
+  return { permanente: true, token, tentarAntigo: !token };
+}
+
 /* Padrão do envio automático: o que a pessoa realmente edita no dia a dia,
    e o que o assistente cria. Revisões, simulados e prova continuam sendo
    escolha dela no cartão da aba Metas — se ela sincronizar com eles
@@ -522,16 +543,25 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
     if (!codigo) return null;
 
     const r = await falarComGoogle(nuvem, { acao: "ligar", codigo });
-    if (r.erro) {
-      setErro(r.erro);
-      if (r.disponivel === false) { setPermanente(false); return ""; }
-      return null;
+    const passo = depoisDaLigacao(r);
+    if (r.erro) setErro(r.erro);
+    if (passo.permanente !== null) setPermanente(passo.permanente);
+    if (passo.token) {
+      setToken(passo.token);
+      validade.current = Number(r.expiraEm || 0);
+      setData((p) => ({ ...p, googleCal: { ...(p.googleCal || {}), autoSync: true } }));
+      notify("Google ligado. Não precisa autorizar de novo.");
+      return passo.token;
     }
-    if (r.acesso) { setToken(r.acesso); validade.current = Number(r.expiraEm || 0); }
-    setPermanente(true);
-    setData((p) => ({ ...p, googleCal: { ...(p.googleCal || {}), autoSync: true } }));
-    notify("Google ligado. Não precisa autorizar de novo.");
-    return r.acesso || (await tokenDoServidor()) || null;
+    if (passo.permanente === true) {
+      setData((p) => ({ ...p, googleCal: { ...(p.googleCal || {}), autoSync: true } }));
+      notify("Google ligado. Não precisa autorizar de novo.");
+      const doServidor = await tokenDoServidor();
+      if (doServidor) return doServidor;
+    }
+    /* "" é o combinado de "siga para o caminho antigo": a janela de token,
+       que vale uma hora. O recado de como ligar de vez fica na tela. */
+    return "";
   }, [nuvem, notify, setData, tokenDoServidor]);
 
   const pedirToken = useCallback(() => new Promise((resolve) => {

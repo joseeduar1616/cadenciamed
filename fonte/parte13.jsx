@@ -290,7 +290,7 @@ function comNegrito(texto, chave) {
 }
 
 /* Texto de um lado do cartão, com as imagens no lugar dos marcadores */
-function LadoDoCartao({ texto, imagens, tamanho, peso, altura }) {
+function LadoDoCartao({ texto, imagens, tamanho, peso, altura, entrelinha = 1 }) {
   const partes = String(texto || "").split(/(\[\[img:[^\]]+\]\])/g);
   const soltas = (imagens || []).filter(
     (n) => String(texto || "").indexOf(`[[img:${n}]]`) < 0
@@ -304,7 +304,7 @@ function LadoDoCartao({ texto, imagens, tamanho, peso, altura }) {
         return (
           <span key={i} style={{
             display: "block", fontSize: tamanho, fontWeight: peso,
-            lineHeight: 1.5, color: T.ink, whiteSpace: "pre-wrap",
+            lineHeight: 1.5 * entrelinha, color: T.ink, whiteSpace: "pre-wrap",
           }}>{comNegrito(p, `n${i}`)}</span>
         );
       })}

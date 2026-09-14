@@ -80,16 +80,22 @@ const lista = (v) => (((v && v.arrayValue) || {}).values || []).map(texto).filte
 
 /* ── duas famílias de sala, em coleções separadas ─────────────────────
  *
- * "salas" é o estudo; "salasTreino" é a academia. São mundos diferentes:
- * quem estuda com você não é necessariamente quem treina com você, e
- * misturar os dois obrigaria todo mundo a ver o mural da academia de gente
- * que só entrou para comparar horas de estudo.
+ * "salas" é o estudo, "salasTreino" é a academia e "salasSimulado" é a
+ * disputa de acerto em simulado. São mundos diferentes: quem estuda com
+ * você não é necessariamente quem treina com você, nem quem faz os mesmos
+ * simulados que você, e misturar obrigaria cada grupo a ver o placar dos
+ * outros dois.
  *
  * Coleção separada, e não um campo "tipo" dentro da mesma: assim o nome da
  * sala pode se repetir entre as duas (dá para ter "Turma 2026" nas duas
  * sem uma atrapalhar a outra) e uma consulta nunca alcança a outra família
  * por engano. */
-const COLECAO = (tipo) => (String(tipo) === "treino" ? "salasTreino" : "salas");
+const COLECAO = (tipo) => {
+  const t = String(tipo || "");
+  if (t === "treino") return "salasTreino";
+  if (t === "simulado") return "salasSimulado";
+  return "salas";
+};
 
 async function lerSala(token, col, slug) {
   const r = await fetch(`${BASE_FIRESTORE}/${col}/${slug}`, {

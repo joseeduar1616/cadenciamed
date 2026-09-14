@@ -70,7 +70,7 @@ globalThis.fetch = async (url, opcoes = {}) => {
   /* Os recados moram pendurados na sala, num documento só. Vem antes da
      regra da sala porque o caminho começa igual — e se a rota errar o
      endereço, é aqui que o teste percebe, em vez de devolver a sala. */
-  const c = /\/documents\/(salas|salasTreino)\/([^/?]+)\/mensagens\/log$/.exec(u);
+  const c = /\/documents\/(salas|salasTreino|salasSimulado)\/([^/?]+)\/mensagens\/log$/.exec(u);
   if (c) {
     const slug = chaveDe(c[1], c[2]);
     const metodo = opcoes.method || 'GET';
@@ -82,7 +82,7 @@ globalThis.fetch = async (url, opcoes = {}) => {
 
   /* O mural de treino e as fotos, pelo mesmo motivo dos recados: o
      caminho começa igual ao da sala e tem de ser testado antes. */
-  const si = /\/documents\/(salas|salasTreino)\/([^/?]+)\/simulados\/lista$/.exec(u);
+  const si = /\/documents\/(salas|salasTreino|salasSimulado)\/([^/?]+)\/simulados\/lista$/.exec(u);
   if (si) {
     const slug = chaveDe(si[1], si[2]);
     const metodo = opcoes.method || 'GET';
@@ -92,7 +92,7 @@ globalThis.fetch = async (url, opcoes = {}) => {
     return json({ name: slug });
   }
 
-  const mu = /\/documents\/(salas|salasTreino)\/([^/?]+)\/treinos\/mural$/.exec(u);
+  const mu = /\/documents\/(salas|salasTreino|salasSimulado)\/([^/?]+)\/treinos\/mural$/.exec(u);
   if (mu) {
     const slug = chaveDe(mu[1], mu[2]);
     const metodo = opcoes.method || 'GET';
@@ -102,7 +102,7 @@ globalThis.fetch = async (url, opcoes = {}) => {
     return json({ name: slug });
   }
 
-  const ft = /\/documents\/(salas|salasTreino)\/([^/?]+)\/fotos\/([^/?]+)$/.exec(u);
+  const ft = /\/documents\/(salas|salasTreino|salasSimulado)\/([^/?]+)\/fotos\/([^/?]+)$/.exec(u);
   if (ft) {
     const chave = chaveDe(ft[1], ft[2]) + '/' + ft[3];
     const metodo = opcoes.method || 'GET';
@@ -112,7 +112,7 @@ globalThis.fetch = async (url, opcoes = {}) => {
     return json({ name: chave });
   }
 
-  const m = /\/documents\/(salas|salasTreino)\/([^/?]+)(?:\?|$)/.exec(u);
+  const m = /\/documents\/(salas|salasTreino|salasSimulado)\/([^/?]+)(?:\?|$)/.exec(u);
   if (m) {
     const slug = chaveDe(m[1], m[2]);
     const metodo = opcoes.method || 'GET';
@@ -652,6 +652,35 @@ else falha('mural sem ser membro: ' + JSON.stringify(r));
 r = await pedir({ token: 't', acao: 'treino-postar', nome: 'r3-clinica', treino: 'x' });
 if (r.status === 403) ok('quem não está na sala não posta treino nela');
 else falha('postar sem ser membro: ' + JSON.stringify(r));
+
+/* ── e a sala de simulado é a terceira família ───────────────────────
+   Quem faz os mesmos simulados que você costuma ser quem faz o mesmo
+   cursinho, e não necessariamente quem estuda ou treina com você. */
+como('ana@email.com', 'uid-ana');
+
+let rf = await pedir({ token: 't', acao: 'criar', tipo: 'simulado', nome: 'r3 clinica', senha: 'segredo1' });
+if (rf.corpo.ok) ok('a sala de simulado pode ter o mesmo nome das outras duas');
+else falha('criar sala de simulado: ' + JSON.stringify(rf));
+
+const quantas = async (tipo) => {
+  const r = await pedir({ token: 't', acao: 'minhas', ...(tipo ? { tipo } : {}) });
+  return (r.corpo.salas || []).length;
+};
+if (await quantas() === 1 && await quantas('treino') === 1 && await quantas('simulado') === 1) {
+  ok('as três listas de sala não se misturam');
+} else falha('as listas se misturaram entre as três famílias');
+
+/* O simulado criado na sala de simulado não aparece na sala de estudo. */
+rf = await pedir({ token: 't', acao: 'sim-criar', tipo: 'simulado', nome: 'r3-clinica', titulo: 'Prova SUS', total: 50 });
+if (rf.corpo.ok) ok('dá para criar simulado na sala de simulado');
+else falha('criar simulado na família certa: ' + JSON.stringify(rf));
+
+rf = await pedir({ token: 't', acao: 'sim-listar', nome: 'r3-clinica' });
+const noEstudoSim = (rf.corpo.simulados || []).length;
+rf = await pedir({ token: 't', acao: 'sim-listar', tipo: 'simulado', nome: 'r3-clinica' });
+const naFamiliaSim = (rf.corpo.simulados || []).length;
+if (naFamiliaSim === 1 && noEstudoSim === 0) ok('o simulado fica na sala de simulado, e não vaza para a de estudo');
+else falha(`vazou entre famílias: estudo ${noEstudoSim}, simulado ${naFamiliaSim}`);
 
 /* ── minhas salas ────────────────────────────────────────────────────── */
 como('ana@email.com', 'uid-ana');

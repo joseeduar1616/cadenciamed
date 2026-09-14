@@ -1191,6 +1191,26 @@ if (liberado) {
   await pag.locator('main button:has-text("Serifada")').first().click();
   await pag.waitForTimeout(300);
   await pag.locator('main button:has-text("Aurora")').first().click();
+  await pag.waitForTimeout(300);
+  /* Peso e entrelinha vieram depois, e quebram do mesmo jeito silencioso:
+     o botão acende e a prévia não muda. */
+  const antesPeso = await pag.evaluate(() => {
+    const el = [...document.querySelectorAll('main span')]
+      .find((x) => /tríade da síndrome nefrítica/i.test(x.textContent || ''));
+    return el ? { peso: getComputedStyle(el).fontWeight, linha: getComputedStyle(el).lineHeight } : null;
+  });
+  await pag.locator('main button:has-text("Forte")').first().click();
+  await pag.locator('main button:has-text("Solto")').first().click();
+  await pag.waitForTimeout(300);
+  const depoisPeso = await pag.evaluate(() => {
+    const el = [...document.querySelectorAll('main span')]
+      .find((x) => /tríade da síndrome nefrítica/i.test(x.textContent || ''));
+    return el ? { peso: getComputedStyle(el).fontWeight, linha: getComputedStyle(el).lineHeight } : null;
+  });
+  if (Number(depoisPeso.peso) > Number(antesPeso.peso)) ok('estilo do cartão: "Forte" engrossa a letra da prévia');
+  else falha(`estilo do cartão: o peso não mudou (${antesPeso.peso} → ${depoisPeso.peso})`);
+  if (parseFloat(depoisPeso.linha) > parseFloat(antesPeso.linha)) ok('estilo do cartão: "Solto" abre a entrelinha');
+  else falha(`estilo do cartão: a entrelinha não mudou (${antesPeso.linha} → ${depoisPeso.linha})`);
   await pag.waitForTimeout(2600);
   await pag.reload({ waitUntil: 'load' });
   await pag.waitForTimeout(2200);
@@ -1198,8 +1218,9 @@ if (liberado) {
     const d = JSON.parse(window.localStorage.getItem('cadencia:v3') || '{}');
     return d.cartaoEstilo || {};
   });
-  if (guardado.tamanho === 'enorme' && guardado.fonte === 'serif' && guardado.fundo === 'aurora') {
-    ok('estilo do cartão: letra, tamanho e fundo sobrevivem ao recarregar');
+  if (guardado.tamanho === 'enorme' && guardado.fonte === 'serif' && guardado.fundo === 'aurora'
+    && guardado.peso === 'forte' && guardado.altura === 'solto') {
+    ok('estilo do cartão: as seis escolhas sobrevivem ao recarregar');
   } else falha('estilo do cartão: a escolha sumiu: ' + JSON.stringify(guardado));
 
   /* De volta ao normal, para não atrapalhar as medidas das outras telas. */
@@ -1271,6 +1292,39 @@ if (liberado) {
   const prog = await texto();
   if (!/Treino A/.test(prog)) ok('treino: a academia não aparece no progresso de estudo');
   else falha('treino: o treino vazou para o progresso de estudo');
+}
+
+/* ── cada aba com o seu ícone ────────────────────────────────────────
+   A barra lateral existe para achar a aba de relance, sem ler. Duas abas
+   com o mesmo desenho desfazem isso, e é exatamente o que acontecia com
+   Cartões e Desempenho: metade das abas não tinha ícone próprio e caía
+   toda na mesma reserva. */
+{
+  const desenhos = await pag.evaluate(() => {
+    const botoes = [...document.querySelectorAll('aside[aria-label="Navegação"] nav button')];
+    return botoes.map((b) => {
+      const svg = b.querySelector('svg');
+      return {
+        aba: (b.innerText || b.getAttribute('title') || '').trim(),
+        /* O caminho do SVG identifica o desenho: dois ícones iguais do
+           lucide desenham exatamente os mesmos vetores. */
+        desenho: svg ? [...svg.querySelectorAll('path,circle,rect,line,polyline')]
+          .map((n) => n.getAttribute('d') || n.outerHTML).join('|') : '',
+      };
+    }).filter((x) => x.desenho);
+  });
+
+  if (desenhos.length > 8) ok(`a barra mostra ${desenhos.length} abas com ícone`);
+  else falha('achei ícones de menos na barra: ' + desenhos.length);
+
+  const porDesenho = new Map();
+  for (const d of desenhos) {
+    if (!porDesenho.has(d.desenho)) porDesenho.set(d.desenho, []);
+    porDesenho.get(d.desenho).push(d.aba || '(sem nome)');
+  }
+  const repetidos = [...porDesenho.values()].filter((abas) => abas.length > 1);
+  if (repetidos.length === 0) ok('nenhuma aba divide o ícone com outra');
+  else falha('abas com o mesmo ícone: ' + repetidos.map((a) => a.join(' = ')).join(' · '));
 }
 
 /* ── o visual trazido da página de entrada ───────────────────────────

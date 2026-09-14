@@ -37,7 +37,12 @@ const DEFAULTS = {
      hora, não entra no cronograma, não mexe em meta semanal. */
   treino: { perfil: {}, planos: [], planoAtivo: "", emCurso: null, sessoes: [], medidas: [] },
   /* Como o cartão de flashcard aparece na tela de estudo. */
-  cartaoEstilo: { fonte: "app", tamanho: "normal", fundo: "limpo", alinhar: "centro" },
+  cartaoEstilo: {
+    fonte: "app", tamanho: "normal", fundo: "limpo", alinhar: "centro",
+    peso: "normal", altura: "normal",
+  },
+  /* Aviso do navegador para revisão do dia e bloco que vai começar. */
+  lembretes: { ligado: false },
   /* Cronograma que a pessoa recebeu do curso dela, em texto, para o
      assistente organizar a rotina em cima do que ela realmente tem.
      As duas datas dizem quando esse período começa e quando acaba: sem elas
@@ -297,6 +302,9 @@ function normalize(raw) {
        copiado se perde na volta do disco. Os valores são conferidos contra
        a lista de opções na hora de desenhar, então aqui basta serem texto
        curto — uma opção que não existe mais cai no padrão sozinha. */
+    /* O aviso é do aparelho, mas a escolha de querer ou não é da
+       pessoa, então acompanha a conta como o resto. */
+    lembretes: { ligado: !!obj(d.lembretes).ligado },
     cartaoEstilo: (() => {
       const ce = obj(d.cartaoEstilo);
       const t = (v, padrao) => (typeof v === "string" && v.length <= 20 ? v : padrao);
@@ -305,6 +313,8 @@ function normalize(raw) {
         tamanho: t(ce.tamanho, "normal"),
         fundo: t(ce.fundo, "limpo"),
         alinhar: t(ce.alinhar, "centro"),
+        peso: t(ce.peso, "normal"),
+        altura: t(ce.altura, "normal"),
       };
     })(),
     /* Os cartões precisam sobreviver ao recarregar a página: como tudo passa
