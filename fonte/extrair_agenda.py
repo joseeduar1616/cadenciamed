@@ -18,7 +18,7 @@ corpo = s[s.index(inicio):s.index(fim)].rstrip()
 
 for alvo in ('function corpoDoEvento', 'function marcaDoEvento',
              'function marcasDaLista', 'function diferencaDaAgenda',
-             'function depoisDaLigacao',
+             'function depoisDaLigacao', 'function estadoDaLigacao',
              'const AUTO_PADRAO', 'const ESPERA_AUTO', 'const LIMITE_AUTO'):
     if alvo not in corpo:
         raise SystemExit(f'não achei {alvo} no trecho extraído')

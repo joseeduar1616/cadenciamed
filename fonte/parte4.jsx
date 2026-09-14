@@ -345,9 +345,15 @@ function Rotina({ data, setData, gcal, today }) {
                acontecer em silêncio: a agenda fica velha e parece certa. */
             <div className="mt-2.5 flex items-center gap-2 flex-wrap">
               <Mini style={{ color: T.warn }}>
-                {gcal.logado
-                  ? "a sincronização sozinha parou: falta ligar a conta do Google de vez"
-                  : "a sincronização sozinha parou: entre na sua conta do Cadência para ela voltar"}
+                {/* Três motivos diferentes, três frases. Antes era uma só,
+                    e ela mandava ligar a conta de vez até para quem não
+                    tinha esse botão na tela — o que é pedir uma coisa
+                    impossível e não explicar nada. */}
+                {!gcal.logado
+                  ? "a sincronização sozinha parou: entre na sua conta do Cadência para ela voltar"
+                  : gcal.podeLigarDeVez
+                    ? "a sincronização sozinha parou: falta ligar a conta do Google de vez"
+                    : "a sincronização sozinha parou: este site não tem a ligação permanente configurada, então autorize de novo pelo botão acima"}
                 {gcal.ultima
                   ? ` · a última foi às ${pad(new Date(gcal.ultima).getHours())}:${pad(new Date(gcal.ultima).getMinutes())}`
                   : ""}

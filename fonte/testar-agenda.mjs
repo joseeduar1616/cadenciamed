@@ -18,7 +18,7 @@ const ok = (m) => passos.push('ok   ' + m);
 const falha = (m) => { passos.push('FALHA ' + m); erros.push(m); };
 
 const {
-  corpoDoEvento, marcaDoEvento, marcasDaLista, diferencaDaAgenda, depoisDaLigacao,
+  corpoDoEvento, marcaDoEvento, marcasDaLista, diferencaDaAgenda, depoisDaLigacao, estadoDaLigacao,
   AUTO_PADRAO, LIMITE_AUTO,
 } = await import('./_agenda.mjs');
 
@@ -152,6 +152,38 @@ const bloco = (id, cat, rotulo) => ({
   else falha(`o limite do envio silencioso está estranho: ${LIMITE_AUTO}`);
 }
 
+/* ── "não liguei ainda" não é "não dá para ligar" ────────────────────
+   Este foi o defeito que deixou a conta impossível de ligar: as duas
+   perguntas viviam na mesma variável. Quem nunca ligou recebe do servidor
+   ligado:false — resposta certa para "já está ligada?" e que virava um
+   "não" para "este site sabe ligar?". O botão sumia justamente para quem
+   precisava dele, e sobrava o aviso de "falta ligar a conta" sem nada ao
+   lado para clicar. */
+{
+  const nunca = estadoDaLigacao({ ligado: false, disponivel: true });
+  if (nunca.servidorLiga === true) ok('quem nunca ligou continua podendo ligar');
+  else falha('quem nunca ligou ficou sem o botão de ligar');
+  if (nunca.permanente === false) ok('e a conta é dita como não ligada, que é a verdade');
+  else falha('o estado da conta saiu ' + nunca.permanente);
+
+  const ligada = estadoDaLigacao({ ligado: true, disponivel: true });
+  if (ligada.servidorLiga && ligada.permanente === true) ok('conta ligada é reconhecida como ligada');
+  else falha('conta ligada saiu ' + JSON.stringify(ligada));
+
+  /* O único caso que realmente fecha a porta: o site não tem a credencial
+     cadastrada, e aí oferecer o botão é prometer o que não existe. */
+  const semCredencial = estadoDaLigacao({ disponivel: false, ligado: false });
+  if (semCredencial.servidorLiga === false) ok('site sem a credencial para de oferecer o botão');
+  else falha('site sem credencial continuou oferecendo');
+
+  /* Resposta que não fala do assunto não pode apagar o que já se sabia. */
+  const calada = estadoDaLigacao({ erro: 'deu ruim' });
+  if (calada.permanente === null) ok('resposta que não fala da conta não mexe no que já se sabia');
+  else falha('uma resposta muda mudou o estado da conta: ' + calada.permanente);
+  if (calada.servidorLiga === true) ok('erro solto não é tratado como site sem credencial');
+  else falha('um erro qualquer fechou a porta de ligar');
+}
+
 /* ── ligar a conta nunca pode terminar em nada ───────────────────────
    Esta regra existe por causa de um defeito que tirou o Google do ar para
    quem já usava: a conta que já autorizou o site alguma vez recebe do
@@ -173,10 +205,14 @@ const bloco = (id, cat, rotulo) => ({
   if (jaAutorizou.permanente === null) ok('esse caso não marca a conta como ligada nem como impossível');
   else falha('mexeu no estado da ligação sem motivo: ' + jaAutorizou.permanente);
 
+  /* Quem decide se o site AINDA OFERECE a ligação é o estadoDaLigacao,
+     logo acima; aqui a única pergunta é "e agora, como conecto?". */
   const semServidor = depoisDaLigacao({ erro: 'não configurado', disponivel: false });
-  if (semServidor.permanente === false && semServidor.tentarAntigo) {
-    ok('site sem a ligação permanente configurada cai no caminho antigo, e para de oferecer');
-  } else falha('sem servidor saiu ' + JSON.stringify(semServidor));
+  if (semServidor.tentarAntigo) ok('site sem a ligação permanente configurada ainda conecta pelo caminho antigo');
+  else falha('sem servidor saiu ' + JSON.stringify(semServidor));
+  if (estadoDaLigacao({ erro: 'não configurado', disponivel: false }).servidorLiga === false) {
+    ok('e é o estadoDaLigacao que para de oferecer o botão nesse caso');
+  } else falha('o site sem credencial continuou oferecendo o botão');
 
   const ligouSemToken = depoisDaLigacao({ ok: true, ligado: true });
   if (ligouSemToken.permanente === true && ligouSemToken.tentarAntigo) {

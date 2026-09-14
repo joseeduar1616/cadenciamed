@@ -360,6 +360,28 @@ function diferencaDaAgenda(lista, antes, opts) {
   return { agora, subir, apagar };
 }
 
+/* O que a resposta do servidor diz sobre a ligação permanente.
+ *
+ * Duas perguntas diferentes, que estavam sendo respondidas pela mesma
+ * variável — e esse foi o defeito que deixou a conta impossível de ligar:
+ *
+ *   "este site sabe ligar de vez?"   → servidorLiga
+ *   "a minha conta já está ligada?"  → permanente
+ *
+ * Quem nunca ligou recebe ligado:false, que é a resposta certa para a
+ * segunda pergunta e virava um "não" para a primeira: o botão "Ligar a
+ * conta de vez" sumia justamente para quem precisava dele, e a tela ficava
+ * com o aviso de "falta ligar a conta" sem nada ao lado para clicar.
+ *
+ * permanente vem null quando a resposta não falou do assunto — aí quem
+ * chamou não mexe no que já sabia.
+ */
+function estadoDaLigacao(r) {
+  const servidorLiga = !(r && r.disponivel === false);
+  const permanente = r && typeof r.ligado === "boolean" ? r.ligado : null;
+  return { servidorLiga, permanente };
+}
+
 /* O que fazer depois de mandar o código ao servidor.
  *
  * A regra é uma só, e é a que faltava: NUNCA parar sem conectar. Quando a
@@ -374,9 +396,7 @@ function diferencaDaAgenda(lista, antes, opts) {
  * não tem isso configurado, null não mudou nada.
  */
 function depoisDaLigacao(r) {
-  if (!r || r.erro) {
-    return { permanente: r && r.disponivel === false ? false : null, token: "", tentarAntigo: true };
-  }
+  if (!r || r.erro) return { permanente: null, token: "", tentarAntigo: true };
   const token = String(r.acesso || "");
   return { permanente: true, token, tentarAntigo: !token };
 }
@@ -422,8 +442,12 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
   const [progresso, setProgresso] = useState(null);
   const [erro, setErro] = useState("");
   const cliente = useRef(null);
-  /* null = ainda não perguntei; false = o site não tem isso configurado */
+  /* A minha conta está ligada de vez? null = ainda não perguntei. */
   const [permanente, setPermanente] = useState(null);
+  /* Este site sabe ligar de vez? false só quando o servidor diz que não
+     tem a credencial cadastrada. É a pergunta que decide se o botão de
+     ligar aparece, e ela não tem nada a ver com a de cima. */
+  const [servidorLiga, setServidorLiga] = useState(null);
   const validade = useRef(0);
   const logado = !!(nuvem && nuvem.usuario);
   /* Espelho de "permanente" sempre atual. Quem clica em sincronizar no
@@ -431,6 +455,8 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
      velho do fechamento e podia abrir duas janelas seguidas. */
   const permanenteRef = useRef(permanente);
   permanenteRef.current = permanente;
+  const servidorLigaRef = useRef(servidorLiga);
+  servidorLigaRef.current = servidorLiga;
   /* O que já subiu para a agenda do Google: id do evento → "grupo:marca".
      Fica num ref porque o envio automático precisa comparar sem se
      reagendar a cada gravação, e é copiado para os dados (googleCal.
@@ -488,7 +514,9 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
     (async () => {
       const r = await falarComGoogle(nuvem, { acao: "estado" });
       if (!vivo) return;
-      setPermanente(r.disponivel === false ? false : !!r.ligado);
+      const e = estadoDaLigacao(r);
+      setServidorLiga(e.servidorLiga);
+      setPermanente(e.permanente === null ? false : e.permanente);
     })();
     return () => { vivo = false; };
   }, [logado, nuvem]);
@@ -504,10 +532,13 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
       setPermanente(true);
       return r.acesso;
     }
-    /* disponivel false é site sem a credencial cadastrada; ligado false é
-       autorização que não existe mais. Nos dois casos não adianta perguntar
-       de novo a cada token: cai no caminho antigo, com janela. */
-    if (r.ligado === false || r.disponivel === false) setPermanente(false);
+    /* ligado:false aqui quer dizer "não tenho autorização sua guardada" —
+       tanto para quem nunca ligou quanto para quem revogou. Nos dois casos
+       a conta não está ligada, e nos dois casos ligar continua sendo
+       possível: o que fecha essa porta é só disponivel:false. */
+    const e = estadoDaLigacao(r);
+    setServidorLiga(e.servidorLiga);
+    if (e.permanente !== null) setPermanente(e.permanente);
     return null;
   }, [logado, nuvem]);
 
@@ -545,6 +576,9 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
     const r = await falarComGoogle(nuvem, { acao: "ligar", codigo });
     const passo = depoisDaLigacao(r);
     if (r.erro) setErro(r.erro);
+    /* O "não dá para ligar neste site" vem daqui também, e é o único caso
+       em que o botão para de ser oferecido. */
+    setServidorLiga(estadoDaLigacao(r).servidorLiga);
     if (passo.permanente !== null) setPermanente(passo.permanente);
     if (passo.token) {
       setToken(passo.token);
@@ -603,12 +637,14 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
      definitiva, e o cartão virou só o aviso de que está ligada. */
   const garantirToken = useCallback(async (semJanela) => {
     if (token && (!validade.current || validade.current > Date.now())) return token;
+    /* O token do servidor só existe para conta ligada de vez. Perguntar
+       sem estar ligada é uma ida ao servidor para ouvir "não tenho". */
     if (permanente !== false && logado) {
       const doServidor = await tokenDoServidor();
       if (doServidor) return doServidor;
     }
     if (semJanela) return null;
-    if (logado && permanenteRef.current !== false) {
+    if (logado && servidorLigaRef.current !== false) {
       const daLigacao = await ligarDeVez();
       /* string com token: deu certo. null: falhou com motivo já na tela, e
          abrir outra janela em cima seria só um segundo bloqueio. "": este
@@ -793,6 +829,8 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
        verdade: sem isso o próximo token viria do token de atualização
        guardado lá e a pessoa continuaria conectada sem entender por quê. */
     if (permanente) { await falarComGoogle(nuvem, { acao: "desligar" }); setPermanente(false); }
+    /* Desligar não desfaz a capacidade do site de ligar: o botão continua
+       oferecido, que é o certo para quem desligou sem querer. */
     setToken(null);
     validade.current = 0;
     setData((p) => ({ ...p, googleCal: { ...(p.googleCal || {}), autoSync: false } }));
@@ -986,7 +1024,10 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
     autoEnviar, mudarAutoEnviar, enviandoAuto, podeEnviar: podeEnviarCalado,
     /* permanente: true já ligado de vez, false não dá (ou foi desligado),
        null ainda não perguntei ao servidor. */
-    permanente, ligarDeVez, podeLigarDeVez: logado && permanente !== false, logado,
+    /* podeLigarDeVez é "dá para oferecer o botão", e não "já está
+       ligada": quem nunca ligou é exatamente quem precisa dele. */
+    permanente, ligarDeVez, podeLigarDeVez: logado && servidorLiga !== false, logado,
+    servidorLiga,
     ultima: (data.googleCal && data.googleCal.ultima) || 0,
   };
 }
