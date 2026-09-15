@@ -676,11 +676,9 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
     return nova.dados.id;
   }, [data.googleCal, chamar, setData]);
 
-  const sincronizar = useCallback(async (opts) => {
+  const executarSincronizacao = useCallback(async (tk, opts) => {
     setErro(""); setOcupado(true); setProgresso({ feito: 0, total: 0 });
     try {
-      const tk = await garantirToken();
-      if (!tk) { setOcupado(false); setProgresso(null); return; }
       const cal = await garantirAgenda(tk);
       const lista = eventosGoogle({
         routine: data.routine, agenda: data.agenda, ladder, simulados: data.simulados,
@@ -729,8 +727,32 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
       setErro("A sincronização falhou. Tente conectar de novo.");
       setToken(null);
     } finally { setOcupado(false); setProgresso(null); }
-  }, [token, pedirToken, garantirAgenda, data.routine, data.agenda, data.simulados,
+  }, [garantirAgenda, data.routine, data.agenda, data.simulados,
     data.profile.examDate, ladder, today, chamar, setData, notify]);
+
+  /* ── a janela do Google tem de abrir DENTRO do clique ─────────────────
+   *
+   * Isto é o que quebrava no iPhone, e quebrava calado. O botão de
+   * sincronizar pedia o token, o pedido passava pelo servidor, e só depois
+   * disso a janela do Google era aberta. Para o Safari o toque já tinha
+   * acabado fazia tempo: ele bloqueia a janela e não conta para ninguém.
+   * No computador passa, porque lá o bloqueio é mais frouxo — por isso o
+   * defeito parecia "às vezes funciona".
+   *
+   * Agora o botão tenta só o caminho silencioso. Se não der, ele não abre
+   * janela nenhuma: acende um segundo botão, e é o clique DESSE botão que
+   * abre a do Google, sem nada de rede no meio. */
+  const [precisaJanela, setPrecisaJanela] = useState(null);
+  const precisaRef = useRef(null);
+  precisaRef.current = precisaJanela;
+
+  const sincronizar = useCallback(async (opts) => {
+    setErro("");
+    const tk = await garantirToken(true);
+    if (tk) return executarSincronizacao(tk, opts);
+    setPrecisaJanela({ oque: "sincronizar", opts });
+    return undefined;
+  }, [garantirToken, executarSincronizacao]);
 
   /* Lê os compromissos com horário marcado da semana pedida e grava com a
      data exata. O identificador do Google evita duplicar ao puxar de novo.
@@ -808,16 +830,40 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
     }
   }, [today, chamar, setData, notify]);
 
-  const importarRotina = useCallback(async (inicioSemana) => {
+  const puxarComToken = useCallback(async (tk, inicioSemana) => {
     setErro(""); setOcupado(true);
     try {
-      const tk = await garantirToken();
-      if (!tk) { setOcupado(false); return; }
       await executarImportacao(tk, inicioSemana, false);
     } catch (e) {
       setErro("Não consegui ler a agenda. Talvez falte autorizar a leitura.");
     } finally { setOcupado(false); }
-  }, [token, pedirToken, executarImportacao]);
+  }, [executarImportacao]);
+
+  const importarRotina = useCallback(async (inicioSemana) => {
+    setErro("");
+    const tk = await garantirToken(true);
+    if (tk) return puxarComToken(tk, inicioSemana);
+    setPrecisaJanela({ oque: "importar", semana: inicioSemana });
+    return undefined;
+  }, [garantirToken, puxarComToken]);
+
+  /* Chamado DIRETO do clique de um botão, e nada de rede antes de abrir a
+     janela. É esta a regra que faz a autorização funcionar no iPhone. */
+  const autorizarAgora = useCallback(async () => {
+    const pendente = precisaRef.current;
+    setPrecisaJanela(null);
+    setErro("");
+    let tk = null;
+    if (logado && servidorLigaRef.current !== false) {
+      const daLigacao = await ligarDeVez();
+      if (daLigacao) tk = daLigacao;
+      else if (daLigacao === null) return;    // janela fechada ou bloqueada
+    }
+    if (!tk) tk = await pedirToken();
+    if (!tk || !pendente) return;
+    if (pendente.oque === "importar") await puxarComToken(tk, pendente.semana);
+    else await executarSincronizacao(tk, pendente.opts);
+  }, [logado, ligarDeVez, pedirToken, puxarComToken, executarSincronizacao]);
 
   const desconectar = useCallback(async () => {
     try {
@@ -1021,6 +1067,9 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
   return {
     disponivel: !!GOOGLE_CFG, pronto, conectado: !!token, ocupado, progresso, erro,
     sincronizar, importarRotina, desconectar, autoSync, autoParou,
+    /* precisaJanela acende o botão que abre a autorização; autorizarAgora é
+       o que esse botão chama, e ele não pode passar por rede antes. */
+    precisaJanela: !!precisaJanela, autorizarAgora,
     autoEnviar, mudarAutoEnviar, enviandoAuto, podeEnviar: podeEnviarCalado,
     /* permanente: true já ligado de vez, false não dá (ou foi desligado),
        null ainda não perguntei ao servidor. */

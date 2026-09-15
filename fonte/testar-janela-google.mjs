@@ -146,9 +146,25 @@ if (await abas.count() > 0) {
   if (await botao.count() > 0) {
     await botao.first().click();
     await pag.waitForTimeout(1500);
+
+    /* O PRIMEIRO clique não pode abrir janela nenhuma. Ele passa pelo
+       servidor antes, e no iPhone uma janela aberta depois de uma ida à
+       rede é bloqueada em silêncio: o toque já acabou. */
+    const logoApos = await pag.evaluate(() => window.__pedidosGoogle || []);
+    if (logoApos.length === 0) ok('conectar não tenta abrir a janela depois de falar com o servidor');
+    else falha('conectar abriu a janela fora do clique: ' + logoApos.map((p) => p.tipo).join(', '));
+
+    /* E aparece o segundo botão, que é quem abre a janela — nascendo do
+       próprio clique, sem nada de rede antes. */
+    const autorizar = pag.locator('button:has-text("Autorizar o Google")');
+    if (await autorizar.count() > 0) ok('aparece o botão que abre a autorização');
+    else falha('não apareceu o botão de autorizar');
+
+    await autorizar.first().click();
+    await pag.waitForTimeout(1200);
     const depois = await pag.evaluate(() => window.__pedidosGoogle || []);
-    if (depois.length > 0) ok('clicar em conectar ainda abre a autorização do Google');
-    else falha('clicar em conectar não pediu nada ao Google');
+    if (depois.length > 0) ok('o clique em autorizar abre a janela do Google');
+    else falha('o botão de autorizar não pediu nada ao Google');
   } else falha('não achei o botão de conectar ao Google na aba Metas');
 } else falha('não achei a aba Metas');
 
@@ -178,7 +194,7 @@ if (await pag.locator('nav button:has-text("Agenda")').count() > 0) {
 
   /* E não pode sair janela nenhuma por causa disso. */
   const pedidosNoFim = await pag.evaluate(() => (window.__pedidosGoogle || []).length);
-  const antesDoBloco = 1;   // só o clique em conectar, lá em cima
+  const antesDoBloco = 2;   // conectar e autorizar, lá em cima
   if (pedidosNoFim <= antesDoBloco) ok('o envio automático não abriu nenhuma tela do Google');
   else falha('o envio automático abriu a tela do Google');
 

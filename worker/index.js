@@ -22,6 +22,8 @@ import { onRequest as lerFoto } from "./api/ler-foto.js";
 import { onRequest as buscarImagem } from "./api/buscar-imagem.js";
 import { onRequest as google } from "./api/google.js";
 import { onRequest as treinoIa } from "./api/treino-ia.js";
+import { onRequest as duplas } from "./api/duplas.js";
+import { onRequest as questoesIa } from "./api/questoes-ia.js";
 
 const ROTAS = {
   "/api/assistente": assistente,
@@ -39,6 +41,8 @@ const ROTAS = {
   "/api/buscar-imagem": buscarImagem,
   "/api/google": google,
   "/api/treino-ia": treinoIa,
+  "/api/duplas": duplas,
+  "/api/questoes-ia": questoesIa,
 };
 
 /* ── quem pode chamar de outro endereço ────────────────────────────────

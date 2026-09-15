@@ -973,6 +973,8 @@ function Amigos({ nuvem, notify, data, setData, irPara }) {
         <Card className="px-6 py-6"><Label>carregando o ranking…</Label></Card>
       ) : null}
 
+      <Duplas nuvem={nuvem} notify={notify} />
+
       {atual && ranking ? (
         <EstudarJuntos nuvem={nuvem} slug={atual} foco={juntos.foco} jam={juntos.jam}
           estudando={estudandoAgora} notify={notify} irPara={irPara}

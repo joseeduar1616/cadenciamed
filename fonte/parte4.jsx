@@ -339,6 +339,18 @@ function Rotina({ data, setData, gcal, today }) {
             ) : null}
           </div>
         </div>
+        {/* O segundo toque. A janela do Google precisa nascer do clique, sem
+            nada de rede antes: no iPhone, uma janela aberta depois de uma
+            ida ao servidor é bloqueada sem avisar. */}
+        {gcal && gcal.precisaJanela ? (
+          <div className="mt-3 rounded-2xl px-4 py-3 flex items-center gap-3 flex-wrap"
+            style={{ background: soft("var(--neon)", 12), border: `1px solid ${soft("var(--neon)", 30)}` }}>
+            <Mini style={{ flex: 1, minWidth: 180, lineHeight: 1.6, color: T.ink }}>
+              O Google precisa da sua autorização. Toque no botão para abrir a janela dele.
+            </Mini>
+            <Btn size="sm" tone="primary" onClick={gcal.autorizarAgora}>Autorizar o Google</Btn>
+          </div>
+        ) : null}
         {gcal && gcal.autoSync ? (
           gcal.autoParou ? (
             /* Parar de sincronizar sozinho é o tipo de coisa que não pode
