@@ -195,10 +195,23 @@ function encolherFigura(dataUri) {
   });
 }
 
-async function figurasParaODuelo(questoes) {
-  const nomes = [...new Set((questoes || []).map((q) => q && q.imagem).filter(Boolean))];
+/* As figuras que o material trouxe, pelos marcadores que o leitor deixou
+   no texto. Elas são lidas ANTES de chamar a IA: é ela quem precisa ver a
+   imagem para decidir o que perguntar. */
+const MAX_FIGURAS_DUELO = 8;
+
+function nomesDeFigura(texto) {
+  const nomes = [];
+  for (const m of String(texto || "").matchAll(/\[\[img:([^\]]+)\]\]/g)) {
+    const nome = String(m[1] || "").trim();
+    if (nome && nomes.indexOf(nome) < 0) nomes.push(nome);
+  }
+  return nomes;
+}
+
+async function figurasDoMaterial(texto) {
   const fora = [];
-  for (const nome of nomes) {
+  for (const nome of nomesDeFigura(texto).slice(0, MAX_FIGURAS_DUELO)) {
     const bruto = await lerMidia(nome).catch(() => "");
     if (!bruto) continue;
     const menor = await encolherFigura(bruto);
@@ -256,8 +269,12 @@ function MontarDuelo({ dupla, nuvem, notify, aoComecar, aoFechar }) {
   const [erro, setErro] = useState("");
   const arquivoRef = useRef(null);
 
+  /* Contadas do próprio texto, então acompanham o que a pessoa colar,
+     apagar ou juntar de dois arquivos. */
+  const quantasFiguras = useMemo(() => nomesDeFigura(texto).length, [texto]);
+
   const comecar = async () => {
-    setErro(""); setPasso("Escrevendo as questões…");
+    setErro(""); setPasso("Separando as figuras…");
     let token = "";
     try {
       if (nuvem && nuvem.sdk && nuvem.sdk.auth && nuvem.sdk.auth.currentUser) {
@@ -266,8 +283,14 @@ function MontarDuelo({ dupla, nuvem, notify, aoComecar, aoFechar }) {
     } catch (e) { /* segue */ }
     if (!token) { setPasso(""); setErro("Entre na sua conta."); return; }
 
+    /* As figuras sobem junto com o texto: a IA precisa VER a imagem para
+       escrever questão sobre ela e para saber qual questão depende de qual
+       figura. Mandar só o nome do arquivo não dizia nada a ela. */
+    const figuras = await figurasDoMaterial(texto);
+
+    setPasso("Escrevendo as questões…");
     const { dados, erro: falhou } = await chamarApi(
-      ROTA_QUESTOES_IA, { token, texto, quantas }, "O montador de questões");
+      ROTA_QUESTOES_IA, { token, texto, quantas, figuras }, "O montador de questões");
     if (falhou || !dados || dados.erro) {
       setPasso("");
       setErro(falhou || (dados && dados.erro) || "Não consegui montar as questões.");
@@ -276,9 +299,6 @@ function MontarDuelo({ dupla, nuvem, notify, aoComecar, aoFechar }) {
     if (dados.questoes.length < quantas) {
       notify(`O material deu para ${dados.questoes.length} questões, e não ${quantas}.`);
     }
-
-    setPasso("Mandando as figuras…");
-    const figuras = await figurasParaODuelo(dados.questoes);
 
     setPasso("Começando o duelo…");
     const j = await falarComDuplas(nuvem, {
@@ -324,10 +344,22 @@ function MontarDuelo({ dupla, nuvem, notify, aoComecar, aoFechar }) {
             }
             setPasso("");
           }} />
-        <div className="mt-3">
+        <div className="mt-3 flex items-center gap-3 flex-wrap">
           <Btn size="sm" onClick={() => arquivoRef.current && arquivoRef.current.click()}>
             <Upload size={14} /> Mandar um arquivo
           </Btn>
+          {/* Quantas figuras o material trouxe. Dito aqui porque é a
+              diferença entre "o PDF não tinha figura" e "a figura não
+              chegou" — sem isso, as duas parecem a mesma coisa na tela. */}
+          {texto.trim() ? (
+            <Mini>
+              {quantasFiguras === 0
+                ? "nenhuma figura neste material"
+                : quantasFiguras > MAX_FIGURAS_DUELO
+                  ? `${quantasFiguras} figuras · as ${MAX_FIGURAS_DUELO} primeiras entram`
+                  : `${quantasFiguras} ${quantasFiguras === 1 ? "figura, que a IA vai ver" : "figuras, que a IA vai ver"}`}
+            </Mini>
+          ) : null}
         </div>
       </div>
 

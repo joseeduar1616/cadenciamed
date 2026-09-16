@@ -19,7 +19,7 @@
  * O que NUNCA entra em cache: /api/. São respostas por pessoa, com token,
  * e guardá-las seria mostrar dado de uma conta em outra.
  */
-const VERSAO = "cadencia-52e9259f4f";
+const VERSAO = "cadencia-0b4c1c78c2";
 const CASCA = "/";
 
 /* Instala já guardando a casca do app, para a primeira visita offline
