@@ -184,6 +184,14 @@ function lerDuelo(f) {
     quemCriou: texto(f.quemCriou),
     tema: texto(f.tema),
     segundos: numero(f.segundos),
+    /* Quem já disse "estou pronto". O relógio só começa a andar quando as
+       duas estão aqui: antes disso, quem criou ficava respondendo sozinho
+       enquanto a outra pessoa nem sabia que havia duelo. */
+    prontos: lista(f.prontos).map(texto),
+    /* Hora em que o duelo foi montado. Serve de identidade: a dupla tem um
+       id só, então o segundo duelo mora no mesmo documento do primeiro, e
+       sem isto o aviso "fulano chamou você" só tocaria uma vez na vida. */
+    criadoEm: numero(f.criadoEm),
     comecouEm: numero(f.comecouEm),
     questoes: lista(f.questoes).map((v) => {
       const m = mapa(v);
@@ -208,6 +216,8 @@ const camposDoDuelo = (d) => ({
   quemCriou: { stringValue: d.quemCriou },
   tema: { stringValue: d.tema },
   segundos: { doubleValue: d.segundos },
+  prontos: { arrayValue: { values: (d.prontos || []).map((x) => ({ stringValue: x })) } },
+  criadoEm: { doubleValue: d.criadoEm || 0 },
   comecouEm: { doubleValue: d.comecouEm },
   questoes: {
     arrayValue: {
@@ -283,6 +293,26 @@ export async function onRequest({ request, env }) {
     const outros = duplas.map((d) => d.gente.find((u) => u !== pessoa.uid)).filter(Boolean);
     const perfis = await perfisDe(token, outros);
     const agora = Date.now();
+    /* O duelo de cada dupla vai junto da lista. Sem isto a outra pessoa
+       não tinha como saber que havia um duelo esperando por ela: ele só
+       aparecia para quem tinha acabado de criá-lo. */
+    const duelos = {};
+    for (const d of duplas) {
+      const dd = lerDuelo(await lerDoc(token, `duelos/${d.id}`));
+      if (!dd) continue;
+      const onde = dd.comecouEm ? ondeEstamos(dd) : null;
+      duelos[d.id] = {
+        /* A tela usa isto para saber se já avisou deste duelo. */
+        marca: `${d.id}:${dd.criadoEm || 0}`,
+        tema: dd.tema,
+        total: dd.questoes.length,
+        segundos: dd.segundos,
+        esperando: !dd.comecouEm,
+        euAceitei: dd.prontos.indexOf(pessoa.uid) >= 0,
+        correndo: !!dd.comecouEm && !(onde && onde.acabou),
+        acabou: !!(onde && onde.acabou),
+      };
+    }
     return json({
       ok: true,
       duplas: duplas.map((d) => {
@@ -298,6 +328,7 @@ export async function onRequest({ request, env }) {
           estudando: vivo,
           minutos: vivo ? Math.max(0, Math.round((p.presencaMin || 0) + (agora - p.presencaEm) / 60000)) : 0,
           foco: focoDaDupla(d),
+          duelo: duelos[d.id] || null,
         };
       }),
     });
@@ -399,14 +430,32 @@ export async function onRequest({ request, env }) {
       }));
     if (!questoes.length) return json({ erro: "Nenhuma questão para disputar." }, 400);
 
+    /* comecouEm zero: o duelo existe, mas o relógio não anda. Quem criou
+       já entra pronto; falta a outra pessoa aceitar. */
     const d = {
       gente, quemCriou: pessoa.uid, tema: String(corpo.tema || "").slice(0, 60),
-      segundos, comecouEm: Date.now(), questoes, respostas: {},
+      segundos, prontos: [pessoa.uid], criadoEm: Date.now(), comecouEm: 0,
+      questoes, respostas: {},
     };
     if (!await gravarDoc(token, `duelos/${id}`, camposDoDuelo(d))) {
-      return json({ erro: "Não consegui começar o duelo." }, 502);
+      return json({ erro: "Não consegui criar o duelo." }, 502);
     }
-    return json({ ok: true });
+    return json({ ok: true, mensagem: "Duelo criado. Ele começa quando a outra pessoa aceitar." });
+  }
+
+  if (acao === "duelo-aceitar") {
+    const id = String(corpo.id || "").slice(0, 80);
+    const d = lerDuelo(await lerDoc(token, `duelos/${id}`));
+    if (!d) return json({ erro: "Esse duelo já não existe." }, 404);
+    if (d.gente.indexOf(pessoa.uid) < 0) return json({ erro: "Isso não é seu." }, 403);
+    if (d.prontos.indexOf(pessoa.uid) < 0) d.prontos.push(pessoa.uid);
+    /* As duas prontas: o relógio começa AGORA, para as duas ao mesmo
+       tempo. É o servidor que marca a hora, e não cada navegador. */
+    if (!d.comecouEm && d.prontos.length >= d.gente.length) d.comecouEm = Date.now();
+    if (!await gravarDoc(token, `duelos/${id}`, camposDoDuelo(d))) {
+      return json({ erro: "Não consegui entrar no duelo." }, 502);
+    }
+    return json({ ok: true, comecou: !!d.comecouEm });
   }
 
   if (acao === "duelo-estado" || acao === "duelo-responder") {
@@ -414,6 +463,27 @@ export async function onRequest({ request, env }) {
     const d = lerDuelo(await lerDoc(token, `duelos/${id}`));
     if (!d) return json({ ok: true, duelo: null });
     if (d.gente.indexOf(pessoa.uid) < 0) return json({ erro: "Isso não é seu." }, 403);
+
+    /* Enquanto o relógio não anda não há questão nenhuma para mostrar, e
+       muito menos para responder. */
+    if (!d.comecouEm) {
+      const perfis = await perfisDe(token, d.gente);
+      return json({
+        ok: true,
+        duelo: {
+          esperando: true,
+          tema: d.tema,
+          segundos: d.segundos,
+          total: d.questoes.length,
+          souDono: d.quemCriou === pessoa.uid,
+          euAceitei: d.prontos.indexOf(pessoa.uid) >= 0,
+          faltam: d.gente.filter((u) => d.prontos.indexOf(u) < 0)
+            .map((u) => (perfis[u] && perfis[u].nome) || "a outra pessoa"),
+          acabou: false, indice: 0, restaSeg: 0, questao: null,
+          minhas: {}, placar: [], gabarito: null,
+        },
+      });
+    }
 
     const onde = ondeEstamos(d);
 

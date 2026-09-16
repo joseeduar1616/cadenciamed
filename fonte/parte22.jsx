@@ -92,7 +92,7 @@ function RelogioDaDupla({ foco }) {
   );
 }
 
-function CartaoDupla({ d, nuvem, notify, aoMudar, aoDuelar }) {
+function CartaoDupla({ d, nuvem, notify, aoMudar, aoDuelar, aoEntrarNoDuelo }) {
   const [ocupado, setOcupado] = useState("");
 
   const mandar = async (corpo, qual) => {
@@ -124,7 +124,19 @@ function CartaoDupla({ d, nuvem, notify, aoMudar, aoDuelar }) {
           <Btn size="sm" tone="primary" disabled={!!ocupado}
             onClick={() => mandar({ acao: "aceitar" }, "aceitar")}>Aceitar</Btn>
         ) : null}
-        {d.aceita && !d.foco ? (
+        {/* O duelo em pé aparece PARA OS DOIS. Antes ele só existia na tela
+            de quem tinha acabado de criá-lo: a outra pessoa abria a aba
+            Amigos e não via nada, o que é exatamente o contrário de um
+            duelo. */}
+        {d.aceita && d.duelo && !d.duelo.acabou ? (
+          <Btn size="sm" tone="primary" onClick={() => aoEntrarNoDuelo(d)}>
+            <Zap size={14} />
+            {d.duelo.correndo ? "Duelo em andamento"
+              : d.duelo.euAceitei ? "Esperando a outra pessoa"
+                : `Duelo: ${d.duelo.total} questões`}
+          </Btn>
+        ) : null}
+        {d.aceita && !d.foco && !(d.duelo && !d.duelo.acabou) ? (
           <>
             {[25, 50].map((m) => (
               <Btn key={m} size="sm" disabled={!!ocupado}
@@ -184,6 +196,7 @@ function MontarDuelo({ dupla, nuvem, notify, aoComecar, aoFechar }) {
     });
     setPasso("");
     if (j.erro) { setErro(j.erro); return; }
+    notify(j.mensagem || "Duelo criado.");
     aoComecar();
   };
 
@@ -205,7 +218,7 @@ function MontarDuelo({ dupla, nuvem, notify, aoComecar, aoFechar }) {
           placeholder="Cole aqui o resumo, ou mande um PDF/Word no botão abaixo"
           onChange={(e) => setTexto(e.target.value)} />
         <input ref={arquivoRef} type="file" hidden
-          accept=".pdf,.docx,.txt,.md,application/pdf,text/plain"
+          accept=".pdf,.docx,.txt,.md,application/pdf,text/plain,image/*"
           onChange={async (e) => {
             const arq = (e.target.files || [])[0];
             e.target.value = "";
@@ -270,9 +283,15 @@ function DueloAoVivo({ dupla, nuvem, notify, aoSair }) {
   const puxar = useCallback(async (corpo) => {
     const j = await falarComDuplas(refNuvem.current, { acao: "duelo-estado", id: dupla.id, ...corpo });
     if (j.erro) { setErro(j.erro); return; }
-    setD(j.duelo);
     setErro("");
+    /* duelo-aceitar responde só "ok", sem estado. Apagar a tela por causa
+       disso faria a sala de espera piscar "carregando" no instante em que
+       a pessoa toca em entrar, que é justo quando ela está olhando. */
+    if (!("duelo" in j)) { puxarRef.current(); return; }
+    setD(j.duelo);
   }, [dupla.id]);
+  const puxarRef = useRef(puxar);
+  puxarRef.current = puxar;
 
   /* O relógio é do servidor, então a tela pergunta de segundo em segundo
      onde o duelo está. Contar sozinho aqui deixaria as duas pessoas em
@@ -283,22 +302,70 @@ function DueloAoVivo({ dupla, nuvem, notify, aoSair }) {
     return () => window.clearInterval(t);
   }, [puxar]);
 
+  /* Tela cheia, por portal, como o estudo de flashcards.
+   *
+   * Não é enfeite: o duelo se atualiza de segundo em segundo, e desenhado
+   * no meio da aba Amigos — que é uma página comprida, com ranking e
+   * recados recarregando por baixo — a página ficava descendo sozinha a
+   * cada atualização. Fora do fluxo da página, isso some. */
+  const tela = (dentro) => createPortal(
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 60, background: T.bg,
+      overflowY: "auto", WebkitOverflowScrolling: "touch",
+      padding: "calc(14px + env(safe-area-inset-top,0px)) 14px calc(20px + env(safe-area-inset-bottom,0px))",
+    }}>
+      <div className="mx-auto" style={{ maxWidth: 680 }}>{dentro}</div>
+    </div>, document.body);
+
   if (erro) {
-    return (
+    return tela(
       <Card className="px-6 py-6">
         <Label style={{ color: T.bad }}>{erro}</Label>
         <div className="mt-4"><Btn size="sm" onClick={aoSair}>voltar</Btn></div>
-      </Card>
-    );
+      </Card>);
   }
-  if (!d) return <Card className="px-6 py-6"><Mini>carregando o duelo…</Mini></Card>;
+  if (!d) return tela(<Card className="px-6 py-6"><Mini>carregando o duelo…</Mini></Card>);
+
+  /* ── sala de espera ──────────────────────────────────────────────────
+     O relógio só anda quando as duas estiverem aqui. Antes disso quem
+     criou respondia sozinho, com o tempo correndo, enquanto a outra
+     pessoa nem sabia que havia duelo. */
+  if (d.esperando) {
+    return tela(
+      <Card className="px-6 py-10 text-center" brilho="var(--neon)">
+        <div className="flex justify-center" style={{ color: "var(--neon)" }}>
+          <span className="flex items-center justify-center rounded-full"
+            style={{ width: 56, height: 56, background: soft("var(--neon)", 16) }}>
+            <Zap size={24} />
+          </span>
+        </div>
+        <h2 style={{ fontFamily: F_SERIF, fontSize: 24, fontWeight: 400, margin: "18px 0 0", color: T.ink }}>
+          {d.tema || "Duelo"}
+        </h2>
+        <Label style={{ marginTop: 8 }}>
+          {d.total} questões · {d.segundos}s cada
+        </Label>
+        <p style={{ color: T.dim, fontSize: 15, lineHeight: 1.65, marginTop: 14, maxWidth: 380, marginLeft: "auto", marginRight: "auto" }}>
+          {d.euAceitei
+            ? `Esperando ${d.faltam.join(" e ") || "a outra pessoa"} entrar. O relógio começa para os dois no mesmo instante.`
+            : "Toque em entrar quando estiver pronto. O relógio começa quando os dois estiverem aqui."}
+        </p>
+        <div className="mt-7 flex justify-center gap-2 flex-wrap">
+          {!d.euAceitei ? (
+            <Btn tone="primary" onClick={() => puxar({ acao: "duelo-aceitar" })}>
+              <Zap size={15} /> Entrar no duelo
+            </Btn>
+          ) : <Mini style={{ color: T.ok }}>você já está pronto</Mini>}
+          <Btn tone="outline" size="sm" onClick={aoSair}>sair</Btn>
+        </div>
+      </Card>);
+  }
 
   const responder = (i) => puxar({ acao: "duelo-responder", n: d.indice, escolha: i });
   const minhaEscolha = d.minhas[d.indice];
 
   if (d.acabou) {
-    const meu = d.placar.find((x) => x.nome && x.uid) || null;
-    return (
+    return tela(
       <div className="flex flex-col gap-5">
         <Card className="px-6 py-6" brilho="var(--neon)">
           <H color="var(--neon)" icon={<Trophy size={16} />}>Fim do duelo</H>
@@ -357,11 +424,10 @@ function DueloAoVivo({ dupla, nuvem, notify, aoSair }) {
             })}
           </div>
         </Card>
-      </div>
-    );
+      </div>);
   }
 
-  return (
+  return tela(
     <Card className="px-6 py-6" brilho="var(--neon)">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <H color="var(--neon)" icon={<Zap size={16} />}>
@@ -405,8 +471,7 @@ function DueloAoVivo({ dupla, nuvem, notify, aoSair }) {
         </Mini>
         <Btn size="sm" tone="outline" onClick={aoSair}>sair</Btn>
       </div>
-    </Card>
-  );
+    </Card>);
 }
 
 /* ── o cartão inteiro, na aba Amigos ─────────────────────────────────── */
@@ -433,7 +498,9 @@ function Duplas({ nuvem, notify }) {
     carregar();
     /* Quem está estudando agora muda sozinho, então a lista se atualiza —
        no mesmo ritmo do ranking das salas. */
-    const t = window.setInterval(carregar, 45000);
+    /* Com duelo esperando, a lista recarrega rápido: é o que faz o convite
+       aparecer para a outra pessoa sem ela ter de recarregar a página. */
+    const t = window.setInterval(carregar, 8000);
     return () => window.clearInterval(t);
   }, [meuUid, carregar]);
 
@@ -468,10 +535,72 @@ function Duplas({ nuvem, notify }) {
       <div className="mt-4 flex flex-col gap-3">
         {(duplas || []).map((d) => (
           <CartaoDupla key={d.id} d={d} nuvem={nuvem} notify={notify}
-            aoMudar={carregar} aoDuelar={(x) => setMontando(x)} />
+            aoMudar={carregar} aoDuelar={(x) => setMontando(x)}
+            aoEntrarNoDuelo={(x) => setDuelando(x)} />
         ))}
       </div>
       {erro ? <Label style={{ marginTop: 12, color: T.bad }}>{erro}</Label> : null}
     </Card>
   );
+}
+
+/* ── o convite para duelar tem de CHEGAR ──────────────────────────────
+ *
+ * O primeiro duelo não funcionou por um motivo bobo: quem foi chamado só
+ * descobria o duelo se estivesse com a aba Amigos aberta na hora. Não
+ * havia aviso, e a lista só era consultada dentro daquela aba.
+ *
+ * Isto roda na raiz do app, com qualquer aba aberta: pergunta de tempos
+ * em tempos se há duelo esperando por mim, acende o número na aba Amigos
+ * e avisa — uma vez por duelo, senão seria um alarme a cada rodada.
+ *
+ * Só com a aba do site à frente. Em segundo plano o navegador congela o
+ * relógio de qualquer jeito, e a notificação chegaria fora de hora, para
+ * um duelo que já acabou.
+ */
+const RITMO_CONVITE = 20000;
+
+function useConviteDeDuelo({ nuvem, notify }) {
+  const [esperando, setEsperando] = useState(0);
+  const jaAvisei = useRef({});
+  const refNotify = useRef(notify);
+  refNotify.current = notify;
+  const refNuvem = useRef(nuvem);
+  refNuvem.current = nuvem;
+  const uid = nuvem && nuvem.usuario ? nuvem.usuario.uid : "";
+
+  useEffect(() => {
+    if (!uid) { setEsperando(0); return undefined; }
+    let vivo = true;
+
+    const olhar = async () => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      const j = await falarComDuplas(refNuvem.current, { acao: "listar" });
+      if (!vivo || j.erro) return;
+      /* Só conta o que espera POR MIM: o duelo que eu mesmo criei está
+         esperando a outra pessoa, e avisar disso seria avisar do próprio
+         clique. */
+      const meus = (j.duplas || []).filter(
+        (d) => d.duelo && d.duelo.esperando && !d.duelo.euAceitei);
+      setEsperando(meus.length);
+      for (const d of meus) {
+        if (jaAvisei.current[d.duelo.marca]) continue;
+        jaAvisei.current[d.duelo.marca] = 1;
+        avisar("Duelo esperando você", `${d.nome} chamou você para um duelo de questões.`);
+        if (refNotify.current) refNotify.current(`${d.nome} chamou você para um duelo. Abra a aba Amigos.`);
+      }
+    };
+
+    olhar();
+    const t = window.setInterval(olhar, RITMO_CONVITE);
+    const aoVoltar = () => { if (!document.hidden) olhar(); };
+    document.addEventListener("visibilitychange", aoVoltar);
+    return () => {
+      vivo = false;
+      window.clearInterval(t);
+      document.removeEventListener("visibilitychange", aoVoltar);
+    };
+  }, [uid]);
+
+  return esperando;
 }

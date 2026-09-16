@@ -553,6 +553,11 @@ export default function Cadencia() {
     today,
   });
 
+  /* O convite para duelar também mora aqui, e pelo mesmo motivo: quem foi
+     chamado precisa saber disso com qualquer aba aberta. Devolve quantos
+     duelos esperam por mim, que é o número que acende na aba Amigos. */
+  const duelosEsperando = useConviteDeDuelo({ nuvem, notify });
+
   const TABS = [
     { id: "hoje", label: "Hoje", acc: "var(--a-CL)" },
     { id: "foco", label: "Foco", acc: "var(--a-PR)" },
@@ -564,7 +569,7 @@ export default function Cadencia() {
     { id: "cartoes", label: "Cartões", acc: "var(--neon)", badge: cartoesHoje },
     { id: "revisoes", label: "Revisões", acc: "var(--ok)", badge: late.length },
     { id: "rotina", label: "Agenda", acc: "var(--a-PE)" },
-    { id: "amigos", label: "Amigos", acc: "var(--neon2)" },
+    { id: "amigos", label: "Amigos", acc: "var(--neon2)", badge: duelosEsperando },
     ...(mentorInfo.mentor ? [{ id: "mentor", label: "Mentor", acc: "var(--neon2)" }] : []),
     { id: "metas", label: "Metas", acc: "var(--warn)" },
     { id: "desempenho", label: "Desempenho", acc: "var(--a-CI)" },

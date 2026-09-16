@@ -168,12 +168,42 @@ if (r.status === 400) ok('tempo por questão fora de 30 a 60 segundos é recusad
 else falha('aceitou tempo fora da faixa: ' + JSON.stringify(r));
 
 r = await pedir({ token: 't', acao: 'duelo-criar', id: paraBia.id, segundos: 45, tema: 'Nefro', questoes: QUESTOES });
-if (r.corpo.ok) ok('dá para começar um duelo');
+if (r.corpo.ok) ok('dá para criar um duelo');
 else falha('duelo-criar: ' + JSON.stringify(r));
 
+/* ── o relógio não anda antes das duas entrarem ───────────────────────
+   Antes ele começava na criação: quem criou respondia sozinho, com o
+   tempo correndo, enquanto a outra pessoa nem sabia que havia duelo. */
 r = await pedir({ token: 't', acao: 'duelo-estado', id: paraBia.id });
 let duelo = r.corpo.duelo;
-if (duelo && duelo.total === 2 && duelo.indice === 0) ok('o duelo começa na primeira questão');
+if (duelo && duelo.esperando) ok('recém-criado, o duelo fica esperando');
+else falha('o duelo começou sozinho: ' + JSON.stringify(duelo));
+if (duelo.questao === null) ok('e não mostra questão nenhuma enquanto espera');
+else falha('mostrou questão antes de as duas entrarem');
+if (duelo.euAceitei && duelo.faltam.indexOf('Bia') >= 0) ok('quem criou já está pronto, e a tela diz quem falta');
+else falha('quem falta saiu ' + JSON.stringify(duelo.faltam));
+
+/* A outra pessoa tem de VER que existe duelo esperando por ela. */
+como('bia@email.com', 'uid-bia');
+r = await pedir({ token: 't', acao: 'listar' });
+const naLista = (r.corpo.duplas || [])[0];
+if (naLista && naLista.duelo && naLista.duelo.esperando && !naLista.duelo.euAceitei) {
+  ok('o duelo esperando aparece na lista da outra pessoa');
+} else falha('a outra pessoa não vê o duelo: ' + JSON.stringify(naLista && naLista.duelo));
+/* A marca identifica ESTE duelo. Sem ela, a dupla tem um id só e o aviso
+   "fulano chamou você" tocaria uma vez na vida, nunca no segundo duelo. */
+if (naLista && naLista.duelo && /^.+:\d{10,}$/.test(naLista.duelo.marca || '')) {
+  ok('o duelo vem com marca própria, para o aviso tocar de novo no próximo');
+} else falha('o duelo veio sem marca: ' + JSON.stringify(naLista && naLista.duelo && naLista.duelo.marca));
+
+r = await pedir({ token: 't', acao: 'duelo-aceitar', id: paraBia.id });
+if (r.corpo.ok && r.corpo.comecou) ok('quando a segunda entra, o relógio começa');
+else falha('aceitar o duelo: ' + JSON.stringify(r));
+
+como('ana@email.com', 'uid-ana');
+r = await pedir({ token: 't', acao: 'duelo-estado', id: paraBia.id });
+duelo = r.corpo.duelo;
+if (duelo && !duelo.esperando && duelo.total === 2 && duelo.indice === 0) ok('o duelo começa na primeira questão');
 else falha('estado do duelo: ' + JSON.stringify(duelo));
 
 /* A REGRA: o gabarito não pode estar em lugar nenhum da resposta enquanto

@@ -963,11 +963,17 @@ async function textoDeAnexo(arquivo, nuvem, aviso) {
   const tipo = String(arquivo.type || "");
   const min = nome.toLowerCase();
 
+  /* Os dois leitores devolvem { texto, imagens }, e não uma string.
+     Embrulhar o objeto de novo fazia o anexo chegar como "[object Object]"
+     na IA — o PDF subia, não dava erro nenhum, e a resposta saía sobre
+     coisa nenhuma. */
   if (tipo === "application/pdf" || min.endsWith(".pdf")) {
-    return { texto: await lerPdfParaTexto(arquivo, aviso) };
+    const r = await lerPdfParaTexto(arquivo, aviso);
+    return { texto: r.texto };
   }
   if (min.endsWith(".docx") || tipo.includes("wordprocessingml")) {
-    return { texto: await lerDocxParaTexto(arquivo, aviso) };
+    const r = await lerDocxParaTexto(arquivo, aviso);
+    return { texto: r.texto };
   }
   if (tipo.startsWith("image/")) {
     const r = await lerFotosComIA(nuvem, [arquivo], aviso);
