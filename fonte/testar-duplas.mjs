@@ -151,7 +151,7 @@ r = await pedir({ token: 't', acao: 'focar', id: paraBia.id, minutos: 50 });
 if (r.corpo.ok && r.corpo.foco && r.corpo.foco.restaSeg > 0) ok('dá para combinar um foco com a dupla');
 else falha('focar: ' + JSON.stringify(r));
 
-for (const m of [1, 4, 181]) {
+for (const m of [1, 4, 721, 99999]) {
   r = await pedir({ token: 't', acao: 'focar', id: paraBia.id, minutos: m });
   if (r.status !== 400) { falha('aceitou foco de ' + m + ' min'); break; }
 }
@@ -229,6 +229,32 @@ r = await pedir({ token: 't', acao: 'duelo-responder', id: paraBia.id, n: 1, esc
 if (r.status === 409) ok('não dá para responder uma questão que ainda não abriu');
 else falha('respondeu fora da vez: ' + JSON.stringify(r));
 
+/* Os dois responderam: não há mais nada acontecendo nesta questão, e o
+   duelo não deve ficar parado esperando o relógio acabar. */
+r = await pedir({ token: 't', acao: 'duelo-estado', id: paraBia.id });
+if (r.corpo.duelo.indice === 0) ok('com só uma resposta, a questão continua aberta');
+else falha('pulou com uma resposta só: ' + JSON.stringify(r.corpo.duelo.indice));
+
+como('bia@email.com', 'uid-bia');
+r = await pedir({ token: 't', acao: 'duelo-responder', id: paraBia.id, n: 0, escolha: 1 });
+if (r.corpo.duelo.indice === 1) ok('quando os dois respondem, o duelo pula para a próxima na hora');
+else falha('não pulou depois da segunda resposta: ' + JSON.stringify(r.corpo.duelo.indice));
+if (r.corpo.duelo.questao && r.corpo.duelo.questao.n === 2) ok('e a questão que desce já é a seguinte');
+else falha('a questão não avançou: ' + JSON.stringify(r.corpo.duelo.questao));
+
+/* Quem pulou não perdeu a resposta, e o placar continua contando as duas. */
+if (r.corpo.duelo.minhas[0] === 1) ok('a resposta que fechou a questão fica registrada');
+else falha('a resposta sumiu no pulo: ' + JSON.stringify(r.corpo.duelo.minhas));
+const placar = r.corpo.duelo.placar || [];
+if (placar.length === 2 && placar.every((x) => x.respondidas === 1)) ok('as duas respostas da questão pulada contam no placar');
+else falha('placar depois do pulo: ' + JSON.stringify(placar));
+
+/* E a questão pulada fechou de verdade: ninguém responde ela depois. */
+como('ana@email.com', 'uid-ana');
+r = await pedir({ token: 't', acao: 'duelo-responder', id: paraBia.id, n: 0, escolha: 3 });
+if (r.status === 409) ok('questão pulada não aceita mais resposta');
+else falha('respondeu uma questão já pulada: ' + JSON.stringify(r.status));
+
 /* Empurra o relógio para o fim e confere o que aparece então. */
 DOCS['duelos/' + paraBia.id].fields.comecouEm = { doubleValue: Date.now() - 200000 };
 r = await pedir({ token: 't', acao: 'duelo-estado', id: paraBia.id });
@@ -248,6 +274,65 @@ else falha('placar: ' + JSON.stringify(duelo.placar));
 r = await pedir({ token: 't', acao: 'duelo-responder', id: paraBia.id, n: 1, escolha: 0 });
 if (r.status === 409) ok('acabado o duelo, ninguém responde mais nada');
 else falha('respondeu depois de acabar: ' + JSON.stringify(r));
+
+/* ── figuras na questão ──────────────────────────────────────────────
+   Uma prova de imagem só funciona se a figura chegar na outra pessoa: o
+   material foi lido no aparelho de quem enviou. */
+const FIG = 'data:image/jpeg;base64,' + 'A'.repeat(200);
+como('ana@email.com', 'uid-ana');
+r = await pedir({
+  token: 't', acao: 'duelo-criar', id: paraBia.id, segundos: 45, tema: 'ECG',
+  questoes: [
+    { enunciado: 'Que ritmo?', alternativas: ['a', 'b', 'c', 'd'], certa: 1, porque: 'traçado', imagem: 'ecg-1.jpg' },
+    { enunciado: 'E este?', alternativas: ['a', 'b', 'c', 'd'], certa: 0, porque: 'x', imagem: 'nao-mandei.jpg' },
+  ],
+  figuras: [{ nome: 'ecg-1.jpg', dataUri: FIG }],
+});
+if (r.corpo.ok) ok('duelo com figura é criado');
+else falha('criar com figura: ' + JSON.stringify(r));
+if (DOCS['duelos/' + paraBia.id + '/figuras/ecg-1.jpg']) ok('a figura fica guardada fora do documento do duelo');
+else falha('a figura não foi guardada em documento próprio');
+
+como('bia@email.com', 'uid-bia');
+await pedir({ token: 't', acao: 'duelo-aceitar', id: paraBia.id });
+como('ana@email.com', 'uid-ana');
+
+r = await pedir({ token: 't', acao: 'duelo-estado', id: paraBia.id });
+const q0 = r.corpo.duelo.questao;
+if (q0 && q0.imagem === 'ecg-1.jpg') ok('a questão desce com o NOME da figura');
+else falha('nome da figura na questão: ' + JSON.stringify(q0));
+if (!JSON.stringify(r.corpo).includes(FIG)) ok('os bytes da figura não viajam junto do estado');
+else falha('a figura inteira desceu junto do estado do duelo');
+
+/* Questão que cita figura que não chegou: perde a figura, mantém a
+   questão. Pior seria um enunciado falando de uma imagem invisível. */
+const guardado = DOCS['duelos/' + paraBia.id].fields.questoes.arrayValue.values[1].mapValue.fields;
+if ((guardado.imagem.stringValue || '') === '') ok('questão que cita figura que não chegou fica sem figura');
+else falha('ficou apontando para figura inexistente: ' + JSON.stringify(guardado.imagem));
+
+r = await pedir({ token: 't', acao: 'duelo-figura', id: paraBia.id, nome: 'ecg-1.jpg' });
+if (r.corpo.dataUri === FIG) ok('quem está no duelo baixa a figura');
+else falha('duelo-figura: ' + JSON.stringify(r.status));
+
+/* O nome vem do pedido: sem a conferência, viraria um jeito de ler
+   qualquer documento pendurado no duelo. */
+r = await pedir({ token: 't', acao: 'duelo-figura', id: paraBia.id, nome: 'nao-mandei.jpg' });
+if (r.status === 404) ok('figura que nenhuma questão cita não desce');
+else falha('baixou figura que não é do duelo: ' + JSON.stringify(r.status));
+
+como('caio@email.com', 'uid-caio');
+r = await pedir({ token: 't', acao: 'duelo-figura', id: paraBia.id, nome: 'ecg-1.jpg' });
+if (r.status === 403) ok('quem não está no duelo não baixa a figura');
+else falha('estranho baixou a figura: ' + JSON.stringify(r.status));
+
+como('ana@email.com', 'uid-ana');
+r = await pedir({ token: 't', acao: 'duelo-apagar', id: paraBia.id });
+if (!DOCS['duelos/' + paraBia.id + '/figuras/ecg-1.jpg']) ok('apagar o duelo leva as figuras junto');
+else falha('a figura sobreviveu ao duelo apagado');
+
+/* Sobra um duelo de pé para a última conferência, que é sobre quem pode
+   olhar o duelo dos outros. */
+await pedir({ token: 't', acao: 'duelo-criar', id: paraBia.id, segundos: 45, tema: 'Nefro', questoes: QUESTOES });
 
 como('caio@email.com', 'uid-caio');
 r = await pedir({ token: 't', acao: 'duelo-estado', id: paraBia.id });

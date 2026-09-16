@@ -805,8 +805,11 @@ export async function onRequest({ request, env }) {
    * em vez de um aviso de saída: fechar a aba não avisa ninguém. */
   if (acao === "focar") {
     const minutos = Math.round(Number(corpo.minutos) || 0);
-    if (minutos && (minutos < 5 || minutos > 180)) {
-      return json({ erro: "O foco em conjunto vai de 5 a 180 minutos." }, 400);
+    /* Até doze horas. O teto existe para o número não virar absurdo (um
+       relógio de mil horas fica na sala para sempre), mas quem quer marcar
+       um domingo inteiro de estudo consegue. */
+    if (minutos && (minutos < 5 || minutos > 720)) {
+      return json({ erro: "O foco em conjunto vai de 5 minutos a 12 horas." }, 400);
     }
     /* O nome vem do perfil, não do pedido: aceitar o nome que o navegador
        manda deixaria qualquer pessoa da sala assinar como outra. */

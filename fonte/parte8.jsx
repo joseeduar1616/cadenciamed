@@ -573,7 +573,10 @@ export default function Cadencia() {
     ...(mentorInfo.mentor ? [{ id: "mentor", label: "Mentor", acc: "var(--neon2)" }] : []),
     { id: "metas", label: "Metas", acc: "var(--warn)" },
     { id: "desempenho", label: "Desempenho", acc: "var(--a-CI)" },
-    { id: "treino", label: "Treino", acc: "var(--ok)" },
+    /* Treino é só do dono: o servidor recusa a montagem para qualquer
+       outra conta, e deixar a aba na barra seria prometer o que a rota não
+       entrega. */
+    ...(souDono ? [{ id: "treino", label: "Treino", acc: "var(--ok)" }] : []),
     { id: "simulados", label: "Simulados", acc: "var(--a-CI)" },
     { id: "progresso", label: "Progresso", acc: "var(--a-CI)" },
     { id: "planos", label: pro ? "Plano" : "Assinar", acc: "var(--neon2)" },
@@ -1022,7 +1025,7 @@ export default function Cadencia() {
               {tab === "metas" && pro && <Metas {...{ data, setData, today, qWeek, notify, ladder, gcal }} />}
               {tab === "mentor" && mentorInfo.mentor && <Mentor {...{ nuvem, notify, mentorInfo }} />}
               {tab === "desempenho" && <Desempenho {...{ data, today, addSession, delSession, notify }} />}
-              {tab === "treino" && <Treino {...{ data, setData, notify, today, nuvem }} />}
+              {tab === "treino" && souDono && <Treino {...{ data, setData, notify, today, nuvem }} />}
               {tab === "simulados" && pro && <Simulados {...{ nuvem, notify, irPara: setTab }} />}
               {tab === "simulados" && !pro && <Bloqueado recurso={RECURSOS_PRO.simulados} onVerPlanos={() => setTab("planos")} />}
               {tab === "progresso" && <Progresso {...{ data, byDay, today, totals, subjects }} />}

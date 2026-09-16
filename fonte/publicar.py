@@ -152,6 +152,21 @@ rotas = re.findall(r'"(/api/[a-z-]+)"\s*:',
                    open(os.path.join(RAIZ_WORKER, 'index.js'), encoding='utf-8').read())
 if not rotas:
     raise SystemExit('não achei nenhuma rota na tabela do worker/index.js')
+
+# E nenhum arquivo de rota pode ficar de fora dela.
+#
+# Um arquivo em worker/api/ que ninguém cita não vira endereço: a chamada
+# atravessa o Worker, cai no site, recebe o index.html de volta e o app diz
+# "não consegui falar com o servidor". Foi o que aconteceu com o montador de
+# treino, que ficou escrito e nunca respondeu.
+soltas = sorted(
+    nome for nome in os.listdir(os.path.join(RAIZ_WORKER, 'api'))
+    if nome.endswith('.js') and not nome.startswith('_')
+    and os.path.join('api', nome) not in PECAS
+)
+if soltas:
+    raise SystemExit(
+        'rota escrita mas não ligada em worker/index.js: ' + ', '.join(soltas))
 if not os.path.exists(os.path.join(RAIZ, 'wrangler.jsonc')):
     raise SystemExit('falta o wrangler.jsonc na raiz')
 

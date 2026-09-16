@@ -1,8 +1,15 @@
 /* Questões de múltipla escolha a partir de um material · rota /api/questoes-ia
  *
  * O navegador extrai o texto do PDF, do Word ou do resumo colado (a mesma
- * técnica do montador de flashcards) e manda só o texto; aqui a IA devolve
- * as questões em JSON, prontas para o duelo.
+ * técnica do montador de flashcards) e manda o texto; aqui a IA devolve as
+ * questões em JSON, prontas para o duelo.
+ *
+ * As figuras do material chegam no texto como marcadores [[img:nome]], o
+ * mesmo formato dos flashcards. A IA não recebe a imagem: ela recebe o
+ * marcador e decide qual questão depende daquela figura. Quem carrega os
+ * bytes é o duelo, depois — aqui só anda o nome. Assim uma prova de
+ * imagem (ECG, lâmina, tomografia) vira questão de verdade, em vez de um
+ * enunciado falando de uma figura que ninguém vê.
  *
  * O que o servidor confere antes de devolver, e por quê: uma questão com
  * duas alternativas iguais, com gabarito apontando para alternativa que
@@ -28,9 +35,11 @@ Regras:
 5. O enunciado é curto e se resolve sozinho: quem responde tem menos de um minuto e não tem o material na frente.
 6. Em "porque", uma frase explicando por que a certa é a certa. É o que as duas pessoas leem no fim.
 7. Português do Brasil, sem travessão no meio das frases.
+8. O material pode conter marcadores de figura no formato [[img:nome-do-arquivo]]. Eles marcam onde havia uma imagem. Quando a questão depender daquela imagem para ser respondida (um eletrocardiograma, uma lâmina, um exame), acrescente à questão o campo "imagem" com o nome EXATO que está dentro do marcador, e escreva o enunciado assumindo que quem responde está vendo a figura. Use apenas nomes que aparecem no material; nunca invente um. Questão que não precisa de figura não leva o campo, ou leva "".
+9. Nunca escreva o marcador [[img:...]] dentro do enunciado nem das alternativas.
 
 Responda SOMENTE com um JSON válido, sem markdown, sem texto antes ou depois:
-{"tema":"...","questoes":[{"enunciado":"...","alternativas":["...","...","...","..."],"certa":0,"porque":"..."}]}
+{"tema":"...","questoes":[{"enunciado":"...","alternativas":["...","...","...","..."],"certa":0,"porque":"...","imagem":""}]}
 
 "certa" é a POSIÇÃO da alternativa correta, começando em zero.
 Se o material não der para escrever questão nenhuma, responda {"tema":"","questoes":[]}.`;
@@ -45,7 +54,20 @@ function lerJson(texto) {
 }
 
 /* Uma questão só entra se der para disputar de verdade. */
-function questaoValida(q) {
+/* Os nomes de figura que existem de verdade no material. Só eles podem
+   virar o campo "imagem" de uma questão: a IA às vezes inventa um nome
+   parecido, e uma questão apontando para figura inexistente vira questão
+   sobre uma imagem que nunca aparece na tela. */
+export function figurasDoMaterial(texto) {
+  const nomes = new Set();
+  for (const m of String(texto || "").matchAll(/\[\[img:([^\]]+)\]\]/g)) {
+    const nome = String(m[1] || "").trim();
+    if (nome) nomes.add(nome);
+  }
+  return nomes;
+}
+
+export function questaoValida(q, figuras) {
   if (!q || typeof q.enunciado !== "string" || !q.enunciado.trim()) return null;
   const alternativas = (Array.isArray(q.alternativas) ? q.alternativas : [])
     .filter((a) => typeof a === "string" && a.trim())
@@ -56,11 +78,22 @@ function questaoValida(q) {
   if (vistas.size !== alternativas.length) return null;
   const certa = Math.round(Number(q.certa));
   if (!Number.isFinite(certa) || certa < 0 || certa >= alternativas.length) return null;
+  /* O marcador nunca é para ser lido por quem responde: ele é endereço de
+     arquivo. Se a IA o copiou para dentro do texto, sai fora. */
+  const semMarcador = (t) => String(t).replace(/\[\[img:[^\]]+\]\]/g, "").replace(/\s+/g, " ").trim();
+
+  const pedida = String(q.imagem || "").trim();
+  const imagem = pedida && figuras && figuras.has(pedida) ? pedida : "";
+
+  const limpas = alternativas.map(semMarcador).filter(Boolean);
+  if (limpas.length !== alternativas.length) return null;
+
   return {
-    enunciado: q.enunciado.trim().slice(0, 400),
-    alternativas,
+    enunciado: semMarcador(q.enunciado).slice(0, 400),
+    alternativas: limpas,
     certa,
-    porque: String(q.porque || "").trim().slice(0, 300),
+    porque: semMarcador(q.porque || "").slice(0, 300),
+    imagem,
   };
 }
 
@@ -113,7 +146,8 @@ export async function onRequest({ request, env }) {
     return json({ erro: "A IA não devolveu as questões num formato que eu conseguisse ler. Tente de novo." }, 502);
   }
 
-  const questoes = j.questoes.map(questaoValida).filter(Boolean).slice(0, quantas);
+  const figuras = figurasDoMaterial(material);
+  const questoes = j.questoes.map((q) => questaoValida(q, figuras)).filter(Boolean).slice(0, quantas);
   if (!questoes.length) {
     return json({ erro: "Não consegui tirar questões desse material. Tente com um resumo mais completo." }, 200);
   }

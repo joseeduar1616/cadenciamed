@@ -185,6 +185,46 @@ r = await pedir(await carregar(), { ...PEDIDO, quantas: 999 });
 if ((r.corpo.questoes || []).length <= 30) ok('oitenta questões viram no máximo trinta');
 else falha('passou ' + r.corpo.questoes.length + ' questões');
 
+/* ── figuras do material ──────────────────────────────────────────────
+   O material chega com marcadores [[img:nome]], como nos flashcards. A
+   questão que depende da figura leva o NOME dela; a que inventa um nome
+   fica sem figura, senão viraria questão sobre uma imagem invisível. */
+const COM_FIGURA = {
+  ...PEDIDO,
+  texto: 'Traçado de eletrocardiograma em ritmo sinusal. [[img:ecg-1.jpg]] Observe o intervalo PR alargado ao longo do exame completo.',
+};
+responder = () => respostaIA({
+  tema: 'ECG',
+  questoes: [
+    { enunciado: 'Qual o ritmo?', alternativas: ['a', 'b', 'c', 'd'], certa: 0, imagem: 'ecg-1.jpg' },
+    { enunciado: 'E aqui?', alternativas: ['a', 'b', 'c', 'd'], certa: 1, imagem: 'inventada.jpg' },
+    { enunciado: 'Sem figura?', alternativas: ['a', 'b', 'c', 'd'], certa: 2 },
+  ],
+});
+r = await pedir(await carregar(), COM_FIGURA);
+let qs = r.corpo.questoes || [];
+if (qs[0] && qs[0].imagem === 'ecg-1.jpg') ok('a questão que depende da figura leva o nome dela');
+else falha('nome da figura: ' + JSON.stringify(qs[0]));
+if (qs[1] && qs[1].imagem === '') ok('nome de figura que não está no material é descartado');
+else falha('aceitou figura inventada: ' + JSON.stringify(qs[1]));
+if (qs[2] && qs[2].imagem === '') ok('questão sem figura continua sem figura');
+else falha('apareceu figura onde não havia: ' + JSON.stringify(qs[2]));
+
+/* O marcador é endereço de arquivo, não texto para ler. */
+responder = () => respostaIA({
+  tema: 'ECG',
+  questoes: [{
+    enunciado: 'Veja [[img:ecg-1.jpg]] e diga o ritmo',
+    alternativas: ['a [[img:ecg-1.jpg]]', 'b', 'c', 'd'], certa: 0, imagem: 'ecg-1.jpg',
+  }],
+});
+r = await pedir(await carregar(), COM_FIGURA);
+qs = r.corpo.questoes || [];
+if (qs[0] && !/\[\[img:/.test(JSON.stringify(qs[0]))) ok('marcador copiado para dentro do texto é limpo');
+else falha('o marcador vazou para a tela: ' + JSON.stringify(qs[0]));
+if (qs[0] && qs[0].enunciado === 'Veja e diga o ritmo') ok('e o enunciado sobra legível depois da limpeza');
+else falha('enunciado depois da limpeza: ' + JSON.stringify(qs[0] && qs[0].enunciado));
+
 /* ── 7. sem conta, sem questões ───────────────────────────────────────── */
 responder = () => respostaIA(BOAS);
 r = await pedir(await carregar(), { ...PEDIDO, token: '' });

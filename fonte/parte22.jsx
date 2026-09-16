@@ -158,6 +158,94 @@ function CartaoDupla({ d, nuvem, notify, aoMudar, aoDuelar, aoEntrarNoDuelo }) {
   );
 }
 
+/* ── as figuras do material ──────────────────────────────────────────
+ *
+ * O leitor de PDF já recorta cada figura, guarda no aparelho e deixa um
+ * marcador [[img:nome]] no texto — é o mesmo caminho dos flashcards. Aqui
+ * as figuras que a IA citou são lidas de volta, encolhidas e mandadas
+ * junto ao criar o duelo.
+ *
+ * Elas TÊM de viajar: o material foi lido no aparelho de quem enviou, e a
+ * outra pessoa não tem aquele arquivo em lugar nenhum. Sem isto a questão
+ * de imagem chegaria para ela como um enunciado falando de uma figura que
+ * não existe na tela.
+ */
+const LADO_FIGURA_DUELO = 1000;
+const QUALIDADE_FIGURA_DUELO = 0.72;
+
+/* Maior que a foto do mural de treino: aqui a pessoa precisa LER a figura
+   (um ECG, uma lâmina) para responder, não só reconhecer o que é. */
+function encolherFigura(dataUri) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const fator = Math.min(1, LADO_FIGURA_DUELO / Math.max(img.width, img.height));
+        const c = document.createElement("canvas");
+        c.width = Math.max(1, Math.round(img.width * fator));
+        c.height = Math.max(1, Math.round(img.height * fator));
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        resolve(c.toDataURL("image/jpeg", QUALIDADE_FIGURA_DUELO));
+      } catch (e) { resolve(""); }
+    };
+    /* Figura que não abre é figura que fica de fora, e a questão segue sem
+       ela: melhor perder a imagem do que não conseguir montar o duelo. */
+    img.onerror = () => resolve("");
+    img.src = dataUri;
+  });
+}
+
+async function figurasParaODuelo(questoes) {
+  const nomes = [...new Set((questoes || []).map((q) => q && q.imagem).filter(Boolean))];
+  const fora = [];
+  for (const nome of nomes) {
+    const bruto = await lerMidia(nome).catch(() => "");
+    if (!bruto) continue;
+    const menor = await encolherFigura(bruto);
+    if (menor) fora.push({ nome, dataUri: menor });
+  }
+  return fora;
+}
+
+/* A figura de uma questão, baixada quando ela abre.
+ *
+ * Uma por vez, e não todas de uma: uma prova de imagem inteira baixada no
+ * começo faria o duelo demorar para abrir justo no 4G, que é onde ele mais
+ * é usado. O que já desceu fica guardado aqui em memória, então voltar ao
+ * gabarito no fim não baixa de novo. */
+function FiguraDaQuestao({ nuvem, id, nome }) {
+  const [uri, setUri] = useState("");
+  const [faltou, setFaltou] = useState(false);
+  const guardadas = useRef({});
+
+  useEffect(() => {
+    if (!nome) { setUri(""); setFaltou(false); return undefined; }
+    if (guardadas.current[nome]) { setUri(guardadas.current[nome]); setFaltou(false); return undefined; }
+    let vivo = true;
+    setUri(""); setFaltou(false);
+    (async () => {
+      const j = await falarComDuplas(nuvem, { acao: "duelo-figura", id, nome });
+      if (!vivo) return;
+      if (j.erro || !j.dataUri) { setFaltou(true); return; }
+      guardadas.current[nome] = j.dataUri;
+      setUri(j.dataUri);
+    })();
+    return () => { vivo = false; };
+  }, [nuvem, id, nome]);
+
+  if (!nome) return null;
+  if (faltou) return <Mini style={{ marginTop: 12 }}>a figura desta questão não está mais guardada</Mini>;
+  if (!uri) return <Mini style={{ marginTop: 12 }}>carregando a figura…</Mini>;
+  return (
+    <img src={uri} alt="Figura da questão"
+      style={{
+        marginTop: 14, width: "100%", maxHeight: "38vh", objectFit: "contain",
+        borderRadius: 14, border: `1px solid ${T.line}`, background: T.card2,
+        display: "block",
+      }} />
+  );
+}
+
 /* ── montar o duelo ──────────────────────────────────────────────────── */
 
 function MontarDuelo({ dupla, nuvem, notify, aoComecar, aoFechar }) {
@@ -189,10 +277,13 @@ function MontarDuelo({ dupla, nuvem, notify, aoComecar, aoFechar }) {
       notify(`O material deu para ${dados.questoes.length} questões, e não ${quantas}.`);
     }
 
+    setPasso("Mandando as figuras…");
+    const figuras = await figurasParaODuelo(dados.questoes);
+
     setPasso("Começando o duelo…");
     const j = await falarComDuplas(nuvem, {
       acao: "duelo-criar", id: dupla.id, segundos,
-      tema: dados.tema, questoes: dados.questoes,
+      tema: dados.tema, questoes: dados.questoes, figuras,
     });
     setPasso("");
     if (j.erro) { setErro(j.erro); return; }
@@ -409,6 +500,9 @@ function DueloAoVivo({ dupla, nuvem, notify, aoSair }) {
                     </span>
                   </div>
                   <Texto style={{ marginTop: 8 }}>{q.enunciado}</Texto>
+                  {/* A figura aparece de novo no gabarito: sem ela, rever a
+                      questão de imagem no fim é rever meia questão. */}
+                  <FiguraDaQuestao nuvem={nuvem} id={dupla.id} nome={q.imagem} />
                   <div className="mt-3 flex flex-col gap-1.5">
                     {q.alternativas.map((a, i) => (
                       <div key={i} className="rounded-2xl px-3 py-2" style={{
@@ -443,6 +537,8 @@ function DueloAoVivo({ dupla, nuvem, notify, aoSair }) {
       <Texto style={{ marginTop: 18, fontSize: 17, lineHeight: 1.6, color: T.ink }}>
         {d.questao.enunciado}
       </Texto>
+
+      <FiguraDaQuestao nuvem={nuvem} id={dupla.id} nome={d.questao.imagem} />
 
       <div className="mt-5 flex flex-col gap-2">
         {d.questao.alternativas.map((a, i) => (

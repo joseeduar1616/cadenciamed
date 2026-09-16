@@ -14,6 +14,14 @@ patch, n = re.subn(r'const pro = assinatura\.pro;',
 if n != 1:
     raise SystemExit('não achei a linha do paywall em app.jsx')
 
+# As abas do dono (Assistente, Treino) dependem do e-mail de quem entrou, e
+# o teste roda deslogado. Quem decide de verdade continua sendo o servidor,
+# em cada rota; aqui é só para a barra mostrar a aba e o teste chegar nela.
+patch, n = re.subn(r'const souDono = ehDono\(nuvem\.usuario\);',
+                   'const souDono = true;   /* build de teste */', patch)
+if n != 1:
+    raise SystemExit('não achei a linha do souDono em app.jsx')
+
 os.makedirs('_teste', exist_ok=True)
 open('_teste/app.jsx', 'w', encoding='utf-8').write(patch)
 for f in ('main.jsx', 'curriculo.js'):

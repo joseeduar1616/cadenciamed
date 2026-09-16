@@ -1005,13 +1005,20 @@ function Assistente({ data, setData, subjects, ladder, today, totals, minWeek, q
   const [anexos, setAnexos] = useState([]);
   const [lendo, setLendo] = useState("");
   const arquivoRef = useRef(null);
-  const fim = useRef(null);
+  const conversa = useRef(null);
   const ativo = useAtivo();
 
+  /* Desce a conversa quando chega resposta.
+   *
+   * Mexendo no scroll da própria caixa: o scrollIntoView rola também os
+   * pais até o elemento aparecer, e no celular isso puxava a PÁGINA para
+   * baixo sozinha. Quem subiu para reler algo fica onde está. */
   useEffect(() => {
-    if (fim.current && fim.current.scrollIntoView) {
-      try { fim.current.scrollIntoView({ behavior: "smooth", block: "end" }); } catch (e) { /* noop */ }
-    }
+    const caixa = conversa.current;
+    if (!caixa) return;
+    const distancia = caixa.scrollHeight - caixa.scrollTop - caixa.clientHeight;
+    if (distancia > 160) return;
+    caixa.scrollTop = caixa.scrollHeight;
   }, [msgs, ocupado]);
 
   const aplicarAcoes = useCallback((texto) => {
@@ -1135,7 +1142,8 @@ function Assistente({ data, setData, subjects, ladder, today, totals, minWeek, q
       </Card>
 
       <Card className="flex flex-col" style={{ minHeight: 420 }}>
-        <div className="flex-1 px-5 sm:px-6 py-5 flex flex-col gap-4" style={{ maxHeight: 520, overflowY: "auto" }}>
+        <div ref={conversa} className="flex-1 px-5 sm:px-6 py-5 flex flex-col gap-4"
+          style={{ maxHeight: 520, overflowY: "auto", overscrollBehavior: "contain" }}>
           {msgs.length === 0 ? (
             <div className="flex flex-col items-center text-center py-8 px-4">
               <div style={{ color: "var(--neon)", opacity: 0.6 }}><Sparkles size={26} /></div>
@@ -1182,7 +1190,6 @@ function Assistente({ data, setData, subjects, ladder, today, totals, minWeek, q
               </div>
             </div>
           ) : null}
-          <div ref={fim} />
         </div>
 
         {erro ? (

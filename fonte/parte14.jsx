@@ -489,11 +489,22 @@ function horaCurta(em) {
  *    senão o campo viraria um jeito de mandar qualquer link para todo
  *    mundo de uma vez.
  */
+/* Os tempos de um toque, e os limites do campo livre. Precisam bater com o
+   que a rota aceita (5 minutos a 12 horas): aqui é só para a tela não
+   prometer o que o servidor vai recusar. */
+const TEMPOS_JUNTOS = [25, 50, 90, 120, 180, 240];
+const MIN_FOCO_JUNTOS = 5;
+const MAX_FOCO_JUNTOS = 720;
+
 function EstudarJuntos({ nuvem, slug, foco, jam, estudando, aoMudar, notify, irPara }) {
   const [ocupado, setOcupado] = useState("");
   const [link, setLink] = useState("");
   const [erro, setErro] = useState("");
   const [agora, setAgora] = useState(Date.now());
+  /* Campo livre, para quem quer um tempo que não está nos botões. Fica em
+     minutos porque é a unidade que o servidor recebe, mas a tela mostra a
+     tradução em horas enquanto a pessoa escreve. */
+  const [outro, setOutro] = useState("");
 
   /* O relógio anda aqui, e não no servidor: o ranking só recarrega de
      tempos em tempos, e um contador que só mexesse nessa hora andaria aos
@@ -517,8 +528,13 @@ function EstudarJuntos({ nuvem, slug, foco, jam, estudando, aoMudar, notify, irP
 
   const combinar = async (minutos) => {
     const j = await mandar({ acao: "focar", minutos }, "foco");
-    if (j) notify(`Foco de ${minutos} min combinado com a sala.`);
+    if (j) { setOutro(""); notify(`Foco de ${fmtMin(minutos)} combinado com a sala.`); }
   };
+
+  /* O que a pessoa escreveu, já limpo. Zero significa "ainda não dá para
+     combinar", e é isso que desliga o botão. */
+  const escrito = Math.round(Number(outro) || 0);
+  const escritoVale = escrito >= MIN_FOCO_JUNTOS && escrito <= MAX_FOCO_JUNTOS;
 
   return (
     <Card className="px-6 py-6" brilho="var(--neon)">
@@ -551,10 +567,28 @@ function EstudarJuntos({ nuvem, slug, foco, jam, estudando, aoMudar, notify, irP
             na mesma hora é o que faz estudar junto valer, mesmo cada um na sua casa.
           </Texto>
           <div className="mt-4 flex flex-wrap gap-2">
-            {[25, 50, 90].map((m) => (
+            {TEMPOS_JUNTOS.map((m) => (
               <Btn key={m} size="sm" tone={m === 50 ? "primary" : "quiet"} disabled={ocupado === "foco"}
-                onClick={() => combinar(m)}>{m} min</Btn>
+                onClick={() => combinar(m)}>{fmtMin(m)}</Btn>
             ))}
+          </div>
+
+          <div className="mt-3 flex items-end gap-2 flex-wrap">
+            <div style={{ width: 128 }}>
+              <Field label="Outro tempo">
+                <TextInput type="number" inputMode="numeric" value={outro}
+                  min={MIN_FOCO_JUNTOS} max={MAX_FOCO_JUNTOS} placeholder="minutos"
+                  onChange={(e) => setOutro(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && escritoVale) combinar(escrito); }} />
+              </Field>
+            </div>
+            <Btn size="sm" tone="outline" disabled={ocupado === "foco" || !escritoVale}
+              onClick={() => combinar(escrito)}>combinar</Btn>
+            <Mini style={{ paddingBottom: 10 }}>
+              {escrito > 0 && !escritoVale
+                ? `de ${MIN_FOCO_JUNTOS} min a ${MAX_FOCO_JUNTOS / 60} horas`
+                : escrito > 0 ? fmtMin(escrito) : "em minutos · até 12 horas"}
+            </Mini>
           </div>
         </>
       )}
@@ -610,7 +644,7 @@ function Recados({ nuvem, slug, quem }) {
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState("");
-  const fim = useRef(null);
+  const lista = useRef(null);
   const refNuvem = useRef(nuvem);
   refNuvem.current = nuvem;
 
@@ -618,7 +652,16 @@ function Recados({ nuvem, slug, quem }) {
     if (!slug) return;
     const j = await falarComSalas(refNuvem.current, { acao: "recados", nome: slug });
     if (j.erro) return;                        // silencioso: é atualização de fundo
-    setItens(j.recados || []);
+    /* Só troca a lista quando a conversa mudou de verdade.
+     *
+     * A busca roda a cada doze segundos e devolvia sempre um array novo,
+     * mesmo sem mensagem nova. Como a identidade mudava, tudo que dependia
+     * dela reagia — inclusive o efeito que descia a conversa, que puxava a
+     * página junto no celular a cada doze segundos, do nada. */
+    const novos = j.recados || [];
+    setItens((antes) => (
+      antes && JSON.stringify(antes) === JSON.stringify(novos) ? antes : novos
+    ));
   }, [slug]);
 
   useEffect(() => {
@@ -634,11 +677,21 @@ function Recados({ nuvem, slug, quem }) {
     return () => { clearInterval(t); document.removeEventListener("visibilitychange", aoVoltar); };
   }, [buscar]);
 
-  /* Desce até a última mensagem quando chega coisa nova. */
+  /* Desce até a última mensagem quando chega coisa nova.
+   *
+   * Mexendo no scroll da própria caixa, e não com scrollIntoView: aquele
+   * também rola os pais até o elemento aparecer, e no celular isso jogava a
+   * PÁGINA inteira para baixo, tirando da tela o que a pessoa estava lendo.
+   *
+   * E só desce quem já estava embaixo. Quem subiu para reler uma mensagem
+   * antiga fica onde está: puxar a tela de volta no meio da leitura é pior
+   * do que perder a mensagem nova de vista. */
   useEffect(() => {
-    if (fim.current && fim.current.scrollIntoView) {
-      fim.current.scrollIntoView({ block: "nearest" });
-    }
+    const caixa = lista.current;
+    if (!caixa || !itens) return;
+    const distancia = caixa.scrollHeight - caixa.scrollTop - caixa.clientHeight;
+    if (distancia > 120) return;
+    caixa.scrollTop = caixa.scrollHeight;
   }, [itens]);
 
   const mandar = async () => {
@@ -656,8 +709,11 @@ function Recados({ nuvem, slug, quem }) {
     <Card className="px-6 py-6">
       <H color="var(--neon2)" icon={<MessageCircle size={16} />}>Recados da sala</H>
 
-      <div className="mt-4 flex flex-col gap-3" style={{
+      <div ref={lista} className="mt-4 flex flex-col gap-3" style={{
         maxHeight: 340, overflowY: "auto", overflowX: "hidden",
+        /* A rolagem para aqui em vez de continuar na página: sem isto, no
+           celular, chegar ao fim da conversa emendava em rolar o site. */
+        overscrollBehavior: "contain",
       }}>
         {itens === null ? (
           <Label>carregando…</Label>
@@ -687,7 +743,6 @@ function Recados({ nuvem, slug, quem }) {
             </div>
           );
         })}
-        <div ref={fim} />
       </div>
 
       <div className="mt-4 flex gap-2 items-end">
