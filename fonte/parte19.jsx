@@ -1150,7 +1150,7 @@ function Competicao({ treino, nuvem, notify }) {
               <span style={{ fontFamily: F_MONO, fontSize: 15, color: T.ghost, minWidth: 22 }}>
                 {x.posicao || "—"}
               </span>
-              <Face nome={x.nome} cor={corDoNome(x.nome)} tamanho={32} forte={x.souEu} />
+              <Face nome={x.nome} foto={x.foto} cor={corDoNome(x.nome)} tamanho={32} forte={x.souEu} />
               <span className="flex-1 min-w-0">
                 <span style={{ display: "block", fontSize: 15, fontWeight: x.souEu ? 700 : 600 }}>{x.nome}</span>
                 <Mini>{x.treinos} treino{x.treinos === 1 ? "" : "s"} · {x.series} séries · {fmtMin(x.minutos)}</Mini>
@@ -1213,7 +1213,7 @@ function Competicao({ treino, nuvem, notify }) {
           {(mural || []).map((t) => (
             <div key={t.id} className="rounded-2xl px-4 py-4" style={{ background: T.card2 }}>
               <div className="flex items-center gap-3">
-                <Face nome={t.nome} cor={corDoNome(t.nome)} tamanho={32} />
+                <Face nome={t.nome} foto={t.foto} cor={corDoNome(t.nome)} tamanho={32} />
                 <span className="flex-1 min-w-0">
                   <span style={{ display: "block", fontSize: 15, fontWeight: 600 }}>{t.nome}</span>
                   <Mini>

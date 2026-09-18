@@ -18,6 +18,7 @@ const ICONE_ABA = {
   assistente: Sparkles, cartoes: Layers, revisoes: RotateCcw,
   rotina: CalendarClock, amigos: Users, mentor: User,
   metas: Flame, desempenho: BarChart3, treino: Dumbbell, simulados: Flag,
+  provas: FileText,
   progresso: TrendingUp, planos: Zap, config: Settings2,
 };
 
@@ -508,12 +509,15 @@ export default function Cadencia() {
   const mentorInfo = useMentor(nuvem);
   const assinatura = useAssinatura(nuvem.sdk, nuvem.usuario);
   const pro = assinatura.pro;
-  /* Quem vê o quê, dito pelo servidor. Enquanto ele não responde vale o
-     padrão, para a barra não nascer vazia. */
-  const ver = assinatura.recursos || RECURSOS_PADRAO;
-  useEffect(() => { setProAtivo(pro); }, [pro]);
-
   const souDono = ehDono(nuvem.usuario);
+  /* Quem vê o quê, dito pelo servidor. Enquanto ele não responde — ou se
+     ele não responder — valem as regras padrão aplicadas ao que a tela já
+     sabe, para a barra não nascer vazia nem tirar aba de quem paga. */
+  const ver = useMemo(
+    () => assinatura.recursos || recursosLocais(pro, souDono),
+    [assinatura.recursos, pro, souDono],
+  );
+  useEffect(() => { setProAtivo(pro); }, [pro]);
 
   /* Publica os três números que aparecem no ranking das salas. Fica aqui,
      e não dentro da aba Amigos, para o perfil continuar em dia mesmo de
@@ -527,7 +531,8 @@ export default function Cadencia() {
     minutos: P.modo === "corrido" ? P.corrido / 60 : (P.total - P.left) / 60,
   };
 
-  usePerfilPublico(nuvem, data.profile.name, data.sessions, today, data.mostrarDesempenho, aoVivo);
+  usePerfilPublico(nuvem, data.profile.name, data.sessions, today, data.mostrarDesempenho, aoVivo,
+    data.profile.apelido, data.profile.foto);
 
   /* Menu lateral: no celular é gaveta que abre por cima; no computador
      fica fixo e só encolhe para a largura dos ícones. */
@@ -547,6 +552,7 @@ export default function Cadencia() {
     revisoes: "a escada de revisão", rotina: "a semana e o Google Agenda",
     amigos: "quem estuda com você", mentor: "os seus alunos",
     metas: "simulados, provas e hábitos", desempenho: "acerto por área e matéria",
+    provas: "prova enviada vira gabarito comentado",
     treino: "academia, fora da conta do estudo", simulados: "acerto contra os amigos",
     progresso: "o caminho até aqui",
     planos: "assinatura", config: "tudo que dá para ajustar",
@@ -565,7 +571,9 @@ export default function Cadencia() {
   /* O convite para duelar também mora aqui, e pelo mesmo motivo: quem foi
      chamado precisa saber disso com qualquer aba aberta. Devolve quantos
      duelos esperam por mim, que é o número que acende na aba Amigos. */
-  const duelosEsperando = useConviteDeDuelo({ nuvem, notify });
+  const duelosEsperando = useConviteDeDuelo({
+    nuvem, notify, lembretes: !!(data.lembretes && data.lembretes.ligado),
+  });
 
   const TABS = [
     { id: "hoje", label: "Hoje", acc: "var(--a-CL)" },
@@ -1034,6 +1042,7 @@ export default function Cadencia() {
               {tab === "metas" && pro && <Metas {...{ data, setData, today, qWeek, notify, ladder, gcal }} />}
               {tab === "mentor" && mentorInfo.mentor && <Mentor {...{ nuvem, notify, mentorInfo }} />}
               {tab === "desempenho" && <Desempenho {...{ data, today, addSession, delSession, notify }} />}
+              {tab === "provas" && ver.provas && <Provas {...{ nuvem, notify }} />}
               {tab === "treino" && ver.treino && <Treino {...{ data, setData, notify, today, nuvem }} />}
               {tab === "simulados" && pro && <Simulados {...{ nuvem, notify, irPara: setTab }} />}
               {tab === "simulados" && !pro && <Bloqueado recurso={RECURSOS_PRO.simulados} onVerPlanos={() => setTab("planos")} />}

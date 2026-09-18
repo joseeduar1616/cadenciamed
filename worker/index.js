@@ -24,6 +24,7 @@ import { onRequest as google } from "./api/google.js";
 import { onRequest as treinoIa } from "./api/treino-ia.js";
 import { onRequest as duplas } from "./api/duplas.js";
 import { onRequest as questoesIa } from "./api/questoes-ia.js";
+import { onRequest as provasIa } from "./api/provas-ia.js";
 
 const ROTAS = {
   "/api/assistente": assistente,
@@ -43,6 +44,7 @@ const ROTAS = {
   "/api/treino-ia": treinoIa,
   "/api/duplas": duplas,
   "/api/questoes-ia": questoesIa,
+  "/api/provas-ia": provasIa,
 };
 
 /* ── quem pode chamar de outro endereço ────────────────────────────────

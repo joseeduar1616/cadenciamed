@@ -16,7 +16,9 @@ const CORES_TIMER = [
 ];
 
 const DEFAULTS = {
-  profile: { name: PRESET ? "José Eduardo" : "", examDate: "", onboarded: PRESET },
+  /* apelido: como a pessoa quer ser chamada nas telas com outras pessoas.
+     foto: a imagem já encolhida, guardada como data URL. Ver PerfilPublico. */
+  profile: { name: PRESET ? "José Eduardo" : "", apelido: "", foto: "", examDate: "", onboarded: PRESET },
   theme: "dark",
   layout: "auto",
   sessions: [], marks: {}, reviews: {}, routine: [], agenda: [], tasks: [],
@@ -203,6 +205,11 @@ function normalize(raw) {
   return {
     profile: {
       name: typeof pr.name === "string" ? pr.name : DEFAULTS.profile.name,
+      apelido: typeof pr.apelido === "string" ? pr.apelido.slice(0, 24) : "",
+      /* Só data URL de imagem entra. Um endereço http aqui viraria uma
+         busca a um site de fora toda vez que a lista de amigos abrisse,
+         contando para quem hospedasse a imagem quem estava olhando. */
+      foto: typeof pr.foto === "string" && /^data:image\//.test(pr.foto) ? pr.foto : "",
       examDate: typeof pr.examDate === "string" ? pr.examDate : "",
       onboarded: pr.onboarded === undefined ? DEFAULTS.profile.onboarded : !!pr.onboarded,
     },

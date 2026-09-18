@@ -107,7 +107,7 @@ function CartaoDupla({ d, nuvem, notify, aoMudar, aoDuelar, aoEntrarNoDuelo }) {
   return (
     <div className="rounded-2xl px-4 py-4" style={{ background: T.card2 }}>
       <div className="flex items-center gap-3 flex-wrap">
-        <Face nome={d.nome} cor={corDoNome(d.nome)} tamanho={36} forte={d.estudando} />
+        <Face nome={d.nome} foto={d.foto} cor={corDoNome(d.nome)} tamanho={36} forte={d.estudando} />
         <span className="flex-1 min-w-0">
           <span style={{ display: "block", fontSize: 15.5, fontWeight: 600 }}>{d.nome}</span>
           <Mini>
@@ -375,7 +375,7 @@ function DueloAoVivo({ dupla, nuvem, notify, aoSair }) {
               <div key={x.uid} className="rounded-2xl px-4 py-3 flex items-center gap-3"
                 style={{ background: i === 0 ? soft("var(--ok)", 14) : T.card2 }}>
                 <span style={{ fontFamily: F_MONO, fontSize: 15, color: T.ghost, minWidth: 22 }}>{i + 1}</span>
-                <Face nome={x.nome} cor={corDoNome(x.nome)} tamanho={32} />
+                <Face nome={x.nome} foto={x.foto} cor={corDoNome(x.nome)} tamanho={32} />
                 <span className="flex-1 min-w-0" style={{ fontSize: 15, fontWeight: 600 }}>{x.nome}</span>
                 <span style={{ fontFamily: F_MONO, fontSize: 16, color: i === 0 ? T.ok : T.dim }}>
                   {x.acertos}/{d.total}
@@ -560,13 +560,15 @@ function Duplas({ nuvem, notify }) {
  */
 const RITMO_CONVITE = 20000;
 
-function useConviteDeDuelo({ nuvem, notify }) {
+function useConviteDeDuelo({ nuvem, notify, lembretes }) {
   const [esperando, setEsperando] = useState(0);
   const jaAvisei = useRef({});
   const refNotify = useRef(notify);
   refNotify.current = notify;
   const refNuvem = useRef(nuvem);
   refNuvem.current = nuvem;
+  const refLembretes = useRef(lembretes);
+  refLembretes.current = lembretes;
   const uid = nuvem && nuvem.usuario ? nuvem.usuario.uid : "";
 
   useEffect(() => {
@@ -586,7 +588,12 @@ function useConviteDeDuelo({ nuvem, notify }) {
       for (const d of meus) {
         if (jaAvisei.current[d.duelo.marca]) continue;
         jaAvisei.current[d.duelo.marca] = 1;
-        avisar("Duelo esperando você", `${d.nome} chamou você para um duelo de questões.`);
+        /* A notificação do sistema só sai para quem ligou os lembretes.
+           Quem nunca ligou recebe o recado dentro do site, e só. */
+        if (refLembretes.current) {
+          avisar("Duelo esperando você",
+            `${d.nome} chamou você para um duelo de questões.`, `duelo:${d.duelo.marca}`);
+        }
         if (refNotify.current) refNotify.current(`${d.nome} chamou você para um duelo. Abra a aba Amigos.`);
       }
     };

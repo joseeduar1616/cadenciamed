@@ -101,6 +101,9 @@ async function perfisDe(token, uids) {
     const f = item.found.fields || {};
     fora[item.found.name.split("/").pop()] = {
       nome: texto(f.nome),
+      /* A foto de perfil vem no mesmo lote do nome: buscar foto por foto
+         seria uma ida ao banco por pessoa, a cada abertura da aba. */
+      foto: texto(f.foto),
       presencaEm: numero(f.presencaEm),
       presencaMin: numero(f.presencaMin),
     };
@@ -264,7 +267,11 @@ function placarDoDuelo(d, perfis) {
       respondidas += 1;
       if (r.escolha === q.certa) acertos += 1;
     });
-    return { uid, nome: (perfis[uid] && perfis[uid].nome) || "Alguém", acertos, respondidas };
+    return {
+      uid, nome: (perfis[uid] && perfis[uid].nome) || "Alguém",
+      foto: (perfis[uid] && perfis[uid].foto) || "",
+      acertos, respondidas,
+    };
   }).sort((a, b) => b.acertos - a.acertos);
 }
 
@@ -323,6 +330,7 @@ export async function onRequest({ request, env }) {
           id: d.id,
           uid: outro,
           nome: p.nome || "Alguém",
+          foto: p.foto || "",
           aceita: d.aceita,
           euConvidei: d.quemConvidou === pessoa.uid,
           estudando: vivo,

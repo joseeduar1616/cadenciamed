@@ -75,17 +75,32 @@ const ROTA_PLANO = "/api/plano";
  *
  * Nada disso é o que protege o conteúdo pago — cada rota confere o acesso
  * por conta própria. Aqui é só o que a tela mostra. */
-/* O padrão de cada aba, igual ao do servidor (RECURSOS, em
+/* A regra padrão de cada aba, igual à do servidor (RECURSOS, em
    worker/api/_comum.js). Vale só enquanto o servidor não respondeu, e para
    quem está sem conta: o site abre sem login, e a barra de abas precisa de
    alguma coisa para desenhar. Quem manda é sempre a resposta do servidor.
    As duas listas não podem divergir, e é isso que o testar-recursos.mjs
    confere a cada build. */
 const RECURSOS_PADRAO = {
-  assistente: false, cartoes: false, revisoes: false, provas: false,
-  cronograma: true, rotina: true, amigos: true, metas: true,
-  desempenho: true, simulados: true, progresso: true, treino: false,
+  assistente: "pro", cartoes: "pro", revisoes: "pro", provas: "pro",
+  cronograma: "todos", rotina: "todos", amigos: "todos", metas: "todos",
+  desempenho: "todos", simulados: "todos", progresso: "todos",
+  treino: "dono",
 };
+
+/* A reserva, aplicando as regras padrão ao que a tela já sabe.
+ *
+ * Ela precisa levar em conta quem paga. Devolvendo só os padrões, como
+ * fazia antes, uma queda de rede na hora de conferir o plano tirava as
+ * abas pagas de quem assina — a pessoa pagou, abriu o site com a internet
+ * oscilando, e os Cartões sumiram da barra. */
+function recursosLocais(pro, dono) {
+  const saida = {};
+  for (const [id, regra] of Object.entries(RECURSOS_PADRAO)) {
+    saida[id] = !!dono || regra === "todos" || (regra === "pro" && !!pro);
+  }
+  return saida;
+}
 
 function useAssinatura(sdk, usuario) {
   const [plano, setPlano] = useState(null);
@@ -121,11 +136,7 @@ function useAssinatura(sdk, usuario) {
          do servidor — o que ele perde nesse caso é só a regra gravada, e
          quem confere isso de verdade é cada rota, no servidor. */
       setAviso(erro);
-      if (dono) {
-        setPlano({ tipo: "dono", ate: Infinity });
-        setRecursos((r) => r || Object.fromEntries(
-          Object.keys(RECURSOS_PADRAO).map((k) => [k, true])));
-      }
+      if (dono) setPlano({ tipo: "dono", ate: Infinity });
       return;
     }
     setAviso("");

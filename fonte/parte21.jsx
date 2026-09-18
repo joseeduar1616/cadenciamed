@@ -429,12 +429,63 @@ function podeNotificar() {
   return typeof window !== "undefined" && "Notification" in window;
 }
 
-function avisar(titulo, corpo) {
+/* O site instalado na tela de início. No iPhone isso não é detalhe: lá a
+   notificação SÓ existe para o site instalado, e pedir permissão no
+   Safari comum falha sem dizer por quê. A tela precisa saber disso para
+   explicar o que fazer, em vez de mostrar um botão que não funciona. */
+function instalado() {
   try {
-    if (!podeNotificar() || Notification.permission !== "granted") return;
-    const n = new Notification(titulo, { body: corpo, icon: "/icone-192.png", tag: titulo });
+    return (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches)
+      || window.navigator.standalone === true;
+  } catch (e) { return false; }
+}
+
+function ehIOS() {
+  try {
+    const ua = String(window.navigator.userAgent || "");
+    return /iPad|iPhone|iPod/.test(ua)
+      || (/Mac/.test(ua) && typeof document !== "undefined" && "ontouchend" in document);
+  } catch (e) { return false; }
+}
+
+/* Como a notificação é mostrada.
+ *
+ * Pelo service worker, e não por "new Notification".
+ *
+ * Isto não é preferência: no Chrome do Android o construtor Notification
+ * simplesmente LANÇA ("Illegal constructor"), e só o showNotification do
+ * registro funciona. Como a chamada estava dentro de um try que engolia o
+ * erro, no Android o lembrete nunca aparecia e nada acusava nada — a
+ * pessoa ligava o aviso, via "ligados" na tela, e não recebia aviso
+ * nenhum. O construtor fica de reserva para o computador.
+ *
+ * O "tag" separa um aviso do outro. Era o título, e dois blocos com o
+ * mesmo nome no mesmo dia se substituíam: o segundo "Anatomia" apagava o
+ * primeiro em vez de aparecer. */
+async function avisar(titulo, corpo, marca) {
+  if (!podeNotificar() || Notification.permission !== "granted") return false;
+  const opcoes = {
+    body: corpo,
+    icon: "/icone-192.png",
+    badge: "/icone-192.png",
+    tag: marca || titulo,
+  };
+  try {
+    if (navigator.serviceWorker) {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg && reg.showNotification) {
+        await reg.showNotification(titulo, opcoes);
+        return true;
+      }
+    }
+  } catch (e) { /* cai na reserva abaixo */ }
+  try {
+    const n = new Notification(titulo, opcoes);
     window.setTimeout(() => { try { n.close(); } catch (e) { /* noop */ } }, 12000);
-  } catch (e) { /* o navegador recusou, segue sem */ }
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
 /* Roda com o site aberto e avisa uma vez por coisa por dia.
@@ -464,7 +515,8 @@ function useLembretes({ ligado, vencendoHoje, blocosHoje, today }) {
         avisados[chaveRev] = 1;
         gravarAvisados(avisados);
         avisar("Revisões de hoje",
-          `${vencendoRef.current} ${vencendoRef.current === 1 ? "aula vence" : "aulas vencem"} hoje.`);
+          `${vencendoRef.current} ${vencendoRef.current === 1 ? "aula vence" : "aulas vencem"} hoje.`,
+          chaveRev);
       }
 
       /* O bloco que começa nos próximos 10 minutos. */
@@ -478,7 +530,8 @@ function useLembretes({ ligado, vencendoHoje, blocosHoje, today }) {
           avisados[chave] = 1;
           gravarAvisados(avisados);
           avisar(b.label || "Bloco da agenda",
-            faltam === 0 ? "Começa agora." : `Começa em ${faltam} min.`);
+            faltam === 0 ? "Começa agora." : `Começa em ${faltam} min.`,
+            chave);
         }
       }
     };
@@ -500,6 +553,29 @@ function Lembretes({ data, setData, notify }) {
   const ligado = !!(data.lembretes && data.lembretes.ligado);
   const [permissao, setPermissao] = useState(
     podeNotificar() ? Notification.permission : "indisponivel");
+  const [testando, setTestando] = useState(false);
+
+  /* A permissão pode mudar FORA daqui: pelo cadeado ao lado do endereço,
+     por outra aba, pelos ajustes do sistema. Lida uma vez só, a tela
+     passava a mentir — dizia "recusado" para quem tinha acabado de
+     liberar, e o botão continuava travado. */
+  useEffect(() => {
+    if (!podeNotificar()) return undefined;
+    const conferir = () => setPermissao(Notification.permission);
+    conferir();
+    const aoVoltar = () => { if (document.visibilityState === "visible") conferir(); };
+    document.addEventListener("visibilitychange", aoVoltar);
+    const t = window.setInterval(conferir, 3000);
+    return () => {
+      document.removeEventListener("visibilitychange", aoVoltar);
+      window.clearInterval(t);
+    };
+  }, []);
+
+  /* No iPhone a notificação só existe para o site instalado na tela de
+     início. Antes disso o botão pedir permissão falha calado, e a pessoa
+     fica achando que o site é que está quebrado. */
+  const precisaInstalar = ehIOS() && !instalado();
 
   const ligar = async () => {
     if (!podeNotificar()) return;
@@ -513,22 +589,47 @@ function Lembretes({ data, setData, notify }) {
       return;
     }
     setData((x) => ({ ...x, lembretes: { ...(x.lembretes || {}), ligado: true } }));
-    avisar("Lembretes ligados", "É assim que eles vão aparecer.");
+    /* O aviso de teste sai na hora, e a tela CONFERE se ele saiu. Dizer
+       "ligados" sem ter conseguido mostrar nada é a forma mais rápida de
+       a pessoa descobrir que não funciona só no dia em que precisava. */
+    const foi = await avisar("Lembretes ligados", "É assim que eles vão aparecer.", "teste");
+    if (!foi) {
+      notify("Liguei, mas este navegador não deixou mostrar o aviso de teste.");
+    }
+  };
+
+  const testar = async () => {
+    setTestando(true);
+    const foi = await avisar("Teste do Cadência",
+      "Se você está lendo isto, os lembretes funcionam neste aparelho.", "teste");
+    setTestando(false);
+    notify(foi
+      ? "Mandei um aviso agora. Se ele não apareceu, confira as notificações do sistema."
+      : "Este navegador não deixou mostrar o aviso.");
   };
 
   return (
     <Card className="px-6 py-6">
       <H size={18} color="var(--a-PE)" icon={<Flame size={16} />}>Lembretes</H>
-      <Label style={{ marginTop: 6, lineHeight: 1.6 }}>
-        Aviso do navegador para as revisões que vencem hoje e para o bloco da agenda
-        que vai começar.
-      </Label>
+      <Texto style={{ marginTop: 8 }}>
+        Aviso do navegador para as revisões que vencem hoje, para o bloco da agenda que
+        vai começar e para quando alguém chamar você para um duelo.
+      </Texto>
 
       {permissao === "indisponivel" ? (
-        <Mini style={{ marginTop: 12 }}>
+        <Mini style={{ marginTop: 12, lineHeight: 1.6 }}>
           Este navegador não tem notificação. No iPhone é preciso instalar o site na
           tela de início primeiro.
         </Mini>
+      ) : precisaInstalar ? (
+        <div className="mt-4 rounded-2xl px-4 py-3"
+          style={{ background: soft("var(--warn)", 12), border: `1px solid ${soft("var(--warn)", 35)}` }}>
+          <Mini style={{ color: "var(--warn)", lineHeight: 1.65 }}>
+            No iPhone a notificação só funciona com o site instalado na tela de início.
+            Toque em compartilhar, no Safari, depois em "Adicionar à Tela de Início", e
+            abra o Cadência por lá. Aí este botão passa a funcionar.
+          </Mini>
+        </div>
       ) : (
         <>
           <div className="mt-4 flex flex-wrap gap-2 items-center">
@@ -537,6 +638,9 @@ function Lembretes({ data, setData, notify }) {
                 <Btn size="sm" tone="outline"
                   onClick={() => setData((x) => ({ ...x, lembretes: { ...(x.lembretes || {}), ligado: false } }))}>
                   desligar
+                </Btn>
+                <Btn size="sm" disabled={testando} onClick={testar}>
+                  {testando ? "mandando…" : "mandar um agora"}
                 </Btn>
                 <Mini style={{ color: T.ok }}>ligados</Mini>
               </>
@@ -550,7 +654,8 @@ function Lembretes({ data, setData, notify }) {
             <Mini style={{ marginTop: 10, lineHeight: 1.6, color: T.warn }}>
               Você recusou as notificações para este site alguma vez, e o navegador
               guarda essa recusa. Para liberar, toque no cadeado ao lado do endereço
-              e mude a permissão de notificações.
+              e mude a permissão de notificações. Assim que mudar, esta tela percebe
+              sozinha.
             </Mini>
           ) : null}
           {/* Prometer aviso com o site fechado seria mentira: não há

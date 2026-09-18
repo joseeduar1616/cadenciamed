@@ -28,9 +28,10 @@ const jsx = fs.readFileSync(path.join(aqui, 'parte11.jsx'), 'utf8');
 const bloco = jsx.slice(jsx.indexOf('const RECURSOS_PADRAO = {'));
 const corpo = bloco.slice(bloco.indexOf('{') + 1, bloco.indexOf('};'));
 const naTela = {};
-for (const m of corpo.matchAll(/(\w+)\s*:\s*(true|false)/g)) naTela[m[1]] = m[2] === 'true';
+for (const m of corpo.matchAll(/(\w+)\s*:\s*"(\w+)"/g)) naTela[m[1]] = m[2];
 
-const noServidor = recursosDe({ dono: false, pro: false, regras: {} });
+const noServidor = {};
+for (const r of RECURSOS) noServidor[r.id] = r.padrao;
 const faltando = Object.keys(noServidor).filter((k) => !(k in naTela));
 const sobrando = Object.keys(naTela).filter((k) => !(k in noServidor));
 const diferentes = Object.keys(noServidor).filter((k) => k in naTela && naTela[k] !== noServidor[k]);
@@ -96,6 +97,19 @@ if (campos.treino && campos.treino.stringValue === 'pro') ok('a gravação leva 
 else falha('a regra boa não foi gravada');
 if (!campos.cartoes && !campos.invencao) ok('e deixa de fora regra inventada e aba inexistente');
 else falha('a gravação aceitou lixo');
+
+/* ── a reserva da tela não pode punir quem paga ─────────────────────
+   Quando o servidor não responde, a tela aplica os padrões ao que já
+   sabe. Devolvendo só os padrões, como fazia antes, uma oscilação de
+   internet na hora de conferir o plano tirava os Cartões da barra de quem
+   assina: a pessoa pagou e viu a aba sumir. */
+const reservaJsx = jsx.slice(jsx.indexOf('function recursosLocais'));
+const usaPro = /regra === "pro" && !!pro/.test(reservaJsx.slice(0, 600));
+const usaDono = /!!dono \|\|/.test(reservaJsx.slice(0, 600));
+if (usaPro) ok('a reserva da tela respeita quem assina, mesmo sem resposta do servidor');
+else falha('a reserva da tela ignora a assinatura: uma queda de rede tiraria as abas pagas');
+if (usaDono) ok('e o dono continua vendo tudo mesmo com o servidor fora');
+else falha('o dono perde as abas quando o servidor não responde');
 
 if (REGRAS.length === 3) ok('são três regras, e só três');
 else falha(`apareceram ${REGRAS.length} regras`);

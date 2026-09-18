@@ -180,6 +180,11 @@ async function perfisDe(token, uids) {
     const f = item.found.fields || {};
     fora[uid] = {
       nome: texto(f.nome),
+      /* A foto de perfil, já encolhida pelo navegador de quem a escolheu
+         (ver PerfilPublico). Vem junto do nome porque é lida no mesmo
+         lote: uma segunda ida ao banco por causa da foto multiplicaria a
+         conta por quanta gente houver na sala. */
+      foto: texto(f.foto),
       atualizadoEm: numero(f.atualizadoEm),
       oculto: !!((f.oculto || {}).booleanValue),
       /* Último sinal de vida de quem está com o cronômetro andando, e
@@ -487,6 +492,7 @@ function simuladoParaMim(sim, perfis, eu) {
   const linhas = Object.entries(sim.resultados).map(([uid, v]) => ({
     uid,
     nome: (perfis[uid] && perfis[uid].nome) || "Alguém",
+    foto: (perfis[uid] && perfis[uid].foto) || "",
     acertos: v.acertos,
     pct: sim.total ? Math.round((v.acertos / sim.total) * 100) : null,
     souEu: uid === eu,
@@ -503,6 +509,7 @@ function placarDeTreino(itens, membros, perfis, eu, desde) {
     por.set(uid, {
       uid,
       nome: (perfis[uid] && perfis[uid].nome) || "Alguém",
+    foto: (perfis[uid] && perfis[uid].foto) || "",
       treinos: 0, minutos: 0, series: 0, volume: 0,
       souEu: uid === eu,
     });
@@ -595,6 +602,7 @@ export function montarRanking(sala, perfis, eu, periodo, agora = Date.now()) {
     return {
       uid,
       nome: p.nome || "sem nome",
+      foto: p.foto || "",
       /* Horas líquidas: só o tempo lançado em sessão, sem contar pausa. */
       minutos: vale ? Math.max(0, Math.round(bloco.minutos || 0)) : 0,
       hoje,

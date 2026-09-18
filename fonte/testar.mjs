@@ -20,7 +20,11 @@ const liberado = path.basename(alvo) === 'teste.html';
    assina, então é procurada pelos dois nomes. */
 const ABAS = ['Hoje', 'Foco', 'Matérias', 'Cronograma', 'Temas', 'Cartões',
               'Revisões', 'Agenda', 'Amigos', 'Metas', 'Desempenho', 'Progresso',
-              'Treino', 'Simulados', 'Plano|Assinar', 'Configurações'];
+              'Simulados', 'Plano|Assinar', 'Configurações'];
+/* Abas que só aparecem para quem tem acesso a elas: a academia é do dono,
+   e Provas depende da regra gravada. Elas entram na varredura quando
+   estiverem na barra, e a ausência delas não é defeito. */
+const ABAS_FECHADAS = ['Treino', 'Provas'];
 
 const erros = [];
 const passos = [];
@@ -44,7 +48,10 @@ pag.on('console', (m) => {
   }
 });
 
-const ir = async (aba) => {
+/* opcional: para aba que pode legitimamente não estar na barra. A
+   academia, por exemplo, é fechada por padrão — cobrar a presença dela
+   aqui seria cobrar o contrário do que foi pedido. */
+const ir = async (aba, opcional) => {
   for (const nome of String(aba).split('|')) {
     const b = pag.locator(`nav button:has-text("${nome}")`).first();
     if (await b.count() === 0) continue;
@@ -52,7 +59,7 @@ const ir = async (aba) => {
     await pag.waitForTimeout(450);
     return true;
   }
-  falha(`aba ${aba}: botão não encontrado`);
+  if (!opcional) falha(`aba ${aba}: botão não encontrado`);
   return false;
 };
 const texto = () => pag.evaluate(() => document.querySelector('main')?.innerText || '');
@@ -1301,7 +1308,17 @@ if (liberado) {
    inteiro passa aqui: criar plano, pôr exercício, registrar série e
    sobreviver ao recarregar. */
 {
-  await ir('Treino');
+  /* A academia agora é fechada: ela nasce só para o dono, e o painel de
+     acessos decide o resto. Este teste roda sem conta, então a aba não
+     está na barra — e é isso que se confere primeiro, porque é o
+     comportamento pedido. O caminho de dentro continua sendo exercitado
+     em teste.html, que é compilado com a aba aberta. */
+  const temTreino = await pag.locator('nav button:has-text("Treino")').count() > 0;
+  /* eslint-disable-next-line no-unused-expressions */
+  if (!temTreino) {
+    ok('treino: a academia não aparece para quem não tem acesso a ela');
+  } else {
+  await ir('Treino', true);
   await pag.locator('main button:has-text("Plano")').first().click();
   await pag.waitForTimeout(300);
   await pag.locator('button:has-text("Criar um plano na mão")').first().click();
@@ -1345,7 +1362,7 @@ if (liberado) {
   await pag.waitForTimeout(2600);
   await pag.reload({ waitUntil: 'load' });
   await pag.waitForTimeout(2200);
-  await ir('Treino');
+  await ir('Treino', true);
   await pag.locator('main button:has-text("Cargas")').first().click();
   await pag.waitForTimeout(500);
   if (/volume dos últimos 7 dias/i.test(await texto())) ok('treino: o treino registrado sobrevive ao recarregar');
@@ -1356,6 +1373,7 @@ if (liberado) {
   const prog = await texto();
   if (!/Treino A/.test(prog)) ok('treino: a academia não aparece no progresso de estudo');
   else falha('treino: o treino vazou para o progresso de estudo');
+  }
 }
 
 /* ── o service worker muda de nome a cada publicação ─────────────────
@@ -1521,7 +1539,7 @@ else falha(`a barra não voltou (${Math.round(larguraDeVolta)} vs ${Math.round(l
   /* 2. Botão só com ícone não tem nome nenhum para leitor de tela. */
   const semNome = [];
   for (const aba of ['Hoje', 'Metas', 'Cartões', 'Desempenho', 'Treino', 'Configurações']) {
-    if (!(await ir(aba))) continue;
+    if (!(await ir(aba, ABAS_FECHADAS.indexOf(aba) >= 0))) continue;
     const n = await pag.evaluate(() => [...document.querySelectorAll('main button')]
       .filter((b) => !((b.getAttribute('aria-label') || b.textContent || '').trim())).length);
     if (n) semNome.push(`${aba}: ${n}`);

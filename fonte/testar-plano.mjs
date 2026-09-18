@@ -21,6 +21,7 @@ const CONTA = {
 };
 
 let ASSINATURAS = {};      // uid -> { fields }
+let REGRAS = null;         // config/recursos, ou null para "nunca foi gravado"
 let QUEM = { email: 'ana@email.com', localId: 'uid-ana' };
 let ERRO_BANCO = 0;        // status para forçar falha do Firestore
 
@@ -33,6 +34,12 @@ globalThis.fetch = async (url) => {
     return QUEM ? json({ users: [QUEM] }) : json({ error: {} }, 400);
   }
   if (u.includes('oauth2.googleapis.com/token')) return json({ access_token: 'token-falso' });
+
+  /* A rota do plano também responde "o que eu posso abrir": ela lê a
+     regra de cada aba junto, para a barra não desenhar duas vezes. */
+  if (u.includes('/documents/config/recursos')) {
+    return REGRAS ? json(REGRAS) : json({ error: {} }, 404);
+  }
 
   const m = /\/documents\/assinaturas\/([^/?]+)/.exec(u);
   if (m) {
@@ -127,6 +134,52 @@ r = await pedir({ token: 't' });
 if (r.status === 500 && /FIREBASE_SERVICE_ACCOUNT/.test(r.corpo.erro)) ok('sem conta de serviço, explica o que falta');
 else falha('sem conta de serviço: ' + JSON.stringify(r));
 env.FIREBASE_SERVICE_ACCOUNT = JSON.stringify(CONTA);
+
+/* ── o que eu posso abrir ──────────────────────────────────────────────
+ *
+ * A rota do plano responde isto junto porque é a mesma pergunta da tela
+ * ("o que eu posso abrir?"), e uma segunda ida ao servidor só para isso
+ * deixaria a barra de abas piscando — ela desenharia sem as abas e as
+ * acrescentaria um instante depois.
+ */
+QUEM = { email: 'ana@email.com', localId: 'uid-ana' };
+ASSINATURAS = {};
+REGRAS = null;
+let rr = await pedir({ token: 't' });
+if (rr.corpo.recursos) ok('o plano responde também quem vê o quê');
+else falha('a resposta veio sem os recursos: ' + JSON.stringify(rr.corpo));
+if (rr.corpo.recursos.treino === false) ok('sem regra gravada, a academia segue fechada');
+else falha('a academia apareceu para quem não é dono');
+if (rr.corpo.recursos.cartoes === false) ok('e as abas pagas seguem fechadas para quem não assina');
+else falha('uma aba paga abriu sem assinatura');
+if (rr.corpo.recursos.amigos === true) ok('as abas abertas a todos continuam abertas');
+else falha('uma aba de todo mundo veio fechada');
+
+/* A regra gravada manda por cima do padrão, sem publicar o site de novo. */
+REGRAS = { fields: { treino: { stringValue: 'todos' } } };
+rr = await pedir({ token: 't' });
+if (rr.corpo.recursos.treino === true) ok('a regra gravada abre a aba sem precisar publicar de novo');
+else falha('a regra gravada não teve efeito');
+
+/* Liberação avulsa: uma aba paga para UMA pessoa, sem dar assinatura. */
+REGRAS = null;
+ASSINATURAS['uid-ana'] = { fields: { recursos: { mapValue: { fields: { cartoes: { booleanValue: true } } } } } };
+rr = await pedir({ token: 't' });
+if (rr.corpo.pro === false) ok('a liberação avulsa não vira assinatura');
+else falha('liberar uma aba deu plano completo');
+if (rr.corpo.recursos.cartoes === true) ok('mas abre a aba liberada');
+else falha('a liberação avulsa não abriu a aba');
+if (rr.corpo.recursos.assistente === false) ok('e só ela, não as outras pagas');
+else falha('liberar uma aba abriu as outras');
+
+/* O dono vê tudo mesmo com tudo fechado: senão ele se trancaria fora do
+   painel que decide quem vê o quê, e não haveria como destrancar. */
+ASSINATURAS = {};
+REGRAS = { fields: { treino: { stringValue: 'dono' }, cartoes: { stringValue: 'dono' }, amigos: { stringValue: 'dono' } } };
+QUEM = { email: 'joseeduardo1616@gmail.com', localId: 'uid-dono' };
+rr = await pedir({ token: 't' });
+if (Object.values(rr.corpo.recursos).every(Boolean)) ok('com tudo fechado, o dono continua vendo tudo');
+else falha('o dono se trancou fora do site: ' + JSON.stringify(rr.corpo.recursos));
 
 console.log(passos.join('\n'));
 console.log('\n' + (erros.length ? `${erros.length} PROBLEMA(S):\n` + erros.join('\n') : 'nenhum erro'));

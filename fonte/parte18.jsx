@@ -462,11 +462,125 @@ function SeusDados({ data, setData, today, notify }) {
   );
 }
 
+/* ── perfil: apelido e foto ────────────────────────────────────────────
+ *
+ * O nome e a foto só importam onde há outras pessoas: amigos, salas,
+ * duelos, simulados. Por isso o campo se chama "apelido" e não "nome
+ * completo" — ninguém quer aparecer como "José Eduardo da Silva Santos"
+ * num ranking de estudo.
+ *
+ * A foto é encolhida AQUI, no navegador, antes de sair. Não é enfeite:
+ * ela vai para o perfil, que é lido em lote para todo mundo de uma sala
+ * de uma vez. Uma foto de celular tem alguns megabytes; vinte delas numa
+ * sala estourariam o limite do documento e deixariam o ranking pesado de
+ * abrir num celular com internet ruim. Cento e vinte e oito pixels é o
+ * tamanho em que ela aparece, e nesse tamanho dá uns poucos quilobytes.
+ */
+const LADO_PERFIL = 128;
+const TETO_PERFIL = 60000;   // ~60 KB de data URL, com folga sobre o esperado
+
+function encolherFoto(arquivo) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(arquivo);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        /* Recorte quadrado pelo centro: a foto aparece dentro de um
+           círculo, e esticar para caber deformaria o rosto. */
+        const lado = Math.min(img.width, img.height);
+        const cx = (img.width - lado) / 2;
+        const cy = (img.height - lado) / 2;
+        const tela = document.createElement("canvas");
+        tela.width = LADO_PERFIL; tela.height = LADO_PERFIL;
+        const ctx = tela.getContext("2d");
+        ctx.drawImage(img, cx, cy, lado, lado, 0, 0, LADO_PERFIL, LADO_PERFIL);
+        const dados = tela.toDataURL("image/jpeg", 0.72);
+        URL.revokeObjectURL(url);
+        resolve(dados.length > TETO_PERFIL
+          ? { erro: "Essa foto ficou pesada demais mesmo depois de encolher. Tente outra." }
+          : { foto: dados });
+      } catch (e) {
+        URL.revokeObjectURL(url);
+        resolve({ erro: "Não consegui ler essa imagem." });
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve({ erro: "Não consegui abrir essa imagem." });
+    };
+    img.src = url;
+  });
+}
+
+function PerfilPublico({ data, setData, notify }) {
+  const [ocupado, setOcupado] = useState(false);
+  const arquivoRef = useRef(null);
+  const p = data.profile || {};
+  const comoApareco = (p.apelido || "").trim() || (p.name || "").trim() || "Sem nome";
+
+  const trocar = (campo, valor) => setData((x) => ({
+    ...x, profile: { ...x.profile, [campo]: valor },
+  }));
+
+  return (
+    <Card className="px-6 py-6">
+      <H size={18} color="var(--neon2)" icon={<User size={16} />}>Seu perfil</H>
+      <Texto style={{ marginTop: 8 }}>
+        É assim que você aparece para as outras pessoas: nos amigos, nas salas, nos
+        duelos e nos simulados. Só aqui, em nenhum outro lugar.
+      </Texto>
+
+      <div className="mt-5 flex items-center gap-4 flex-wrap">
+        <Face nome={comoApareco} foto={p.foto} tamanho={64} forte />
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-2 flex-wrap">
+            <Btn size="sm" disabled={ocupado}
+              onClick={() => arquivoRef.current && arquivoRef.current.click()}>
+              <Camera size={14} /> {p.foto ? "Trocar a foto" : "Pôr uma foto"}
+            </Btn>
+            {p.foto ? (
+              <Btn size="sm" tone="outline" disabled={ocupado}
+                onClick={() => { trocar("foto", ""); notify("Foto removida."); }}>tirar</Btn>
+            ) : null}
+          </div>
+          <Mini>sem foto, aparecem as suas iniciais</Mini>
+        </div>
+        <input ref={arquivoRef} type="file" hidden accept="image/*"
+          onChange={async (e) => {
+            const arq = (e.target.files || [])[0];
+            e.target.value = "";
+            if (!arq) return;
+            setOcupado(true);
+            const r = await encolherFoto(arq);
+            setOcupado(false);
+            if (r.erro) { notify(r.erro); return; }
+            trocar("foto", r.foto);
+            notify("Foto trocada.");
+          }} />
+      </div>
+
+      <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Field label="Seu nome">
+          <TextInput value={p.name || ""} placeholder="Como quer ser chamado"
+            onChange={(e) => trocar("name", e.target.value)} />
+        </Field>
+        <Field label="Apelido (o que os outros veem)">
+          <TextInput value={p.apelido || ""} maxLength={24}
+            placeholder={(p.name || "").trim() || "deixe vazio para usar o seu nome"}
+            onChange={(e) => trocar("apelido", e.target.value.slice(0, 24))} />
+        </Field>
+      </div>
+    </Card>
+  );
+}
+
 function Configuracoes({ data, setData, today, notify, nuvem, pro, aoLiberar, irPara }) {
   return (
     <div className="flex flex-col gap-5">
       <ContaNuvem nuvem={nuvem} notify={notify} />
       {nuvem.usuario && !pro ? <Cupom nuvem={nuvem} notify={notify} aoLiberar={aoLiberar} /> : null}
+
+      <PerfilPublico data={data} setData={setData} notify={notify} />
 
       <Lembretes data={data} setData={setData} notify={notify} />
       <Aparencia data={data} setData={setData} />

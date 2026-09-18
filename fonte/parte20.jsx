@@ -84,7 +84,7 @@ function CartaoSimulado({ sim, souDono, aoLancar, aoApagar }) {
             <div key={x.uid} className="rounded-2xl px-4 py-3 flex items-center gap-3"
               style={{ background: x.souEu ? soft("var(--neon)", 12) : T.card2 }}>
               <span style={{ fontFamily: F_MONO, fontSize: 15, color: T.ghost, minWidth: 22 }}>{x.posicao}</span>
-              <Face nome={x.nome} cor={corDoNome(x.nome)} tamanho={30} forte={x.souEu} />
+              <Face nome={x.nome} foto={x.foto} cor={corDoNome(x.nome)} tamanho={30} forte={x.souEu} />
               <span className="flex-1 min-w-0" style={{ fontSize: 15, fontWeight: x.souEu ? 700 : 600 }}>
                 {x.nome}
               </span>

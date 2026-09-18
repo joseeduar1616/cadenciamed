@@ -47,7 +47,12 @@ const PERIODOS = [
  * do ranking desta semana, com números que já não valem.
  *
  * Só números: nada do que foi estudado, nenhuma anotação. */
-function usePerfilPublico(nuvem, nome, sessions, today, mostrar, aoVivo) {
+function usePerfilPublico(nuvem, nome, sessions, today, mostrar, aoVivo, apelido, foto) {
+  /* O apelido é o que os outros veem; o nome é só a reserva de quem nunca
+     escolheu um. Quarenta caracteres é o teto: um nome comprido estoura a
+     linha do ranking no celular. */
+  const comoApareco = (String(apelido || "").trim() || String(nome || "").trim()).slice(0, 40);
+
   const dados = useMemo(() => {
     const iniSemana = weekStart(today);
     const mes = String(today).slice(0, 7);
@@ -73,7 +78,8 @@ function usePerfilPublico(nuvem, nome, sessions, today, mostrar, aoVivo) {
        saiam do aparelho: eles nem chegam a ser gravados. */
     if (!mostrar) {
       return {
-        nome: String(nome || "").trim().slice(0, 40),
+        nome: comoApareco,
+        foto: String(foto || ""),
         oculto: true,
         minutos: 0, questoes: 0, acertos: 0,
         diaChave: today, diaMinutos: 0, diaQuestoes: 0, diaAcertos: 0,
@@ -83,7 +89,8 @@ function usePerfilPublico(nuvem, nome, sessions, today, mostrar, aoVivo) {
     }
 
     return {
-      nome: String(nome || "").trim().slice(0, 40),
+      nome: comoApareco,
+      foto: String(foto || ""),
       oculto: false,
       minutos: Math.round(soma.min), questoes: soma.q, acertos: soma.ok,
       diaChave: today,
@@ -93,7 +100,7 @@ function usePerfilPublico(nuvem, nome, sessions, today, mostrar, aoVivo) {
       mesChave: mes,
       mesMinutos: Math.round(mensal.min), mesQuestoes: mensal.q, mesAcertos: mensal.ok,
     };
-  }, [nome, sessions, today, mostrar]);
+  }, [comoApareco, foto, sessions, today, mostrar]);
 
   const ultimo = useRef("");
 
@@ -194,13 +201,24 @@ function iniciais(nome) {
   return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase();
 }
 
-function Face({ nome, cor, tamanho = 38, forte }) {
+function Face({ nome, cor, tamanho = 38, forte, foto }) {
   const c = cor || corDoNome(nome);
+  const base = {
+    width: tamanho, height: tamanho, flexShrink: 0,
+    border: `1px solid ${soft(c, forte ? 55 : 24)}`,
+  };
+  /* Com foto, a inicial sai de cena. O alt fica vazio de propósito: o
+     nome já está escrito ao lado em toda tela que usa isto, e um leitor
+     de tela lendo "foto de Fulano, Fulano" é ruído. */
+  if (foto) {
+    return (
+      <img src={foto} alt="" className="rounded-full" style={{ ...base, objectFit: "cover" }} />
+    );
+  }
   return (
     <span className="flex items-center justify-center rounded-full" style={{
-      width: tamanho, height: tamanho, flexShrink: 0,
+      ...base,
       background: `linear-gradient(140deg, ${soft(c, forte ? 30 : 18)}, ${soft(c, 6)})`,
-      border: `1px solid ${soft(c, forte ? 55 : 24)}`,
       color: c, fontFamily: F_UI, fontWeight: 700,
       fontSize: Math.round(tamanho * 0.37), letterSpacing: "0.02em",
     }}>{iniciais(nome)}</span>
@@ -247,7 +265,7 @@ function Podio({ linhas }) {
               border: `1px solid ${soft(cor, primeiro ? 45 : 18)}`,
             }}>
             <div className="flex items-center gap-3">
-              <Face nome={x.nome} cor={cor} tamanho={primeiro ? 46 : 38} forte={primeiro} />
+              <Face nome={x.nome} foto={x.foto} cor={cor} tamanho={primeiro ? 46 : 38} forte={primeiro} />
               <span className="flex-1 min-w-0">
                 <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
                   <Num size={primeiro ? 20 : 17} color={cor} weight={700}>{x.posicao}º</Num>
@@ -404,7 +422,7 @@ function LinhaRanking({ x, teto, mostrarHoje }) {
             color: x.oculto ? T.ghost : cor,
           }}>{x.oculto ? "—" : x.posicao}</span>
 
-          <Face nome={x.nome} cor={x.oculto ? T.ghost : cor} tamanho={34} forte={medalha} />
+          <Face nome={x.nome} foto={x.foto} cor={x.oculto ? T.ghost : cor} tamanho={34} forte={medalha} />
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
@@ -859,7 +877,7 @@ function Amigos({ nuvem, notify, data, setData, irPara }) {
                     color: on ? "var(--neon2)" : T.dim,
                     fontSize: 14, fontWeight: on ? 700 : 500, cursor: "pointer",
                   }}>
-                  <Face nome={s.nome} cor={on ? "var(--neon2)" : T.dim} tamanho={26} forte={on} />
+                  <Face nome={s.nome} foto={s.foto} cor={on ? "var(--neon2)" : T.dim} tamanho={26} forte={on} />
                   {s.nome}
                   <span style={{
                     fontFamily: F_MONO, fontSize: 11.5, fontWeight: 700,
