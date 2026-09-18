@@ -168,6 +168,69 @@ if (await abas.count() > 0) {
   } else falha('não achei o botão de conectar ao Google na aba Metas');
 } else falha('não achei a aba Metas');
 
+/* ── o botão de ligar de vez tem de estar ONDE A TELA MANDA IR ───────
+ *
+ * Este é o defeito que custou várias rodadas de conversa. O botão "Ligar
+ * a conta de vez" existia só no fim da aba Metas. O diagnóstico do painel
+ * de desenvolvedor, por outro lado, mandava clicar nele "na aba Agenda",
+ * e lá ele só aparecia num caso de falha bem específico. Quem seguia a
+ * instrução ia à Agenda, não achava botão nenhum, e concluía que o Google
+ * estava quebrado — quando não faltava nada no servidor, faltava um
+ * toque num botão que não estava onde a tela dizia.
+ *
+ * Aqui não há conta do Cadência (o Firebase não carrega sem rede), então
+ * o cartão não aparece: sem conta não há onde guardar a autorização. O
+ * que se cobra é o contrário, e é o que basta para o defeito não voltar:
+ * se o cartão aparecer numa das duas abas, tem de aparecer na outra
+ * também, porque agora as duas desenham o MESMO componente.
+ */
+{
+  /* Sem conta o cartão não chega a ser desenhado em aba nenhuma, então
+     quem responde aqui é a fonte: as duas abas têm de desenhar o mesmo
+     componente. É esta a afirmação com dente — tirar o cartão de uma das
+     duas deixa o teste vermelho na hora. */
+  const naAgenda = /<LigarGoogleDeVez/.test(
+    fs.readFileSync(new URL('./parte4.jsx', import.meta.url), 'utf8'));
+  const nasMetas = /<LigarGoogleDeVez/.test(
+    fs.readFileSync(new URL('./parte7.jsx', import.meta.url), 'utf8'));
+  if (naAgenda && nasMetas) ok('ligar de vez: o cartão é desenhado na aba Agenda e na aba Metas');
+  else falha(`ligar de vez: falta o cartão em ${!naAgenda ? 'Agenda' : 'Metas'} — o diagnóstico manda para lá`);
+
+  /* E uma cópia só: duas divergem, e a pessoa acaba com dois botões que
+     não fazem a mesma coisa. */
+  const definicoes = ['parte3.jsx', 'parte4.jsx', 'parte7.jsx']
+    .filter((f) => /function LigarGoogleDeVez/.test(
+      fs.readFileSync(new URL('./' + f, import.meta.url), 'utf8'))).length;
+  if (definicoes === 1) ok('e existe uma definição só do cartão, não duas cópias');
+  else falha(`o cartão está definido ${definicoes} vezes`);
+
+  /* Na tela: se aparecer numa aba, tem de aparecer na outra. */
+  const ondeTem = [];
+  for (const aba of ['Agenda', 'Metas']) {
+    const b = pag.locator(`nav button:has-text("${aba}")`);
+    if (await b.count() === 0) continue;
+    await b.first().click();
+    await pag.waitForTimeout(500);
+    const t = await pag.evaluate(() => document.querySelector('main').innerText);
+    if (/Ligar a conta de vez|Conta do Google ligada de vez/i.test(t)) ondeTem.push(aba);
+  }
+  if (ondeTem.length !== 1) {
+    ok(`ligar de vez: na tela, o cartão não fica só numa das duas abas (${ondeTem.join(' e ') || 'nenhuma, por não haver conta'})`);
+  } else {
+    falha(`ligar de vez: o cartão só apareceu em ${ondeTem[0]}`);
+  }
+}
+
+/* E o diagnóstico não pode mandar para uma aba onde o botão não está. */
+{
+  const fonte = fs.readFileSync(new URL('./parte21.jsx', import.meta.url), 'utf8');
+  const trecho = fonte.slice(fonte.indexOf('sabe ligar" em não'), fonte.indexOf('sabe ligar" em não') + 700);
+  const citaAgenda = /aba Agenda/.test(trecho);
+  const citaMetas = /aba Metas/.test(trecho);
+  if (citaAgenda && citaMetas) ok('o diagnóstico cita as duas abas onde o cartão realmente está');
+  else falha('o diagnóstico manda para uma aba só, e o cartão está em duas');
+}
+
 /* ── mão dupla: mexer na Agenda tem de chegar ao Google sozinho ──────
    Este é o defeito que o commit anterior deixou passar: o envio
    automático só rodava com a conta ligada de vez. Quem tinha autorizado

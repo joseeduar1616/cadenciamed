@@ -195,15 +195,25 @@ function SaudeDoSite({ nuvem }) {
         <div className="mt-5">
           <Label>Variáveis do servidor</Label>
           <div className="mt-2 flex flex-wrap gap-2">
-            {variaveis.map(([nome, tem]) => (
-              <span key={nome} className="rounded-2xl px-3 py-1.5"
-                style={{
-                  background: soft(tem ? "var(--ok)" : "var(--bad)", 14),
-                  color: tem ? T.ok : T.bad, fontFamily: F_MONO, fontSize: 12,
-                }}>
-                {tem ? "✓" : "✗"} {nome}
-              </span>
-            ))}
+            {/* Três estados, e não dois. Faltar uma variável opcional é
+                normal — a chave da Anthropic é reserva da do Gemini, e os
+                cupons moram no banco —, e pintar isso de vermelho ensina a
+                ignorar vermelho. Aí o dia em que faltar uma obrigatória
+                ninguém repara. */}
+            {variaveis.map(([nome, tem, obrigatoria]) => {
+              const cor = tem ? "var(--ok)" : (obrigatoria === false ? "var(--ghost)" : "var(--bad)");
+              return (
+                <span key={nome} className="rounded-2xl px-3 py-1.5"
+                  style={{
+                    background: soft(cor, 14), color: cor,
+                    fontFamily: F_MONO, fontSize: 12,
+                  }}
+                  title={tem ? "cadastrada" : (obrigatoria === false ? "opcional, e vazia" : "falta cadastrar")}>
+                  {tem ? "✓" : (obrigatoria === false ? "–" : "✗")} {nome}
+                  {!tem && obrigatoria === false ? " (opcional)" : ""}
+                </span>
+              );
+            })}
           </div>
         </div>
       ) : null}
@@ -286,8 +296,10 @@ function DiagnosticoGoogle({ nuvem }) {
           {r.erro ? linha("erro", String(r.erro).slice(0, 80), false) : null}
           <Mini style={{ marginTop: 6, lineHeight: 1.6 }}>
             "sabe ligar" em não quer dizer GOOGLE_CLIENT_ID ou GOOGLE_CLIENT_SECRET
-            faltando no Worker. "sua conta ligada" em não com "sabe ligar" em sim quer
-            dizer que falta clicar em Ligar a conta de vez na aba Agenda.
+            faltando no Worker: é conserto de servidor. "sua conta ligada" em não com
+            "sabe ligar" em sim quer dizer que não falta nada no servidor — falta um
+            toque em "Ligar a conta de vez", no cartão azul da aba Agenda (o mesmo
+            cartão aparece no fim da aba Metas).
           </Mini>
         </div>
       ) : null}

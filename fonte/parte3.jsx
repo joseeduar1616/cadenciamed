@@ -1527,3 +1527,53 @@ function usePomodoro({ pomo, onFocusDone, notify, pronto }) {
     setRunning, advance, reset, jumpTo, encerrarCorrido,
   };
 }
+
+/* ── o cartão de ligar a conta de vez ──────────────────────────────────
+ *
+ * Mora num componente só porque aparece em DOIS lugares: na aba Agenda,
+ * que é onde qualquer pessoa procura o Google Agenda, e na aba Metas, que
+ * é de onde as provas e metas são exportadas para a agenda.
+ *
+ * Ele nasceu por causa de um defeito que custou várias rodadas. O botão
+ * existia só no fim da aba Metas. O diagnóstico do painel, por outro
+ * lado, mandava clicar nele "na aba Agenda" — e lá ele só aparecia num
+ * caso de falha bem específico (a sincronização sozinha já ter começado e
+ * parado). Quem seguia a instrução ia à Agenda, não achava botão nenhum,
+ * e concluía que o Google estava quebrado. Não estava: faltava um toque
+ * num botão que não estava onde a própria tela dizia que estava.
+ */
+function LigarGoogleDeVez({ gcal }) {
+  if (!gcal || !gcal.disponivel || !gcal.podeLigarDeVez) return null;
+  return (
+    <div className="mt-4 rounded-2xl px-4 py-4"
+      style={{
+        background: soft(gcal.permanente ? "var(--ok)" : "var(--a-GO)", 10),
+        border: `1px solid ${soft(gcal.permanente ? "var(--ok)" : "var(--a-GO)", 30)}`,
+      }}>
+      {gcal.permanente ? (
+        <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+          <span style={{ fontSize: 14.5, fontWeight: 600, color: T.ok }}>
+            Conta do Google ligada de vez
+          </span>
+          <Mini>não precisa autorizar de novo ao abrir o app</Mini>
+        </div>
+      ) : (
+        <>
+          <div style={{ fontSize: 14.5, fontWeight: 600, color: T.ink }}>
+            Cansado de autorizar toda vez que abre?
+          </div>
+          <Mini style={{ marginTop: 6, lineHeight: 1.6 }}>
+            Ligue a conta de vez: você autoriza uma única vez e o site
+            renova o acesso sozinho daí em diante, sem abrir janela
+            nenhuma. Dá para desligar quando quiser.
+          </Mini>
+          <div className="mt-4">
+            <Btn size="sm" tone="primary" disabled={!gcal.pronto} onClick={gcal.ligarDeVez}>
+              Ligar a conta de vez
+            </Btn>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

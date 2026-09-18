@@ -351,6 +351,12 @@ function Rotina({ data, setData, gcal, today }) {
             <Btn size="sm" tone="primary" onClick={gcal.autorizarAgora}>Autorizar o Google</Btn>
           </div>
         ) : null}
+        {/* A ligação de vez, aqui também — e não só na aba Metas.
+            É nesta aba que se procura o Google Agenda, e é para cá que o
+            diagnóstico do painel manda vir. Enquanto ele morava só em
+            Metas, seguir a instrução era chegar numa tela sem o botão. */}
+        <LigarGoogleDeVez gcal={gcal} />
+
         {gcal && gcal.autoSync ? (
           gcal.autoParou ? (
             /* Parar de sincronizar sozinho é o tipo de coisa que não pode

@@ -193,21 +193,35 @@ export async function onRequest({ request, env }) {
     return json({ ok: true, mensagem: `${nome}: agora ${comoLer[regra]} vê.` });
   }
 
+  /* ── o que está cadastrado no servidor ─────────────────────────────
+   *
+   * Só a PRESENÇA de cada variável, nunca o valor: um painel que mostra
+   * chave é um painel que vaza chave na primeira captura de tela.
+   *
+   * O terceiro campo diz se a variável é obrigatória. Sem ele, duas
+   * variáveis que estão vazias de propósito (a chave da Anthropic, que
+   * não é usada porque o site roda no Gemini; e CUPONS, que virou tabela
+   * no banco) apareciam em vermelho, do mesmo jeito que uma chave que
+   * falta de verdade. Vermelho que é normal ensina a ignorar vermelho, e
+   * aí o dia em que faltar algo mesmo ninguém vai reparar.
+   */
   if (acao === "saude") {
     const tem = (v) => !!(v && String(v).trim());
     return json({
       ok: true,
       variaveis: [
-        ["FIREBASE_API_KEY", tem(env.FIREBASE_API_KEY)],
-        ["FIREBASE_SERVICE_ACCOUNT", tem(env.FIREBASE_SERVICE_ACCOUNT)],
-        ["GEMINI_API_KEY", tem(env.GEMINI_API_KEY)],
-        ["ANTHROPIC_API_KEY", tem(env.ANTHROPIC_API_KEY)],
-        ["GOOGLE_CLIENT_ID", tem(env.GOOGLE_CLIENT_ID)],
-        ["GOOGLE_CLIENT_SECRET", tem(env.GOOGLE_CLIENT_SECRET)],
-        ["NOTION_CLIENT_ID", tem(env.NOTION_CLIENT_ID)],
-        ["NOTION_CLIENT_SECRET", tem(env.NOTION_CLIENT_SECRET)],
-        ["CUPONS", tem(env.CUPONS)],
-        ["GEMINI_MODELO", tem(env.GEMINI_MODELO)],
+        ["FIREBASE_API_KEY", tem(env.FIREBASE_API_KEY), true],
+        ["FIREBASE_SERVICE_ACCOUNT", tem(env.FIREBASE_SERVICE_ACCOUNT), true],
+        ["GEMINI_API_KEY", tem(env.GEMINI_API_KEY), true],
+        /* reserva: só é usada se a do Gemini faltar */
+        ["ANTHROPIC_API_KEY", tem(env.ANTHROPIC_API_KEY), false],
+        ["GOOGLE_CLIENT_ID", tem(env.GOOGLE_CLIENT_ID), true],
+        ["GOOGLE_CLIENT_SECRET", tem(env.GOOGLE_CLIENT_SECRET), true],
+        ["NOTION_CLIENT_ID", tem(env.NOTION_CLIENT_ID), true],
+        ["NOTION_CLIENT_SECRET", tem(env.NOTION_CLIENT_SECRET), true],
+        /* os cupons moram no banco desde que o painel passou a criá-los */
+        ["CUPONS", tem(env.CUPONS), false],
+        ["GEMINI_MODELO", tem(env.GEMINI_MODELO), false],
       ],
     });
   }
