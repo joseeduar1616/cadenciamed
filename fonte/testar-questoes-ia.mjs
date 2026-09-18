@@ -185,6 +185,84 @@ r = await pedir(await carregar(), { ...PEDIDO, quantas: 999 });
 if ((r.corpo.questoes || []).length <= 30) ok('oitenta questões viram no máximo trinta');
 else falha('passou ' + r.corpo.questoes.length + ' questões');
 
+/* ── figuras do material ──────────────────────────────────────────────
+   A IA precisa VER a figura: mandar só o nome do arquivo não diz nada
+   sobre o que está na imagem, e foi por isso que a primeira versão quase
+   nunca marcava figura nenhuma. */
+const FIG_UM = { nome: 'ecg-1.jpg', dataUri: 'data:image/jpeg;base64,' + 'A'.repeat(120) };
+const FIG_DOIS = { nome: 'lamina-2.png', dataUri: 'data:image/png;base64,' + 'B'.repeat(120) };
+const COM_FIGURA = {
+  ...PEDIDO,
+  texto: 'Traçado de eletrocardiograma. [[img:ecg-1.jpg]] Observe o intervalo PR ao longo do exame completo.',
+  figuras: [FIG_UM, FIG_DOIS],
+};
+
+responder = () => respostaIA({
+  tema: 'ECG',
+  questoes: [
+    { enunciado: 'Que ritmo aparece na imagem?', alternativas: ['a', 'b', 'c', 'd'], certa: 0, imagem: 'ecg-1.jpg' },
+    { enunciado: 'E aqui?', alternativas: ['a', 'b', 'c', 'd'], certa: 1, imagem: 'inventada.jpg' },
+    { enunciado: 'Sem figura?', alternativas: ['a', 'b', 'c', 'd'], certa: 2 },
+  ],
+});
+r = await pedir(await carregar(), COM_FIGURA);
+
+/* O que mais importa: as imagens chegaram ao modelo, e não só os nomes. */
+const partes = ultimoPedido.corpo.contents?.[0]?.parts || [];
+const comImagem = partes.filter((p) => p.inline_data);
+if (comImagem.length === 2) ok('as duas figuras sobem como imagem de verdade para a IA');
+else falha('figuras enviadas ao modelo: ' + comImagem.length);
+if (comImagem[0] && comImagem[0].inline_data.mime_type === 'image/jpeg') ok('o tipo da imagem vai junto');
+else falha('tipo da imagem: ' + JSON.stringify(comImagem[0] && comImagem[0].inline_data.mime_type));
+if (partes.some((p) => p.text === 'Figura: ecg-1.jpg')) ok('cada figura vai rotulada com o nome, que é como a IA a chama de volta');
+else falha('faltou o rótulo da figura: ' + JSON.stringify(partes.map((p) => p.text).filter(Boolean)));
+
+let qs = r.corpo.questoes || [];
+if (qs[0] && qs[0].imagem === 'ecg-1.jpg') ok('a questão sobre a imagem leva o nome da figura');
+else falha('nome da figura: ' + JSON.stringify(qs[0]));
+if (qs[1] && qs[1].imagem === '') ok('nome de figura que não subiu é descartado');
+else falha('aceitou figura inventada: ' + JSON.stringify(qs[1]));
+if (qs[2] && qs[2].imagem === '') ok('questão sem figura continua sem figura');
+else falha('apareceu figura onde não havia: ' + JSON.stringify(qs[2]));
+if (r.corpo.figurasVistas === 2) ok('a tela fica sabendo quantas figuras a IA viu');
+else falha('figurasVistas: ' + r.corpo.figurasVistas);
+
+/* Sem figura nenhuma, nada muda: o material é só texto. */
+responder = () => respostaIA(BOAS);
+r = await pedir(await carregar(), PEDIDO);
+if ((ultimoPedido.corpo.contents?.[0]?.parts || []).every((p) => !p.inline_data)) ok('material sem figura não manda imagem nenhuma');
+else falha('mandou imagem sem ter figura');
+
+/* Figura que não é imagem, ou grande demais, fica de fora. O pedido é só
+   JSON, e nada impede alguém de mandar outra coisa. */
+responder = () => respostaIA(BOAS);
+r = await pedir(await carregar(), {
+  ...PEDIDO,
+  figuras: [
+    { nome: 'x.jpg', dataUri: 'data:application/pdf;base64,AAAA' },
+    { nome: 'y.jpg', dataUri: 'nem data uri' },
+    { nome: '', dataUri: 'data:image/jpeg;base64,AAAA' },
+    { nome: 'enorme.jpg', dataUri: 'data:image/jpeg;base64,' + 'C'.repeat(800000) },
+  ],
+});
+if (r.corpo.figurasVistas === 0) ok('o que não é imagem, ou é grande demais, não sobe');
+else falha('subiu figura inválida: ' + r.corpo.figurasVistas);
+
+/* O marcador é endereço de arquivo, não texto para ler. */
+responder = () => respostaIA({
+  tema: 'ECG',
+  questoes: [{
+    enunciado: 'Veja [[img:ecg-1.jpg]] e diga o ritmo',
+    alternativas: ['a [[img:ecg-1.jpg]]', 'b', 'c', 'd'], certa: 0, imagem: 'ecg-1.jpg',
+  }],
+});
+r = await pedir(await carregar(), COM_FIGURA);
+qs = r.corpo.questoes || [];
+if (qs[0] && !/\[\[img:/.test(JSON.stringify(qs[0]))) ok('marcador copiado para dentro do texto é limpo');
+else falha('o marcador vazou para a tela: ' + JSON.stringify(qs[0]));
+if (qs[0] && qs[0].enunciado === 'Veja e diga o ritmo') ok('e o enunciado sobra legível depois da limpeza');
+else falha('enunciado depois da limpeza: ' + JSON.stringify(qs[0] && qs[0].enunciado));
+
 /* ── 7. sem conta, sem questões ───────────────────────────────────────── */
 responder = () => respostaIA(BOAS);
 r = await pedir(await carregar(), { ...PEDIDO, token: '' });

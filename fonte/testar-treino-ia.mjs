@@ -210,6 +210,18 @@ if (r.status === 403) ok('token que o Firebase não reconhece é recusado');
 else falha('token inválido: ' + JSON.stringify(r));
 QUEM = { email: 'joseeduardo1616@gmail.com', localId: 'uid-dono' };
 
+/* Montar treino é só do dono. Nem quem paga o plano completo entra aqui:
+   prescrever exercício para quem a gente não conhece é outro assunto, com
+   outro risco. Quem garante isso é o servidor — esconder a aba na tela é
+   conveniência, e o console do navegador passa por cima dela. */
+QUEM = { email: 'assinante@email.com', localId: 'uid-assinante' };
+r = await pedir(await carregar(), PEDIDO);
+if (r.status === 403 && /administrador/.test(r.corpo.erro || '')) ok('nem quem assina monta treino: a rota é só do dono');
+else falha('assinante montou treino: ' + JSON.stringify(r));
+if (!r.corpo.dias) ok('e a recusa não vem com um treino junto');
+else falha('a recusa veio com treino no corpo');
+QUEM = { email: 'joseeduardo1616@gmail.com', localId: 'uid-dono' };
+
 /* ── 8. sem chave de IA, o recado diz o que falta ─────────────────────── */
 delete env.GEMINI_API_KEY;
 r = await pedir(await carregar(), PEDIDO);

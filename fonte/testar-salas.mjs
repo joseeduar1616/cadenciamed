@@ -410,11 +410,17 @@ r = await pedir({ token: 't', acao: 'focar', nome: 'r3-clinica', minutos: 25, po
 if (r.corpo.foco.por !== 'Fulano Inventado') ok('quem combinou o foco é dito pelo perfil, não pelo pedido');
 else falha('aceitou o nome que veio no pedido: ' + r.corpo.foco.por);
 
-for (const m of [1, 4, 181, 999]) {
+/* Vai de 5 minutos a 12 horas: quem quer marcar um domingo inteiro de
+   estudo consegue, e acima disso o relógio ficaria na sala para sempre. */
+for (const m of [1, 4, 721, 99999]) {
   r = await pedir({ token: 't', acao: 'focar', nome: 'r3-clinica', minutos: m });
   if (r.status !== 400) { falha('aceitou foco de ' + m + ' minutos'); break; }
 }
 if (r.status === 400) ok('foco curto demais ou longo demais é recusado');
+
+r = await pedir({ token: 't', acao: 'focar', nome: 'r3-clinica', minutos: 300 });
+if (r.corpo.ok && r.corpo.foco && r.corpo.foco.minutos === 300) ok('cinco horas de foco combinado são aceitas');
+else falha('recusou cinco horas: ' + JSON.stringify(r));
 
 r = await pedir({ token: 't', acao: 'focar', nome: 'r3-clinica', minutos: 0 });
 if (r.corpo.ok && r.corpo.foco === null) ok('dá para encerrar o foco para a sala inteira');

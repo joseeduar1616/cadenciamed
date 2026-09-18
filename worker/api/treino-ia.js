@@ -15,8 +15,8 @@
  * é montado no navegador como busca no YouTube pelo nome do exercício —
  * busca sempre funciona, link inventado morre.
  */
-import { json, quemPede, corpoJson } from "./_comum.js";
-import { podeUsar, escolherProvedor, modeloAtual, chamarIA } from "./_ia.js";
+import { json, quemPede, corpoJson, ehDono } from "./_comum.js";
+import { escolherProvedor, modeloAtual, chamarIA } from "./_ia.js";
 
 const MAX_SAIDA = 9000;
 const MAX_DIAS = 7;
@@ -91,8 +91,13 @@ export async function onRequest({ request, env }) {
   if (!corpo.token) return json({ erro: "Entre na sua conta para usar esta função." }, 403);
   const pessoa = await quemPede(corpo.token, env.FIREBASE_API_KEY);
   if (!pessoa) return json({ erro: "Sua sessão expirou. Entre de novo." }, 403);
-  const permissao = await podeUsar(pessoa, env);
-  if (!permissao.ok) return json({ erro: permissao.erro }, 403);
+  /* Montar treino é função da conta do dono, e não do plano pago:
+     prescrever exercício para quem a gente não conhece é outro assunto,
+     com outro risco. A conferência é aqui, no servidor — esconder a aba na
+     barra é conveniência, e o console do navegador passa por cima dela. */
+  if (!ehDono(pessoa.email)) {
+    return json({ erro: "Esta função está disponível apenas para a conta do administrador." }, 403);
+  }
 
   const p = corpo.perfil && typeof corpo.perfil === "object" ? corpo.perfil : {};
   const dias = inteiro(p.dias, 1, MAX_DIAS, 0);

@@ -655,8 +655,10 @@ export default function Cadencia() {
     ...(mentorInfo.mentor ? [{ id: "mentor", label: "Mentor", acc: "var(--neon2)" }] : []),
     { id: "metas", label: "Metas", acc: "var(--warn)" },
     { id: "desempenho", label: "Desempenho", acc: "var(--a-CI)" },
-    /* A academia não tem nada a ver com prova de residência: ela só
-       aparece para quem o painel de acessos disser. */
+    /* A academia não tem nada a ver com prova de residência: ela nasce
+       fechada, e quem decide é o painel de acessos. O servidor também
+       recusa a montagem para quem não tem a aba, então deixá-la na barra
+       seria prometer o que a rota não entrega. */
     ...(ver.treino ? [{ id: "treino", label: "Treino", acc: "var(--ok)" }] : []),
     { id: "simulados", label: "Simulados", acc: "var(--a-CI)" },
     { id: "progresso", label: "Progresso", acc: "var(--a-CI)" },

@@ -21,10 +21,12 @@ const liberado = path.basename(alvo) === 'teste.html';
 const ABAS = ['Hoje', 'Foco', 'Matérias', 'Cronograma', 'Temas', 'Cartões',
               'Revisões', 'Agenda', 'Amigos', 'Metas', 'Desempenho', 'Progresso',
               'Simulados', 'Plano|Assinar', 'Configurações'];
-/* Abas que só aparecem para quem tem acesso a elas: a academia é do dono,
-   e Provas depende da regra gravada. Elas entram na varredura quando
-   estiverem na barra, e a ausência delas não é defeito. */
-const ABAS_FECHADAS = ['Treino', 'Provas'];
+
+/* Abas fechadas: elas não aparecem para quem não tem acesso. No build de
+   teste existem, porque o montar_teste.py liga o dono e o dono vê tudo;
+   no arquivo de produção, aberto deslogado, não podem estar na barra.
+   A ausência delas ali não é defeito, é o comportamento pedido. */
+const ABAS_DO_DONO = ['Treino'];
 
 const erros = [];
 const passos = [];
@@ -127,7 +129,7 @@ else {
 }
 
 /* todas as abas renderizam alguma coisa */
-for (const aba of ABAS) {
+for (const aba of (liberado ? [...ABAS, ...ABAS_DO_DONO] : ABAS)) {
   if (!(await ir(aba))) continue;
   const t = await texto();
   if (t.length < 20) falha(`aba ${aba} renderizou vazia`);
@@ -1302,23 +1304,24 @@ if (liberado) {
   }
 }
 
+/* Quem não é o dono não pode nem ver a porta: o servidor recusa montar
+   treino para qualquer outra conta, e deixar a aba na barra seria prometer
+   o que a rota não entrega. */
+if (!liberado) {
+  for (const aba of ABAS_DO_DONO) {
+    const n = await pag.locator(`nav button:has-text("${aba}")`).count();
+    if (n === 0) ok(`a aba ${aba} não aparece para quem não é o dono`);
+    else falha(`a aba ${aba} apareceu para quem não entrou na conta`);
+  }
+}
+
 /* ── treino: montar, executar e guardar ──────────────────────────────
    A aba da academia é a única que não tem nada a ver com estudo, e por
    isso mesmo é a que ninguém vai testar de véspera de prova. O caminho
    inteiro passa aqui: criar plano, pôr exercício, registrar série e
    sobreviver ao recarregar. */
-{
-  /* A academia agora é fechada: ela nasce só para o dono, e o painel de
-     acessos decide o resto. Este teste roda sem conta, então a aba não
-     está na barra — e é isso que se confere primeiro, porque é o
-     comportamento pedido. O caminho de dentro continua sendo exercitado
-     em teste.html, que é compilado com a aba aberta. */
-  const temTreino = await pag.locator('nav button:has-text("Treino")').count() > 0;
-  /* eslint-disable-next-line no-unused-expressions */
-  if (!temTreino) {
-    ok('treino: a academia não aparece para quem não tem acesso a ela');
-  } else {
-  await ir('Treino', true);
+if (liberado) {
+  await ir('Treino');
   await pag.locator('main button:has-text("Plano")').first().click();
   await pag.waitForTimeout(300);
   await pag.locator('button:has-text("Criar um plano na mão")').first().click();
@@ -1373,7 +1376,6 @@ if (liberado) {
   const prog = await texto();
   if (!/Treino A/.test(prog)) ok('treino: a academia não aparece no progresso de estudo');
   else falha('treino: o treino vazou para o progresso de estudo');
-  }
 }
 
 /* ── o service worker muda de nome a cada publicação ─────────────────
@@ -1581,8 +1583,8 @@ else falha(`a barra não voltou (${Math.round(larguraDeVolta)} vs ${Math.round(l
 
   /* 2. Botão só com ícone não tem nome nenhum para leitor de tela. */
   const semNome = [];
-  for (const aba of ['Hoje', 'Metas', 'Cartões', 'Desempenho', 'Treino', 'Configurações']) {
-    if (!(await ir(aba, ABAS_FECHADAS.indexOf(aba) >= 0))) continue;
+  for (const aba of ['Hoje', 'Metas', 'Cartões', 'Desempenho', 'Configurações']) {
+    if (!(await ir(aba))) continue;
     const n = await pag.evaluate(() => [...document.querySelectorAll('main button')]
       .filter((b) => !((b.getAttribute('aria-label') || b.textContent || '').trim())).length);
     if (n) semNome.push(`${aba}: ${n}`);

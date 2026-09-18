@@ -170,12 +170,32 @@ function focoDaDupla(d) {
  * Um documento por duelo, com as questões dentro. A resposta certa fica
  * guardada aqui e NUNCA sai para o navegador antes de a questão fechar:
  * mandar junto seria entregar o gabarito a quem abrisse a aba de rede.
+ *
+ * As figuras do material (o ECG, a lâmina, a tomografia) moram em
+ * documentos separados, duelos/{id}/figuras/{nome}, e não dentro do duelo.
+ * Duas razões: uma prova de imagem estoura o teto de um megabyte por
+ * documento do Firestore e derrubaria o duelo inteiro por causa de uma
+ * figura; e assim cada tela baixa só a figura da questão que está aberta,
+ * em vez de todas de uma vez no 4G de quem está no ônibus.
+ *
+ * Elas precisam viajar pelo servidor: o material é lido no aparelho de
+ * quem enviou, e a outra pessoa não tem aquele arquivo em lugar nenhum.
  */
+
+/* Quantas figuras um duelo carrega, e o tamanho de cada uma já em base64.
+   O navegador encolhe antes de mandar; isto aqui é o corte de segurança,
+   porque o pedido é só JSON e nada impede alguém de mandar outra coisa. */
+const MAX_FIGURAS = 12;
+const MAX_FIGURA_BYTES = 700000;
+
+const nomeDeFiguraValido = (s) => /^[A-Za-z0-9._-]{1,80}$/.test(String(s || ""));
 function questaoParaTela(q, indice, mostrarGabarito) {
   return {
     n: indice + 1,
     enunciado: q.enunciado,
     alternativas: q.alternativas,
+    /* Só o nome. Os bytes descem por duelo-figura, quando a tela pedir. */
+    ...(q.imagem ? { imagem: q.imagem } : {}),
     ...(mostrarGabarito ? { certa: q.certa, porque: q.porque } : {}),
   };
 }
@@ -196,6 +216,11 @@ function lerDuelo(f) {
        sem isto o aviso "fulano chamou você" só tocaria uma vez na vida. */
     criadoEm: numero(f.criadoEm),
     comecouEm: numero(f.comecouEm),
+    /* Quanto tempo o duelo já pulou por todo mundo ter respondido antes de
+       a questão fechar. O relógio continua sendo um só, do servidor: este
+       número simplesmente o adianta, e as duas telas veem a mesma coisa no
+       segundo seguinte. */
+    adiantado: numero(f.adiantado),
     questoes: lista(f.questoes).map((v) => {
       const m = mapa(v);
       return {
@@ -203,6 +228,7 @@ function lerDuelo(f) {
         alternativas: lista(m.alternativas).map(texto),
         certa: numero(m.certa),
         porque: texto(m.porque),
+        imagem: texto(m.imagem),
       };
     }),
     /* respostas: "uid:indice" → { escolha, em } */
@@ -222,6 +248,7 @@ const camposDoDuelo = (d) => ({
   prontos: { arrayValue: { values: (d.prontos || []).map((x) => ({ stringValue: x })) } },
   criadoEm: { doubleValue: d.criadoEm || 0 },
   comecouEm: { doubleValue: d.comecouEm },
+  adiantado: { doubleValue: d.adiantado || 0 },
   questoes: {
     arrayValue: {
       values: d.questoes.map((q) => ({
@@ -231,6 +258,7 @@ const camposDoDuelo = (d) => ({
             alternativas: { arrayValue: { values: q.alternativas.map((a) => ({ stringValue: a })) } },
             certa: { doubleValue: q.certa },
             porque: { stringValue: q.porque || "" },
+            imagem: { stringValue: q.imagem || "" },
           },
         },
       })),
@@ -249,12 +277,20 @@ const camposDoDuelo = (d) => ({
 /* Em que questão o duelo está, pelo relógio. É o servidor que decide, e
    não cada navegador: dois relógios diferentes fariam uma pessoa ainda
    respondendo a questão que a outra já viu o gabarito. */
-function ondeEstamos(d) {
+function ondeEstamos(d, agora = Date.now()) {
   if (!d.comecouEm) return { indice: 0, restaSeg: d.segundos, acabou: false };
-  const passou = (Date.now() - d.comecouEm) / 1000;
+  const passou = (agora - d.comecouEm + (d.adiantado || 0)) / 1000;
   const indice = Math.floor(passou / d.segundos);
   if (indice >= d.questoes.length) return { indice: d.questoes.length, restaSeg: 0, acabou: true };
   return { indice, restaSeg: Math.ceil(d.segundos - (passou % d.segundos)), acabou: false };
+}
+
+/* Quantos milissegundos faltam para a questão aberta fechar sozinha.
+   É esse o tanto que o duelo pula quando ninguém mais tem o que responder. */
+function faltaDaQuestao(d, agora = Date.now()) {
+  const janela = d.segundos * 1000;
+  const passou = agora - d.comecouEm + (d.adiantado || 0);
+  return janela - (passou % janela);
 }
 
 function placarDoDuelo(d, perfis) {
@@ -392,8 +428,11 @@ export async function onRequest({ request, env }) {
   if (acao === "focar") {
     const id = String(corpo.id || "").slice(0, 80);
     const minutos = Math.round(Number(corpo.minutos) || 0);
-    if (minutos && (minutos < 5 || minutos > 180)) {
-      return json({ erro: "O foco em conjunto vai de 5 a 180 minutos." }, 400);
+    /* O mesmo teto da sala de amigos: doze horas. Quem quer marcar um
+       domingo inteiro de estudo com a dupla consegue, e o limite só existe
+       para o número não virar absurdo. */
+    if (minutos && (minutos < 5 || minutos > 720)) {
+      return json({ erro: "O foco em conjunto vai de 5 minutos a 12 horas." }, 400);
     }
     const f = await lerDoc(token, `duplas/${id}`);
     if (!f) return json({ erro: "Essa dupla não existe." }, 404);
@@ -435,19 +474,52 @@ export async function onRequest({ request, env }) {
         alternativas: q.alternativas.slice(0, 5).map((a) => String(a).slice(0, 200)),
         certa: Math.max(0, Math.min(q.alternativas.length - 1, Math.round(Number(q.certa) || 0))),
         porque: String(q.porque || "").slice(0, 300),
+        imagem: nomeDeFiguraValido(q.imagem) ? String(q.imagem) : "",
       }));
     if (!questoes.length) return json({ erro: "Nenhuma questão para disputar." }, 400);
+
+    /* As figuras: só as que alguma questão realmente cita. Guardar as
+       outras seria subir o material inteiro para o banco sem ninguém
+       nunca abrir. */
+    const citadas = new Set(questoes.map((q) => q.imagem).filter(Boolean));
+    const figuras = (Array.isArray(corpo.figuras) ? corpo.figuras : [])
+      .filter((f) => f && citadas.has(String(f.nome)) && nomeDeFiguraValido(f.nome))
+      .filter((f) => /^data:image\/(png|jpe?g|webp);base64,/.test(String(f.dataUri || "")))
+      .filter((f) => String(f.dataUri).length <= MAX_FIGURA_BYTES)
+      .slice(0, MAX_FIGURAS);
+
+    /* Questão que cita figura que não chegou vira questão sobre uma imagem
+       que ninguém vê. Melhor perder a figura e manter a questão. */
+    const chegaram = new Set(figuras.map((f) => String(f.nome)));
+    for (const q of questoes) if (q.imagem && !chegaram.has(q.imagem)) q.imagem = "";
+
+    /* O segundo duelo da dupla mora no mesmo documento do primeiro, então
+       as figuras do duelo anterior ainda estão penduradas aqui. Sem apagar,
+       elas ficariam para sempre, e um nome repetido mostraria a imagem do
+       duelo passado. */
+    const anterior = lerDuelo(await lerDoc(token, `duelos/${id}`));
+    for (const nome of new Set((anterior ? anterior.questoes : []).map((q) => q.imagem).filter(Boolean))) {
+      if (!chegaram.has(nome)) await apagarDoc(token, `duelos/${id}/figuras/${nome}`);
+    }
 
     /* comecouEm zero: o duelo existe, mas o relógio não anda. Quem criou
        já entra pronto; falta a outra pessoa aceitar. */
     const d = {
       gente, quemCriou: pessoa.uid, tema: String(corpo.tema || "").slice(0, 60),
       segundos, prontos: [pessoa.uid], criadoEm: Date.now(), comecouEm: 0,
-      questoes, respostas: {},
+      questoes, respostas: {}, adiantado: 0,
     };
     if (!await gravarDoc(token, `duelos/${id}`, camposDoDuelo(d))) {
       return json({ erro: "Não consegui criar o duelo." }, 502);
     }
+
+    for (const f of figuras) {
+      await gravarDoc(token, `duelos/${id}/figuras/${f.nome}`, {
+        dataUri: { stringValue: String(f.dataUri) },
+        em: { doubleValue: Date.now() },
+      });
+    }
+
     return json({ ok: true, mensagem: "Duelo criado. Ele começa quando a outra pessoa aceitar." });
   }
 
@@ -507,9 +579,30 @@ export async function onRequest({ request, env }) {
       const chave = `${pessoa.uid}:${n}`;
       if (!d.respostas[chave]) {
         d.respostas[chave] = { escolha, em: Date.now() };
+
+        /* Os dois já responderam: não há mais nada acontecendo nesta
+           questão, e esperar o relógio acabar é só tempo parado olhando
+           para uma tela que não muda. Adiantar o relógio do duelo move as
+           duas telas juntas, porque quem manda no tempo continua sendo o
+           servidor — cada uma descobre no próximo segundo, pelo mesmo
+           caminho de sempre.
+
+           Todo mundo, e não "os dois": a dupla tem duas pessoas hoje, mas
+           contar quem falta em vez de fixar o número deixa isso certo se um
+           dia o duelo virar trio. */
+        const faltamResponder = d.gente.filter((u) => !d.respostas[`${u}:${n}`]);
+        if (faltamResponder.length === 0) {
+          d.adiantado = (d.adiantado || 0) + faltaDaQuestao(d);
+        }
+
         await gravarDoc(token, `duelos/${id}`, camposDoDuelo(d));
       }
     }
+
+    /* Recontado depois de responder: quem fechou a última resposta da
+       questão já recebe a próxima nesta mesma chamada, em vez de esperar o
+       próximo segundo para descobrir o que ela mesma acabou de causar. */
+    const agora = ondeEstamos(d);
 
     const perfis = await perfisDe(token, d.gente);
     const minhas = {};
@@ -524,26 +617,57 @@ export async function onRequest({ request, env }) {
         tema: d.tema,
         segundos: d.segundos,
         total: d.questoes.length,
-        indice: onde.indice,
-        restaSeg: onde.restaSeg,
-        acabou: onde.acabou,
+        indice: agora.indice,
+        restaSeg: agora.restaSeg,
+        acabou: agora.acabou,
         /* O gabarito só desce depois que a questão fecha. Antes disso ele
            não existe para o navegador. */
-        questao: onde.acabou ? null : questaoParaTela(d.questoes[onde.indice], onde.indice, false),
+        questao: agora.acabou ? null : questaoParaTela(d.questoes[agora.indice], agora.indice, false),
         minhas,
         placar: placarDoDuelo(d, perfis),
         /* No fim, o gabarito inteiro, que é quando ele vira estudo. */
-        gabarito: onde.acabou
+        gabarito: agora.acabou
           ? d.questoes.map((q, i) => questaoParaTela(q, i, true))
           : null,
       },
     });
   }
 
+  /* ── a figura de uma questão ────────────────────────────────────────
+   *
+   * Uma por chamada, e só para quem está no duelo. Desce pelo servidor
+   * porque o material foi lido no aparelho de quem enviou: a outra pessoa
+   * não tem aquele arquivo em lugar nenhum. */
+  if (acao === "duelo-figura") {
+    const id = String(corpo.id || "").slice(0, 80);
+    const nome = String(corpo.nome || "");
+    if (!nomeDeFiguraValido(nome)) return json({ erro: "Figura inválida." }, 400);
+
+    const d = lerDuelo(await lerDoc(token, `duelos/${id}`));
+    if (!d) return json({ erro: "Esse duelo já não existe." }, 404);
+    if (d.gente.indexOf(pessoa.uid) < 0) return json({ erro: "Isso não é seu." }, 403);
+    /* Só figura que alguma questão cita. Sem isto, o nome vindo do pedido
+       viraria um jeito de ler qualquer documento pendurado no duelo. */
+    if (!d.questoes.some((q) => q.imagem === nome)) {
+      return json({ erro: "Essa figura não é deste duelo." }, 404);
+    }
+
+    const doc = await lerDoc(token, `duelos/${id}/figuras/${nome}`);
+    const dataUri = doc ? texto(doc.dataUri) : "";
+    if (!dataUri) return json({ erro: "Essa figura não está mais guardada." }, 404);
+    return json({ ok: true, dataUri });
+  }
+
   if (acao === "duelo-apagar") {
     const id = String(corpo.id || "").slice(0, 80);
     const d = lerDuelo(await lerDoc(token, `duelos/${id}`));
     if (d && d.gente.indexOf(pessoa.uid) < 0) return json({ erro: "Isso não é seu." }, 403);
+    /* As figuras primeiro: no Firestore a subcoleção sobrevive ao documento
+       pai, e ficariam de herança para o próximo duelo da mesma dupla, que
+       reusa este id. */
+    for (const nome of new Set((d ? d.questoes : []).map((q) => q.imagem).filter(Boolean))) {
+      await apagarDoc(token, `duelos/${id}/figuras/${nome}`);
+    }
     await apagarDoc(token, `duelos/${id}`);
     return json({ ok: true });
   }
