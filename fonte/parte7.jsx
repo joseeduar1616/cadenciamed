@@ -1427,6 +1427,42 @@ function NumerosEntrada({ itens }) {
   );
 }
 
+/* A prova comentada: uma questão com a certa marcada e o comentário de
+   cada alternativa, que é o que a aba faz de diferente de um gabarito. */
+function FiguraProva() {
+  const alternativas = [
+    ["A", "Antibiótico de amplo espectro", false, "não há foco infeccioso no caso"],
+    ["B", "Diurético de alça", true, "alivia a congestão, que é o que o quadro mostra"],
+    ["C", "Corticoide em pulso", false, "seria a conduta se houvesse atividade inflamatória"],
+  ];
+  return (
+    <div className="flex flex-col gap-3">
+      {alternativas.map(([letra, texto, certa, porque], i) => (
+        <div key={letra} className="pe-peca rounded-2xl px-4 py-3.5"
+          style={{
+            animationDelay: `${0.12 + i * 0.12}s`,
+            background: certa ? soft("var(--ok)", 12) : soft("var(--ink)", 4),
+            border: `1px solid ${certa ? soft("var(--ok)", 38) : soft("var(--ink)", 9)}`,
+          }}>
+          <div className="flex items-start gap-3">
+            <span style={{
+              fontFamily: F_MONO, fontSize: 12.5, fontWeight: 700, marginTop: 1,
+              color: certa ? T.ok : T.ghost, flexShrink: 0,
+            }}>{letra}</span>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600, color: T.ink }}>
+              {texto}
+            </span>
+            {certa ? <Check size={15} style={{ color: "var(--ok)", flexShrink: 0, marginTop: 2 }} /> : null}
+          </div>
+          <div style={{ fontSize: 12.5, lineHeight: 1.55, color: T.faint, marginTop: 7, paddingLeft: 23 }}>
+            {porque}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* Os capítulos do meio, na ordem em que aparecem. Ficam numa lista só para
    o trilho da direita e as seções saírem do mesmo lugar — acrescentar um
    capítulo é acrescentar um item aqui. */
@@ -1457,9 +1493,15 @@ const CAPITULOS = [
     figura: <FiguraAnel />,
   },
   {
+    id: "provas", rotulo: "Provas", cor: "var(--warn)", x: "76%",
+    titulo: "A prova que você fez, comentada.",
+    texto: "Mande o PDF ou a foto de uma prova e receba cada questão de volta com a alternativa certa e o comentário de TODAS as alternativas, explicando o conteúdo. Gabarito você já tem; o que ensina é saber por que a errada está errada.",
+    figura: <FiguraProva />,
+  },
+  {
     id: "amigos", rotulo: "Amigos", cor: "var(--neon2)", x: "74%",
     titulo: "Estudar junto rende mais.",
-    texto: "Combine um nome e uma senha com quem estuda com você e abram uma sala. Horas, questões e acerto de todo mundo no mesmo ranking, e quem está estudando agora aparece aceso.",
+    texto: "Chame quem estuda com você pelo e-mail, sem combinar sala nem senha, e disputem questões ao vivo que a IA escreve do material que vocês mandarem. Tem também a sala com ranking de horas, questões e acerto, e quem está estudando agora aparece aceso.",
     figura: <FiguraRanking />,
   },
 ];

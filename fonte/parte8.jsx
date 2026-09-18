@@ -12,6 +12,51 @@
  * (Layers): Cartões e Desempenho ficavam com o mesmo desenho na barra, que
  * é justamente o que a barra existe para evitar — achar a aba de relance
  * sem ler. Quem entrar com aba nova põe o ícone dela aqui. */
+/* ── a barra em grupos ─────────────────────────────────────────────────
+ *
+ * Dezessete abas numa lista corrida, sem separação nenhuma, e sem caber
+ * na tela do celular: achar qualquer coisa era varrer dezessete nomes de
+ * cima a baixo. Em grupos, é olhar cinco títulos e depois três ou quatro
+ * nomes dentro de um.
+ *
+ * A ordem dos grupos é a ordem do dia de quem estuda: primeiro o que se
+ * faz agora, depois o que se revisa, depois o que se olha para saber como
+ * está indo, depois as outras pessoas, e por último a conta. Uma aba que
+ * não esteja em grupo nenhum cai no último, em vez de sumir.
+ */
+const GRUPOS_DE_ABAS = [
+  { nome: "Estudar", abas: ["hoje", "foco", "materias", "clinico", "cronograma", "temas"] },
+  { nome: "Fixar", abas: ["cartoes", "revisoes", "provas", "assistente"] },
+  { nome: "Acompanhar", abas: ["desempenho", "progresso", "metas", "simulados"] },
+  { nome: "Com outras pessoas", abas: ["amigos", "mentor"] },
+  { nome: "Você", abas: ["rotina", "treino", "planos", "config"] },
+];
+
+/* Devolve [{ nome, itens }] só com o que existe na barra desta pessoa: um
+   grupo que ficaria vazio não é desenhado, senão sobraria um título
+   solto sem nada embaixo. */
+function agruparAbas(abas) {
+  const porId = new Map(abas.map((t) => [t.id, t]));
+  const grupos = [];
+  const usados = new Set();
+  for (const g of GRUPOS_DE_ABAS) {
+    const itens = [];
+    for (const id of g.abas) {
+      const t = porId.get(id);
+      if (t) { itens.push(t); usados.add(id); }
+    }
+    if (itens.length) grupos.push({ nome: g.nome, itens });
+  }
+  /* Aba nova que ninguém pôs em grupo nenhum: melhor no fim da lista do
+     que invisível. */
+  const sobrando = abas.filter((t) => !usados.has(t.id));
+  if (sobrando.length) {
+    if (grupos.length) grupos[grupos.length - 1].itens.push(...sobrando);
+    else grupos.push({ nome: "Outras", itens: sobrando });
+  }
+  return grupos;
+}
+
 const ICONE_ABA = {
   hoje: CalendarDays, foco: Target, materias: ListChecks, clinico: BookMarked,
   cronograma: GraduationCap, temas: Stethoscope,
@@ -76,7 +121,24 @@ function BarraLateral({ abas, atual, onEscolher, estreita, aberta, onFechar, abe
       </div>
 
       <nav className="flex flex-col gap-1 px-3 pb-4" style={{ overflowY: "auto", flex: 1 }}>
-        {abas.map((t) => {
+        {agruparAbas(abas).map((grupo, iGrupo) => (
+          <Fragment key={grupo.nome}>
+            {/* O título do grupo só existe com a barra aberta. Encolhida,
+                ela é uma coluna de ícones, e um rótulo em caixa alta ali
+                viraria um borrão; um risco separa os grupos igual. */}
+            {expandida ? (
+              <span style={{
+                fontFamily: F_MONO, fontSize: 9.5, letterSpacing: "0.24em",
+                textTransform: "uppercase", color: T.ghost, whiteSpace: "nowrap",
+                padding: "0 12px", marginTop: iGrupo ? 14 : 4, marginBottom: 4,
+              }}>{grupo.nome}</span>
+            ) : iGrupo ? (
+              <span aria-hidden="true" style={{
+                height: 1, background: T.line, margin: "9px 10px", flexShrink: 0,
+              }} />
+            ) : null}
+
+            {grupo.itens.map((t) => {
           const on = atual === t.id;
           const Ic = ICONE_ABA[t.id] || Layers;
           const trancada = !pro && ABAS_PRO.indexOf(t.id) >= 0;
@@ -112,7 +174,9 @@ function BarraLateral({ abas, atual, onEscolher, estreita, aberta, onFechar, abe
               ) : null}
             </button>
           );
-        })}
+            })}
+          </Fragment>
+        ))}
       </nav>
     </>
   );

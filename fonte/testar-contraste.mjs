@@ -136,7 +136,13 @@ const MEDIR = () => {
     vistos.add(chave);
 
     if (rz < alvo) {
+      const caminho = [];
+      for (let n = el; n && n !== document.body && caminho.length < 4; n = n.parentElement) {
+        caminho.push(n.tagName.toLowerCase()
+          + (n.className ? '.' + String(n.className).split(' ').filter(Boolean).slice(0, 2).join('.') : ''));
+      }
       achados.push({
+        onde: caminho.join(' < '),
         texto: proprio.slice(0, 42), cor: cs.color,
         fundo: `rgb(${fundo.map((x) => Math.round(x)).slice(0, 3).join(',')})`,
         tam, razao: Math.round(rz * 100) / 100, alvo,
@@ -155,14 +161,53 @@ const ABAS = ['Hoje', 'Matérias', 'Cartões', 'Agenda', 'Amigos', 'Metas', 'Con
    dizia que o claro estava bom. */
 const trocarTema = async (queroClaro) => {
   for (let i = 0; i < 3; i += 1) {
-    const claro = await pag.evaluate(() => document.documentElement.getAttribute('data-theme') === 'light');
-    if (claro === queroClaro) return true;
+    if (await temaAplicado(queroClaro)) return true;
     const b = pag.locator('button[aria-label="Alternar tema"]');
     if (await b.count() === 0) return false;
     await b.first().click();
-    await pag.waitForTimeout(350);
+    /* Uma espera fixa ANTES de conferir estabilidade. Sem ela, as duas
+       amostras caíam as duas antes de a animação começar, davam iguais, e
+       o teste seguia medindo a cor do tema anterior sobre o fundo já
+       trocado. A transição mais longa da barra é de .25s. */
+    await pag.waitForTimeout(800);
+    /* Não basta o atributo no <html> ter mudado. O app redeclara as
+       variáveis num elemento de dentro, e entre o clique e esse redesenho
+       existe um instante em que o fundo já é claro e o texto ainda é o do
+       tema escuro. Medir nesse instante acusava um "1.64:1" que some no
+       próximo quadro: falha intermitente, que é pior do que teste nenhum.
+       Então se espera a COR DE VERDADE de um elemento da tela mudar. */
+    for (let espera = 0; espera < 20; espera += 1) {
+      if (await temaAplicado(queroClaro)) return true;
+    }
   }
   return false;
+};
+
+/* O tema está aplicado quando as cores PARARAM de mudar.
+ *
+ * Duas coisas separam o clique do resultado. A variável troca na hora,
+ * mas a cor desenhada é animada (as abas têm transition de .2s), então
+ * existe um instante em que o fundo já é claro e a letra ainda está no
+ * meio do caminho — e medir ali acusava 1.64:1 numa rodada e nada na
+ * seguinte. Falha intermitente é pior do que teste nenhum: ou ninguém
+ * acredita nela, ou se perde meia hora atrás de um defeito que não
+ * existe. Então espera-se a variável trocar E as cores da tela ficarem
+ * iguais entre dois quadros seguidos. */
+const coresDaTela = () => pag.evaluate(() => [...document.querySelectorAll('nav .aba, main h2, main p')]
+  .slice(0, 40).map((e) => getComputedStyle(e).color).join('|'));
+
+const temaAplicado = async (queroClaro) => {
+  const certo = await pag.evaluate((claro) => {
+    if ((document.documentElement.getAttribute('data-theme') === 'light') !== claro) return false;
+    const alvo = document.querySelector('main') || document.body;
+    const cor = getComputedStyle(alvo).getPropertyValue('--ink').trim().toUpperCase();
+    /* #140E24 é a tinta do tema claro; #F5F2FF a do escuro. */
+    return claro ? cor.startsWith('#14') : cor.startsWith('#F5');
+  }, queroClaro);
+  if (!certo) return false;
+  const antes = await coresDaTela();
+  await pag.waitForTimeout(120);
+  return (await coresDaTela()) === antes;
 };
 
 for (const tema of ['dark', 'light']) {
@@ -185,7 +230,7 @@ for (const tema of ['dark', 'light']) {
     ok(`tema ${nome}: todo texto visível passa no contraste mínimo`);
   } else {
     const lista = ruins.slice(0, 40).map((x) =>
-      `[${x.aba}] "${x.texto}" ${x.cor} sobre ${x.fundo} = ${x.razao}:1 (precisa ${x.alvo})`).join('\n        ');
+      `[${x.aba}] "${x.texto}" ${x.cor} sobre ${x.fundo} = ${x.razao}:1 (precisa ${x.alvo})\n            em ${x.onde}`).join('\n        ');
     falha(`tema ${nome}: ${ruins.length} trecho(s) abaixo do mínimo:\n        ${lista}`);
   }
 }

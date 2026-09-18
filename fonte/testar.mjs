@@ -1520,6 +1520,49 @@ const larguraDeVolta = await esperarLargura(larguraAberta);
 if (Math.abs(larguraDeVolta - larguraAberta) < 3) ok('a barra volta a expandir');
 else falha(`a barra não voltou (${Math.round(larguraDeVolta)} vs ${Math.round(larguraAberta)})`);
 
+/* ── a barra em grupos ──────────────────────────────────────────────
+   Dezessete abas numa lista corrida, sem separação nenhuma e sem caber na
+   tela do celular: achar qualquer coisa era varrer dezessete nomes. O que
+   se cobra aqui é que os grupos existam, que toda aba esteja dentro de
+   um, e que nenhuma tenha sumido no caminho. */
+{
+  const grupos = await pag.evaluate(() => {
+    const n = document.querySelector('nav');
+    const saida = [];
+    let atual = null;
+    for (const el of n.children) {
+      if (el.tagName === 'SPAN' && el.innerText.trim()) {
+        atual = { nome: el.innerText.trim(), itens: [] };
+        saida.push(atual);
+      } else if (el.tagName === 'BUTTON') {
+        (atual ? atual.itens : (saida[0] ? saida[0].itens : [])).push(
+          el.innerText.trim().split('\n')[0]);
+      }
+    }
+    return saida;
+  });
+
+  if (grupos.length >= 4) ok(`a barra vem separada em grupos (${grupos.length})`);
+  else falha('a barra voltou a ser uma lista corrida de abas');
+
+  const soltos = grupos.filter((g) => !g.nome).length;
+  if (!soltos) ok('toda aba está debaixo de um título de grupo');
+  else falha(`${soltos} aba(s) ficaram fora de qualquer grupo`);
+
+  /* Nenhuma aba pode ter sumido ao agrupar: o agrupamento é por lista
+     escrita à mão, e uma aba nova que ninguém pôs numa lista sumiria da
+     barra sem ninguém notar. */
+  const dentro = grupos.reduce((n, g) => n + g.itens.length, 0);
+  const naBarra = await pag.evaluate(() => [...document.querySelectorAll('nav button')]
+    .filter((b) => b.innerText.trim()).length);
+  if (dentro === naBarra) ok(`as ${dentro} abas continuam todas na barra depois de agrupadas`);
+  else falha(`agrupar perdeu abas: ${dentro} nos grupos e ${naBarra} na barra`);
+
+  const vazios = grupos.filter((g) => !g.itens.length).map((g) => g.nome);
+  if (!vazios.length) ok('nenhum grupo aparece vazio, com título e nada embaixo');
+  else falha('grupo sem nada dentro: ' + vazios.join(', '));
+}
+
 /* ── o que a auditoria pegou ────────────────────────────────────────
    Cada uma destas foi um defeito de verdade encontrado varrendo o site
    inteiro; o teste existe para não voltarem. */
