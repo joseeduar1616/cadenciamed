@@ -20,11 +20,11 @@ const PRECOS = {
    os dois precisam aparecer — na tela de planos dentro do app e na página
    de entrada, que lê estas mesmas constantes. */
 const GARANTIA_DIAS = 7;
-/* No domínio DO SITE. Estava em cadenciamed.com enquanto o site é
-   cadenciamed.com.br: além de confundir, é mais um domínio para manter
-   caixa de entrada. A caixa precisa existir de verdade — sem registro MX
-   no domínio, quem escrever recebe erro de entrega. */
-const EMAIL_SUPORTE = "suporte@cadenciamed.com.br";
+/* A caixa de suporte, no domínio em que ela existe de verdade. Sem
+   registro MX apontando para essa caixa, quem escrever recebe erro de
+   entrega — e um endereço de suporte que devolve erro é pior do que não
+   ter endereço nenhum, porque a pessoa acha que avisou. */
+const EMAIL_SUPORTE = "suporte@cadenciamed.com";
 
 /* Links de checkout da Kiwify ou Hotmart. Trocar pelos seus. */
 const CHECKOUT = (typeof window !== "undefined" && window.CADENCIA_CHECKOUT) || {
@@ -75,10 +75,27 @@ const ROTA_PLANO = "/api/plano";
  *
  * Nada disso é o que protege o conteúdo pago — cada rota confere o acesso
  * por conta própria. Aqui é só o que a tela mostra. */
+/* O padrão de cada aba, igual ao do servidor (RECURSOS, em
+   worker/api/_comum.js). Vale só enquanto o servidor não respondeu, e para
+   quem está sem conta: o site abre sem login, e a barra de abas precisa de
+   alguma coisa para desenhar. Quem manda é sempre a resposta do servidor.
+   As duas listas não podem divergir, e é isso que o testar-recursos.mjs
+   confere a cada build. */
+const RECURSOS_PADRAO = {
+  assistente: false, cartoes: false, revisoes: false, provas: false,
+  cronograma: true, rotina: true, amigos: true, metas: true,
+  desempenho: true, simulados: true, progresso: true, treino: false,
+};
+
 function useAssinatura(sdk, usuario) {
   const [plano, setPlano] = useState(null);
   const [carregando, setCarregando] = useState(true);
   const [aviso, setAviso] = useState("");
+  /* Quem vê o quê. Vem do servidor junto do plano, e não de uma lista
+     escrita aqui: esconder uma aba no navegador não fecha nada, e era só
+     isso que existia antes. Enquanto não chega é null — a barra espera,
+     em vez de desenhar tudo e tirar abas na cara da pessoa. */
+  const [recursos, setRecursos] = useState(null);
 
   const refSdk = useRef(sdk);
   refSdk.current = sdk;
@@ -87,8 +104,7 @@ function useAssinatura(sdk, usuario) {
 
   const perguntar = useCallback(async () => {
     const s = refSdk.current;
-    if (!s || !quem) { setPlano(null); setCarregando(false); return; }
-    if (dono) { setPlano({ tipo: "dono", ate: Infinity }); setCarregando(false); return; }
+    if (!s || !quem) { setPlano(null); setRecursos(null); setCarregando(false); return; }
 
     let token = "";
     try {
@@ -100,14 +116,23 @@ function useAssinatura(sdk, usuario) {
     setCarregando(false);
     if (erro) {
       /* Não derruba o que já estava valendo: uma falha de rede não pode
-         trancar quem já estava com o acesso aberto nesta sessão. */
+         trancar quem já estava com o acesso aberto nesta sessão.
+         E o dono não fica de fora do próprio site por causa de uma queda
+         do servidor — o que ele perde nesse caso é só a regra gravada, e
+         quem confere isso de verdade é cada rota, no servidor. */
       setAviso(erro);
+      if (dono) {
+        setPlano({ tipo: "dono", ate: Infinity });
+        setRecursos((r) => r || Object.fromEntries(
+          Object.keys(RECURSOS_PADRAO).map((k) => [k, true])));
+      }
       return;
     }
     setAviso("");
     setPlano(dados && dados.pro
       ? { tipo: dados.plano || "mensal", ate: Number(dados.validoAte) || Infinity }
       : null);
+    if (dados && dados.recursos) setRecursos(dados.recursos);
   }, [quem, dono]);
 
   useEffect(() => { setCarregando(true); perguntar(); }, [perguntar]);
@@ -130,7 +155,7 @@ function useAssinatura(sdk, usuario) {
     });
   }, [sdk, quem, dono, perguntar]);
 
-  return { pro: !!plano, plano, carregando, aviso, recarregar: perguntar };
+  return { pro: !!plano, plano, carregando, aviso, recursos, recarregar: perguntar };
 }
 
 function Cadeado({ tamanho = 15 }) {

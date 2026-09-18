@@ -203,3 +203,76 @@ export async function uidPeloEmail(token, email) {
   const doc = (j || []).find((x) => x.document);
   return doc ? doc.document.name.split("/").pop() : null;
 }
+
+/* ── quem enxerga cada aba ─────────────────────────────────────────────
+ *
+ * Antes isto era decidido só na tela: a barra escondia a aba e pronto.
+ * Esconder não é fechar — quem soubesse o nome da aba chegava nela, e as
+ * rotas por trás não perguntavam nada. Agora a regra mora aqui, o
+ * servidor responde por ela, e a tela só desenha o que o servidor disser.
+ *
+ * Três regras possíveis, e só três, porque mais do que isso vira um painel
+ * que ninguém entende:
+ *   "todos"  — qualquer pessoa com conta
+ *   "pro"    — quem tem assinatura em dia
+ *   "dono"   — só as contas em DONOS
+ *
+ * O PADRÃO de cada aba está aqui. O que estiver gravado em
+ * config/recursos manda por cima, para dar de mudar sem publicar o site.
+ */
+export const RECURSOS = [
+  { id: "assistente", nome: "Assistente", padrao: "pro" },
+  { id: "cartoes", nome: "Cartões", padrao: "pro" },
+  { id: "revisoes", nome: "Revisões", padrao: "pro" },
+  { id: "provas", nome: "Provas", padrao: "pro" },
+  { id: "cronograma", nome: "Cronograma", padrao: "todos" },
+  { id: "rotina", nome: "Agenda", padrao: "todos" },
+  { id: "amigos", nome: "Amigos", padrao: "todos" },
+  { id: "metas", nome: "Metas", padrao: "todos" },
+  { id: "desempenho", nome: "Desempenho", padrao: "todos" },
+  { id: "simulados", nome: "Simulados", padrao: "todos" },
+  { id: "progresso", nome: "Progresso", padrao: "todos" },
+  /* A academia não é estudo. Ela nasceu para uma pessoa só e é a única
+     aba que não tem nada a ver com prova de residência. */
+  { id: "treino", nome: "Treino", padrao: "dono" },
+];
+
+export const REGRAS = ["todos", "pro", "dono"];
+const regraValida = (v) => (REGRAS.indexOf(String(v)) >= 0 ? String(v) : null);
+
+/* Lê config/recursos e devolve { id: regra } só com o que for válido.
+   Campo desconhecido ou regra inventada é descartado: uma linha estranha
+   no banco não pode abrir uma aba que deveria estar fechada. */
+export function regrasGravadas(doc) {
+  const f = (doc || {}).fields || {};
+  const saida = {};
+  for (const r of RECURSOS) {
+    const v = regraValida((f[r.id] || {}).stringValue);
+    if (v) saida[r.id] = v;
+  }
+  return saida;
+}
+
+export const camposDasRegras = (regras) => {
+  const campos = {};
+  for (const r of RECURSOS) {
+    const v = regraValida(regras[r.id]);
+    if (v) campos[r.id] = { stringValue: v };
+  }
+  return campos;
+};
+
+/* O que ESTA pessoa enxerga: { treino: false, cartoes: true, ... }.
+   O dono enxerga tudo, sempre — senão dava para o dono se trancar fora do
+   painel que decide quem vê o quê. */
+export function recursosDe({ dono, pro, regras, liberados }) {
+  const saida = {};
+  for (const r of RECURSOS) {
+    const regra = (regras || {})[r.id] || r.padrao;
+    saida[r.id] = dono
+      || (liberados || {})[r.id] === true
+      || regra === "todos"
+      || (regra === "pro" && !!pro);
+  }
+  return saida;
+}

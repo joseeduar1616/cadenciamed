@@ -295,6 +295,95 @@ function DiagnosticoGoogle({ nuvem }) {
   );
 }
 
+/* ── quem vê o quê ─────────────────────────────────────────────────────
+ *
+ * Cada aba do site tem uma regra: todo mundo, quem assina, ou só você.
+ * A regra é gravada no servidor e é lá que ela vale — /api/plano lê daqui
+ * para dizer à tela o que desenhar. Esconder a aba no navegador, que era o
+ * que existia antes, não fecha nada: quem soubesse o nome chegava nela.
+ *
+ * Mudar aqui vale na hora para quem abrir o site depois; quem já está com
+ * ele aberto pega na próxima conferência de plano.
+ */
+const COMO_LER = {
+  todos: { rotulo: "Todo mundo", cor: "var(--ok)" },
+  pro: { rotulo: "Quem assina", cor: "var(--neon)" },
+  dono: { rotulo: "Só você", cor: "var(--warn)" },
+};
+
+function QuemVeOQue({ nuvem, notify }) {
+  const [lista, setLista] = useState(null);
+  const [erro, setErro] = useState("");
+  const [ocupado, setOcupado] = useState("");
+  const refNuvem = useRef(nuvem);
+  refNuvem.current = nuvem;
+
+  const chamar = useCallback(async (corpo) => {
+    let token = "";
+    try {
+      const n = refNuvem.current;
+      if (n && n.sdk && n.sdk.auth && n.sdk.auth.currentUser) {
+        token = await n.sdk.auth.currentUser.getIdToken();
+      }
+    } catch (e) { /* sem conta, a rota recusa */ }
+    if (!token) return { erro: "Entre na sua conta." };
+    const { dados, erro: falhou } = await chamarApi(ROTA_ACESSOS, { ...corpo, token }, "O painel de acessos");
+    return falhou ? { erro: falhou } : (dados || {});
+  }, []);
+
+  const carregar = useCallback(async () => {
+    const j = await chamar({ acao: "recursos" });
+    if (j.erro) { setErro(j.erro); setLista([]); return; }
+    setLista(j.recursos || []);
+    setErro("");
+  }, [chamar]);
+
+  useEffect(() => { carregar(); }, [carregar]);
+
+  const definir = async (id, regra) => {
+    setOcupado(id);
+    const j = await chamar({ acao: "recursos-definir", id, regra });
+    setOcupado("");
+    if (j.erro) { notify(j.erro); return; }
+    notify(j.mensagem || "Pronto.");
+    carregar();
+  };
+
+  return (
+    <Card className="px-6 py-5" brilho="var(--neon2)">
+      <H color="var(--neon2)" icon={<Eye size={16} />}>Quem vê o quê</H>
+      <Texto style={{ marginTop: 8 }}>
+        A regra de cada aba. Vale no servidor: aba fechada não aparece na barra e
+        também não entrega os dados dela.
+      </Texto>
+
+      {lista === null ? <Mini style={{ marginTop: 14 }}>carregando…</Mini> : null}
+
+      <div className="mt-4 flex flex-col gap-2">
+        {(lista || []).map((r) => (
+          <div key={r.id} className="rounded-2xl px-4 py-3 flex items-center gap-3 flex-wrap"
+            style={{ background: T.card2 }}>
+            <span className="flex-1 min-w-0">
+              <span style={{ display: "block", fontSize: 15, fontWeight: 600 }}>{r.nome}</span>
+              <Mini>
+                {r.mudado ? `mudado por você · o padrão é ${COMO_LER[r.padrao].rotulo.toLowerCase()}` : "no padrão"}
+              </Mini>
+            </span>
+            <span className="flex gap-1.5 flex-wrap">
+              {Object.entries(COMO_LER).map(([id, c]) => (
+                <Btn key={id} size="sm" disabled={ocupado === r.id}
+                  tone={r.regra === id ? "primary" : "quiet"}
+                  onClick={() => definir(r.id, id)}>{c.rotulo}</Btn>
+              ))}
+            </span>
+          </div>
+        ))}
+      </div>
+      {erro ? <Label style={{ marginTop: 12, color: T.bad }}>{erro}</Label> : null}
+    </Card>
+  );
+}
+
 function PainelDesenvolvedor({ nuvem, notify }) {
   return (
     <div className="flex flex-col gap-5">
@@ -305,6 +394,7 @@ function PainelDesenvolvedor({ nuvem, notify }) {
           que lê o token antes de qualquer coisa
         </Mini>
       </Card>
+      <QuemVeOQue nuvem={nuvem} notify={notify} />
       <Cupons nuvem={nuvem} notify={notify} />
       <PainelDono nuvem={nuvem} notify={notify} />
       <SaudeDoSite nuvem={nuvem} />

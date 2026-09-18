@@ -5,7 +5,7 @@ import React, {
 import { createPortal } from "react-dom";
 import {
   Play, Pause, RotateCcw, SkipForward, Plus, Trash2, Check, X, Flame,
-  ChevronRight, ChevronLeft, ChevronDown, Search, Settings2, Download, Upload,
+  ChevronRight, ChevronLeft, ChevronDown, Search, Settings2, Download, Upload, Eye,
   Sun, Moon, CalendarDays, Layers, BarChart3, ListChecks, Coffee, Target, Zap,
   BookMarked, FileText, Keyboard, ArrowUpRight, Maximize2, Minimize2,
   Smartphone, Monitor, Cloud, CloudOff, LogOut, User, RefreshCw, Stethoscope,
@@ -34,19 +34,20 @@ const THEME_CSS = `
 [data-theme="dark"]{
   --bg:#04030A; --bg2:#0A0714; --glow:rgba(168,85,247,0.18);
   --card:rgba(15,12,28,0.60); --card2:rgba(26,21,44,0.72); --card3:rgba(42,35,66,0.88);
-  /* Os quatro tons de texto vão do mais forte ao mais apagado. Os dois
-     últimos foram clareados até passarem no contraste mínimo medido
-     contra o fundo MAIS CLARO em que aparecem: o --card3 COMPOSTO, que é
-     translúcido e acaba mais claro do que o valor escrito nele (rgba
-     .88 sobre o card2, que por sua vez é .72 sobre o fundo). Medir contra
-     o valor cru dava um número melhor do que a tela mostra, e foi assim
-     que o texto continuou ilegível no celular ao sol depois do primeiro
-     conserto. "faint" carrega texto de
-     verdade e vai a 4.5:1; "ghost" é ícone, contorno e estado desligado,
-     e vai a 3:1, que é o mínimo para elemento de interface. */
+  /* Os quatro tons de texto, do mais forte ao mais apagado. TODOS os
+     quatro passam de 4.5:1 contra o pior fundo em que aparecem — o
+     --card3 já COMPOSTO (rgba .88 sobre o card2, que é .72 sobre o
+     fundo), que é o que o olho vê e não o valor escrito aqui.
+
+     O "ghost" também. Ele já foi orçado a 3:1, o mínimo de elemento de
+     interface, com a ideia de que carregava só ícone e contorno — mas
+     carrega texto de verdade ("Residência médica" na lateral, o número
+     da semana), e a 3:1 esse texto sumia. Quem mede isso agora é o
+     testar-contraste.mjs, no navegador, tema a tema e aba a aba: a conta
+     no papel dava certo e a tela continuava apagada. */
   --line:rgba(170,145,255,0.12); --line2:rgba(185,160,255,0.30);
-  --ink:#F5F2FF; --dim:#B5ACD4; --faint:#8F88A5; --ghost:#726894;
-  --neon:#35E4FF; --neon2:#A855F7;
+  --ink:#F5F2FF; --dim:#C1B9DB; --faint:#A09BB3; --ghost:#8F87AA;
+  --neon:#35E4FF; --neon2:#B268F8;
   --ok:#3EE0B0; --warn:#FFB648; --bad:#FF6B85; --aura3:#3EE0B0;
   --a-CL:#FF9450; --a-CI:#3EE0B0; --a-GO:#4FA8FF; --a-PE:#FF6FB0; --a-PR:#A182E6;
   --shadow:0 30px 80px rgba(2,0,12,.82), 0 2px 0 rgba(255,255,255,.03) inset;
@@ -58,10 +59,19 @@ const THEME_CSS = `
   --bg:#F1EFF8; --bg2:#FFFFFF; --glow:rgba(139,92,246,0.10);
   --card:rgba(255,255,255,0.90); --card2:#F2EFFA; --card3:#E4DEF3;
   --line:rgba(48,30,90,0.11); --line2:rgba(60,30,120,0.26);
-  --ink:#140E24; --dim:#4E4570; --faint:#675F82; --ghost:#847AA5;
-  --neon:#0E8FB8; --neon2:#7C3AED;
-  --ok:#12876A; --warn:#B06A00; --bad:#C93A54; --aura3:#12876A;
-  --a-CL:#C25718; --a-CI:#12876A; --a-GO:#2C63CC; --a-PE:#B33A72; --a-PR:#6C42BE;
+  /* Estes onze tons são a correção do defeito "no modo claro as letras
+     vão ficando mais claras". Eles nasceram como cor de ACENTO — borda
+     acesa, bolinha, barra de gráfico — e no fundo claro serviam. Só que
+     no site eles também são LETRA: cada título de painel é escrito na
+     cor da sua seção, e a porcentagem de cada área na cor da área. Como
+     letra, no claro, todos ficavam entre 3,3 e 4,4 contra o painel, ou
+     seja, abaixo do mínimo — e o efeito era exatamente esse, o de texto
+     desbotando conforme a tela se enche de seções coloridas.
+     Cada um foi escurecido só até cruzar 4.5:1, mantendo o matiz. */
+  --ink:#140E24; --dim:#423A5E; --faint:#58516F; --ghost:#675D89;
+  --neon:#0B6C8B; --neon2:#7733EC;
+  --ok:#0F7159; --warn:#8F5600; --bad:#B53249; --aura3:#0F7159;
+  --a-CL:#A14814; --a-CI:#0F7159; --a-GO:#2A5EC2; --a-PE:#AA376C; --a-PR:#6C42BE;
   --shadow:0 18px 44px rgba(50,30,100,.13);
   --vidro:linear-gradient(158deg,rgba(255,255,255,.85),rgba(255,255,255,0) 48%);
   --brilho-borda:rgba(255,255,255,.65);
@@ -208,6 +218,10 @@ const NOMES_AMBIENTE = [
   "--bg", "--bg2", "--card", "--card2", "--card3", "--line", "--line2",
   "--ink", "--dim", "--faint", "--ghost", "--glow", "--vidro", "--aura3",
   "--a-CL", "--a-CI", "--a-GO", "--a-PE", "--a-PR",
+  /* As duas de acento entram aqui desde que passaram a ser calculadas por
+     tema: quem volta à cor de origem precisa que elas sumam do <html>,
+     senão o tom do tema anterior fica valendo por cima do THEME_CSS. */
+  "--neon", "--neon2",
 ];
 
 function hslParaRgba(h, s, l, a) {
@@ -221,14 +235,45 @@ function hslParaRgba(h, s, l, a) {
 /* Devolve { "--bg": "...", ... } para o matiz da cor pedida. */
 /* Luminância de um hex, na conta da WCAG, e a razão de contraste entre
    duas cores. Serve para o ajuste logo abaixo. */
-function luminancia(hex) {
-  const limpo = String(hex || "000000").replace("#", "");
+/* Os três canais de uma cor, seja ela "#A1B2C3" ou "rgba(1,2,3,.88)".
+ *
+ * Aceitar as duas formas não é luxo: os painéis do tema são translúcidos e
+ * saem daqui como rgba, e a luminancia só sabia ler hex. Um rgba chegava
+ * como NaN, a razão de contraste virava NaN, "NaN >= alvo" é sempre falso,
+ * e o laço que ajusta o tom rodava até o fim — no escuro isso levava os
+ * QUATRO tons de texto a branco puro, achatando a hierarquia inteira em
+ * quem tivesse escolhido uma cor própria. Sem erro nenhum na tela. */
+function canaisDaCor(cor) {
+  const s = String(cor || "").trim();
+  const m = s.match(/rgba?\(([^)]+)\)/i);
+  if (m) {
+    const p = m[1].split(",").map((x) => parseFloat(x));
+    return [p[0] || 0, p[1] || 0, p[2] || 0, p.length > 3 ? p[3] : 1];
+  }
+  const limpo = s.replace("#", "") || "000000";
   const cheio = limpo.length === 3 ? limpo.split("").map((c) => c + c).join("") : limpo;
-  const canal = (i) => {
-    const x = parseInt(cheio.slice(i, i + 2), 16) / 255;
+  const n = (i) => parseInt(cheio.slice(i, i + 2), 16) || 0;
+  return [n(0), n(2), n(4), 1];
+}
+
+/* Achata uma cor com alfa sobre um fundo opaco, devolvendo hex. É o que a
+   tela faz ao empilhar painel sobre painel, e é contra o RESULTADO disso
+   que o contraste precisa ser medido. */
+function achatar(cor, base) {
+  const [r, g, b, a] = canaisDaCor(cor);
+  if (a >= 0.999) return `#${[r, g, b].map((v) => Math.round(v).toString(16).padStart(2, "0")).join("")}`;
+  const [br, bg, bb] = canaisDaCor(base);
+  const mix = (f, t) => Math.round(f * a + t * (1 - a));
+  return `#${[mix(r, br), mix(g, bg), mix(b, bb)].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function luminancia(hex) {
+  const [r, g, b] = canaisDaCor(hex);
+  const canal = (v) => {
+    const x = v / 255;
     return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
   };
-  return 0.2126 * canal(0) + 0.7152 * canal(2) + 0.0722 * canal(4);
+  return 0.2126 * canal(r) + 0.7152 * canal(g) + 0.0722 * canal(b);
 }
 
 function contraste(a, b) {
@@ -256,25 +301,65 @@ function ateContrastar(cor, fundo, alvo, claro) {
   return hslParaHex(h, s, atual);
 }
 
-/* Quanto cada tom de texto precisa alcançar contra o painel mais claro em
-   que ele aparece. Os dois primeiros já passam com folga em qualquer
-   matiz; os dois últimos são os que precisam de conferência. */
-const CONTRASTE_MINIMO = { "--ink": 7, "--dim": 4.5, "--faint": 4.5, "--ghost": 3 };
+/* Quanto cada cor precisa alcançar contra o pior painel em que ela
+   aparece — e "pior painel" é o composto, não o valor escrito.
+ *
+ * A lista cresceu porque a antiga só olhava os quatro tons neutros, e no
+ * site quem vira letra é muito mais do que isso: o título de cada painel
+ * usa a cor da seção, e a porcentagem de cada área usa a cor da área. Eram
+ * justo essas que desbotavam no tema claro. Cor que pode virar letra
+ * responde por 4.5:1, sem exceção. */
+const CONTRASTE_MINIMO = {
+  "--ink": 7, "--dim": 4.5, "--faint": 4.5, "--ghost": 4.5,
+  "--a-CL": 4.5, "--a-CI": 4.5, "--a-GO": 4.5, "--a-PE": 4.5, "--a-PR": 4.5,
+};
 
-function ambienteDoTema(corFunda, claro) {
+function ambienteDoTema(corFunda, claro, neon, neon2) {
   const { h } = hexParaHsl(corFunda);
   const saida = {};
   for (const [nome, s, l, a] of AMBIENTE[claro ? "light" : "dark"]) {
     saida[nome] = a === undefined ? hslParaHex(h, s, l) : hslParaRgba(h, s, l, a);
   }
 
-  /* O fundo mais claro em que texto aparece é o --card3 (cartão sobre
-     cartão), e é contra ele que a conta é feita: era esse o pior caso. */
-  for (const [nome, alvo] of Object.entries(CONTRASTE_MINIMO)) {
-    if (saida[nome] && saida["--card3"]) {
-      saida[nome] = ateContrastar(saida[nome], saida["--card3"], alvo, claro);
-    }
+  /* As cinco áreas entram na família da cor escolhida.
+   *
+   * Elas continuam precisando ser distinguíveis entre si (é assim que se lê
+   * o radar e o gráfico por especialidade), então o afastamento não é só de
+   * matiz: cada uma tem também a sua saturação e a sua claridade. Espalhar
+   * pelos três eixos é o que mantém cinco tons reconhecíveis sem nenhum
+   * deles sair do tema.
+   *
+   * Vêm ANTES da conferência de contraste de propósito: elas também são
+   * letra (a porcentagem de cada área é escrita na cor da área), então
+   * precisam passar pelo mesmo crivo que os tons neutros. Nascendo depois,
+   * como nasciam, escapavam dele. */
+  for (const [area, dh, s, l] of AREAS_DO_TEMA[claro ? "light" : "dark"]) {
+    saida[`--a-${area}`] = hslParaHex(h + dh, s, l);
   }
+
+  /* O pior fundo em que texto aparece é o --card3, e o que vale é ele
+     COMPOSTO: no escuro é um rgba .88 sobre o card2, que é .72 sobre o
+     card, que é .60 sobre o fundo. Medir contra o valor escrito dava um
+     número melhor do que a tela mostra — e, pior, dava NaN, porque um
+     rgba não era sequer legível pela conta de luminância. */
+  const pisoReal = achatar(
+    saida["--card3"],
+    achatar(saida["--card2"], achatar(saida["--card"], saida["--bg"])),
+  );
+  for (const [nome, alvo] of Object.entries(CONTRASTE_MINIMO)) {
+    if (saida[nome]) saida[nome] = ateContrastar(saida[nome], pisoReal, alvo, claro);
+  }
+
+  /* A cor de acento também é letra: é dela a cor do título de cada painel.
+     Ela sai daqui, e não de um valor escrito uma vez só, porque um tom
+     que se lê no fundo escuro se apaga no claro. Era assim que vinha
+     sendo aplicada — um valor para os dois temas, gravado direto no
+     <html> —, e por isso o acento do tema escuro vazava para o claro.
+     O tom ESCOLHIDO é respeitado; só se mexe nele o quanto for preciso
+     para ele ser legível no tema em que está. */
+  saida["--neon"] = ateContrastar(neon || corLegivel(corFunda), pisoReal, 4.5, claro);
+  saida["--neon2"] = ateContrastar(neon2 || corCombinando(corFunda), pisoReal, 4.5, claro);
+
   /* O brilho de fundo e o vidro dos painéis são a própria cor, bem diluída */
   saida["--glow"] = hslParaRgba(h, 90, claro ? 62 : 65, claro ? 0.1 : 0.18);
   saida["--vidro"] = `linear-gradient(158deg,${claro
@@ -283,17 +368,6 @@ function ambienteDoTema(corFunda, claro) {
   /* a terceira aura, um pouco ao lado no círculo de cores: dá volume ao
      fundo sem fugir do tema */
   saida["--aura3"] = hslParaHex(h + 40, 70, claro ? 40 : 62);
-
-  /* As cinco áreas também entram na família da cor escolhida.
-   *
-   * Elas continuam precisando ser distinguíveis entre si (é assim que se lê
-   * o radar e o gráfico por especialidade), então o afastamento não é só de
-   * matiz: cada uma tem também a sua saturação e a sua claridade. Espalhar
-   * pelos três eixos é o que mantém cinco tons reconhecíveis sem nenhum
-   * deles sair do tema. */
-  for (const [area, dh, s, l] of AREAS_DO_TEMA[claro ? "light" : "dark"]) {
-    saida[`--a-${area}`] = hslParaHex(h + dh, s, l);
-  }
   return saida;
 }
 

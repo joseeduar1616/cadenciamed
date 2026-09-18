@@ -49,6 +49,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar.mjs
   echo "── conferindo o arquivo de produção ────────────────"
   node testar.mjs index.html
+  node testar-contraste.mjs
   echo "── funções do servidor ─────────────────────────────"
   node testar-assistente.mjs
   node testar-flashcards-ia.mjs
@@ -57,6 +58,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-questoes-ia.mjs
   node testar-duplas.mjs
   node testar-anexo.mjs
+  node testar-recursos.mjs
   node testar-ler-foto.mjs
   node testar-buscar-imagem.mjs
   node testar-google.mjs

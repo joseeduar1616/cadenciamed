@@ -243,18 +243,24 @@ export default function Cadencia() {
   /* Sem cor escolhida o objeto é vazio, e aí nada é sobrescrito: vale o
      THEME_CSS, que é o desenho de origem. */
   const ambienteVars = useMemo(() => (
-    aparencia.ambiente ? ambienteDoTema(aparencia.ambiente, data.theme === "light") : {}
-  ), [aparencia.ambiente, data.theme]);
+    aparencia.ambiente
+      ? ambienteDoTema(aparencia.ambiente, data.theme === "light", aparencia.neon, aparencia.neon2)
+      : {}
+  ), [aparencia.ambiente, aparencia.neon, aparencia.neon2, data.theme]);
 
   useEffect(() => {
     try {
       const raiz = document.documentElement;
       raiz.setAttribute("data-theme", data.theme);
       raiz.setAttribute("data-layout", data.layout);
-      if (aparencia.neon) raiz.style.setProperty("--neon", aparencia.neon);
-      else raiz.style.removeProperty("--neon");
-      if (aparencia.neon2) raiz.style.setProperty("--neon2", aparencia.neon2);
-      else raiz.style.removeProperty("--neon2");
+      /* O acento NÃO é gravado aqui direto. Ele sai do ambiente, que o
+         calcula por tema — ver ambienteDoTema. Gravado cru, como era, ele
+         virava um valor só para o claro e o escuro: no tema claro o
+         <html> continuava com o ciano do escuro, e o fundo da página e a
+         barra do navegador ficavam com o acento do tema errado. Sem cor
+         própria escolhida o ambiente vem vazio, as duas somem do <html>,
+         e quem decide passa a ser o THEME_CSS, que tem um valor para
+         cada tema. */
 
       /* O ambiente também no <html>, para o que é pintado fora do React:
          o fundo do body e a barra do navegador no celular. Dentro do app
@@ -502,6 +508,9 @@ export default function Cadencia() {
   const mentorInfo = useMentor(nuvem);
   const assinatura = useAssinatura(nuvem.sdk, nuvem.usuario);
   const pro = assinatura.pro;
+  /* Quem vê o quê, dito pelo servidor. Enquanto ele não responde vale o
+     padrão, para a barra não nascer vazia. */
+  const ver = assinatura.recursos || RECURSOS_PADRAO;
   useEffect(() => { setProAtivo(pro); }, [pro]);
 
   const souDono = ehDono(nuvem.usuario);
@@ -565,15 +574,18 @@ export default function Cadencia() {
     ...(subjectsClinico.length ? [{ id: "clinico", label: "Ciclo clínico", acc: "var(--ok)" }] : []),
     { id: "cronograma", label: "Cronograma", acc: "var(--a-PE)" },
     { id: "temas", label: "Temas", acc: "var(--a-CI)" },
-    ...(souDono || pro ? [{ id: "assistente", label: "Assistente", acc: "var(--neon)" }] : []),
+    ...(ver.assistente ? [{ id: "assistente", label: "Assistente", acc: "var(--neon)" }] : []),
     { id: "cartoes", label: "Cartões", acc: "var(--neon)", badge: cartoesHoje },
     { id: "revisoes", label: "Revisões", acc: "var(--ok)", badge: late.length },
+    ...(ver.provas ? [{ id: "provas", label: "Provas", acc: "var(--warn)" }] : []),
     { id: "rotina", label: "Agenda", acc: "var(--a-PE)" },
     { id: "amigos", label: "Amigos", acc: "var(--neon2)", badge: duelosEsperando },
     ...(mentorInfo.mentor ? [{ id: "mentor", label: "Mentor", acc: "var(--neon2)" }] : []),
     { id: "metas", label: "Metas", acc: "var(--warn)" },
     { id: "desempenho", label: "Desempenho", acc: "var(--a-CI)" },
-    { id: "treino", label: "Treino", acc: "var(--ok)" },
+    /* A academia não tem nada a ver com prova de residência: ela só
+       aparece para quem o painel de acessos disser. */
+    ...(ver.treino ? [{ id: "treino", label: "Treino", acc: "var(--ok)" }] : []),
     { id: "simulados", label: "Simulados", acc: "var(--a-CI)" },
     { id: "progresso", label: "Progresso", acc: "var(--a-CI)" },
     { id: "planos", label: pro ? "Plano" : "Assinar", acc: "var(--neon2)" },
@@ -589,7 +601,7 @@ export default function Cadencia() {
   useEffect(() => {
     if (assinatura.carregando || !mentorInfo.carregado) return;
     if (!TABS.some((t) => t.id === tab)) setTab("hoje");
-  }, [souDono, pro, tab, assinatura.carregando, mentorInfo.mentor, mentorInfo.carregado]);
+  }, [souDono, pro, ver, tab, assinatura.carregando, mentorInfo.mentor, mentorInfo.carregado]);
 
   useEffect(() => {
     const h = (e) => {
@@ -1007,7 +1019,7 @@ export default function Cadencia() {
               {tab === "metas" && !pro && <Bloqueado recurso={RECURSOS_PRO.metas} onVerPlanos={() => setTab("planos")} />}
               {tab === "planos" && <Precos usuario={nuvem.usuario} plano={assinatura.plano} aviso={assinatura.aviso} />}
               {tab === "temas" && pro && <Temas {...{ subjects, setMark, minutos: minutesBySubject, sessoes: data.sessions, today }} />}
-              {tab === "assistente" && (souDono || pro) && (
+              {tab === "assistente" && ver.assistente && (
                 <div className="flex flex-col gap-5">
                   <Assistente {...{ data, setData, subjects, ladder, today, totals, minWeek, qWeek, notify, nuvem }} />
                   {/* O cronograma do Notion fica junto do assistente porque é ele quem
@@ -1022,7 +1034,7 @@ export default function Cadencia() {
               {tab === "metas" && pro && <Metas {...{ data, setData, today, qWeek, notify, ladder, gcal }} />}
               {tab === "mentor" && mentorInfo.mentor && <Mentor {...{ nuvem, notify, mentorInfo }} />}
               {tab === "desempenho" && <Desempenho {...{ data, today, addSession, delSession, notify }} />}
-              {tab === "treino" && <Treino {...{ data, setData, notify, today, nuvem }} />}
+              {tab === "treino" && ver.treino && <Treino {...{ data, setData, notify, today, nuvem }} />}
               {tab === "simulados" && pro && <Simulados {...{ nuvem, notify, irPara: setTab }} />}
               {tab === "simulados" && !pro && <Bloqueado recurso={RECURSOS_PRO.simulados} onVerPlanos={() => setTab("planos")} />}
               {tab === "progresso" && <Progresso {...{ data, byDay, today, totals, subjects }} />}

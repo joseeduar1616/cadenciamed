@@ -8,6 +8,7 @@
 import {
   json, corpoJson, quemPede, ehDono, contaDeServico, tokenDeAcesso,
   gravarAssinatura, validadeDoPlano, concederMentor, BASE_FIRESTORE, DIAS,
+  RECURSOS, REGRAS, regrasGravadas, camposDasRegras,
 } from "./_comum.js";
 
 async function uidPeloEmail(token, email) {
@@ -140,6 +141,58 @@ export async function onRequest({ request, env }) {
    *
    * Devolver o valor seria transformar esta tela no lugar mais fácil de
    * roubar as chaves do site inteiro. */
+  /* ── quem vê o quê ────────────────────────────────────────────────
+   *
+   * A regra de cada aba, gravada em config/recursos. Ela vale no
+   * SERVIDOR: /api/plano lê daqui para dizer à tela o que desenhar, e
+   * quem tentar abrir uma aba fechada não recebe os dados dela.
+   *
+   * As liberações avulsas ficam na assinatura da pessoa, em
+   * assinaturas/{uid}.recursos, porque são dela e não do site.
+   */
+  if (acao === "recursos") {
+    const r = await fetch(`${BASE_FIRESTORE}/config/recursos`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const doc = r.ok ? await r.json().catch(() => null) : null;
+    const gravadas = regrasGravadas(doc);
+    return json({
+      ok: true,
+      regras: REGRAS,
+      recursos: RECURSOS.map((x) => ({
+        id: x.id, nome: x.nome, padrao: x.padrao,
+        regra: gravadas[x.id] || x.padrao,
+        mudado: !!gravadas[x.id] && gravadas[x.id] !== x.padrao,
+      })),
+    });
+  }
+
+  if (acao === "recursos-definir") {
+    const id = String(corpo.id || "");
+    const regra = String(corpo.regra || "");
+    if (!RECURSOS.some((x) => x.id === id)) return json({ erro: "Essa aba não existe." }, 400);
+    if (REGRAS.indexOf(regra) < 0) return json({ erro: "Regra desconhecida." }, 400);
+
+    /* Grava o conjunto INTEIRO de volta. Um PATCH sem updateMask troca o
+       documento todo, então mandar só o campo mudado apagaria os outros —
+       e o site inteiro voltaria ao padrão de uma vez. */
+    const atual = await fetch(`${BASE_FIRESTORE}/config/recursos`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const gravadas = regrasGravadas(atual.ok ? await atual.json().catch(() => null) : null);
+    gravadas[id] = regra;
+
+    const w = await fetch(`${BASE_FIRESTORE}/config/recursos`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ fields: camposDasRegras(gravadas) }),
+    });
+    if (!w.ok) return json({ erro: "Não consegui gravar a regra." }, 502);
+    const nome = (RECURSOS.find((x) => x.id === id) || {}).nome || id;
+    const comoLer = { todos: "todo mundo", pro: "quem assina", dono: "só você" };
+    return json({ ok: true, mensagem: `${nome}: agora ${comoLer[regra]} vê.` });
+  }
+
   if (acao === "saude") {
     const tem = (v) => !!(v && String(v).trim());
     return json({
