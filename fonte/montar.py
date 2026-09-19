@@ -119,7 +119,7 @@ window.CADENCIA_GOOGLE = {
    LINKS DE PAGAMENTO — e o que falta para vender
 
    1. Crie dois produtos na Kiwify ou na Hotmart: um mensal (R$ 39) e um
-      anual (R$ 390). O nome do produto precisa ter a palavra "anual" no
+      anual (R$ 300). O nome do produto precisa ter a palavra "anual" no
       anual: e por ela que o servidor sabe qual plano liberar.
    2. Cole os dois links de checkout aqui embaixo.
    3. Na plataforma, cadastre o aviso de compra (webhook):

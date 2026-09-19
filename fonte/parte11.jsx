@@ -18,17 +18,21 @@
    plano: a tela volta a riscar e a mostrar a tarja de promoção sozinha. */
 const PROMO = "Promoção de lançamento";
 
-/* O anual custa dez mensalidades: dois meses de graça, que é o desconto
-   que quem vende assinatura costuma dar. Mais do que isso não converte
-   melhor — só entrega de graça a quem já tinha decidido comprar. */
+/* O anual sai por menos de oito mensalidades — desconto grande de
+   propósito, para empurrar a escolha para ele. A conta que justifica:
+   descontada a taxa da Kiwify, um anual deixa R$ 270,54 de uma vez, e um
+   mensal deixa R$ 33,00 por mês. O anual só perde para quem ficar mais de
+   oito meses pagando mês a mês — e quem paga mês a mês cancela bem antes
+   disso. Além do caixa adiantado, o anual paga a taxa fixa de transação
+   uma vez por ano, contra doze do mensal. */
 const PRECOS = {
   mensal: { rotulo: "Mensal", valor: "R$ 39", periodo: "por mês", chave: "mensal" },
   anual: {
-    rotulo: "Anual", valor: "R$ 390", periodo: "por ano", chave: "anual",
-    economia: "dois meses de graça",
+    rotulo: "Anual", valor: "R$ 300", periodo: "por ano", chave: "anual",
+    economia: "quatro meses de graça",
     /* A comparação que decide a escolha é esta, e não um preço riscado:
        quanto sai o mês pagando o ano inteiro, contra o plano mensal. */
-    equivale: "R$ 32,50 por mês · contra R$ 39 no mensal",
+    equivale: "R$ 25 por mês · contra R$ 39 no mensal",
   },
 };
 
