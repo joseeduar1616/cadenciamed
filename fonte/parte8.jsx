@@ -19,17 +19,26 @@
  * cima a baixo. Em grupos, é olhar cinco títulos e depois três ou quatro
  * nomes dentro de um.
  *
- * A ordem dos grupos é a ordem do dia de quem estuda: primeiro o que se
- * faz agora, depois o que se revisa, depois o que se olha para saber como
- * está indo, depois as outras pessoas, e por último a conta. Uma aba que
- * não esteja em grupo nenhum cai no último, em vez de sumir.
+ * O primeiro grupo não é uma categoria: é a lista do que se abre todo dia.
+ * Ele existe porque agrupar por assunto espalhou as seis funções que
+ * sustentam o site — o cronômetro, o cronograma, os flashcards, o
+ * assistente, a agenda e os amigos — por quatro grupos diferentes, três
+ * deles abaixo da dobra no celular. Um recurso que a pessoa precisa
+ * procurar é um recurso que ela não usa, e um que ela não usa é um que
+ * não segura a assinatura.
+ *
+ * Os outros grupos seguem a ordem do dia de quem estuda: o que se faz
+ * agora, o que se revisa, o que se olha para saber como está indo, as
+ * outras pessoas, e por último a conta. Uma aba que não esteja em grupo
+ * nenhum cai no último, em vez de sumir.
  */
 const GRUPOS_DE_ABAS = [
-  { nome: "Estudar", abas: ["hoje", "foco", "materias", "clinico", "cronograma", "temas"] },
-  { nome: "Fixar", abas: ["cartoes", "revisoes", "provas", "assistente"] },
+  { nome: "Todo dia", abas: ["foco", "cronograma", "cartoes", "assistente", "rotina", "amigos"] },
+  { nome: "Estudar", abas: ["hoje", "materias", "clinico", "temas"] },
+  { nome: "Fixar", abas: ["revisoes", "provas"] },
   { nome: "Acompanhar", abas: ["desempenho", "progresso", "metas", "simulados"] },
-  { nome: "Com outras pessoas", abas: ["amigos", "mentor"] },
-  { nome: "Você", abas: ["rotina", "treino", "planos", "config"] },
+  { nome: "Com outras pessoas", abas: ["mentor"] },
+  { nome: "Você", abas: ["treino", "planos", "config"] },
 ];
 
 /* Devolve [{ nome, itens }] só com o que existe na barra desta pessoa: um
