@@ -1,4 +1,6 @@
+import json
 import os
+import re
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 css = open('utils.css', encoding='utf-8').read()
@@ -10,6 +12,24 @@ ICONES = dict(
     for linha in open('icones-embutidos.txt', encoding='utf-8').read().splitlines()
     if '=' in linha
 )
+
+# O id do cliente do Google vem do wrangler.jsonc, que é o mesmo arquivo que
+# entrega esse valor ao Worker. A página só o usa de reserva, para quando a
+# rota /api/google não responder — mas uma reserva diferente da credencial
+# de verdade é pior que reserva nenhuma: a janela pediria o código para um
+# cliente e o servidor tentaria trocar com outro, que é o erro
+# invalid_client. Lendo daqui, os dois lados não têm como divergir.
+def _id_do_google():
+    bruto = open('../wrangler.jsonc', encoding='utf-8').read()
+    # jsonc: o json do Python não aceita os comentários //
+    limpo = re.sub(r'^\s*//.*$', '', bruto, flags=re.M)
+    valor = json.loads(limpo).get('vars', {}).get('GOOGLE_CLIENT_ID', '')
+    if not valor:
+        raise SystemExit('falta GOOGLE_CLIENT_ID em vars, no wrangler.jsonc')
+    return valor
+
+
+GOOGLE_CLIENT_ID = _id_do_google()
 
 TPL = """<!DOCTYPE html>
 <html lang="pt-BR" data-theme="dark" data-layout="auto">
@@ -87,10 +107,12 @@ window.CADENCIA_FIREBASE = {
    credencial do Worker fazia as duas pontas apontarem para clientes
    diferentes, e o Google recusava a troca com invalid_client.
 
-   Mantenha este igual ao do Worker mesmo assim: ele é o que vale se a rota
-   não responder. */
+   Ele é o que vale se a rota não responder, então não pode divergir. Para
+   isso não depender de ninguém lembrar, o valor abaixo é copiado do
+   wrangler.jsonc na hora de montar a página: existe um literal só no
+   repositório, e é o mesmo que o Worker recebe. */
 window.CADENCIA_GOOGLE = {
-  clientId: "499777815393-h6j6pf9ce3l12t423jb0nqbspl3bgpn0.apps.googleusercontent.com"
+  clientId: "__GOOGLE_CLIENT_ID__"
 };
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -166,8 +188,10 @@ def build(js, out, title, desc):
             .replace('__DESC__', desc).replace('__SITE__', SITE)
             .replace('__FAVICON32__', ICONES['FAVICON32'])
             .replace('__APPLE180__', ICONES['APPLE180'])
+            .replace('__GOOGLE_CLIENT_ID__', GOOGLE_CLIENT_ID)
             .replace('__JS__', open(js, encoding='utf-8').read()))
-    for sobrou in ('__CSS__', '__TITLE__', '__DESC__', '__SITE__', '__JS__', '__FAVICON32__', '__APPLE180__'):
+    for sobrou in ('__CSS__', '__TITLE__', '__DESC__', '__SITE__', '__JS__', '__FAVICON32__', '__APPLE180__',
+                   '__GOOGLE_CLIENT_ID__'):
         if sobrou in html:
             raise SystemExit('marcador não substituído: ' + sobrou)
     open(out, 'w', encoding='utf-8').write(html)

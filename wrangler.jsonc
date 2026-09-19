@@ -16,6 +16,28 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
   },
+  // Variáveis de texto do Worker.
+  //
+  // Elas moram AQUI e não no painel do Cloudflare porque "wrangler deploy"
+  // manda a lista inteira de bindings de uma vez: o que não está neste
+  // arquivo é apagado do Worker a cada publicação. Uma variável cadastrada
+  // só no painel sobrevive até o próximo push na main e some sem avisar —
+  // foi o que aconteceu com o GOOGLE_CLIENT_ID, e o sintoma foi a Agenda
+  // dizendo que "faltam GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET" logo
+  // depois de uma publicação em que ninguém mexeu nessas variáveis.
+  //
+  // Os SEGREDOS não entram aqui e continuam no painel: o Wrangler preserva
+  // os que já existem no Worker, e eles não podem estar no repositório.
+  // São eles: GOOGLE_CLIENT_SECRET, NOTION_CLIENT_SECRET,
+  // FIREBASE_SERVICE_ACCOUNT, GEMINI_API_KEY, ANTHROPIC_API_KEY,
+  // FIREBASE_API_KEY e WEBHOOK_SEGREDO.
+  //
+  // Um id de cliente OAuth é público por natureza — ele viaja dentro da
+  // página para abrir a janela do Google —, então escrevê-lo aqui não abre
+  // nada. O segredo da mesma credencial é que não pode sair do painel.
+  "vars": {
+    "GOOGLE_CLIENT_ID": "499777815393-h6j6pf9ce3l12t423jb0nqbspl3bgpn0.apps.googleusercontent.com"
+  },
   "observability": {
     "enabled": true
   }
