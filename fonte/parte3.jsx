@@ -379,8 +379,24 @@ function diferencaDaAgenda(lista, antes, opts) {
 function estadoDaLigacao(r) {
   const servidorLiga = !(r && r.disponivel === false);
   const permanente = r && typeof r.ligado === "boolean" ? r.ligado : null;
-  return { servidorLiga, permanente };
+  return { servidorLiga, permanente, clientId: String((r && r.clientId) || "") };
 }
+
+/* Qual credencial do Google a janela deve usar.
+ *
+ * O código de autorização é emitido PARA um cliente e só pode ser trocado
+ * por aquele mesmo cliente. Com o id escrito aqui na página, bastava
+ * cadastrar outra credencial no Worker para as duas pontas divergirem: o
+ * navegador pedia o código com uma e o servidor tentava trocar com a outra,
+ * e o Google recusava com invalid_client. Quem manda, então, é o servidor —
+ * que é o único lado que também guarda o segredo, e por isso o único que
+ * não tem como discordar de si mesmo.
+ *
+ * O id daqui fica como reserva, para o caso de o servidor não responder. */
+let idContadoPeloServidor = "";
+const guardarIdDoGoogle = (id) => { if (id) idContadoPeloServidor = String(id); };
+const idDoGoogle = () =>
+  idContadoPeloServidor || (GOOGLE_CFG && GOOGLE_CFG.clientId) || "";
 
 /* O que fazer depois de mandar o código ao servidor.
  *
@@ -516,6 +532,11 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
       if (!vivo) return;
       const e = estadoDaLigacao(r);
       setServidorLiga(e.servidorLiga);
+      /* Fora do estado do React: quem lê isto são as funções que abrem a
+         janela, no instante do clique, e a janela do Drive fica noutro
+         gancho. Um valor só, do módulo, serve os dois sem passar por
+         render nenhum. */
+      guardarIdDoGoogle(e.clientId);
       setPermanente(e.permanente === null ? false : e.permanente);
     })();
     return () => { vivo = false; };
@@ -558,7 +579,7 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
     const codigo = await new Promise((resolve) => {
       try {
         const c = window.google.accounts.oauth2.initCodeClient({
-          client_id: GOOGLE_CFG.clientId,
+          client_id: idDoGoogle(),
           scope: ESCOPO_PERMANENTE,
           ux_mode: "popup",
           /* Sem isto, quem já tinha autorizado antes recebe um código que o
@@ -602,7 +623,7 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
     if (!window.google || !window.google.accounts) return resolve(null);
     try {
       cliente.current = window.google.accounts.oauth2.initTokenClient({
-        client_id: GOOGLE_CFG.clientId,
+        client_id: idDoGoogle(),
         scope: ESCOPO_GC,
         callback: (r) => {
           if (r && r.access_token) {
@@ -1143,7 +1164,7 @@ function useGoogleDrive(nuvem) {
     }
     try {
       cliente.current = window.google.accounts.oauth2.initTokenClient({
-        client_id: GOOGLE_CFG.clientId,
+        client_id: idDoGoogle(),
         scope: ESCOPO_DRIVE,
         callback: (r) => {
           if (r && r.access_token) { setToken(r.access_token); resolve({ token: r.access_token, erro: "" }); return; }

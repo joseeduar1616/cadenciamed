@@ -16,10 +16,25 @@
  * pelo tempo que a autorização durar.
  *
  * Para funcionar precisa de duas variáveis no Worker:
- *   GOOGLE_CLIENT_ID      o mesmo ID que a página já usa
- *   GOOGLE_CLIENT_SECRET  o segredo da MESMA credencial, no Google Cloud
+ *   GOOGLE_CLIENT_ID      a credencial de Aplicativo da Web, no Google Cloud
+ *   GOOGLE_CLIENT_SECRET  o segredo da MESMA credencial
  * Sem elas a rota responde que não está configurada, e a página continua no
  * caminho antigo, de autorizar a cada sessão.
+ *
+ * QUEM MANDA NO CLIENT ID É ESTA ROTA, e não a página.
+ *
+ * O código de autorização é emitido PARA um cliente e só pode ser trocado
+ * por aquele mesmo cliente. Enquanto a página tinha o ID escrito no próprio
+ * arquivo, bastava cadastrar outra credencial aqui para as duas pontas
+ * apontarem para clientes diferentes: o navegador pedia o código com uma e
+ * o servidor tentava trocar com a outra, e o Google recusava com
+ * invalid_client. Foi exatamente o que aconteceu, e o sintoma ("confira as
+ * variáveis") mandava mexer justo no lado que estava certo.
+ *
+ * Agora o "estado" devolve o client_id junto, e a página usa esse. Um ID de
+ * cliente é público por natureza — ele já viajava dentro da página —, então
+ * dizê-lo aqui não abre nada; o que não pode sair, o segredo, continua sem
+ * sair.
  */
 import {
   json, corpoJson, quemPede, contaDeServico, tokenDeAcesso, BASE_FIRESTORE,
@@ -73,15 +88,28 @@ async function apagarConexao(token, uid) {
  * O código do erro vem em "error" e a explicação em "error_description", e
  * as duas precisam ser lidas em separado: a descrição de um invalid_grant é
  * "Token has been expired or revoked", sem o código dentro. */
-function explicar(status, j) {
+/* Só o fim do id, para a mensagem poder ser comparada com o que está no
+   Google Cloud sem despejar a credencial inteira na tela de quem usa. */
+const fimDoId = (id) => {
+  const s = String(id || "");
+  const corte = s.indexOf(".apps.googleusercontent.com");
+  const cru = corte > 0 ? s.slice(0, corte) : s;
+  return cru.length > 10 ? `...${cru.slice(-10)}` : cru || "(vazio)";
+};
+
+function explicar(status, j, env) {
   const codigo = String((j && j.error) || "");
   const erro = String((j && (j.error_description || j.error)) || "");
   if (/invalid_grant/i.test(codigo) || /invalid_grant/i.test(erro)) {
     return "A autorização do Google não vale mais. Ligue a conta de novo.";
   }
   if (/invalid_client|unauthorized_client/i.test(codigo) || /invalid_client|unauthorized_client/i.test(erro)) {
-    return "O Google recusou a credencial do site. Confira GOOGLE_CLIENT_ID e "
-      + "GOOGLE_CLIENT_SECRET nas variáveis do Worker: as duas precisam ser da mesma credencial.";
+    /* Dizer QUAL credencial o servidor usou: sem isso a mensagem mandava
+       conferir as variáveis, e elas costumavam estar certas — o errado era
+       o outro lado, a página, pedindo o código para outra credencial. */
+    return `O Google recusou a credencial do site (${fimDoId(env && env.GOOGLE_CLIENT_ID)}). `
+      + "O GOOGLE_CLIENT_SECRET do Worker precisa ser desta mesma credencial, "
+      + "e ela precisa ter o endereço do site em Origens JavaScript autorizadas.";
   }
   if (/redirect_uri_mismatch/i.test(erro)) {
     return "O Google recusou o endereço de retorno. A credencial precisa ser do tipo "
@@ -142,7 +170,15 @@ export async function onRequest({ request, env }) {
 
   /* ── a página pergunta se já está ligado ───────────────────────────── */
   if (acao === "estado") {
-    return json({ ligado: !!conexao, disponivel: true, email: conexao ? conexao.email : "" });
+    return json({
+      ligado: !!conexao,
+      disponivel: true,
+      email: conexao ? conexao.email : "",
+      /* A página abre a janela do Google com ESTE id, e não com o que
+         estiver escrito nela: é o que impede as duas pontas de apontarem
+         para credenciais diferentes. */
+      clientId: env.GOOGLE_CLIENT_ID,
+    });
   }
 
   /* ── troca do código pelo token de atualização ─────────────────────── */
@@ -155,7 +191,7 @@ export async function onRequest({ request, env }) {
       code: codigo,
       redirect_uri: corpo.retorno ? String(corpo.retorno) : RETORNO_JANELA,
     });
-    if (!ok || !j) return json({ erro: explicar(status, j) }, 400);
+    if (!ok || !j) return json({ erro: explicar(status, j, env) }, 400);
 
     /* O Google só manda o token de atualização na primeira autorização de
        cada conta. Quem já tinha autorizado antes recebe só o de acesso, e
@@ -209,9 +245,9 @@ export async function onRequest({ request, env }) {
          virou lixo e ficar tentando com ele só gera erro a cada abertura. */
       if (j && /invalid_grant/i.test(String(j.error || ""))) {
         await apagarConexao(servico, pessoa.uid);
-        return json({ erro: explicar(status, j), ligado: false }, 200);
+        return json({ erro: explicar(status, j, env), ligado: false }, 200);
       }
-      return json({ erro: explicar(status, j) }, 200);
+      return json({ erro: explicar(status, j, env) }, 200);
     }
     return json({
       acesso: j.access_token,

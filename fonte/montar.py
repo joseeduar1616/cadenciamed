@@ -80,8 +80,17 @@ window.CADENCIA_FIREBASE = {
      https://cadenciamed.joseeduardo1616.workers.dev
    Sem isso da erro 400 origin_mismatch ao conectar o Google Agenda.
    ══════════════════════════════════════════════════════════════════════ */
+/* Este id é só a RESERVA. Quem manda é o GOOGLE_CLIENT_ID do Worker: a
+   rota /api/google devolve o dela em "estado", e a página abre a janela com
+   aquele. O motivo é que o código de autorização é emitido PARA um cliente
+   e só pode ser trocado por aquele mesmo — com o id fixado aqui, trocar a
+   credencial do Worker fazia as duas pontas apontarem para clientes
+   diferentes, e o Google recusava a troca com invalid_client.
+
+   Mantenha este igual ao do Worker mesmo assim: ele é o que vale se a rota
+   não responder. */
 window.CADENCIA_GOOGLE = {
-  clientId: "499777815393-3br9aadldo4vdqfpqfhmai2qrud2t89u.apps.googleusercontent.com"
+  clientId: "499777815393-h6j6pf9ce3l12t423jb0nqbspl3bgpn0.apps.googleusercontent.com"
 };
 
 /* ══════════════════════════════════════════════════════════════════════
