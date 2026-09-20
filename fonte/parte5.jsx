@@ -114,7 +114,12 @@ function Foco({ data, setData, today, P, subjectId, setSubjectId }) {
 
   if (full) {
     return (
-      <div className="fixed flex flex-col items-center justify-center px-6" style={{ inset: 0, background: T.bg, zIndex: 90 }}>
+      <div className="fixed flex flex-col items-center justify-center px-6"
+        style={{
+          inset: 0, background: T.bg, zIndex: 90,
+          /* Sem cursor de texto piscando no meio do relógio. Ver parte12.jsx. */
+          caretColor: "transparent",
+        }}>
         <button type="button" onClick={() => setFull(false)} aria-label="Sair da tela cheia"
           className="fixed flex items-center justify-center rounded-full"
           style={{ top: 20, right: 20, width: 44, height: 44, background: T.card2, border: `1px solid ${T.line}`, color: T.dim, cursor: "pointer" }}>

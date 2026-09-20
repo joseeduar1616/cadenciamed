@@ -1322,6 +1322,15 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
         height: "100dvh", maxHeight: "100dvh",
         paddingTop: "env(safe-area-inset-top)",
         paddingBottom: "env(safe-area-inset-bottom)",
+        /* Sem cursor de texto piscando aqui.
+           Quem liga o "cursor de texto" do navegador (F7 no Chrome, e é
+           fácil de acertar sem querer) passa a ver um traço piscando em
+           toda página, inclusive nesta — e aqui ele aparece bem embaixo da
+           pergunta, parecendo um campo esperando resposta digitada. Não é:
+           esta tela se responde com toque, espaço ou os botões de baixo.
+           Nenhum campo mora dentro deste cartão, então apagar o cursor não
+           esconde nada que alguém fosse preencher. */
+        caretColor: "transparent",
       }}>
         {/* ── barra de cima ─────────────────────────────────────────── */}
         <div style={{ flexShrink: 0, borderBottom: `1px solid ${T.line}` }}>

@@ -436,6 +436,9 @@ function DueloAoVivo({ dupla, nuvem, notify, aoSair }) {
       position: "fixed", inset: 0, zIndex: 60, background: T.bg,
       overflowY: "auto", WebkitOverflowScrolling: "touch",
       padding: "calc(14px + env(safe-area-inset-top,0px)) 14px calc(20px + env(safe-area-inset-bottom,0px))",
+      /* Sem cursor de texto piscando: o duelo se responde clicando na
+         alternativa, e não há campo nenhum aqui. Ver parte12.jsx. */
+      caretColor: "transparent",
     }}>
       <div className="mx-auto" style={{ maxWidth: 680 }}>{dentro}</div>
     </div>, document.body);
