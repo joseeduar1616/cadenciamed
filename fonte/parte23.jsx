@@ -156,6 +156,14 @@ function Provas({ nuvem, notify }) {
       return;
     }
     setResultado(dados);
+    /* Prova comentada é a resposta mais longa do site: enunciado reescrito,
+       alternativas e um comentário para cada uma, vezes o número de
+       questões. Ela encosta no teto de saída da IA, e aí o resto da prova
+       não vem. Dizer isso evita a conclusão errada — de que o site perdeu
+       metade da prova — e já diz o que fazer. */
+    if (dados.cortada) {
+      notify(`A resposta da IA acabou antes do fim da prova: vieram ${(dados.questoes || []).length} questões comentadas. Mande o resto em outra leva.`);
+    }
     if (dados.descartadas) {
       notify(`${dados.descartadas} questão(ões) veio(ram) pela metade e ficou(aram) de fora.`);
     }

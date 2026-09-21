@@ -609,16 +609,83 @@ async function lerDocxParaTexto(arquivo, aviso) {
   return { texto, imagens: salvas };
 }
 
+/* ── as figuras do material ──────────────────────────────────────────
+ *
+ * O leitor de PDF, logo acima, recorta cada figura, guarda no aparelho e
+ * deixa um marcador [[img:nome]] no texto. Daqui elas são lidas de volta e
+ * encolhidas para viajar até a IA.
+ *
+ * E elas PRECISAM viajar. Um nome de arquivo não diz o que está na imagem:
+ * mandando só "[[img:pdf-7-3.jpg]]" no meio do texto, o modelo não tem como
+ * saber se aquilo é um eletrocardiograma que vale um cartão ou o logotipo
+ * do cursinho no rodapé da página — e, sem saber, ele joga pelo seguro e
+ * não usa nenhuma. Era por isso que os cartões montados pela IA saíam sem
+ * imagem nenhuma, mesmo com o PDF cheio delas.
+ *
+ * No duelo o motivo de viajar é outro e igualmente obrigatório: o material
+ * foi lido no aparelho de quem enviou, e a outra pessoa não tem aquele
+ * arquivo em lugar nenhum.
+ */
+const LADO_FIGURA_IA = 1000;
+const QUALIDADE_FIGURA_IA = 0.72;
+
+/* Maior que a foto do mural de treino: aqui a IA (e, no duelo, a pessoa)
+   precisa LER a figura — um ECG, uma lâmina —, não só reconhecer o que é. */
+function encolherFigura(dataUri) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const fator = Math.min(1, LADO_FIGURA_IA / Math.max(img.width, img.height));
+        const c = document.createElement("canvas");
+        c.width = Math.max(1, Math.round(img.width * fator));
+        c.height = Math.max(1, Math.round(img.height * fator));
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        resolve(c.toDataURL("image/jpeg", QUALIDADE_FIGURA_IA));
+      } catch (e) { resolve(""); }
+    };
+    /* Figura que não abre é figura que fica de fora, e o resto segue sem
+       ela: melhor perder uma imagem do que não montar nada. */
+    img.onerror = () => resolve("");
+    img.src = dataUri;
+  });
+}
+
+const MAX_FIGURAS_IA = 8;
+
+function nomesDeFigura(texto) {
+  const nomes = [];
+  for (const m of String(texto || "").matchAll(/\[\[img:([^\]]+)\]\]/g)) {
+    const nome = String(m[1] || "").trim();
+    if (nome && nomes.indexOf(nome) < 0) nomes.push(nome);
+  }
+  return nomes;
+}
+
+async function figurasDoMaterial(texto, quantas = MAX_FIGURAS_IA) {
+  const fora = [];
+  for (const nome of nomesDeFigura(texto).slice(0, quantas)) {
+    const bruto = await lerMidia(nome).catch(() => "");
+    if (!bruto) continue;
+    const menor = await encolherFigura(bruto);
+    if (menor) fora.push({ nome, dataUri: menor });
+  }
+  return fora;
+}
+
 const ROTA_FLASHCARDS_IA = "/api/flashcards-ia";
 
-async function gerarFlashcardsComIA({ texto, baralho, cobrirTudo, nuvem }) {
+async function gerarFlashcardsComIA({ texto, baralho, cobrirTudo, figuras, nuvem }) {
   let token = "";
   try {
     if (nuvem && nuvem.sdk && nuvem.sdk.auth && nuvem.sdk.auth.currentUser) {
       token = await nuvem.sdk.auth.currentUser.getIdToken();
     }
   } catch (e) { /* o servidor decide sem token */ }
-  return chamarApi(ROTA_FLASHCARDS_IA, { token, texto, baralho, cobrirTudo: !!cobrirTudo }, "O montador de flashcards");
+  return chamarApi(ROTA_FLASHCARDS_IA, {
+    token, texto, baralho, cobrirTudo: !!cobrirTudo,
+    figuras: Array.isArray(figuras) ? figuras : [],
+  }, "O montador de flashcards");
 }
 
 function MontarFlashcardsIA({ setData, notify, nuvem, pastas }) {
@@ -646,8 +713,15 @@ function MontarFlashcardsIA({ setData, notify, nuvem, pastas }) {
         return;
       }
 
+      /* As figuras vão junto do texto. Sem isso o modelo recebe só o nome
+         do arquivo, não sabe o que a imagem mostra, e por segurança não
+         põe imagem em cartão nenhum. */
+      const quantasFiguras = nomesDeFigura(extraido.texto).length;
+      if (quantasFiguras) setLendo(`preparando ${quantasFiguras === 1 ? "a figura" : `as ${Math.min(quantasFiguras, MAX_FIGURAS_IA)} figuras`}`);
+      const figuras = quantasFiguras ? await figurasDoMaterial(extraido.texto) : [];
+
       setLendo(cobrirTudo ? "a IA está montando todos os cartões (pode demorar um pouco)" : "a IA está organizando os cartões");
-      const { dados, erro: falha } = await gerarFlashcardsComIA({ texto: extraido.texto, baralho, cobrirTudo, nuvem });
+      const { dados, erro: falha } = await gerarFlashcardsComIA({ texto: extraido.texto, baralho, cobrirTudo, figuras, nuvem });
       if (falha) { setErro(falha); return; }
       if (!dados || !Array.isArray(dados.cartoes) || dados.cartoes.length === 0) {
         setErro("A IA não conseguiu montar cartões a partir desse conteúdo.");
@@ -666,10 +740,18 @@ function MontarFlashcardsIA({ setData, notify, nuvem, pastas }) {
         pastas: registrarPasta(p.pastas, pastaFinal),
       }));
 
+      /* Quantas figuras a IA de fato olhou, e não quantas o leitor guardou:
+         o número que interessa quando alguém reclama que "não veio imagem"
+         é o que chegou ao modelo. Zero aqui com PDF cheio de figura quer
+         dizer que o recorte não achou nada — figura vetorial ou página
+         escaneada —, e não que a IA as ignorou. */
+      const vistas = Number(dados.figurasVistas) || 0;
       const comImg = extraido.imagens || 0;
       notify(`${novos.length} cartõe${novos.length === 1 ? "" : "s"} montados em "${nomeFinal}"`
         + (pastaFinal === nomeFinal ? "" : `, na pasta ${pastaFinal}`)
-        + (comImg ? `, com ${comImg} imagem${comImg === 1 ? "" : "ns"} guardada${comImg === 1 ? "" : "s"}` : "")
+        + (vistas ? `, com ${vistas} figura${vistas === 1 ? "" : "s"} na mão da IA`
+          : comImg ? `, com ${comImg} imagem${comImg === 1 ? "" : "ns"} guardada${comImg === 1 ? "" : "s"}`
+            : "")
         + (dados.cortado ? ". O material era grande e foi cortado antes do fim." : "."));
       setNomeBaralho("");
     } catch (e) {
@@ -1411,11 +1493,7 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
                   entrelinha={alturaDoEstilo(estilo)}
                   altura={340} />
               </>
-            ) : (
-              <Mini style={{ marginTop: 34, display: "block" }}>
-                toque em qualquer lugar, ou aperte espaço, para ver a resposta
-              </Mini>
-            )}
+            ) : null}
           </div>
         </div>
 

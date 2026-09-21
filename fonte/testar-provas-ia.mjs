@@ -231,6 +231,39 @@ r = await pedir(await carregar(), PEDIDO);
 if (ultimoPedido === antes) ok('e recusa ANTES de chamar a IA, sem gastar cota com quem não pode');
 else falha('a IA foi chamada para quem não pode usar');
 
+/* ── a resposta cortada no meio ────────────────────────────────────────
+ *
+ * Prova comentada é a resposta mais longa do site: cada questão traz o
+ * enunciado reescrito, as alternativas e um comentário para CADA uma.
+ * Poucas questões assim já encostam no teto de saída, e o JSON acaba no
+ * meio de uma frase. Isso virava "a IA não devolveu num formato que eu
+ * conseguisse ler" e jogava fora até as questões que já estavam prontas —
+ * foi o que apareceu na tela de quem mandou uma prova de verdade.
+ */
+PLANO_ATE = Date.now() + 30 * 86400000;
+
+const inteiro = JSON.stringify({ prova: 'UNIFESP 2025', questoes: [questao(), questao({ numero: 2 })] });
+/* corta no meio do comentário da segunda questão, como o teto faz */
+const truncado = inteiro.slice(0, inteiro.lastIndexOf('"comentarios"'));
+responder = () => respostaIA(truncado);
+
+r = await pedir(await carregar(), PEDIDO);
+if (r.status === 200 && (r.corpo.questoes || []).length === 1) {
+  ok('resposta cortada no meio: a questão que veio inteira é aproveitada');
+} else falha('cortada: ' + JSON.stringify(r).slice(0, 200));
+if (r.corpo && r.corpo.cortada) ok('e a tela é avisada de que a prova não veio até o fim');
+else falha('não avisou que a resposta foi cortada');
+if (r.corpo && r.corpo.prova === 'UNIFESP 2025') ok('o nome da prova é pescado do texto cru, que o JSON quebrado ainda tem');
+else falha('perdeu o nome da prova: ' + JSON.stringify(r.corpo && r.corpo.prova));
+
+/* Cortada antes de fechar a primeira: aí não há o que aproveitar, e a
+   mensagem tem de dizer o que fazer em vez de mandar tentar de novo. */
+responder = () => respostaIA(inteiro.slice(0, 60));
+r = await pedir(await carregar(), PEDIDO);
+if (r.status === 502 && /Tente de novo|longa demais/.test(r.corpo.erro || '')) {
+  ok('sem nenhuma questão inteira, explica em vez de devolver JSON quebrado');
+} else falha('cortada no começo: ' + JSON.stringify(r).slice(0, 200));
+
 servidor.close();
 console.log(passos.join('\n'));
 console.log(erros.length ? `\n${erros.length} erro(s)` : '\nnenhum erro');

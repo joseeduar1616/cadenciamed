@@ -158,67 +158,12 @@ function CartaoDupla({ d, nuvem, notify, aoMudar, aoDuelar, aoEntrarNoDuelo }) {
   );
 }
 
-/* ── as figuras do material ──────────────────────────────────────────
- *
- * O leitor de PDF já recorta cada figura, guarda no aparelho e deixa um
- * marcador [[img:nome]] no texto — é o mesmo caminho dos flashcards. Aqui
- * as figuras que a IA citou são lidas de volta, encolhidas e mandadas
- * junto ao criar o duelo.
- *
- * Elas TÊM de viajar: o material foi lido no aparelho de quem enviou, e a
- * outra pessoa não tem aquele arquivo em lugar nenhum. Sem isto a questão
- * de imagem chegaria para ela como um enunciado falando de uma figura que
- * não existe na tela.
- */
-const LADO_FIGURA_DUELO = 1000;
-const QUALIDADE_FIGURA_DUELO = 0.72;
-
-/* Maior que a foto do mural de treino: aqui a pessoa precisa LER a figura
-   (um ECG, uma lâmina) para responder, não só reconhecer o que é. */
-function encolherFigura(dataUri) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      try {
-        const fator = Math.min(1, LADO_FIGURA_DUELO / Math.max(img.width, img.height));
-        const c = document.createElement("canvas");
-        c.width = Math.max(1, Math.round(img.width * fator));
-        c.height = Math.max(1, Math.round(img.height * fator));
-        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-        resolve(c.toDataURL("image/jpeg", QUALIDADE_FIGURA_DUELO));
-      } catch (e) { resolve(""); }
-    };
-    /* Figura que não abre é figura que fica de fora, e a questão segue sem
-       ela: melhor perder a imagem do que não conseguir montar o duelo. */
-    img.onerror = () => resolve("");
-    img.src = dataUri;
-  });
-}
-
-/* As figuras que o material trouxe, pelos marcadores que o leitor deixou
-   no texto. Elas são lidas ANTES de chamar a IA: é ela quem precisa ver a
-   imagem para decidir o que perguntar. */
-const MAX_FIGURAS_DUELO = 8;
-
-function nomesDeFigura(texto) {
-  const nomes = [];
-  for (const m of String(texto || "").matchAll(/\[\[img:([^\]]+)\]\]/g)) {
-    const nome = String(m[1] || "").trim();
-    if (nome && nomes.indexOf(nome) < 0) nomes.push(nome);
-  }
-  return nomes;
-}
-
-async function figurasDoMaterial(texto) {
-  const fora = [];
-  for (const nome of nomesDeFigura(texto).slice(0, MAX_FIGURAS_DUELO)) {
-    const bruto = await lerMidia(nome).catch(() => "");
-    if (!bruto) continue;
-    const menor = await encolherFigura(bruto);
-    if (menor) fora.push({ nome, dataUri: menor });
-  }
-  return fora;
-}
+/* As figuras do material — encolherFigura, nomesDeFigura e
+   figurasDoMaterial — moram no parte12.jsx, junto do leitor de PDF que as
+   recorta e do marcador [[img:nome]] que as nomeia. Ficam lá porque os
+   flashcards montados pela IA precisam exatamente das mesmas: duas cópias
+   divergiriam, e a diferença apareceria como "no duelo a imagem vai e no
+   baralho não". */
 
 /* A figura de uma questão, baixada quando ela abre.
  *
@@ -355,8 +300,8 @@ function MontarDuelo({ dupla, nuvem, notify, aoComecar, aoFechar }) {
             <Mini>
               {quantasFiguras === 0
                 ? "nenhuma figura neste material"
-                : quantasFiguras > MAX_FIGURAS_DUELO
-                  ? `${quantasFiguras} figuras · as ${MAX_FIGURAS_DUELO} primeiras entram`
+                : quantasFiguras > MAX_FIGURAS_IA
+                  ? `${quantasFiguras} figuras · as ${MAX_FIGURAS_IA} primeiras entram`
                   : `${quantasFiguras} ${quantasFiguras === 1 ? "figura, que a IA vai ver" : "figuras, que a IA vai ver"}`}
             </Mini>
           ) : null}

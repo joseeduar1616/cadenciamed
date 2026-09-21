@@ -54,6 +54,60 @@ Se não houver questão nenhuma no material, responda {"prova":"","questoes":[]}
 
 const SEGURANCAS = ["alta", "media", "baixa"];
 
+/* As questões que vieram inteiras antes de a resposta ser cortada.
+ *
+ * Uma prova comentada é a resposta mais longa que este site pede: cada
+ * questão traz o enunciado reescrito, quatro alternativas e um comentário
+ * para CADA uma. Umas poucas questões assim já encostam no teto de saída,
+ * e aí o JSON acaba no meio de uma frase e não abre. Até agora isso virava
+ * "a IA não devolveu a prova num formato que eu conseguisse ler", e o
+ * trabalho inteiro ia fora — inclusive as questões que já estavam prontas.
+ *
+ * Aqui o texto cru é varrido objeto a objeto, contando chaves e sabendo
+ * quando está dentro de um texto (uma chave dentro de aspas não abre nada),
+ * e cada objeto que fecha é lido sozinho. O que ficou pela metade no fim
+ * simplesmente não fecha, então não entra. */
+function recuperarQuestoesParciais(texto) {
+  const s = String(texto || "");
+  const marca = s.indexOf('"questoes"');
+  const abre = marca < 0 ? -1 : s.indexOf("[", marca);
+  if (abre < 0) return [];
+
+  const fora = [];
+  let comeco = -1, prof = 0, emTexto = false, escapado = false;
+  for (let i = abre + 1; i < s.length; i++) {
+    const c = s[i];
+    if (emTexto) {
+      if (escapado) escapado = false;
+      else if (c === "\\") escapado = true;
+      else if (c === '"') emTexto = false;
+      continue;
+    }
+    if (c === '"') { emTexto = true; continue; }
+    if (c === "{") { if (prof === 0) comeco = i; prof += 1; continue; }
+    if (c === "}") {
+      prof -= 1;
+      if (prof === 0 && comeco >= 0) {
+        try { fora.push(JSON.parse(s.slice(comeco, i + 1))); } catch (e) { /* essa não fechou direito */ }
+        comeco = -1;
+      }
+      continue;
+    }
+    if (c === "]" && prof === 0) break;
+  }
+  return fora;
+}
+
+/* O nome da prova, quando o JSON não abre. Ele é pedido antes das questões,
+   então continua escrito no texto cru mesmo com a resposta cortada. */
+function nomeDaProva(j, cru) {
+  const direto = String((j && j.prova) || "").trim();
+  if (direto) return direto;
+  const m = String(cru || "").match(/"prova"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  if (!m) return "";
+  try { return JSON.parse(`"${m[1]}"`); } catch (e) { return ""; }
+}
+
 function lerJson(texto) {
   const tentar = (s) => { try { return JSON.parse(s); } catch (e) { return null; } };
   const bruto = String(texto || "").trim();
@@ -154,9 +208,19 @@ export async function onRequest({ request, env }) {
   }
   if (r.erro) return json({ erro: r.erro }, 502);
 
-  const j = lerJson(r.texto);
+  let j = lerJson(r.texto);
+  let cortadaNoMeio = false;
   if (!j || !Array.isArray(j.questoes)) {
-    return json({ erro: "A IA não devolveu a prova num formato que eu conseguisse ler. Tente de novo." }, 502);
+    const parciais = recuperarQuestoesParciais(r.texto);
+    if (parciais.length === 0) {
+      return json({
+        erro: r.cortado
+          ? "Esta prova é longa demais para uma resposta só: a IA foi cortada antes de terminar a primeira questão. Mande menos questões de cada vez."
+          : "A IA não devolveu a prova num formato que eu conseguisse ler. Tente de novo.",
+      }, 502);
+    }
+    j = { prova: nomeDaProva(null, r.texto), questoes: parciais };
+    cortadaNoMeio = true;
   }
 
   const todas = j.questoes.map(questaoDaProva);
@@ -168,8 +232,12 @@ export async function onRequest({ request, env }) {
   }
 
   return json({
-    prova: String(j.prova || "").trim().slice(0, 120),
+    prova: nomeDaProva(j, r.texto).slice(0, 120),
     questoes,
+    /* A resposta acabou no meio: vieram estas, e o resto da prova não. Sem
+       dizer isso, a pessoa conta as questões, vê que faltam, e conclui que
+       o site perdeu metade da prova dela. */
+    cortada: cortadaNoMeio || !!r.cortado,
     /* Quantas a IA devolveu pela metade. A tela diz o número em vez de
        deixar a pessoa contar e achar que perdeu página. */
     descartadas: todas.length - todas.filter(Boolean).length,
