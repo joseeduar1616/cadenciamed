@@ -28,6 +28,11 @@ ARQUIVOS = [
     # 1 MB e continuarem no ar mesmo se o app quebrar.
     'privacidade.html',
     'termos.html',
+    # Resgate de dados. Fica FORA do app de propósito: ela precisa abrir sem
+    # carregar 1 MB de aplicativo e, principalmente, sem entrar em conta
+    # nenhuma — é o que garante que abrir esta página não traga a versão da
+    # nuvem por cima do que ainda estiver guardado no aparelho.
+    'recuperar.html',
     'regras-firestore.txt',
     'sql-asm.js',
     'favicon.ico',
@@ -110,6 +115,9 @@ CABECALHOS = """/index.html
 
 /termos.html
   Cache-Control: public, max-age=3600
+
+/recuperar.html
+  Cache-Control: no-cache, no-store, must-revalidate
 """
 open(os.path.join(DESTINO, '_headers'), 'w', encoding='utf-8').write(CABECALHOS)
 
