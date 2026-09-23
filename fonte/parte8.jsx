@@ -295,6 +295,20 @@ export default function Cadencia() {
     return () => { cancelado = true; if (saveRef.current) window.clearTimeout(saveRef.current); };
   }, [data, ready]);
 
+  /* Uma cópia guardada por meio dia de uso, sem ninguém pedir.
+   *
+   * É a parte que faltava: o app já sabia fazer backup, mas só quando a
+   * pessoa clicava — e quem perde dados é justamente quem não clicou.
+   * Roda uma vez por abertura, depois que os dados terminaram de carregar;
+   * a própria guardarVersao decide se já é hora e se mudou alguma coisa. */
+  useEffect(() => {
+    if (!ready) return undefined;
+    /* "data" aqui é o que acabou de ser carregado do disco, que é
+       exatamente o que se quer copiar. */
+    const t = window.setTimeout(() => { guardarVersao(data, "automática"); }, 4000);
+    return () => window.clearTimeout(t);
+  }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /* A personalização de aparência é escrita direto no <html>: assim vale
      também para o que é pintado fora do React, como o fundo da página e a
      cor da barra do navegador no celular. */

@@ -399,9 +399,42 @@ function MetasDoEstudo({ data, setData }) {
 
 /* Backup, restauração e o apagar tudo. Veio da aba Progresso: é ajuste da
    conta, não número de estudo. */
+/* Quando foi, em palavras de gente. Uma lista de carimbos de data é uma
+   lista que ninguém lê na hora do aperto. */
+function quandoFoi(em) {
+  const min = Math.round((Date.now() - em) / 60000);
+  if (min < 2) return "agora";
+  if (min < 60) return `há ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `há ${h}h`;
+  const d = Math.round(h / 24);
+  return d === 1 ? "ontem" : `há ${d} dias`;
+}
+
 function SeusDados({ data, setData, today, notify }) {
   const [confirm, setConfirm] = useState(false);
+  const [versoes, setVersoes] = useState([]);
+  const [vendoVersoes, setVendoVersoes] = useState(false);
   const arquivoRef = useRef(null);
+
+  const recarregarVersoes = useCallback(() => {
+    listarVersoes().then(setVersoes).catch(() => setVersoes([]));
+  }, []);
+
+  useEffect(() => { recarregarVersoes(); }, [recarregarVersoes]);
+
+  /* Voltar para uma versão é, ele mesmo, escrever por cima do que está
+     aqui — então guarda o agora antes, senão voltar atrás seria uma
+     viagem só de ida. */
+  const voltarPara = async (v) => {
+    try {
+      await guardarVersao(data, "antes de voltar para uma versão");
+      const novo = normalize(JSON.parse(v.dados));
+      setData(novo);
+      notify(`Voltou para a cópia de ${quandoFoi(v.em)}: ${v.resumo.aulas} aulas e ${v.resumo.sessoes} sessões.`);
+      recarregarVersoes();
+    } catch (e) { notify("Não consegui ler essa cópia."); }
+  };
 
   const exportar = () => {
     const txt = JSON.stringify(data, null, 2);
@@ -415,6 +448,9 @@ function SeusDados({ data, setData, today, notify }) {
     rd.onload = () => {
       try {
         const novo = normalize(JSON.parse(String(rd.result)));
+        /* Restaurar um arquivo é escrever por cima do que está aqui. Se o
+           arquivo for o errado, é desta cópia que se volta. */
+        guardarVersao(data, "antes de restaurar um arquivo");
         setData(novo);
         const aulas = Object.values(novo.marks || {}).filter((m) => m && m.aula).length;
         const degraus = Object.values(novo.reviews || {}).reduce((a, r) => a + Object.keys((r && r.done) || {}).length, 0);
@@ -435,13 +471,19 @@ function SeusDados({ data, setData, today, notify }) {
       <div className="mt-5 flex flex-wrap gap-2">
         <Btn onClick={exportar}><Download size={15} /> Baixar backup</Btn>
         <Btn onClick={() => arquivoRef.current && arquivoRef.current.click()}><Upload size={15} /> Restaurar backup</Btn>
+        {versoes.length ? (
+          <Btn tone="outline" onClick={() => setVendoVersoes((v) => !v)}>
+            <RotateCcw size={15} /> Versões anteriores ({versoes.length})
+          </Btn>
+        ) : null}
         <input ref={arquivoRef} type="file" accept="application/json,.json" onChange={importar} style={{ display: "none" }} />
         {confirm ? (
           <>
             <Btn tone="danger" onClick={() => {
+              guardarVersao(data, "antes de apagar tudo");
               setData({ ...DEFAULTS, theme: data.theme, layout: data.layout, tema: data.tema, revisao: data.revisao });
               setConfirm(false);
-              notify("Tudo apagado.");
+              notify("Tudo apagado. Dá para voltar atrás em Versões anteriores.");
             }}>
               <Trash2 size={15} /> Confirmar
             </Btn>
@@ -455,8 +497,46 @@ function SeusDados({ data, setData, today, notify }) {
         <Label style={{ marginTop: 14, color: T.bad }}>
           Isso apaga sessões, marcações, revisões, cartões, pastas, rotina, metas
           e anotações. A aparência e o esquema de revisão continuam como estão.
-          Baixe um backup antes.
+          Dá para voltar atrás em Versões anteriores, mas baixe um backup antes.
         </Label>
+      ) : null}
+
+      {/* ── versões anteriores ────────────────────────────────────────
+        * O app guarda sozinho uma cópia por meio dia de uso, e sempre
+        * antes de escrever por cima: ao carregar a conta, ao restaurar um
+        * arquivo, ao apagar tudo. Cada linha diz o que tem dentro, porque
+        * escolher entre doze datas sem saber o que cada uma guarda é
+        * adivinhação — e quem chega aqui já está com pressa.
+        *
+        * As cópias são deste aparelho e não sobem para a nuvem: elas são
+        * a rede de proteção para quando a nuvem for a coisa errada. */}
+      {vendoVersoes ? (
+        <div style={{ marginTop: 18, borderTop: `1px solid ${T.line}`, paddingTop: 16 }}>
+          <Label>Cópias guardadas neste aparelho</Label>
+          <div className="mt-3 flex flex-col gap-2">
+            {versoes.map((v) => (
+              <div key={v.em} className="flex items-center justify-between gap-3 flex-wrap"
+                style={{ background: T.card2, border: `1px solid ${T.line}`, borderRadius: 12, padding: "10px 14px" }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 14.5, fontWeight: 600 }}>
+                    {quandoFoi(v.em)}
+                    <span style={{ color: T.dim, fontWeight: 400 }}> · {v.motivo}</span>
+                  </div>
+                  <div style={{ fontSize: 13, color: T.dim, marginTop: 2 }}>
+                    {v.resumo.aulas} aulas · {v.resumo.sessoes} sessões ({v.resumo.horas}h)
+                    · {v.resumo.questoes} questões
+                    {v.resumo.cartoes ? ` · ${v.resumo.cartoes} cartões` : ""}
+                  </div>
+                </div>
+                <Btn size="sm" tone="outline" onClick={() => voltarPara(v)}>Voltar para esta</Btn>
+              </div>
+            ))}
+          </div>
+          <Label style={{ marginTop: 12, textTransform: "none", letterSpacing: 0, fontSize: 13, lineHeight: 1.6, color: T.dim }}>
+            Voltar para uma cópia guarda antes o que está aqui agora, então dá
+            para ir e voltar sem perder nada.
+          </Label>
+        </div>
       ) : null}
     </Card>
   );

@@ -195,6 +195,11 @@ function useNuvem(data, setData, notify, pronto, pro) {
         return;
       }
       {
+        /* O que estava neste aparelho vira uma versão guardada ANTES de
+           a conta escrever por cima. Vale para toda carga vinda da nuvem,
+           e não só para a primeira: foi uma carga comum, de um aparelho
+           que já tinha sincronizado antes, que apagou os dados de alguém. */
+        guardarVersao(dataRef.current, era ? "antes de carregar a conta" : "antes de atualizar por outro aparelho");
         if (era) {
           try {
             window.localStorage.setItem(CHAVE_BACKUP, JSON.stringify(dataRef.current));

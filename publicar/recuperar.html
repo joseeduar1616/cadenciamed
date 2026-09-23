@@ -153,14 +153,14 @@
 
   encontrados.sort(function (a, b) { return b.r.peso - a.r.peso; });
 
-  if (encontrados.length === 0) {
-    caixa.innerHTML = '<div class="item"><p class="vazio">'
-      + 'Não achei nenhum dado do Cadência Med guardado neste navegador.</p>'
-      + '<p class="fraco" style="margin-top:8px">Veja o bloco de baixo: vale tentar nos outros aparelhos e navegadores antes de desistir.</p></div>';
-    return;
-  }
-
   caixa.innerHTML = "";
+  if (encontrados.length === 0) {
+    var nada = document.createElement("div");
+    nada.className = "item";
+    nada.innerHTML = '<p class="vazio">Não achei dados do aplicativo no armazenamento comum deste navegador.</p>'
+      + '<p class="fraco" style="margin-top:8px">Ainda pode haver cópias guardadas pelo próprio app; se houver, elas aparecem logo abaixo em um instante.</p>';
+    caixa.appendChild(nada);
+  }
   encontrados.forEach(function (achado, n) {
     var r = achado.r;
     var div = document.createElement("div");
@@ -194,6 +194,53 @@
     div.appendChild(b);
     caixa.appendChild(div);
   });
+
+  /* As cópias que o app guarda sozinho — uma por meio dia de uso, e
+     sempre antes de escrever por cima. Elas moram no IndexedDB, então não
+     apareceriam na varredura acima, que é do localStorage. São a parte
+     mais provável de salvar alguém: existem sem ninguém ter clicado em
+     nada. */
+  try {
+    var req = indexedDB.open("cadencia-versoes", 1);
+    req.onsuccess = function () {
+      var bd = req.result;
+      if (!bd.objectStoreNames.contains("copias")) { bd.close(); return; }
+      var tx = bd.transaction("copias", "readonly");
+      var todas = tx.objectStore("copias").getAll();
+      todas.onsuccess = function () {
+        var lista = (todas.result || []).sort(function (a, b) { return b.em - a.em; });
+        bd.close();
+        if (!lista.length) return;
+
+        var titulo = document.createElement("div");
+        titulo.className = "item";
+        titulo.innerHTML = '<div class="resumo"><b>' + lista.length + " cópia" + (lista.length === 1 ? "" : "s")
+          + " guardada" + (lista.length === 1 ? "" : "s") + " pelo próprio aplicativo</b>"
+          + '<br><span class="fraco">O app guarda sozinho, sem ninguém pedir. Baixe a que tiver mais conteúdo.</span></div>';
+        caixa.appendChild(titulo);
+
+        lista.forEach(function (v) {
+          var r = v.resumo || {};
+          var div = document.createElement("div");
+          div.className = "item";
+          var quando = new Date(v.em).toLocaleString("pt-BR");
+          div.innerHTML = '<div class="chave">' + quando + " · " + (v.motivo || "") + "</div>"
+            + '<div class="resumo"><b>' + (r.aulas || 0) + "</b> aulas · <b>" + (r.sessoes || 0)
+            + "</b> sessões (" + (r.horas || 0) + "h) · <b>" + (r.questoes || 0) + "</b> questões"
+            + (r.cartoes ? " · <b>" + r.cartoes + "</b> flashcards" : "") + "</div>";
+          var b = document.createElement("button");
+          b.textContent = "Baixar esta";
+          b.onclick = function () {
+            baixar("cadencia-copia-" + new Date(v.em).toISOString().slice(0, 10) + ".json", v.dados);
+          };
+          div.appendChild(b);
+          caixa.appendChild(div);
+        });
+      };
+      todas.onerror = function () { bd.close(); };
+    };
+    req.onerror = function () { /* sem depósito de versões neste navegador */ };
+  } catch (e) { /* segue sem */ }
 
   /* As imagens dos flashcards e das anotações moram noutro depósito, e não
      entram no backup de texto. Vale dizer que elas estão aqui, para ninguém
