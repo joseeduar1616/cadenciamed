@@ -13,7 +13,14 @@ const erros = [];
 const ok = (m) => passos.push('ok   ' + m);
 const falha = (m) => { passos.push('FALHA ' + m); erros.push(m); };
 
-const { dividirEmLotes, juntarQuestoes, LOTE_ALVO, MAX_LOTES } = await import('./_lotes.mjs');
+const { dividirEmLotes, juntarQuestoes, contarQuestoesNoTexto, LOTE_ALVO, MAX_LOTES, POR_LOTE } =
+  await import('./_lotes.mjs');
+
+/* O teto de questões POR CHAMADA da rota (worker/api/provas-ia.js). O lote
+   é medido em questões justamente por causa dele, então o teste conhece o
+   número: se a rota subir o teto e o lote não acompanhar, sobra capacidade
+   parada; se o lote passar do teto, questão some. */
+const TETO_DA_ROTA = 20;
 
 /* Uma prova de verdade: questões numeradas, enunciado, quatro alternativas. */
 const questao = (n) => `\n${n}. Paciente de ${20 + (n % 40)} anos com quadro clínico número ${n}, `
@@ -64,6 +71,36 @@ if (lotes.length > 1 && lotes.join('').replace(/\s/g, '').length === corrido.rep
 lotes = dividirEmLotes(prova(600));
 if (lotes.length <= MAX_LOTES) ok(`prova absurda para no teto de ${MAX_LOTES} lotes`);
 else falha('passou do teto: ' + lotes.length);
+
+/* ── o caso que motivou tudo: 316 questões ────────────────────────────
+ *
+ * Mandou um arquivo com 316 e voltaram 38. Medindo o lote por caracteres,
+ * uma prova dessas virava dez lotes de trinta questões cada — e como cada
+ * chamada devolve no máximo vinte, cento e dezesseis questões sumiam sem
+ * nada na tela. O lote tem de ser medido pelo limite que manda, que é o da
+ * RESPOSTA, e não pelo tamanho do texto.
+ */
+const provaGrande = 'CADERNO DE PROVAS - INSTRUÇÕES DA BANCA\n\n' + prova(316);
+lotes = dividirEmLotes(provaGrande);
+const porLote = lotes.map((l) => (l.match(/quadro clínico número \d+/g) || []).length);
+
+if (porLote.reduce((a, b) => a + b, 0) === 316) ok('as 316 questões continuam todas lá depois de dividir');
+else falha(`sobraram ${porLote.reduce((a, b) => a + b, 0)} de 316`);
+
+if (porLote.every((n) => n <= TETO_DA_ROTA)) ok('nenhum lote pede mais questões do que uma chamada devolve');
+else falha('lote acima do teto da rota: ' + porLote.join(', '));
+
+if (porLote.every((n) => n <= POR_LOTE)) ok(`e nenhum passa das ${POR_LOTE} por lote, que é a folga do teto`);
+else falha('lote acima do próprio alvo: ' + porLote.join(', '));
+
+if (/INSTRUÇÕES DA BANCA/.test(lotes[0])) ok('o cabeçalho da banca fica no primeiro lote, onde faz sentido');
+else falha('o cabeçalho se perdeu');
+
+/* ── contar as questões do material ───────────────────────────────────
+ * É esse número que a tela compara com o que voltou. Sem ele, "vieram 38"
+ * parece um resultado em vez de um problema. */
+if (contarQuestoesNoTexto(provaGrande) === 316) ok('a tela sabe quantas questões o arquivo tem, para comparar com o que voltou');
+else falha('contagem: ' + contarQuestoesNoTexto(provaGrande) + ' de 316');
 
 /* ── juntar sem repetir ───────────────────────────────────────────────── */
 const q = (enunciado, numero) => ({ enunciado, numero });

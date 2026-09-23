@@ -16,7 +16,8 @@ if inicio not in s or fim not in s:
 corpo = s[s.index(inicio):s.index(fim)].rstrip()
 
 for alvo in ('function dividirEmLotes', 'function juntarQuestoes',
-             'const LOTE_ALVO', 'const MAX_LOTES'):
+             'const LOTE_ALVO', 'const MAX_LOTES', 'const POR_LOTE',
+             'function contarQuestoesNoTexto'):
     if alvo not in corpo:
         raise SystemExit(f'não achei {alvo} no trecho extraído')
     corpo = corpo.replace(alvo, 'export ' + alvo, 1)

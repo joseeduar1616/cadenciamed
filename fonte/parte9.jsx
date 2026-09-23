@@ -969,7 +969,9 @@ async function textoDeAnexo(arquivo, nuvem, aviso) {
      coisa nenhuma. */
   if (tipo === "application/pdf" || min.endsWith(".pdf")) {
     const r = await lerPdfParaTexto(arquivo, aviso);
-    return { texto: r.texto };
+    /* A contagem de páginas sobe junto: é ela que deixa a tela dizer
+       "60 de 210 páginas" em vez de deixar o corte invisível. */
+    return { texto: r.texto, paginas: r.paginas, paginasLidas: r.paginasLidas };
   }
   if (min.endsWith(".docx") || tipo.includes("wordprocessingml")) {
     const r = await lerDocxParaTexto(arquivo, aviso);

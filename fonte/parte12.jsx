@@ -440,7 +440,11 @@ function carregarMammoth() {
    com as de outro já guardado. */
 const prefixoImagem = () => `doc-${Date.now().toString(36)}-${Math.floor(Math.random() * 46656).toString(36)}`;
 
-const LIMITE_PAGINAS_PDF = 60;
+/* Sessenta páginas cortavam uma prova de 316 questões pela metade sem
+   ninguém ver: o aviso do corte ia no meio do texto mandado para a IA, e
+   não na tela de quem enviou. O teto agora é alto o bastante para um
+   caderno de provas inteiro, e quem informa o corte é a tela. */
+const LIMITE_PAGINAS_PDF = 400;
 const LIMITE_IMAGENS_DOC = 20;
 /* Figura menor que isso, já na escala em que a página foi desenhada, é
    decoração — um filete, um marcador de lista, um ícone de rodapé —, não a
@@ -567,7 +571,10 @@ async function lerPdfParaTexto(arquivo, aviso) {
   if (doc.numPages > totalPaginas) {
     blocos.push(`[o documento tem ${doc.numPages} páginas; só as ${totalPaginas} primeiras foram lidas]`);
   }
-  return { texto: blocos.join("\n\n"), imagens };
+  return {
+    texto: blocos.join("\n\n"), imagens,
+    paginas: doc.numPages, paginasLidas: totalPaginas,
+  };
 }
 
 /* Mesma ideia de limparCampo, um pouco acima, mas para imagens que chegam
