@@ -25,6 +25,7 @@ fonte/_cores.mjs
 fonte/_pastas.mjs
 fonte/_agenda.mjs
 fonte/_nuvem.mjs
+fonte/_lotes.mjs
 fonte/_treino.mjs
 
 # refeitos por material/capturar.mjs e material/gerar.mjs

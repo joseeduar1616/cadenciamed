@@ -53,9 +53,13 @@ function QuestaoDaProva({ q, n, total }) {
         ) : null}
       </div>
 
-      <p style={{ fontSize: 15.5, lineHeight: 1.7, color: T.ink, margin: "12px 0 0" }}>
-        {q.enunciado}
-      </p>
+      {/* O enunciado passa pelo desenhador de cartão porque ele já sabe
+          trocar [[img:nome]] pela figura guardada no aparelho. Prova de
+          residência é cheia de questão que não existe sem a imagem: sem
+          isto o marcador apareceria como texto cru no meio da pergunta. */}
+      <div style={{ margin: "12px 0 0" }}>
+        <LadoDoCartao texto={q.enunciado} tamanho={15.5} peso={400} entrelinha={1.13} altura={320} />
+      </div>
 
       <div className="mt-4 flex flex-col gap-2">
         {q.alternativas.map((a, i) => {
@@ -128,6 +132,74 @@ function QuestaoDaProva({ q, n, total }) {
   );
 }
 
+/* ── a prova em lotes ─────────────────────────────────────────────────
+ *
+ * Uma prova de sessenta questões nunca cabia numa resposta só. Cada
+ * questão comentada custa uns quinhentos tokens — enunciado reescrito,
+ * quatro alternativas e um comentário para CADA uma —, e umas vinte já
+ * encostam no teto de saída da IA. O que vinha depois disso era cortado no
+ * meio de uma frase. Daí as "em média 20 questões por arquivo": não era a
+ * leitura do arquivo que parava, era a resposta.
+ *
+ * Então o material é dividido aqui e mandado em lotes, um por chamada.
+ *
+ * O corte não pode cair no meio de uma questão: meia questão num lote e
+ * meia no outro vira duas questões inventadas. Por isso o corte procura
+ * para trás o começo de uma questão — uma linha que abre com número —, e
+ * só se não achar nenhuma recua para uma quebra de parágrafo.
+ */
+const LOTE_ALVO = 14000;     // caracteres por chamada, com folga sobre o teto da rota
+const LOTE_MINIMO = 4000;    // abaixo disso não vale partir
+const MAX_LOTES = 12;        // teto de segurança: 12 lotes já são ~240 questões
+
+/* Onde começa uma questão: linha que abre com número, seguido de ponto,
+   parêntese, traço ou espaço. Pega "1.", "01)", "QUESTÃO 12", "12 -". */
+const INICIO_DE_QUESTAO = /\n[ \t]*(?:quest[ãa]o\s*)?\d{1,3}\s*[).\-–—:]?\s/gi;
+
+function dividirEmLotes(texto) {
+  const t = String(texto || "");
+  if (t.length <= LOTE_ALVO) return [t];
+
+  const lotes = [];
+  let resto = t;
+  while (resto.length > LOTE_ALVO && lotes.length < MAX_LOTES - 1) {
+    const janela = resto.slice(0, LOTE_ALVO);
+
+    /* O último começo de questão dentro da janela é o corte ideal. */
+    let corte = -1;
+    INICIO_DE_QUESTAO.lastIndex = 0;
+    let m;
+    while ((m = INICIO_DE_QUESTAO.exec(janela))) {
+      if (m.index > LOTE_MINIMO) corte = m.index;
+    }
+    /* Sem nenhum começo de questão: uma quebra de parágrafo serve. */
+    if (corte < 0) corte = janela.lastIndexOf("\n\n");
+    if (corte < LOTE_MINIMO) corte = LOTE_ALVO;
+
+    lotes.push(resto.slice(0, corte).trim());
+    resto = resto.slice(corte);
+  }
+  if (resto.trim()) lotes.push(resto.trim());
+  return lotes.filter(Boolean);
+}
+
+/* Duas questões são a mesma quando o enunciado começa igual. O número não
+   serve de chave sozinho: cada lote pode recomeçar a contagem, e uma prova
+   com dois cadernos repete os números de propósito. */
+function juntarQuestoes(anteriores, novas) {
+  const vistas = new Set(anteriores.map(
+    (q) => String(q.enunciado || "").replace(/\s+/g, " ").slice(0, 60).toLowerCase()
+  ));
+  const fora = anteriores.slice();
+  for (const q of novas) {
+    const chave = String(q.enunciado || "").replace(/\s+/g, " ").slice(0, 60).toLowerCase();
+    if (!chave || vistas.has(chave)) continue;
+    vistas.add(chave);
+    fora.push(q);
+  }
+  return fora;
+}
+
 /* ── a aba ──────────────────────────────────────────────────────────── */
 
 function Provas({ nuvem, notify }) {
@@ -148,24 +220,58 @@ function Provas({ nuvem, notify }) {
     } catch (e) { /* segue: a rota recusa sem token */ }
     if (!token) { setPasso(""); setErro("Entre na sua conta."); return; }
 
-    const { dados, erro: falhou } = await chamarApi(
-      ROTA_PROVAS_IA, { token, texto }, "O comentador de provas");
+    /* A prova vai em lotes, e o resultado aparece a cada lote: numa prova
+       grande são minutos de espera, e uma tela parada nesse tempo parece
+       travada. Melhor ver as primeiras questões enquanto as outras vêm. */
+    const lotes = dividirEmLotes(texto);
+    const figurasTodas = await figurasDoMaterial(texto, 40).catch(() => []);
+
+    let juntas = [];
+    let nomeDaProva = "";
+    let descartadas = 0;
+    let cortadaNoFim = false;
+    let falhou = "";
+
+    for (let i = 0; i < lotes.length; i++) {
+      setPasso(lotes.length > 1
+        ? `Lote ${i + 1} de ${lotes.length}${juntas.length ? ` · ${juntas.length} questões até agora` : ""}…`
+        : "Lendo a prova e escrevendo os comentários…");
+
+      /* Só as figuras deste lote: mandar as quarenta em toda chamada
+         estouraria o pedido e pagaria pela mesma imagem várias vezes. */
+      const daqui = figurasTodas.filter((f) => lotes[i].indexOf(`[[img:${f.nome}]]`) >= 0);
+
+      const { dados, erro: falha } = await chamarApi(
+        ROTA_PROVAS_IA, { token, texto: lotes[i], figuras: daqui }, "O comentador de provas");
+
+      if (falha || !dados || dados.erro) {
+        /* Um lote que falha não joga fora os anteriores: o que já veio
+           vale, e a mensagem diz onde parou. */
+        falhou = falha || (dados && dados.erro) || "";
+        break;
+      }
+      juntas = juntarQuestoes(juntas, dados.questoes || []);
+      if (!nomeDaProva && dados.prova) nomeDaProva = dados.prova;
+      descartadas += Number(dados.descartadas) || 0;
+      cortadaNoFim = !!dados.cortada;
+    }
+
     setPasso("");
-    if (falhou || !dados || dados.erro) {
-      setErro(falhou || (dados && dados.erro) || "Não consegui comentar essa prova.");
+
+    if (!juntas.length) {
+      setErro(falhou || "Não consegui comentar essa prova.");
       return;
     }
-    setResultado(dados);
-    /* Prova comentada é a resposta mais longa do site: enunciado reescrito,
-       alternativas e um comentário para cada uma, vezes o número de
-       questões. Ela encosta no teto de saída da IA, e aí o resto da prova
-       não vem. Dizer isso evita a conclusão errada — de que o site perdeu
-       metade da prova — e já diz o que fazer. */
-    if (dados.cortada) {
-      notify(`A resposta da IA acabou antes do fim da prova: vieram ${(dados.questoes || []).length} questões comentadas. Mande o resto em outra leva.`);
+
+    setResultado({ prova: nomeDaProva, questoes: juntas, descartadas, cortada: cortadaNoFim });
+
+    if (falhou) {
+      notify(`Parei no meio: ${juntas.length} questões comentadas antes do erro. ${falhou}`);
+    } else if (cortadaNoFim) {
+      notify(`A resposta do último lote acabou antes do fim: vieram ${juntas.length} questões.`);
     }
-    if (dados.descartadas) {
-      notify(`${dados.descartadas} questão(ões) veio(ram) pela metade e ficou(aram) de fora.`);
+    if (descartadas) {
+      notify(`${descartadas} questão(ões) veio(ram) pela metade e ficou(aram) de fora.`);
     }
   };
 
