@@ -30,6 +30,39 @@ function idDispositivo() {
   } catch (e) { return "efemero"; }
 }
 
+/* ── quem vence no encontro entre o aparelho e a conta ────────────────
+ *
+ * Separado do React e do Firebase de propósito: é a regra que decide se os
+ * dados de alguém sobrevivem, e ela precisa ser testável sem navegador.
+ *
+ * O caso que obrigou a escrever isto: num celular novo o aparelho está
+ * vazio, e o app subia esse vazio para a conta antes de ter ouvido a nuvem
+ * uma vez sequer — bastava a resposta do servidor demorar mais que a espera
+ * do envio automático. O vazio ia por cima do que estava gravado, e o
+ * aparelho antigo, ao abrir, baixava o vazio de volta. Dois passos e não
+ * sobrava nada, sem nenhum erro na tela.
+ *
+ * Daí a regra mais importante daqui: "a conta não tem nada" só vale vindo
+ * do SERVIDOR. Um documento ausente no cache local não prova coisa
+ * nenhuma — num aparelho novo o cache está vazio por definição.
+ */
+function decidirNuvem(e) {
+  /* Ainda não deu para falar com o servidor: não existe decisão segura,
+     então não se mexe em nada — nem sobe, nem desce. */
+  if (!e.existe && e.daCache) return "esperar";
+  /* O servidor confirma que a conta nunca guardou nada: este aparelho é o
+     primeiro, e o que ele tem é o que passa a valer. */
+  if (!e.existe) return e.primeira ? "subir" : "esperar";
+  /* Eco do que este mesmo aparelho acabou de escrever. */
+  if (e.mesmoAparelho) return "ignorar";
+  /* Versão mais velha do que a que já temos em mãos. */
+  if (Number(e.atualizadoEm || 0) <= Number(e.stampLocal || 0)) return "ignorar";
+  /* Primeiro encontro com mais conteúdo aqui do que lá: o aparelho ganha, e
+     manda o que tem para a conta. */
+  if (e.primeira && Number(e.riquezaLocal) > Number(e.riquezaNuvem)) return "manter-local";
+  return "baixar";
+}
+
 function useNuvem(data, setData, notify, pronto, pro) {
   const [sdk, setSdk] = useState(null);
   const [usuario, setUsuario] = useState(null);
@@ -39,6 +72,9 @@ function useNuvem(data, setData, notify, pronto, pro) {
   const [temBackup, setTemBackup] = useState(false);
   const stamp = useRef(0);
   const veioDaNuvem = useRef(false);
+  /* Enquanto isto for falso, nada sobe: o aparelho ainda não sabe o que a
+     conta tem, e subir às cegas é como se perde o que estava gravado. */
+  const ouviuNuvem = useRef(false);
   const disp = useRef(idDispositivo());
   const tmr = useRef(null);
   const dataRef = useRef(data);
@@ -117,23 +153,48 @@ function useNuvem(data, setData, notify, pronto, pro) {
     if (!sdk || !usuario || !pro) return undefined;   // sincronizar é do plano pago
     const ref = sdk.F.doc(sdk.db, "usuarios", usuario.uid);
     let primeira = true;
-    const parar = sdk.F.onSnapshot(ref, (snap) => {
+    ouviuNuvem.current = false;
+    /* includeMetadataChanges porque a decisão depende de saber se a
+       resposta veio do servidor ou do cache. Sem isso, um "não existe"
+       vindo do cache não seria corrigido por um aviso do servidor dizendo
+       a mesma coisa, e uma conta nova nunca chegaria a subir nada. */
+    const parar = sdk.F.onSnapshot(ref, { includeMetadataChanges: true }, (snap) => {
+      const daCache = !!(snap.metadata && snap.metadata.fromCache);
+
       if (!snap.exists()) {
-        if (primeira) { primeira = false; enviar(); }
+        const oQue = decidirNuvem({ existe: false, daCache, primeira });
+        if (oQue === "esperar") return;
+        ouviuNuvem.current = true;
+        primeira = false;
+        enviar();
         return;
       }
+
       const d = snap.data() || {};
       const era = primeira;
+      let novo = null;
+      try { novo = normalize(JSON.parse(d.dados)); } catch (e) { return; }
+
+      const oQue = decidirNuvem({
+        existe: true, daCache, primeira: era,
+        mesmoAparelho: d.dispositivo === disp.current,
+        atualizadoEm: Number(d.atualizadoEm || 0), stampLocal: stamp.current,
+        riquezaLocal: riqueza(dataRef.current), riquezaNuvem: riqueza(novo),
+      });
+
+      /* O documento existe: a partir daqui o aparelho sabe o que a conta
+         tem, e pode voltar a subir — inclusive quando a decisão foi
+         ignorar este aviso específico. */
+      ouviuNuvem.current = true;
       primeira = false;
-      if (d.dispositivo === disp.current) return;
-      if (Number(d.atualizadoEm || 0) <= stamp.current) return;
-      try {
-        const novo = normalize(JSON.parse(d.dados));
-        if (era && riqueza(dataRef.current) > riqueza(novo)) {
-          notify("Mantive os dados deste aparelho e enviei para a conta.");
-          enviar();
-          return;
-        }
+
+      if (oQue === "ignorar") return;
+      if (oQue === "manter-local") {
+        notify("Mantive os dados deste aparelho e enviei para a conta.");
+        enviar();
+        return;
+      }
+      {
         if (era) {
           try {
             window.localStorage.setItem(CHAVE_BACKUP, JSON.stringify(dataRef.current));
@@ -145,13 +206,17 @@ function useNuvem(data, setData, notify, pronto, pro) {
         setData((p) => ({ ...novo, theme: p.theme, layout: p.layout }));
         setUltima(Date.now());
         notify(era ? "Dados da sua conta carregados." : "Atualizado a partir de outro aparelho.");
-      } catch (e) { /* documento ilegível */ }
+      }
     }, () => setErro("Não consegui ler os dados na nuvem."));
     return parar;
   }, [sdk, usuario, pro, enviar, setData, notify, riqueza]);
 
   useEffect(() => {
     if (!sdk || !usuario || !pronto || !pro) return undefined;
+    /* Nada sobe antes de a conta ter sido ouvida uma vez. É o que impede o
+       aparelho recém-instalado de mandar o próprio vazio por cima do que
+       estava guardado, quando a resposta do servidor demora. */
+    if (!ouviuNuvem.current) return undefined;
     if (veioDaNuvem.current) { veioDaNuvem.current = false; return undefined; }
     if (tmr.current) window.clearTimeout(tmr.current);
     tmr.current = window.setTimeout(enviar, 2500);

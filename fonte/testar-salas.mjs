@@ -510,8 +510,20 @@ else falha('vazou o resultado da Bia: ' + JSON.stringify(sim));
 /* Mas dá para saber que tem gente lá: é o que convida a lançar. */
 if (sim.quantos === 1) ok('quem não lançou vê quantos já lançaram, sem os números');
 else falha('a contagem de quem lançou saiu ' + sim.quantos);
-/* E o número da Bia não pode estar escondido em canto nenhum da resposta. */
-if (!JSON.stringify(rs.corpo).includes('82')) ok('o acerto do outro não viaja escondido na resposta');
+/* E o número da Bia não pode estar escondido em canto nenhum da resposta.
+ *
+ * A checagem percorre os valores em vez de procurar "82" no JSON inteiro:
+ * a resposta carrega carimbos de tempo de treze dígitos, e dois dígitos
+ * quaisquer aparecem dentro deles por acaso o tempo todo. Do jeito antigo
+ * este teste ficava vermelho de vez em quando sem nada estar errado — e
+ * teste que fica vermelho à toa ensina a ignorar vermelho. */
+const carregaValor = (x, alvo) => {
+  if (x === alvo || x === String(alvo)) return true;
+  if (Array.isArray(x)) return x.some((y) => carregaValor(y, alvo));
+  if (x && typeof x === 'object') return Object.values(x).some((y) => carregaValor(y, alvo));
+  return false;
+};
+if (!carregaValor(rs.corpo, 82)) ok('o acerto do outro não viaja escondido na resposta');
 else falha('o número do outro veio na resposta, só não desenhado');
 
 rs = await pedir({ token: 't', acao: 'sim-lancar', nome: 'r3-clinica', id: idSim, acertos: 91 });
