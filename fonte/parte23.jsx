@@ -202,12 +202,87 @@ function juntarQuestoes(anteriores, novas) {
 
 /* ── a aba ──────────────────────────────────────────────────────────── */
 
+const ROTA_PROVAS = "/api/provas";
+
 function Provas({ nuvem, notify }) {
   const [texto, setTexto] = useState("");
   const [passo, setPasso] = useState("");
   const [erro, setErro] = useState("");
   const [resultado, setResultado] = useState(null);
   const arquivoRef = useRef(null);
+
+  /* Entrar por código: quem recebeu um código pronto não manda arquivo
+     nenhum e não gasta IA — a prova já está comentada do outro lado. */
+  const [codigo, setCodigo] = useState("");
+
+  /* Publicar: só do dono, e a barra lateral já esconde a aba de quem não
+     pode. Esconder não protege nada por si — quem manda é o servidor, que
+     confere o e-mail do token —, mas evita oferecer o que não se pode. */
+  const souDono = ehDono(nuvem && nuvem.usuario);
+  const [publicando, setPublicando] = useState(false);
+  const [codigoNovo, setCodigoNovo] = useState("");
+  const [descricao, setDescricao] = useState("");
+  const [publicadas, setPublicadas] = useState([]);
+
+  const comToken = useCallback(async (corpo, oQue) => {
+    let token = "";
+    try {
+      if (nuvem && nuvem.sdk && nuvem.sdk.auth && nuvem.sdk.auth.currentUser) {
+        token = await nuvem.sdk.auth.currentUser.getIdToken();
+      }
+    } catch (e) { /* a rota recusa sem token */ }
+    if (!token) return { erro: "Entre na sua conta." };
+    return chamarApi(ROTA_PROVAS, { token, ...corpo }, oQue);
+  }, [nuvem]);
+
+  const carregarPublicadas = useCallback(async () => {
+    if (!souDono) return;
+    const { dados } = await comToken({ acao: "listar" }, "As provas publicadas");
+    setPublicadas((dados && dados.provas) || []);
+  }, [souDono, comToken]);
+
+  useEffect(() => { carregarPublicadas(); }, [carregarPublicadas]);
+
+  const entrarPorCodigo = async () => {
+    const c = codigo.trim();
+    if (!c) return;
+    setErro(""); setResultado(null); setPasso("Procurando a prova…");
+    const { dados, erro: falhou } = await comToken({ acao: "resgatar", codigo: c }, "As provas");
+    setPasso("");
+    if (falhou || !dados || dados.erro) {
+      setErro(falhou || (dados && dados.erro) || "Não achei prova com esse código.");
+      return;
+    }
+    setResultado({ prova: dados.prova, questoes: dados.questoes, deCodigo: dados.codigo });
+    setCodigo("");
+  };
+
+  const publicar = async () => {
+    const qs = (resultado && resultado.questoes) || [];
+    if (!qs.length) return;
+    setPublicando(true);
+    const { dados, erro: falhou } = await comToken({
+      acao: "publicar",
+      codigo: codigoNovo,
+      prova: (resultado && resultado.prova) || "",
+      descricao,
+      questoes: qs,
+    }, "A publicação da prova");
+    setPublicando(false);
+    if (falhou || !dados || dados.erro) {
+      notify(falhou || (dados && dados.erro) || "Não consegui publicar.");
+      return;
+    }
+    notify(`Publicada em "${dados.codigo}": ${dados.questoes} questões.`
+      + (dados.descartadas ? ` ${dados.descartadas} ficaram de fora por virem incompletas.` : ""));
+    setCodigoNovo(""); setDescricao("");
+    carregarPublicadas();
+  };
+
+  const despublicar = async (c) => {
+    const { dados } = await comToken({ acao: "despublicar", codigo: c }, "A remoção da prova");
+    if (dados && dados.ok) { notify(`"${c}" saiu do ar.`); carregarPublicadas(); }
+  };
 
   const comentar = async () => {
     setErro(""); setResultado(null);
@@ -305,6 +380,37 @@ function Provas({ nuvem, notify }) {
           </div>
         </Card>
 
+        {/* ── publicar com código ────────────────────────────────────
+          * Só do dono. O código é a chave: quem o recebe digita na aba
+          * Provas e recebe esta mesma prova comentada, sem mandar arquivo
+          * e sem gastar IA. Quem esconde a aba é a barra lateral; quem
+          * decide de verdade é o servidor, que confere o e-mail do token. */}
+        {souDono && !resultado.deCodigo ? (
+          <Card className="px-6 py-6">
+            <H size={18} color="var(--neon2)" icon={<Upload size={16} />}>Publicar por código</H>
+            <Texto style={{ marginTop: 8 }}>
+              Escolha um código e quem digitar ele na aba Provas recebe estas
+              {" "}{qs.length} questões comentadas, sem precisar mandar arquivo nenhum.
+            </Texto>
+            <div className="mt-4 flex flex-wrap gap-2 items-center">
+              <TextInput value={codigoNovo} placeholder="provoes71" disabled={publicando}
+                style={{ maxWidth: 200 }}
+                onChange={(e) => setCodigoNovo(e.target.value)} />
+              <TextInput value={descricao} placeholder="descrição (opcional)" disabled={publicando}
+                style={{ flex: 1, minWidth: 180 }}
+                onChange={(e) => setDescricao(e.target.value)} />
+              <Btn tone="primary" size="sm" disabled={publicando || codigoNovo.trim().length < 3}
+                onClick={publicar}>
+                {publicando ? "Publicando…" : "Publicar"}
+              </Btn>
+            </div>
+            <Mini style={{ marginTop: 10 }}>
+              Letras e números, de 3 a 40. Maiúscula, acento e espaço não importam:
+              quem digitar "PROVÕES 71" chega na mesma prova.
+            </Mini>
+          </Card>
+        ) : null}
+
         {qs.map((q, i) => (
           <QuestaoDaProva key={i} q={q} n={q.numero || i + 1} total={qs.length} />
         ))}
@@ -320,6 +426,49 @@ function Provas({ nuvem, notify }) {
         comentário de todas as alternativas, explicando o conteúdo. PDF, Word ou foto
         do caderno de questões.
       </Texto>
+
+      {/* ── entrar por código ──────────────────────────────────────────
+        * Vem antes do envio de arquivo de propósito: para quem recebeu um
+        * código, este é o caminho inteiro — nada de mandar PDF, nada de
+        * esperar a IA, nada de gastar cota. */}
+      <div className="mt-5 rounded-2xl px-4 py-4"
+        style={{ background: T.card2, border: `1px solid ${soft("var(--neon2)", 30)}` }}>
+        <Label style={{ color: "var(--neon2)" }}>Tenho um código</Label>
+        <div className="mt-3 flex flex-wrap gap-2 items-center">
+          <TextInput value={codigo} placeholder="ex.: provoes71" disabled={!!passo}
+            style={{ flex: 1, minWidth: 160 }}
+            onChange={(e) => setCodigo(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") entrarPorCodigo(); }} />
+          <Btn size="sm" disabled={!!passo || !codigo.trim()} onClick={entrarPorCodigo}>
+            Abrir a prova
+          </Btn>
+        </div>
+        <Mini style={{ marginTop: 8 }}>
+          Prova já comentada, pronta para estudar.
+        </Mini>
+      </div>
+
+      {/* ── as provas que o dono publicou ────────────────────────────── */}
+      {souDono && publicadas.length ? (
+        <div className="mt-5">
+          <Label>Publicadas por você</Label>
+          <div className="mt-3 flex flex-col gap-2">
+            {publicadas.map((p) => (
+              <div key={p.codigo} className="flex items-center justify-between gap-3 flex-wrap"
+                style={{ background: T.card2, border: `1px solid ${T.line}`, borderRadius: 12, padding: "10px 14px" }}>
+                <div style={{ minWidth: 0 }}>
+                  <span style={{ fontFamily: F_MONO, fontWeight: 700, color: "var(--neon2)" }}>{p.codigo}</span>
+                  <span style={{ color: T.dim, fontSize: 14 }}>
+                    {" · "}{p.questoes} questões{p.prova ? ` · ${p.prova}` : ""}
+                  </span>
+                  {p.descricao ? <div style={{ fontSize: 13, color: T.dim }}>{p.descricao}</div> : null}
+                </div>
+                <Btn size="sm" tone="outline" onClick={() => despublicar(p.codigo)}>tirar do ar</Btn>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="mt-5">
         <Label>A prova</Label>
