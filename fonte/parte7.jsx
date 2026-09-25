@@ -344,69 +344,6 @@ function Metas({ data, setData, today, qWeek, notify, ladder, gcal }) {
 /* ═══════════════════════════════════════════════════════════════════
    16 · PROGRESSO
    ═══════════════════════════════════════════════════════════════════ */
-
-function Heatmap({ byDay, today, weeks = 22 }) {
-  const cells = [];
-  const end = weekStart(today);
-  const start = addDays(end, -7 * (weeks - 1));
-  let max = 1;
-  for (let i = 0; i < weeks * 7; i++) max = Math.max(max, byDay[addDays(start, i)] || 0);
-  for (let w = 0; w < weeks; w++) {
-    const col = [];
-    for (let d = 0; d < 7; d++) {
-      const iso = addDays(start, w * 7 + d);
-      const v = byDay[iso] || 0;
-      const lvl = v === 0 ? 0 : v < max * 0.25 ? 1 : v < max * 0.5 ? 2 : v < max * 0.75 ? 3 : 4;
-      col.push({ iso, v, lvl, future: iso > today });
-    }
-    cells.push(col);
-  }
-  const shade = [T.card2, soft("var(--ok)", 22), soft("var(--ok)", 42), soft("var(--ok)", 68), "var(--ok)"];
-  return (
-    <div className="overflow-x-auto">
-      <div className="flex gap-1" style={{ minWidth: weeks * 15 }}>
-        {cells.map((col, i) => (
-          <div key={i} className="flex flex-col gap-1">
-            {col.map((c) => (
-              <div key={c.iso} title={`${brDate(c.iso)} · ${fmtMin(c.v)}`}
-                style={{
-                  width: 11, height: 11, borderRadius: 3,
-                  background: c.future ? "transparent" : shade[c.lvl],
-                  border: c.future ? `1px dashed ${T.line}` : "none",
-                }} />
-            ))}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════════
-   16c · CUPOM
-   O código é conferido no servidor, nunca aqui: se a lista de cupons
-   estivesse no navegador, bastaria abrir o código-fonte da página para
-   descobrir todos. Daqui só sai o que a pessoa digitou.
-   ═══════════════════════════════════════════════════════════════════ */
-
-const ROTA_CUPOM = "/api/cupom";
-
-async function resgatarCupom(nuvem, codigo) {
-  let token = "";
-  try {
-    if (nuvem && nuvem.sdk && nuvem.sdk.auth && nuvem.sdk.auth.currentUser) {
-      token = await nuvem.sdk.auth.currentUser.getIdToken();
-    }
-  } catch (e) { /* segue sem token, o servidor recusa */ }
-  if (!token) return { erro: "Entre na sua conta antes de resgatar o cupom." };
-
-  /* 404 com JSON é cupom inválido; sem JSON é servidor ausente */
-  const { dados, erro } = await chamarApi(
-    ROTA_CUPOM, { token, codigo }, "O resgate de cupom");
-  return erro ? { erro } : dados;
-}
-
-/* Caixa avulsa, para quem já tem conta criada. */
 function Cupom({ nuvem, notify, aoLiberar }) {
   const [codigo, setCodigo] = useState("");
   const [ocupado, setOcupado] = useState(false);
@@ -975,12 +912,6 @@ function Progresso({ data, byDay, today, totals, subjects }) {
             <Label style={{ marginTop: 9 }}>{totals.q ? `acerto em ${totals.q} questões` : "sem questões lançadas"}</Label>
           </div>
         </div>
-      </Card>
-
-      <Card className="px-6 py-6">
-        <H size={18} color="var(--ok)" icon={<Flame size={16} />}>Constância</H>
-        <Label style={{ marginTop: 4 }}>cada quadradinho é um dia, das últimas 22 semanas</Label>
-        <div className="mt-5"><Heatmap byDay={byDay} today={today} /></div>
       </Card>
 
       <Card className="px-5 sm:px-7 py-6">
