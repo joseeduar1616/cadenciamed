@@ -460,6 +460,87 @@ function ehIOS() {
   } catch (e) { return false; }
 }
 
+/* ── instalar o aplicativo ────────────────────────────────────────────
+ *
+ * Não existe aplicativo na Play Store nem na App Store, e dizer que existe
+ * seria mentira. O que existe é o próprio site instalável: o navegador
+ * guarda o Cadência como aplicativo, com ícone na tela de início, abrindo
+ * sem barra de endereço e funcionando sem internet. Para quem usa, é
+ * indistinguível de um app baixado de loja — e para o iPhone é mais do que
+ * conveniência, porque lá a notificação SÓ funciona assim.
+ *
+ * Cada plataforma instala de um jeito, e é por isso que esta parte não é
+ * um botão só:
+ *
+ *   Android e computador → o navegador oferece a instalação por um evento
+ *     (beforeinstallprompt), que precisa ser guardado quando chega e
+ *     disparado no clique. Não dá para chamar do nada: o navegador só
+ *     aceita o pedido vindo de um gesto da pessoa.
+ *   iPhone e iPad → não existe esse evento. É pelo menu de compartilhar,
+ *     e a única coisa que a tela pode fazer é explicar direito.
+ *   Firefox e Safari no computador → não instalam. Melhor dizer isso do
+ *     que mostrar um botão que não faz nada.
+ */
+function qualPlataforma() {
+  try {
+    const ua = String(window.navigator.userAgent || "");
+    if (/iPad|iPhone|iPod/.test(ua) || (/Mac/.test(ua) && "ontouchend" in document)) return "ios";
+    if (/Android/.test(ua)) return "android";
+    return "pc";
+  } catch (e) { return "pc"; }
+}
+
+function useInstalar() {
+  const pedido = useRef(null);
+  const [podeInstalar, setPodeInstalar] = useState(false);
+  const [jaInstalado, setJaInstalado] = useState(() => instalado());
+
+  useEffect(() => {
+    /* O evento chega uma vez, e cedo — às vezes antes desta tela existir.
+       O app guarda em window quando ele aparece, e aqui a gente pega o que
+       já estiver guardado. Sem isso, quem abrisse Configurações depois de
+       alguns segundos nunca veria o botão. */
+    if (typeof window !== "undefined" && window.__cadenciaInstalar) {
+      pedido.current = window.__cadenciaInstalar;
+      setPodeInstalar(true);
+    }
+    const chegou = (e) => {
+      e.preventDefault();
+      pedido.current = e;
+      if (typeof window !== "undefined") window.__cadenciaInstalar = e;
+      setPodeInstalar(true);
+    };
+    const instalou = () => {
+      pedido.current = null;
+      if (typeof window !== "undefined") window.__cadenciaInstalar = null;
+      setPodeInstalar(false);
+      setJaInstalado(true);
+    };
+    window.addEventListener("beforeinstallprompt", chegou);
+    window.addEventListener("appinstalled", instalou);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", chegou);
+      window.removeEventListener("appinstalled", instalou);
+    };
+  }, []);
+
+  const instalar = useCallback(async () => {
+    const e = pedido.current;
+    if (!e) return "sem-pedido";
+    try {
+      e.prompt();
+      const r = await e.userChoice;
+      /* O pedido vale uma vez só: usado, o navegador não o devolve. */
+      pedido.current = null;
+      if (typeof window !== "undefined") window.__cadenciaInstalar = null;
+      setPodeInstalar(false);
+      return r && r.outcome === "accepted" ? "instalou" : "recusou";
+    } catch (err) { return "falhou"; }
+  }, []);
+
+  return { podeInstalar, jaInstalado, instalar, plataforma: qualPlataforma() };
+}
+
 /* Como a notificação é mostrada.
  *
  * Pelo service worker, e não por "new Notification".
@@ -559,6 +640,148 @@ function useLembretes({ ligado, vencendoHoje, blocosHoje, today }) {
       document.removeEventListener("visibilitychange", aoVoltar);
     };
   }, [ligado, today]);
+}
+
+/* O convite para ligar o lembrete, na tela de Hoje.
+ *
+ * O cartão completo mora em Configurações, que é onde ele deve morar — mas
+ * quase ninguém vai lá. Este convite aparece onde o assunto é o assunto:
+ * ao lado de uma revisão atrasada.
+ *
+ * Aparece no máximo uma vez por dia, e nunca para quem já ligou ou já
+ * recusou. Convite que insiste é o jeito mais rápido de ouvir "não" para
+ * sempre: o navegador guarda a recusa e não pergunta de novo.
+ */
+const CHAVE_CONVITE = "cadencia:v3:convite-lembrete";
+
+function ConviteLembrete({ data, setData, notify, quantas }) {
+  const ligado = !!(data.lembretes && data.lembretes.ligado);
+  const [escondido, setEscondido] = useState(() => {
+    try { return window.localStorage.getItem(CHAVE_CONVITE) === todayISO(); }
+    catch (e) { return false; }
+  });
+
+  if (ligado || escondido || !quantas || !podeNotificar()) return null;
+  if (Notification.permission === "denied") return null;
+  /* No iPhone o lembrete só existe com o site instalado: oferecer o botão
+     aqui seria oferecer uma coisa que falha calada. O caminho de lá está
+     no cartão de instalar, em Configurações. */
+  if (ehIOS() && !instalado()) return null;
+
+  const dispensar = () => {
+    try { window.localStorage.setItem(CHAVE_CONVITE, todayISO()); } catch (e) { /* noop */ }
+    setEscondido(true);
+  };
+
+  const ligar = async () => {
+    let p = Notification.permission;
+    if (p === "default") {
+      try { p = await Notification.requestPermission(); } catch (e) { p = "denied"; }
+    }
+    if (p !== "granted") {
+      notify("O navegador não liberou as notificações para este site.");
+      dispensar();
+      return;
+    }
+    setData((x) => ({ ...x, lembretes: { ...(x.lembretes || {}), ligado: true } }));
+    notify("Lembretes ligados. A revisão do dia passa a avisar.");
+    setEscondido(true);
+  };
+
+  return (
+    <div className="mt-4 rounded-2xl px-4 py-3 flex items-center gap-3 flex-wrap"
+      style={{ background: soft("var(--neon)", 10), border: `1px solid ${soft("var(--neon)", 28)}` }}>
+      <Mini style={{ flex: 1, minWidth: 180, lineHeight: 1.6, color: T.ink }}>
+        Quer ser avisado quando uma revisão vencer, em vez de descobrir aqui?
+      </Mini>
+      <Btn size="sm" tone="primary" onClick={ligar}>Ligar lembretes</Btn>
+      <Btn size="sm" tone="quiet" onClick={dispensar}>agora não</Btn>
+    </div>
+  );
+}
+
+/* O cartão de instalar, com o caminho de cada plataforma. */
+function BaixarApp({ notify }) {
+  const { podeInstalar, jaInstalado, instalar, plataforma } = useInstalar();
+
+  const clicar = async () => {
+    const r = await instalar();
+    if (r === "instalou") notify("Instalado. Abra o Cadência pelo ícone daqui em diante.");
+    else if (r === "recusou") notify("Tudo bem. Dá para instalar depois, por aqui mesmo.");
+    else notify("Este navegador não ofereceu a instalação agora. Tente pelo menu dele.");
+  };
+
+  return (
+    <Card className="px-6 py-6">
+      <H size={18} color="var(--neon)" icon={<Download size={16} />}>Instalar o aplicativo</H>
+
+      {jaInstalado ? (
+        <Texto style={{ marginTop: 8 }}>
+          Você já está usando o Cadência como aplicativo. Ele abre pelo ícone, sem barra
+          de endereço, e funciona mesmo sem internet.
+        </Texto>
+      ) : (
+        <>
+          <Texto style={{ marginTop: 8 }}>
+            O Cadência vira um aplicativo no seu aparelho: ícone na tela de início, abre
+            sem barra de endereço, funciona sem internet e guarda seus dados igual. No
+            celular, é também o que faz os lembretes funcionarem.
+          </Texto>
+
+          {podeInstalar ? (
+            <div className="mt-4">
+              <Btn tone="primary" onClick={clicar}>
+                <Download size={15} /> Instalar agora
+              </Btn>
+              <Mini style={{ marginTop: 10 }}>
+                {plataforma === "android" ? "Vai aparecer na sua tela de início."
+                  : "Vai aparecer como um programa, com janela própria."}
+              </Mini>
+            </div>
+          ) : plataforma === "ios" ? (
+            <div className="mt-4 rounded-2xl px-4 py-4"
+              style={{ background: T.card2, border: `1px solid ${T.line}` }}>
+              <Label>No iPhone e no iPad</Label>
+              <ol style={{ margin: "10px 0 0", paddingLeft: 20, fontSize: 14.5, lineHeight: 1.75, color: T.dim }}>
+                <li>Abra o Cadência no <b>Safari</b> (no Chrome do iPhone não dá).</li>
+                <li>Toque no botão de <b>compartilhar</b>, o quadrado com a seta para cima.</li>
+                <li>Role e toque em <b>Adicionar à Tela de Início</b>.</li>
+                <li>Confirme. O ícone aparece junto dos outros aplicativos.</li>
+              </ol>
+              <Mini style={{ marginTop: 12, lineHeight: 1.6 }}>
+                Vale a pena mesmo que você use pouco o celular: no iPhone, os lembretes
+                só funcionam com o site instalado assim.
+              </Mini>
+            </div>
+          ) : (
+            <div className="mt-4 rounded-2xl px-4 py-4"
+              style={{ background: T.card2, border: `1px solid ${T.line}` }}>
+              <Label>{plataforma === "android" ? "No Android" : "No computador"}</Label>
+              <Texto style={{ marginTop: 10 }}>
+                {plataforma === "android"
+                  ? "No Chrome, toque nos três pontinhos e em \"Instalar aplicativo\" ou \"Adicionar à tela inicial\"."
+                  : "No Chrome ou no Edge, clique no ícone de instalar na barra de endereço (à direita), ou nos três pontinhos e em \"Instalar Cadência Med\"."}
+              </Texto>
+              <Mini style={{ marginTop: 12, lineHeight: 1.6 }}>
+                {plataforma === "android"
+                  ? "Se não aparecer, é porque o navegador ainda não ofereceu: abra o site mais uma vez e volte aqui."
+                  : "O Firefox e o Safari do computador não instalam site como aplicativo. Nesses, use o site normalmente e deixe uma aba fixada."}
+              </Mini>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Prometer app de loja seria mentira, e é o tipo de mentira que a
+          pessoa descobre no primeiro minuto — procurando na Play Store e
+          não achando. */}
+      <Mini style={{ marginTop: 14, lineHeight: 1.65 }}>
+        Não é um aplicativo de loja: é o próprio Cadência, instalado pelo navegador.
+        Na prática funciona igual, e tem uma vantagem — atualiza sozinho, sem você
+        precisar baixar nada de novo.
+      </Mini>
+    </Card>
+  );
 }
 
 function Lembretes({ data, setData, notify }) {

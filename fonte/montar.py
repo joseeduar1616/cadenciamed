@@ -165,6 +165,18 @@ __CSS__
 __JS__
 </script>
 <script>
+/* O convite de instalação do navegador chega UMA vez, e cedo — em geral
+   antes de o aplicativo terminar de carregar. Guardado aqui, ele espera
+   pela tela que oferece o botão; sem isto o evento passava e o botão
+   "Instalar agora" nunca aparecia para quem abrisse Configurações alguns
+   segundos depois. */
+window.addEventListener("beforeinstallprompt", function (e) {
+  e.preventDefault();
+  window.__cadenciaInstalar = e;
+});
+</script>
+
+<script>
 /* Service worker: é o que faz o site abrir sem internet e carregar na
    hora na segunda visita. Registrado depois do load para não disputar
    banda com a primeira pintura, e só em https (ou localhost) — aberto

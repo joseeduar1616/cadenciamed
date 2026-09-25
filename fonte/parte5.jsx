@@ -490,6 +490,17 @@ function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, do
             <H color="var(--warn)" icon={<RotateCcw size={16} />}>Revisões pedindo passagem</H>
             {late.length ? <Btn size="sm" tone="outline" onClick={() => go("revisoes")}>ver todas <ChevronRight size={13} /></Btn> : null}
           </div>
+          {/* ── o convite para ligar o lembrete ──────────────────────────
+            * Fica aqui, e não escondido em Configurações, porque é aqui
+            * que ele faz sentido: ao lado da revisão que já está atrasada.
+            * Quem chega a esta tela e vê conteúdo vencido é exatamente
+            * quem ganha alguma coisa sendo avisado antes.
+            *
+            * Aparece uma vez por dia no máximo, e só com revisão atrasada
+            * de verdade. Convite que aparece sempre vira paisagem, e o
+            * navegador guarda para sempre quem clicou em "não". */}
+          <ConviteLembrete data={data} setData={setData} notify={notify} quantas={late.length} />
+
           {late.length === 0 ? (
             <Blank icon={<Check size={24} />} title="Nada atrasado" hint="Todos os degraus estão dentro do prazo." />
           ) : (
