@@ -144,6 +144,200 @@ function distribuir(blocos) {
   return saida;
 }
 
+/* ── montar a semana ──────────────────────────────────────────────────
+ *
+ * A pergunta não é "qual o cronograma ideal", é "quanto tempo você tem".
+ * Cronograma montado sem essa pergunta é abandonado na segunda semana, e
+ * quem abandona conclui que o problema é ele.
+ *
+ * Então a tela pergunta três coisas — que dias, quanto cabe em cada um,
+ * quanto no total — e reparte esse tempo entre as especialidades na
+ * proporção da prioridade que a pessoa declarou nos Temas, descontando o
+ * que ela já terminou e puxando para a frente o que está com revisão
+ * atrasada. A conta em si mora no base.jsx e é testada sozinha.
+ */
+const DIAS_CURTOS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+
+function MontarSemana({ data, setData, subjects, ladder, notify }) {
+  const [aberto, setAberto] = useState(false);
+  const [dias, setDias] = useState([1, 2, 3, 4, 5]);
+  const [minDia, setMinDia] = useState(60);
+  const [maxDia, setMaxDia] = useState(180);
+  const [meta, setMeta] = useState(() => Math.round((data.goals && data.goals.weekly) || 600));
+  const [comeca, setComeca] = useState("19:00");
+  const [previa, setPrevia] = useState(null);
+
+  /* O que o gerador precisa saber de cada especialidade: quanto pesa,
+     quanto falta e quanto está atrasado. */
+  const especialidades = useMemo(() => {
+    const m = new Map();
+    for (const s of subjects) {
+      if (!m.has(s.esp)) m.set(s.esp, { esp: s.esp, area: s.area, total: 0, feitas: 0, atrasadas: 0 });
+      const g = m.get(s.esp);
+      g.total += 1;
+      if (s.aula) g.feitas += 1;
+    }
+    for (const r of (ladder || [])) {
+      const s = subjects.find((x) => x.id === r.id);
+      if (s && m.has(s.esp) && r.late && r.late.length) m.get(s.esp).atrasadas += r.late.length;
+    }
+    const pesos = data.pesos || {};
+    return [...m.values()].map((g) => ({
+      ...g, peso: pesos[g.esp] !== undefined ? pesos[g.esp] : 5,
+    }));
+  }, [subjects, ladder, data.pesos]);
+
+  const gerar = () => {
+    const blocos = montarSemana({
+      especialidades,
+      dias: dias.slice().sort((a, b) => a - b),
+      minPorDia: Number(minDia) || 0,
+      maxPorDia: Number(maxDia) || 0,
+      metaSemanal: Number(meta) || 0,
+    });
+    if (!blocos.length) {
+      notify("Não deu para montar: confira os dias, o tempo por dia e a meta da semana.");
+      return;
+    }
+    setPrevia(blocos);
+  };
+
+  /* A prévia vira blocos da rotina, empilhados a partir da hora escolhida.
+     Só ao confirmar: gerar e já escrever por cima da rotina de alguém
+     seria trocar a semana inteira de quem só queria ver como ficaria. */
+  const aplicar = () => {
+    if (!previa) return;
+    const porDia = {};
+    const novos = [];
+    for (const b of previa) {
+      const inicio = porDia[b.dia] === undefined ? toMin(comeca) : porDia[b.dia];
+      const fim = inicio + b.minutos;
+      novos.push({
+        id: uid(), label: b.esp, type: "Estudo",
+        start: doMin(inicio), end: doMin(fim), day: b.dia,
+      });
+      /* Dez minutos entre blocos: sem respiro, a semana no papel é uma
+         maratona que ninguém cumpre. */
+      porDia[b.dia] = fim + 10;
+    }
+    setData((p) => ({
+      ...p,
+      /* Só os blocos gerados são trocados; o que a pessoa criou à mão nos
+         dias escolhidos fica. Apagar o que ela montou seria a pior
+         surpresa possível vinda de um botão chamado "aplicar". */
+      routine: [...(p.routine || []), ...novos],
+    }));
+    setPrevia(null);
+    setAberto(false);
+    notify(`${novos.length} blocos entraram na sua semana.`);
+  };
+
+  const totalPrevia = previa ? previa.reduce((a, b) => a + b.minutos, 0) : 0;
+
+  return (
+    <Card className="px-6 py-6">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <H size={18} color="var(--a-PE)" icon={<CalendarClock size={16} />}>Montar a semana</H>
+        <Btn size="sm" tone={aberto ? "outline" : "primary"} onClick={() => setAberto((v) => !v)}>
+          {aberto ? "fechar" : "montar"}
+        </Btn>
+      </div>
+      <Texto style={{ marginTop: 8 }}>
+        Diga quanto tempo você tem e o Cadência reparte entre as especialidades, na
+        proporção da prioridade que você deu em Temas — pulando o que já terminou e
+        puxando para a frente o que está com revisão atrasada.
+      </Texto>
+
+      {aberto ? (
+        <div className="mt-5 flex flex-col gap-4">
+          <div>
+            <Label>Que dias você estuda</Label>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {DIAS_CURTOS.map((d, i) => (
+                <Btn key={d} size="sm" tone={dias.includes(i) ? "primary" : "quiet"}
+                  onClick={() => setDias((p) => (p.includes(i) ? p.filter((x) => x !== i) : [...p, i]))}>
+                  {d}
+                </Btn>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-4">
+            <div style={{ minWidth: 120 }}>
+              <Label>mínimo por dia</Label>
+              <div className="flex items-center gap-2 mt-1">
+                <TextInput type="number" value={minDia} style={{ width: 80 }}
+                  onChange={(e) => setMinDia(e.target.value)} />
+                <Mini>min</Mini>
+              </div>
+            </div>
+            <div style={{ minWidth: 120 }}>
+              <Label>máximo por dia</Label>
+              <div className="flex items-center gap-2 mt-1">
+                <TextInput type="number" value={maxDia} style={{ width: 80 }}
+                  onChange={(e) => setMaxDia(e.target.value)} />
+                <Mini>min</Mini>
+              </div>
+            </div>
+            <div style={{ minWidth: 120 }}>
+              <Label>meta da semana</Label>
+              <div className="flex items-center gap-2 mt-1">
+                <TextInput type="number" value={meta} style={{ width: 90 }}
+                  onChange={(e) => setMeta(e.target.value)} />
+                <Mini>min ({fmtMin(Number(meta) || 0)})</Mini>
+              </div>
+            </div>
+            <div style={{ minWidth: 120 }}>
+              <Label>começa às</Label>
+              <div className="mt-1">
+                <TextInput type="time" value={comeca} style={{ width: 110 }}
+                  onChange={(e) => setComeca(e.target.value)} />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Btn tone="primary" size="sm" onClick={gerar}>Ver como fica</Btn>
+            {previa ? <Btn size="sm" onClick={aplicar}>Colocar na minha semana</Btn> : null}
+            {previa ? <Btn size="sm" tone="quiet" onClick={() => setPrevia(null)}>descartar</Btn> : null}
+          </div>
+
+          {previa ? (
+            <div className="rounded-2xl px-4 py-4" style={{ background: T.card2, border: `1px solid ${T.line}` }}>
+              <Label>Prévia · {fmtMin(totalPrevia)} na semana</Label>
+              <div className="mt-3 flex flex-col gap-3">
+                {dias.slice().sort((a, b) => a - b).map((d) => {
+                  const doDia = previa.filter((b) => b.dia === d);
+                  if (!doDia.length) return null;
+                  return (
+                    <div key={d}>
+                      <Mini style={{ color: T.ink, fontWeight: 700 }}>{DIAS_CURTOS[d]}</Mini>
+                      <div className="mt-1 flex flex-wrap gap-2">
+                        {doDia.map((b, i) => (
+                          <span key={i} style={{
+                            fontSize: 13, padding: "4px 10px", borderRadius: 99,
+                            background: T.card, border: `1px solid ${T.line}`, color: T.dim,
+                          }}>
+                            {b.esp} · {fmtMin(b.minutos)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <Mini style={{ marginTop: 12, lineHeight: 1.6 }}>
+                Isto ainda não mexeu em nada. "Colocar na minha semana" ACRESCENTA estes
+                blocos à sua rotina, sem apagar o que você já tinha montado.
+              </Mini>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
 function Rotina({ data, setData, gcal, today }) {
   const [semana, setSemana] = useState(() => weekStart(today));
   const [vista, setVista] = useState("dia");
@@ -645,7 +839,7 @@ function Rotina({ data, setData, gcal, today }) {
    9 · TEMAS (o cronograma agrupado por especialidade)
    ═══════════════════════════════════════════════════════════════════ */
 
-function Temas({ subjects, setMark, minutos, sessoes, today }) {
+function Temas({ subjects, setMark, minutos, sessoes, today, pesos, setPeso }) {
   const [aberta, setAberta] = useState(null);
   const [ordem, setOrdem] = useState("area");
 
@@ -775,6 +969,32 @@ function Temas({ subjects, setMark, minutos, sessoes, today }) {
                 </span>
                 <ChevronDown size={17} style={{ color: T.ghost, transform: on ? "rotate(180deg)" : "none", transition: "transform .2s", flexShrink: 0 }} />
               </button>
+
+              {/* ── o quanto esta especialidade importa ────────────────
+                * Prova de residência não cobra tudo igual: cardiologia e
+                * pediatria valem muitas questões, genética médica quase
+                * nenhuma, e cada banca pesa de um jeito. Sem declarar isso
+                * em algum lugar, "o que estudar agora" trata as 34
+                * especialidades como se fossem a mesma coisa.
+                *
+                * É daqui que o gerador de semana tira a proporção do
+                * tempo. Fica fora do botão que abre a lista, senão mexer
+                * no controle abriria e fecharia a especialidade. */}
+              <div className="flex items-center gap-3 px-5 pb-4" style={{ marginTop: -6 }}>
+                <Mini style={{ flexShrink: 0 }}>prioridade</Mini>
+                <input type="range" min="0" max="10" step="1"
+                  value={Number(pesos && pesos[g.esp] !== undefined ? pesos[g.esp] : 5)}
+                  onChange={(e) => setPeso(g.esp, e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  aria-label={`Prioridade de ${g.esp}`}
+                  style={{ flex: 1, minWidth: 100, maxWidth: 220, accentColor: aColor(g.area) }} />
+                <Mini style={{ color: T.dim, flexShrink: 0, minWidth: 54 }}>
+                  {(() => {
+                    const v = Number(pesos && pesos[g.esp] !== undefined ? pesos[g.esp] : 5);
+                    return v === 0 ? "ignorar" : v <= 3 ? "baixa" : v >= 8 ? "alta" : "média";
+                  })()}
+                </Mini>
+              </div>
 
               {on ? (
                 <div className="px-5 pb-5 pt-1" style={{ borderTop: `1px solid ${T.line}` }}>

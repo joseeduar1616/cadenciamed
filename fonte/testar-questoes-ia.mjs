@@ -263,6 +263,50 @@ else falha('o marcador vazou para a tela: ' + JSON.stringify(qs[0]));
 if (qs[0] && qs[0].enunciado === 'Veja e diga o ritmo') ok('e o enunciado sobra legível depois da limpeza');
 else falha('enunciado depois da limpeza: ' + JSON.stringify(qs[0] && qs[0].enunciado));
 
+/* ── estilo da banca ──────────────────────────────────────────────────
+ * A pessoa cola questões da banca que vai prestar e as questões do duelo
+ * saem com aquela cara. É a diferença entre treinar a leitura rápida de um
+ * enunciado da USP e treinar a de um enunciado genérico.
+ *
+ * O que precisa estar certo: o exemplo CHEGA ao modelo (sem isso o campo é
+ * decorativo), vai delimitado e avisado como exemplo de forma — porque é
+ * texto de fora e pode conter qualquer coisa escrita como ordem —, e não
+ * aparece quando ninguém colou nada. */
+responder = () => respostaIA(BOAS);
+const BANCA = 'Mulher de 34 anos, G2P1, refere cefaleia há 3 dias...\nA) Pré-eclâmpsia\nB) Cefaleia tensional';
+r = await pedir(await carregar(), { ...PEDIDO, estiloBanca: BANCA });
+let texto = String(ultimoPedido.corpo.contents?.[0]?.parts?.[0]?.text || '');
+if (texto.includes(BANCA)) ok('o exemplo da banca chega inteiro ao modelo');
+else falha('o exemplo da banca não foi enviado');
+if (/<banca>[\s\S]*<\/banca>/.test(texto)) ok('e vai delimitado, separado do material da pessoa');
+else falha('o exemplo foi enviado solto, sem delimitador');
+if (/não são instruções/i.test(texto)) ok('avisado como dado: questão colada não vira ordem para a IA');
+else falha('faltou avisar que o exemplo não é instrução');
+if (/NÃO copie questão nenhuma/i.test(texto)) ok('e com a ordem de não copiar questão de banca, só a forma');
+else falha('faltou proibir a cópia das questões da banca');
+if (texto.includes(PEDIDO.texto.trim().slice(0, 40))) ok('o material da pessoa continua sendo o assunto das questões');
+else falha('o material sumiu do pedido quando veio estilo de banca');
+
+/* Sem o campo preenchido, nada disso aparece: quem não colou nada não paga
+   tokens por um bloco vazio, e o modelo não recebe instrução pendurada. */
+r = await pedir(await carregar(), PEDIDO);
+texto = String(ultimoPedido.corpo.contents?.[0]?.parts?.[0]?.text || '');
+if (!/ESTILO DA BANCA|<banca>/.test(texto)) ok('sem exemplo colado, o pedido vai limpo');
+else falha('o bloco da banca apareceu sem ninguém ter colado nada');
+r = await pedir(await carregar(), { ...PEDIDO, estiloBanca: '   \n  ' });
+texto = String(ultimoPedido.corpo.contents?.[0]?.parts?.[0]?.text || '');
+if (!/<banca>/.test(texto)) ok('campo com só espaço conta como vazio');
+else falha('espaço em branco virou bloco de banca');
+
+/* Uma prova inteira colada tem centenas de milhares de caracteres. Sem
+   teto, ela empurraria o material da pessoa para fora da janela do modelo
+   e o duelo sairia sobre a banca, não sobre o que ela estudou. */
+r = await pedir(await carregar(), { ...PEDIDO, estiloBanca: 'Q'.repeat(50000) });
+texto = String(ultimoPedido.corpo.contents?.[0]?.parts?.[0]?.text || '');
+const colados = (texto.match(/Q+/g) || []).reduce((m, t) => Math.max(m, t.length), 0);
+if (colados <= 8000) ok('prova gigante colada é cortada antes de subir (' + colados + ' caracteres)');
+else falha('subiram ' + colados + ' caracteres de banca');
+
 /* ── 7. sem conta, sem questões ───────────────────────────────────────── */
 responder = () => respostaIA(BOAS);
 r = await pedir(await carregar(), { ...PEDIDO, token: '' });

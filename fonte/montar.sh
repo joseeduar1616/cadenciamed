@@ -45,6 +45,8 @@ if [ "${1:-}" != "--sem-teste" ]; then
   python3 extrair_nuvem.py
   python3 extrair_lotes.py
   python3 extrair_revisao.py
+  python3 extrair_semana.py
+  python3 extrair_ficha.py
   python3 extrair_treino.py
   python3 extrair_anexo.py
   echo "── teste no navegador ──────────────────────────────"
@@ -57,6 +59,8 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-nuvem.mjs
   node testar-lotes.mjs
   node testar-revisao.mjs
+  node testar-semana.mjs
+  node testar-ficha.mjs
   node testar-lembretes.mjs
   echo "── funções do servidor ─────────────────────────────"
   node testar-assistente.mjs

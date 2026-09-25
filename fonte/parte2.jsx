@@ -63,6 +63,13 @@ const DEFAULTS = {
   cronogramaModo: "somar",
   /* Anotação rica por matéria (parte17.jsx), por id de aula. */
   anotacoes: {},
+  /* O quanto cada especialidade importa PARA ESTA PESSOA, de 0 a 10.
+     Prova de residência não cobra tudo igual: cardiologia e pediatria
+     valem muito mais questão que genética médica, e a banca de cada
+     estado pesa diferente. Sem isso, "o que estudar agora" trata as 34
+     especialidades como se fossem a mesma coisa. Cinco é o neutro, e
+     especialidade sem peso declarado vale cinco. */
+  pesos: {},
   /* Se os números desta pessoa aparecem no ranking das salas de amigos.
      Começa ligado, que é o motivo de entrar numa sala; desligar mantém a
      pessoa na sala, sem os números dela à mostra. */
@@ -223,6 +230,15 @@ function normalize(raw) {
     /* O que já foi cumprido na agenda precisa sobreviver ao recarregar a
        página: o que não for copiado aqui se perde. */
     blocos: obj(d.blocos),
+    /* Peso por especialidade: só número de 0 a 10 entra. */
+    pesos: (() => {
+      const fora = {};
+      for (const [k, v] of Object.entries(obj(d.pesos))) {
+        const n = Math.round(Number(v));
+        if (Number.isFinite(n) && n >= 0 && n <= 10) fora[String(k).slice(0, 60)] = n;
+      }
+      return fora;
+    })(),
     goals: {
       daily: Number(g.daily) > 0 ? Number(g.daily) : 120,
       weekly: Number(g.weekly) > 0 ? Number(g.weekly) : 720,

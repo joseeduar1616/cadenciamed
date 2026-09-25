@@ -453,6 +453,172 @@ function limparDias(lista) {
   return dias;
 }
 
+/* ── a ficha de cada tópico ───────────────────────────────────────────
+ *
+ * Tempo, acertos e dificuldade de um conteúdo moram hoje em três lugares
+ * diferentes: os minutos vêm do cronômetro do Foco, as questões do registro
+ * de estudo, e a dificuldade de um controle na aba Revisões. Quem quer
+ * saber "como eu estou em insuficiência cardíaca?" tem de abrir três abas e
+ * fazer a conta de cabeça — e ninguém faz.
+ *
+ * A ficha junta os três num lugar só, por tópico. Ela não guarda nada novo:
+ * lê o que já existe e devolve a soma. O que ela acrescenta é a conta que
+ * ninguém fazia — aproveitamento, quanto tempo faz, e o quanto os dois
+ * combinam com a dificuldade que a pessoa declarou.
+ *
+ * E é ela que alimenta a escada adaptativa logo abaixo: a dificuldade que
+ * sai daqui é a que decide quando o conteúdo volta.
+ *
+ * Por que é função pura, testada sozinha: um erro aqui não quebra tela
+ * nenhuma. Mostra 80% de acerto onde havia 40, a pessoa confia, para de
+ * revisar o que estava fraco, e só descobre na prova.
+ */
+
+/* Tetos do que se pode registrar de uma vez. Um dia tem 1440 minutos, e
+   quem digita 300 questões num bloco de 50 minutos errou o campo. */
+const MAX_MIN_REGISTRO = 1440;
+const MAX_QUESTOES_REGISTRO = 999;
+
+/* Dias entre duas datas ISO, sem depender do fuso: "2026-09-24" é lido pelo
+   navegador como meia-noite UTC, e as duas pontas usam a mesma régua. */
+function diasDesde(iso, hoje) {
+  const a = Date.parse(String(iso || "") + "T00:00:00Z");
+  const b = Date.parse(String(hoje || "") + "T00:00:00Z");
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  return Math.round((b - a) / 86400000);
+}
+
+/* Soma o que foi registrado de UM tópico. Percorre a lista uma vez: são
+   todos os registros da pessoa, e a ficha abre dentro de uma lista de
+   matérias, uma vez por linha aberta. */
+function somarEstudo(sessions, id) {
+  const fora = { minutos: 0, sessoes: 0, questoes: 0, acertos: 0, ultima: "" };
+  if (!id) return fora;
+  for (const s of (Array.isArray(sessions) ? sessions : [])) {
+    if (!s || s.subjectId !== id) continue;
+    fora.sessoes += 1;
+    const min = Number(s.minutes);
+    if (Number.isFinite(min) && min > 0) fora.minutos += min;
+    const q = Number(s.questions);
+    if (Number.isFinite(q) && q > 0) {
+      fora.questoes += q;
+      const c = Number(s.correct);
+      /* Acerto acima do total de questões é dado estragado, e somá-lo daria
+         aproveitamento acima de 100% — que a pessoa leria como elogio. */
+      if (Number.isFinite(c) && c > 0) fora.acertos += Math.min(q, c);
+    }
+    const dia = typeof s.date === "string" ? s.date : "";
+    if (dia && dia > fora.ultima) fora.ultima = dia;
+  }
+  return fora;
+}
+
+/* Aproveitamento em porcentagem, ou null quando não houve questão nenhuma.
+   Zero e "não sei" são coisas diferentes: zero por cento é um alerta, e
+   nenhuma questão feita é só uma folha em branco. */
+function aproveitamento(questoes, acertos) {
+  const q = Number(questoes);
+  if (!Number.isFinite(q) || q <= 0) return null;
+  const c = Math.max(0, Math.min(q, Number(acertos) || 0));
+  return Math.round((c / q) * 100);
+}
+
+/* A dificuldade que o acerto sugere, de 0 (fácil) a 10 (difícil).
+ *
+ * É SUGESTÃO, e o nome importa: quem manda na escada é a dificuldade que a
+ * pessoa declarou, porque ela sabe coisas que a porcentagem não mostra —
+ * que acertou por eliminação, que a lista era fácil, que travou na hora.
+ * A sugestão existe só para o controle não começar às cegas no meio. */
+function dificuldadeSugerida(pct) {
+  if (pct === null || !Number.isFinite(Number(pct))) return null;
+  const p = Math.max(0, Math.min(100, Number(pct)));
+  /* 100% de acerto → 0. 40% ou menos → 10. Entre os dois, reta. */
+  if (p <= 40) return 10;
+  return Math.max(0, Math.min(10, Math.round(((100 - p) / 60) * 10)));
+}
+
+/* A classificação de desempenho (as faixas do PERF) que o acerto medido
+   corresponde. A pessoa escolhe essa faixa à mão numa lista, e ela entra na
+   escada de revisão — então uma faixa escolhida em março, com trinta
+   questões feitas desde então, empurra as revisões para o lugar errado sem
+   nada na tela discordando dela. */
+function perfDeAproveitamento(pct) {
+  if (pct === null || !Number.isFinite(Number(pct))) return 0;
+  const p = Number(pct);
+  if (p >= 80) return 1;
+  if (p >= 61) return 2;
+  return 3;
+}
+
+/* Lê o formulário de registro e devolve números confiáveis, ou o motivo de
+   não dar. Um registro de 90 acertos em 20 questões contaminaria a média da
+   matéria para sempre, e não há tela onde a pessoa veja isso para corrigir. */
+function lerRegistro(campos) {
+  const c = campos || {};
+  const vazio = (v) => v === "" || v === null || v === undefined;
+
+  const minutos = vazio(c.minutos) ? 0 : Math.round(Number(c.minutos));
+  if (!Number.isFinite(minutos) || minutos < 0 || minutos > MAX_MIN_REGISTRO) {
+    return { ok: false, erro: `Os minutos precisam ser um número de 0 a ${MAX_MIN_REGISTRO}.` };
+  }
+  const questoes = vazio(c.questoes) ? 0 : Math.round(Number(c.questoes));
+  if (!Number.isFinite(questoes) || questoes < 0 || questoes > MAX_QUESTOES_REGISTRO) {
+    return { ok: false, erro: `As questões precisam ser um número de 0 a ${MAX_QUESTOES_REGISTRO}.` };
+  }
+  const acertos = vazio(c.acertos) ? 0 : Math.round(Number(c.acertos));
+  if (!Number.isFinite(acertos) || acertos < 0) {
+    return { ok: false, erro: "Os acertos precisam ser um número." };
+  }
+  if (acertos > questoes) {
+    return { ok: false, erro: "Os acertos não podem passar do número de questões." };
+  }
+  if (!minutos && !questoes) {
+    return { ok: false, erro: "Registre pelo menos o tempo ou as questões." };
+  }
+
+  const comoFoi = ["facil", "ok", "dificil", "errei"].indexOf(String(c.comoFoi)) >= 0
+    ? String(c.comoFoi) : "";
+  return { ok: true, erro: "", minutos, questoes, acertos, comoFoi };
+}
+
+/* Quanto tempo faz, em palavras. "38 dias sem tocar nisso" muda o que a
+   pessoa faz hoje; "última vez: 18/08" não muda nada. */
+function fazQuantoTempo(ultima, hoje) {
+  if (!ultima) return "nunca registrado";
+  const d = diasDesde(ultima, hoje);
+  if (d === null) return "";
+  if (d <= 0) return "registrado hoje";
+  if (d === 1) return "registrado ontem";
+  if (d < 7) return `${d} dias sem registrar`;
+  if (d < 30) return `${Math.round(d / 7)} semanas sem registrar`;
+  return `${Math.round(d / 30)} ${Math.round(d / 30) === 1 ? "mês" : "meses"} sem registrar`;
+}
+
+/* A ficha inteira de um tópico: tempo, acertos e dificuldade num lugar. */
+function fichaDoTopico(id, sessions, rec, hoje) {
+  const soma = somarEstudo(sessions, id);
+  const pct = aproveitamento(soma.questoes, soma.acertos);
+  const r = rec || {};
+  const dif = Number(r.dificuldade);
+  const declarada = Number.isFinite(dif) && dif >= 0 && dif <= 10 ? Math.round(dif) : null;
+  const feitas = Object.keys(r.done || {}).length;
+
+  return {
+    ...soma,
+    aproveitamento: pct,
+    dificuldade: declarada,
+    sugerida: dificuldadeSugerida(pct),
+    /* O que a escada vai usar de verdade: a declarada quando existe, a
+       sugerida como segunda opção, e nada quando não há nem uma nem outra —
+       aí a escada fica na base, que é o certo para conteúdo novo. */
+    usada: declarada !== null ? declarada : dificuldadeSugerida(pct),
+    revisoes: feitas,
+    ultimaRevisao: typeof r.ultimaRevisao === "string" ? r.ultimaRevisao : "",
+    diasSemEstudar: soma.ultima ? diasDesde(soma.ultima, hoje) : null,
+    quando: fazQuantoTempo(soma.ultima, hoje),
+  };
+}
+
 /* ── a escada que se adapta a cada tópico ────────────────────────────
  *
  * A escada de cima é a mesma para tudo que a pessoa estuda, e é assim que
@@ -551,13 +717,142 @@ function depoisDaRevisao(rec, comoFoi, hoje) {
     r.done = {};
     r.undone = {};
     r.recomecou = hoje;
+    r.ultimaRevisao = hoje;
     return r;
   }
 
   const passo = comoFoi === "facil" ? PASSO_FACIL
     : comoFoi === "dificil" ? PASSO_DIFICIL : PASSO_OK;
   r.facilidade = Math.max(FATOR_MINIMO, Math.min(FATOR_MAXIMO, atual + passo));
+  r.ultimaRevisao = hoje;
   return r;
+}
+
+/* ── a semana montada a partir do tempo que existe ────────────────────
+ *
+ * O cronograma que não cabe na semana da pessoa é abandonado na segunda
+ * semana. Então aqui a conta começa pelo avesso do costume: primeiro
+ * quanto tempo existe, depois o que cabe dentro dele.
+ *
+ * Como o tempo é repartido, em ordem:
+ *
+ *   1. Cada especialidade recebe uma nota — peso que a pessoa declarou,
+ *      multiplicado pelo que falta fazer nela. Especialidade terminada
+ *      sai da conta: não adianta pesar dez o que já acabou.
+ *   2. O atraso conta. Conteúdo com revisão vencida entra com bônus: ele
+ *      é o que se perde primeiro se ninguém olhar.
+ *   3. O tempo total é dividido na proporção das notas, e depois cortado
+ *      em blocos que cabem nos dias escolhidos, respeitando o mínimo e o
+ *      máximo de cada dia.
+ *
+ * Um bloco nunca fica menor que o mínimo útil: quinze minutos de
+ * neurologia não é estudo, é troca de assunto. Quando sobra menos que
+ * isso, o resto vai para o bloco anterior em vez de virar um toco.
+ */
+const BLOCO_MINIMO = 30;     // minutos: abaixo disso não é bloco, é interrupção
+const BLOCO_MAXIMO = 120;    // minutos: acima disso a atenção já foi embora
+
+/* A nota de uma especialidade: o quanto ela merece do tempo da semana. */
+function notaDaEspecialidade(e) {
+  const peso = Number(e && e.peso);
+  const p = Number.isFinite(peso) && peso >= 0 && peso <= 10 ? peso : 5;
+  const total = Math.max(1, Number(e && e.total) || 1);
+  const feitas = Math.max(0, Math.min(total, Number(e && e.feitas) || 0));
+  const falta = (total - feitas) / total;
+  /* Nada a fazer aqui: sai da divisão. */
+  if (falta <= 0) return 0;
+  const atrasadas = Math.max(0, Number(e && e.atrasadas) || 0);
+  /* O atraso pesa, mas não vira tudo: uma revisão vencida não pode
+     sequestrar a semana inteira de quem tem outras dez coisas para fazer. */
+  const bonus = 1 + Math.min(1, atrasadas * 0.25);
+  return (p + 1) * falta * bonus;
+}
+
+/* Reparte "total" minutos entre os dias, sem passar do máximo de cada um
+   nem ficar abaixo do mínimo de quem recebeu alguma coisa. */
+function repartirPelosDias(total, dias, minimo, maximo) {
+  const n = (dias || []).length;
+  if (!n || total <= 0) return [];
+  const teto = Math.max(minimo || 0, maximo || 0) || total;
+  const fora = dias.map(() => 0);
+  let resta = Math.min(total, teto * n);
+
+  /* Primeiro o mínimo de cada dia, na ordem, enquanto der. */
+  if (minimo > 0) {
+    for (let i = 0; i < n && resta >= minimo; i++) { fora[i] = minimo; resta -= minimo; }
+  }
+  /* Depois o que sobra, espalhado por igual, respeitando o teto. */
+  let volta = 0;
+  while (resta > 0 && volta < 1000) {
+    let coube = false;
+    for (let i = 0; i < n && resta > 0; i++) {
+      const espaco = teto - fora[i];
+      if (espaco <= 0) continue;
+      const passo = Math.min(espaco, resta, 15);
+      fora[i] += passo; resta -= passo; coube = true;
+    }
+    if (!coube) break;
+    volta += 1;
+  }
+  return fora;
+}
+
+/* A semana inteira: lista de { dia, especialidade, minutos }.
+ *
+ * "dias" são os dias escolhidos, em qualquer formato que a tela use — o
+ * que volta é o mesmo valor, sem tradução, para a tela não ter de
+ * adivinhar de quem é cada bloco.
+ */
+function montarSemana({ especialidades, dias, minPorDia, maxPorDia, metaSemanal }) {
+  const lista = (especialidades || [])
+    .map((e) => ({ ...e, nota: notaDaEspecialidade(e) }))
+    .filter((e) => e.nota > 0)
+    .sort((a, b) => b.nota - a.nota);
+
+  const diasUsados = (dias || []).filter(Boolean);
+  if (!lista.length || !diasUsados.length) return [];
+
+  const minimo = Math.max(0, Number(minPorDia) || 0);
+  const maximo = Math.max(minimo, Number(maxPorDia) || 0) || 0;
+  const tetoSemana = maximo ? maximo * diasUsados.length : 0;
+  let total = Math.max(0, Math.round(Number(metaSemanal) || 0));
+  if (tetoSemana) total = Math.min(total, tetoSemana);
+  if (total <= 0) return [];
+
+  const soma = lista.reduce((a, e) => a + e.nota, 0);
+  const porDia = repartirPelosDias(total, diasUsados, minimo, maximo);
+
+  /* A fila de blocos, na proporção das notas, cada um dentro dos limites
+     do que é um bloco de estudo útil. */
+  const fila = [];
+  for (const e of lista) {
+    let meu = Math.round((e.nota / soma) * total);
+    while (meu >= BLOCO_MINIMO) {
+      const bloco = Math.min(BLOCO_MAXIMO, meu);
+      /* O que sobraria menor que um bloco mínimo entra neste mesmo. */
+      const resto = meu - bloco;
+      const junta = resto > 0 && resto < BLOCO_MINIMO ? resto : 0;
+      fila.push({ esp: e.esp, minutos: Math.min(BLOCO_MAXIMO, bloco + junta) });
+      meu -= bloco + junta;
+    }
+  }
+
+  /* E os blocos caem nos dias, cada dia recebendo até o seu tempo. */
+  const semana = [];
+  let i = 0;
+  for (let d = 0; d < diasUsados.length; d++) {
+    let espaco = porDia[d] || 0;
+    while (espaco >= BLOCO_MINIMO && i < fila.length) {
+      const b = fila[i];
+      const cabe = Math.min(b.minutos, espaco);
+      if (cabe < BLOCO_MINIMO) break;
+      semana.push({ dia: diasUsados[d], esp: b.esp, minutos: cabe });
+      espaco -= cabe;
+      if (cabe >= b.minutos) i += 1;
+      else b.minutos -= cabe;
+    }
+  }
+  return semana;
 }
 
 /* A escada em uso, já com rótulo em cada degrau. */
@@ -715,6 +1010,13 @@ function fmtRelogio(s) {
 }
 const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
 const toMin = (v) => { const p = String(v || "0:0").split(":").map(Number); return (p[0] || 0) * 60 + (p[1] || 0); };
+/* O contrário: minutos desde a meia-noite de volta para "19:30". Passar da
+   meia-noite prende em 23:59 — um bloco que "termina às 25:10" não é hora
+   nenhuma, e o campo de horário recusa. */
+const doMin = (m) => {
+  const t = Math.max(0, Math.min(23 * 60 + 59, Math.round(Number(m) || 0)));
+  return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+};
 
 function rotuloSemana(ini) {
   const a = fromISO(ini), b = fromISO(addDays(ini, 6));

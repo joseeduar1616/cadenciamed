@@ -27,6 +27,8 @@ fonte/_agenda.mjs
 fonte/_nuvem.mjs
 fonte/_lotes.mjs
 fonte/_revisao.mjs
+fonte/_semana.mjs
+fonte/_ficha.mjs
 fonte/_treino.mjs
 
 # refeitos por material/capturar.mjs e material/gerar.mjs

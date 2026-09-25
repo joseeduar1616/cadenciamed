@@ -560,6 +560,16 @@ export default function Cadencia() {
 
   /* A dificuldade que a pessoa declara para um tópico. É o ponto de
      partida da escada dele, antes de qualquer revisão ter acontecido. */
+  /* A prioridade de uma especialidade. Zero quer dizer "não entra na
+     semana": é diferente de "importa pouco", e quem monta a semana precisa
+     dessa diferença. */
+  const setPeso = useCallback((esp, valor) => {
+    setData((p) => ({
+      ...p,
+      pesos: { ...(p.pesos || {}), [esp]: Math.max(0, Math.min(10, Math.round(Number(valor) || 0))) },
+    }));
+  }, []);
+
   const marcarDificuldade = useCallback((id, valor) => {
     setData((p) => {
       const rec = { ...(p.reviews[id] || {}) };
@@ -1139,8 +1149,8 @@ export default function Cadencia() {
               </div>
               {tab === "hoje" && <Hoje {...{ data, setData, today, minToday, minWeek, qWeek, streak, late, done, bonusDone, addSession, delSession, notify, go: setTab, blocosHoje, projecao: pro ? projecao : null, pro, verPlanos: () => setTab("planos"), cartoesHoje }} />}
               {tab === "foco" && <Foco {...{ data, setData, today, P, subjectId: pomoSubject, setSubjectId: setPomoSubject }} />}
-              {tab === "materias" && <Materias {...{ subjects: subjectsResidencia, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, salvarAnotacao, notify, setData, nuvem, pastas: data.pastas, vazioEm: subjectsClinico.length ? "clinico" : null, irPara: setTab }} />}
-              {tab === "clinico" && <Materias {...{ subjects: subjectsClinico, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, salvarAnotacao, notify, setData, nuvem, pastas: data.pastas, irPara: setTab }} />}
+              {tab === "materias" && <Materias {...{ sessions: data.sessions, reviews: data.reviews, today, addSession, marcarDificuldade, subjects: subjectsResidencia, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, salvarAnotacao, notify, setData, nuvem, pastas: data.pastas, vazioEm: subjectsClinico.length ? "clinico" : null, irPara: setTab }} />}
+              {tab === "clinico" && <Materias {...{ sessions: data.sessions, reviews: data.reviews, today, addSession, marcarDificuldade, subjects: subjectsClinico, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, salvarAnotacao, notify, setData, nuvem, pastas: data.pastas, irPara: setTab }} />}
               {tab === "cronograma" && <AbaCronograma {...{ data, setData, notify, nuvem, pro, verPlanos: () => setTab("planos") }} />}
               {tab === "temas" && !pro && <Bloqueado recurso={RECURSOS_PRO.temas} onVerPlanos={() => setTab("planos")} />}
               {tab === "rotina" && !pro && <Bloqueado recurso={RECURSOS_PRO.rotina} onVerPlanos={() => setTab("planos")} />}
@@ -1149,7 +1159,7 @@ export default function Cadencia() {
               {tab === "revisoes" && !pro && <Bloqueado recurso={RECURSOS_PRO.revisoes} onVerPlanos={() => setTab("planos")} />}
               {tab === "metas" && !pro && <Bloqueado recurso={RECURSOS_PRO.metas} onVerPlanos={() => setTab("planos")} />}
               {tab === "planos" && <Precos usuario={nuvem.usuario} plano={assinatura.plano} aviso={assinatura.aviso} />}
-              {tab === "temas" && pro && <Temas {...{ subjects, setMark, minutos: minutesBySubject, sessoes: data.sessions, today }} />}
+              {tab === "temas" && pro && <Temas {...{ subjects, setMark, minutos: minutesBySubject, sessoes: data.sessions, today, pesos: data.pesos, setPeso }} />}
               {tab === "assistente" && ver.assistente && (
                 <div className="flex flex-col gap-5">
                   <Assistente {...{ data, setData, subjects, ladder, today, totals, minWeek, qWeek, notify, nuvem }} />
@@ -1159,7 +1169,12 @@ export default function Cadencia() {
                 </div>
               )}
               {tab === "revisoes" && pro && <Revisoes {...{ rows: ladder, toggleStep, resetCycle, marcarDificuldade, data, setData, degraus, notify }} />}
-              {tab === "rotina" && pro && <Rotina {...{ data, setData, gcal, today }} />}
+              {tab === "rotina" && pro && (
+                <div className="flex flex-col gap-5">
+                  <MontarSemana {...{ data, setData, subjects, ladder, notify }} />
+                  <Rotina {...{ data, setData, gcal, today }} />
+                </div>
+              )}
               {tab === "amigos" && !pro && <Bloqueado recurso={RECURSOS_PRO.amigos} onVerPlanos={() => setTab("planos")} />}
               {tab === "amigos" && pro && <Amigos {...{ nuvem, notify, data, setData, irPara: setTab }} />}
               {tab === "metas" && pro && <Metas {...{ data, setData, today, qWeek, notify, ladder, gcal }} />}
