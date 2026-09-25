@@ -453,6 +453,113 @@ function limparDias(lista) {
   return dias;
 }
 
+/* ── a escada que se adapta a cada tópico ────────────────────────────
+ *
+ * A escada de cima é a mesma para tudo que a pessoa estuda, e é assim que
+ * quase todo aplicativo de revisão funciona: escolhe-se 1-7-30-90 e pronto.
+ * A literatura diz que isso é o pior dos caminhos.
+ *
+ * O que ela diz, em três pontos que mudam o desenho:
+ *
+ *   1. O intervalo ideal entre revisões AUMENTA conforme o conteúdo
+ *      consolida. Uma escada fixa revisa cedo demais o que já está sabido
+ *      e tarde demais o que não está.
+ *   2. Algoritmos que estimam a probabilidade de lembrar e marcam a
+ *      revisão a partir dela superam heurísticas fixas — está medido, em
+ *      treinamento de idioma com milhões de revisões.
+ *   3. O esquecimento não é uma curva só: tem fases, e a primeira é rápida
+ *      demais para um degrau de sete dias alcançar.
+ *
+ * Então aqui a escada da pessoa vira o ESQUELETO, e cada tópico estica ou
+ * encurta esse esqueleto conforme o que aconteceu com ele: o quanto ela
+ * achou difícil, o quanto acertou, e como foi cada revisão.
+ *
+ * O degrau continua sendo identificado pelo dia do esqueleto — é a chave
+ * do que já foi marcado como feito, e mexer nela apagaria o histórico de
+ * quem já usa o site.
+ */
+const FATOR_MINIMO = 0.45;     // tópico difícil: revisa quase no dobro da frequência
+const FATOR_MAXIMO = 2.6;      // tópico dominado: some da frente por bem mais tempo
+const FATOR_INICIAL = 1;
+
+/* Quanto cada resposta mexe no fator. Subir custa menos que descer: errar
+   é sinal mais forte de que o intervalo está grande demais do que acertar
+   é de que está pequeno. */
+const PASSO_FACIL = 0.22;
+const PASSO_OK = 0.06;
+const PASSO_DIFICIL = -0.18;
+
+/* O fator de um tópico, a partir do que se sabe dele.
+ *
+ * Nasce da dificuldade que a pessoa declarou (0 a 10, onde 5 é neutro) e
+ * vai sendo corrigido pelas revisões. O acerto em questões entra como um
+ * empurrão pequeno: ele é sobre a matéria inteira, não sobre aquele
+ * tópico, então não pode mandar mais que a experiência direta. */
+function fatorDoTopico(rec, perf) {
+  const r = rec || {};
+  /* > 0, e não só "é número": Number(null) é zero, e zero passaria no teste
+     de finito. Um campo nulo vindo do disco viraria o fator mínimo, e o
+     tópico passaria a ser revisado no dobro da frequência para sempre. */
+  let f = Number(r.facilidade);
+  if (!Number.isFinite(f) || f <= 0) {
+    const dif = Number(r.dificuldade);
+    /* Dificuldade 0 (fácil) → 1,5. Dificuldade 10 (difícil) → 0,5. */
+    f = Number.isFinite(dif) && dif >= 0 && dif <= 10 ? 1.5 - (dif / 10) : FATOR_INICIAL;
+  }
+  const p = Number(perf);
+  if (Number.isFinite(p) && p > 0) {
+    /* 70% de acerto é o ponto neutro; cada 10 pontos acima ou abaixo mexem
+       5% no intervalo, e nunca mais que 15% no total. */
+    const ajuste = Math.max(-0.15, Math.min(0.15, ((p - 70) / 10) * 0.05));
+    f *= 1 + ajuste;
+  }
+  return Math.max(FATOR_MINIMO, Math.min(FATOR_MAXIMO, f));
+}
+
+/* Os dias da escada JÁ ajustados para um tópico.
+ *
+ * Os degraus continuam em ordem e nunca colidem: dois degraus caindo no
+ * mesmo dia seriam duas revisões no mesmo dia, que é o que a escada existe
+ * para evitar. */
+function diasDoTopico(degraus, rec, perf) {
+  const f = fatorDoTopico(rec, perf);
+  const fora = [];
+  let anterior = 0;
+  for (const st of (degraus || [])) {
+    const base = Number(st && st.d ? st.d : st) || 0;
+    let dia = Math.max(1, Math.round(base * f));
+    if (dia <= anterior) dia = anterior + 1;
+    anterior = dia;
+    fora.push(dia);
+  }
+  return fora;
+}
+
+/* O tópico depois de uma revisão, com o fator corrigido.
+ *
+ * "errei" não é só um passo para trás: o conteúdo voltou a ser novo, então
+ * a contagem recomeça de hoje. É o que a fase rápida do esquecimento pede
+ * — adiar para o degrau seguinte seria revisar de novo daqui a um mês uma
+ * coisa que se perdeu em dois dias. */
+function depoisDaRevisao(rec, comoFoi, hoje) {
+  const r = { ...(rec || {}) };
+  const atual = Number.isFinite(Number(r.facilidade)) ? Number(r.facilidade) : fatorDoTopico(r);
+
+  if (comoFoi === "errei") {
+    r.facilidade = Math.max(FATOR_MINIMO, atual + PASSO_DIFICIL * 2);
+    r.anchor = hoje;
+    r.done = {};
+    r.undone = {};
+    r.recomecou = hoje;
+    return r;
+  }
+
+  const passo = comoFoi === "facil" ? PASSO_FACIL
+    : comoFoi === "dificil" ? PASSO_DIFICIL : PASSO_OK;
+  r.facilidade = Math.max(FATOR_MINIMO, Math.min(FATOR_MAXIMO, atual + passo));
+  return r;
+}
+
 /* A escada em uso, já com rótulo em cada degrau. */
 function escada(revisao) {
   const cfg = revisao || {};

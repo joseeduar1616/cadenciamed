@@ -444,8 +444,15 @@ export default function Cadencia() {
       const anchor = rec.anchor || s.date || today;
       const marked = { ...(rec.done || {}) };
       for (const k of Object.keys(rec.undone || {})) delete marked[k];
-      const steps = degraus.map((st) => {
-        const due = addDays(anchor, st.d);
+      /* Os dias saem da escada JÁ esticada ou encurtada para este tópico:
+         o que a pessoa achou difícil volta mais cedo, o que ela domina
+         some da frente por mais tempo. A chave do degrau continua sendo o
+         dia do esqueleto (st.d) — é por ela que o que já foi marcado como
+         feito é encontrado, e mexer nisso apagaria o histórico de quem já
+         usa o site. */
+      const ajustados = diasDoTopico(degraus, rec, s.perf);
+      const steps = degraus.map((st, i) => {
+        const due = addDays(anchor, ajustados[i] === undefined ? st.d : ajustados[i]);
         const on = marked[String(st.d)] || null;
         let state = "futura";
         if (on) state = "feita";
@@ -524,15 +531,42 @@ export default function Cadencia() {
   const salvarAnotacao = useCallback((id, html) => {
     setData((p) => ({ ...p, anotacoes: { ...p.anotacoes, [id]: { html, atualizadoEm: Date.now() } } }));
   }, []);
-  const toggleStep = useCallback((id, days, anchor) => {
+  /* "comoFoi" é o que alimenta a adaptação: "facil", "ok", "dificil" ou
+     "errei". Sem ele — desmarcar um degrau, por exemplo — o fator não se
+     mexe, porque desmarcar é corrigir um clique, não relatar um estudo. */
+  const toggleStep = useCallback((id, days, anchor, comoFoi) => {
     setData((p) => {
-      const rec = { ...(p.reviews[id] || {}) };
-      const doneMap = { ...(rec.done || {}) }, undo = { ...(rec.undone || {}) };
+      let rec = { ...(p.reviews[id] || {}) };
       const k = String(days);
+      const jaFeito = !!(rec.done || {})[k];
+
+      if (!jaFeito && comoFoi) {
+        rec = depoisDaRevisao(rec, comoFoi, todayISO());
+        /* Errar recomeça o ciclo de hoje: depoisDaRevisao já zerou os
+           degraus e mudou a âncora, então não há degrau para marcar. */
+        if (comoFoi === "errei") {
+          return { ...p, reviews: { ...p.reviews, [id]: rec } };
+        }
+      }
+
+      const doneMap = { ...(rec.done || {}) }, undo = { ...(rec.undone || {}) };
       if (doneMap[k]) { delete doneMap[k]; undo[k] = 1; }
       else { doneMap[k] = todayISO(); delete undo[k]; }
       rec.done = doneMap; rec.undone = undo;
       if (!rec.anchor) rec.anchor = anchor;
+      return { ...p, reviews: { ...p.reviews, [id]: rec } };
+    });
+  }, []);
+
+  /* A dificuldade que a pessoa declara para um tópico. É o ponto de
+     partida da escada dele, antes de qualquer revisão ter acontecido. */
+  const marcarDificuldade = useCallback((id, valor) => {
+    setData((p) => {
+      const rec = { ...(p.reviews[id] || {}) };
+      rec.dificuldade = Math.max(0, Math.min(10, Math.round(Number(valor) || 0)));
+      /* Mudar a dificuldade reabre a conta: o fator acumulado veio de uma
+         premissa que a pessoa acabou de corrigir. */
+      delete rec.facilidade;
       return { ...p, reviews: { ...p.reviews, [id]: rec } };
     });
   }, []);
@@ -1124,7 +1158,7 @@ export default function Cadencia() {
                   <Notion {...{ nuvem, subjects, data, setData, notify }} />
                 </div>
               )}
-              {tab === "revisoes" && pro && <Revisoes {...{ rows: ladder, toggleStep, resetCycle, data, setData, degraus, notify }} />}
+              {tab === "revisoes" && pro && <Revisoes {...{ rows: ladder, toggleStep, resetCycle, marcarDificuldade, data, setData, degraus, notify }} />}
               {tab === "rotina" && pro && <Rotina {...{ data, setData, gcal, today }} />}
               {tab === "amigos" && !pro && <Bloqueado recurso={RECURSOS_PRO.amigos} onVerPlanos={() => setTab("planos")} />}
               {tab === "amigos" && pro && <Amigos {...{ nuvem, notify, data, setData, irPara: setTab }} />}

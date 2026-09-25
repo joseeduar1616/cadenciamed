@@ -349,7 +349,20 @@ function EsquemaRevisao({ data, setData, degraus, notify }) {
   );
 }
 
-function Revisoes({ rows, toggleStep, resetCycle, data, setData, degraus, notify }) {
+/* Como foi a revisão. É a pergunta que faz a escada se ajustar: sem ela, o
+   intervalo seria o mesmo para o que a pessoa lembrou de cara e para o que
+   ela não lembrou de jeito nenhum. */
+const COMO_FOI = [
+  { id: "facil", rotulo: "fácil", cor: "var(--ok)", dica: "lembrei de cara — pode demorar mais a voltar" },
+  { id: "ok", rotulo: "ok", cor: "var(--neon)", dica: "lembrei com esforço" },
+  { id: "dificil", rotulo: "difícil", cor: "var(--warn)", dica: "custou — volta mais cedo" },
+  { id: "errei", rotulo: "não lembrei", cor: "var(--bad)", dica: "recomeça a contagem de hoje" },
+];
+
+function Revisoes({ rows, toggleStep, resetCycle, marcarDificuldade, data, setData, degraus, notify }) {
+  /* Qual degrau está esperando a resposta de "como foi". Guardado como
+     "id do tópico|dia" porque o mesmo tópico tem vários degraus. */
+  const [perguntando, setPerguntando] = useState("");
   const [onlyLate, setOnlyLate] = useState(false);
   const list = onlyLate ? rows.filter((r) => r.late.length > 0) : rows;
   const colunas = { gridTemplateColumns: `repeat(${Math.max(1, degraus.length)}, minmax(0, 1fr))` };
@@ -395,7 +408,13 @@ function Revisoes({ rows, toggleStep, resetCycle, data, setData, degraus, notify
                   const active = st.state === "vencida" || st.state === "hoje";
                   const col = st.state === "feita" ? T.ok : active ? T.warn : T.ghost;
                   return (
-                    <button key={st.d} type="button" onClick={() => toggleStep(r.id, st.d, r.anchor)}
+                    <button key={st.d} type="button"
+                      onClick={() => {
+                        /* Marcar pergunta como foi; desmarcar é só desfazer
+                           um clique, e não mexe na adaptação. */
+                        if (st.state === "feita") toggleStep(r.id, st.d, r.anchor);
+                        else setPerguntando(`${r.id}|${st.d}`);
+                      }}
                       className="rounded-2xl px-1 py-3 flex flex-col items-center gap-2 brilhar"
                       title={st.on ? `revisado em ${brDate(st.on)}` : `vence em ${brDate(st.due)}`}
                       style={{
@@ -409,6 +428,56 @@ function Revisoes({ rows, toggleStep, resetCycle, data, setData, degraus, notify
                     </button>
                   );
                 })}
+              </div>
+
+              {/* ── como foi a revisão ───────────────────────────────────
+                * A escada deste tópico sai daqui. Quatro respostas, porque
+                * duas ("lembrei" / "não lembrei") não distinguem o que
+                * voltou de cara do que voltou a duras penas — e é
+                * justamente essa diferença que diz se o intervalo pode
+                * crescer. */}
+              {perguntando.startsWith(`${r.id}|`) ? (
+                <div className="mt-4 rounded-2xl px-4 py-4"
+                  style={{ background: T.card2, border: `1px solid ${T.line}` }}>
+                  <Label>Como foi essa revisão?</Label>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {COMO_FOI.map((op) => (
+                      <Btn key={op.id} size="sm" tone="outline" title={op.dica}
+                        style={{ borderColor: soft(op.cor, 40), color: op.cor }}
+                        onClick={() => {
+                          const dia = Number(perguntando.split("|")[1]);
+                          toggleStep(r.id, dia, r.anchor, op.id);
+                          setPerguntando("");
+                          if (op.id === "errei") notify("Contagem reiniciada hoje: esse conteúdo volta logo.");
+                        }}>
+                        {op.rotulo}
+                      </Btn>
+                    ))}
+                    <Btn size="sm" tone="quiet" onClick={() => setPerguntando("")}>cancelar</Btn>
+                  </div>
+                  <Mini style={{ marginTop: 10, lineHeight: 1.6 }}>
+                    A resposta muda quando este conteúdo volta. Nada de escada fixa:
+                    o que você lembra fácil se afasta, o que custa volta antes.
+                  </Mini>
+                </div>
+              ) : null}
+
+              {/* ── o quanto este conteúdo é difícil PARA VOCÊ ──────────
+                * É o ponto de partida da escada, antes de existir qualquer
+                * revisão para corrigi-la. */}
+              <div className="mt-3 flex items-center gap-3 flex-wrap">
+                <Mini>dificuldade</Mini>
+                <input type="range" min="0" max="10" step="1"
+                  value={Number((data.reviews[r.id] || {}).dificuldade ?? 5)}
+                  onChange={(e) => marcarDificuldade(r.id, e.target.value)}
+                  style={{ flex: 1, minWidth: 140, maxWidth: 260, accentColor: "var(--neon)" }}
+                  aria-label={`Dificuldade de ${r.title}`} />
+                <Mini style={{ color: T.dim }}>
+                  {(() => {
+                    const d = Number((data.reviews[r.id] || {}).dificuldade ?? 5);
+                    return d <= 3 ? "tranquilo" : d >= 7 ? "pesado" : "médio";
+                  })()}
+                </Mini>
               </div>
             </Card>
           ))}
