@@ -16,7 +16,7 @@ const falha = (m) => { passos.push('FALHA ' + m); erros.push(m); };
 
 const {
   somarEstudo, aproveitamento, dificuldadeSugerida, lerRegistro,
-  fichaDoTopico, fazQuantoTempo, diasDesde, perfDeAproveitamento,
+  fichaDoTopico, fazQuantoTempo, diasDesde, perfDeAproveitamento, fraseDoDia,
   MAX_MIN_REGISTRO, MAX_QUESTOES_REGISTRO,
 } = await import('./_ficha.mjs');
 
@@ -190,6 +190,51 @@ if (diasDesde('ontem', HOJE) === null) ok('data ilegível devolve nada, em vez d
 else falha('data ilegível: ' + diasDesde('ontem', HOJE));
 if (fazQuantoTempo('ontem', HOJE) === '') ok('e a frase sai vazia, sem NaN na tela');
 else falha('frase com data ilegível: ' + fazQuantoTempo('ontem', HOJE));
+
+/* ── a frase que vai na notificação ──────────────────────────────────
+ * Este texto chega na tela de bloqueio do celular de outra pessoa, com o
+ * site fechado. Um erro aqui não aparece em nenhuma tela daqui — aparece lá.
+ */
+if (fraseDoDia({ atrasadas: 3 }) === '3 revisões atrasadas.') ok('o atraso vira frase com a palavra, e não um número solto');
+else falha('atrasadas: ' + fraseDoDia({ atrasadas: 3 }));
+if (fraseDoDia({ atrasadas: 1 }) === '1 revisão atrasada.') ok('e no singular concorda');
+else falha('singular: ' + fraseDoDia({ atrasadas: 1 }));
+
+/* Nada pendente tem de dar frase VAZIA: um "você não tem nada hoje" diário
+   é o aviso que faz a pessoa desligar os lembretes na segunda semana. */
+for (const [nome, e] of [
+  ['tudo zerado', { atrasadas: 0, cartoes: 0, blocos: [] }],
+  ['sem nada informado', {}],
+  ['argumento nenhum', undefined],
+  ['números estragados', { atrasadas: 'três', cartoes: null, blocos: 'nenhum' }],
+  ['números negativos', { atrasadas: -5, cartoes: -1 }],
+]) {
+  if (fraseDoDia(e) === '') ok(`${nome} não gera notificação nenhuma`);
+  else falha(`${nome} gerou: ` + fraseDoDia(e));
+}
+
+const duas = fraseDoDia({ atrasadas: 2, cartoes: 40 });
+if (duas === '2 revisões atrasadas e 40 cartões para revisar.') ok('duas pendências ligadas por "e"');
+else falha('duas: ' + duas);
+
+const tres = fraseDoDia({ atrasadas: 2, cartoes: 40, blocos: [{ start: '19:00' }, { start: '07:30' }] });
+if (/^2 revisões atrasadas, 40 cartões para revisar e 2 blocos na agenda, o primeiro às 07:30\.$/.test(tres)) {
+  ok('três pendências viram lista, e o bloco citado é o mais cedo do dia');
+} else falha('três: ' + tres);
+
+if (/^Um bloco na agenda, o primeiro às 06:00\.$/.test(fraseDoDia({ blocos: [{ start: '06:00' }] }))) {
+  ok('um bloco só é "um bloco", sem número');
+} else falha('um bloco: ' + fraseDoDia({ blocos: [{ start: '06:00' }] }));
+
+/* Bloco sem horário no arquivo salvo não pode virar "às undefined". */
+if (fraseDoDia({ blocos: [{ label: 'sem hora' }] }) === '') ok('bloco sem horário é ignorado, em vez de virar "às undefined"');
+else falha('bloco sem hora: ' + fraseDoDia({ blocos: [{ label: 'sem hora' }] }));
+
+/* O texto cabe numa notificação: acima de ~160 caracteres o sistema corta
+   no meio da palavra. */
+const cheia = fraseDoDia({ atrasadas: 99, cartoes: 999, blocos: Array.from({ length: 12 }, (_, i) => ({ start: '0' + (i % 10) + ':00' })) });
+if (cheia.length <= 160) ok('mesmo no pior dia a frase cabe na notificação (' + cheia.length + ' caracteres)');
+else falha('frase longa demais: ' + cheia.length);
 
 console.log(passos.join('\n'));
 console.log('\n' + (erros.length ? `${erros.length} PROBLEMA(S):\n` + erros.join('\n') : 'nenhum erro'));

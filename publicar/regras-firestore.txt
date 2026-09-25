@@ -80,6 +80,34 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Os aparelhos que assinaram a notificação por push, em
+    // push/{uid}/aparelhos/{id}. Fechados para o navegador nas duas
+    // pontas: cada registro guarda o endereço de entrega e a chave do
+    // aparelho, e quem tivesse a chave de outra pessoa conseguiria mandar
+    // notificação em nome do site direto para o celular dela. Quem lê e
+    // grava é a rota /api/push, com a conta de serviço.
+    match /push/{uid} {
+      allow read, write: if false;
+    }
+    match /push/{uid}/{resto=**} {
+      allow read, write: if false;
+    }
+
+    // A chave do site para assinar as notificações (VAPID), gerada uma vez
+    // pelo próprio servidor. A parte privada está aqui dentro: quem a
+    // lesse poderia mandar notificação em nome do Cadência para qualquer
+    // aparelho assinado.
+    match /config/{item} {
+      allow read, write: if false;
+    }
+
+    // Quanto cada pessoa gastou de IA hoje. Fechado para o navegador pelo
+    // motivo óbvio: quem pudesse escrever aqui zeraria o próprio contador
+    // e o teto deixaria de existir. Quem conta é o servidor, em _ia.js.
+    match /uso/{uid} {
+      allow read, write: if false;
+    }
+
     // Papel de mentor e a lista de alunos de cada mentor (por uid, vindo
     // de emails/{uid}). Só o servidor mexe aqui: /api/cupom concede o
     // papel ao resgatar "mentor1612", e /api/mentor adiciona, remove e lê

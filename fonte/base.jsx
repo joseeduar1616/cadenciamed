@@ -619,6 +619,46 @@ function fichaDoTopico(id, sessions, rec, hoje) {
   };
 }
 
+/* A frase que vai na notificação do dia.
+ *
+ * Ela sai do navegador e é guardada no servidor, porque o que a pessoa tem
+ * para estudar mora no aparelho dela — calcular isso no servidor exigiria
+ * subir o histórico de estudo de todo mundo só para poder contar revisões.
+ *
+ * Três regras, e todas são sobre não incomodar à toa:
+ *
+ *   · sem nada pendente, a frase é VAZIA, e vazia quer dizer "não manda
+ *     notificação nenhuma". Um "você não tem nada hoje" diário é o aviso
+ *     que faz a pessoa desligar os lembretes na segunda semana;
+ *   · o que está atrasado vem primeiro, porque é o que muda o dia;
+ *   · nada de número solto: "3" não diz nada, "3 revisões atrasadas" diz.
+ *
+ * É pura e testada porque ela é o texto que chega na tela de bloqueio de
+ * outra pessoa. Um erro aqui não aparece em lugar nenhum daqui.
+ */
+function fraseDoDia({ atrasadas, cartoes, blocos } = {}) {
+  const n = (x) => (Number.isFinite(Number(x)) && Number(x) > 0 ? Math.round(Number(x)) : 0);
+  const partes = [];
+
+  const atras = n(atrasadas);
+  if (atras) partes.push(`${atras} ${atras === 1 ? "revisão atrasada" : "revisões atrasadas"}`);
+
+  const cart = n(cartoes);
+  if (cart) partes.push(`${cart} ${cart === 1 ? "cartão para revisar" : "cartões para revisar"}`);
+
+  const b = Array.isArray(blocos) ? blocos.filter((x) => x && x.start) : [];
+  if (b.length) {
+    const primeiro = [...b].sort((x, y) => String(x.start).localeCompare(String(y.start)))[0];
+    partes.push(`${b.length === 1 ? "um bloco" : `${b.length} blocos`} na agenda, o primeiro às ${primeiro.start}`);
+  }
+
+  if (!partes.length) return "";
+  /* Duas coisas ligadas por "e"; três ou mais, por vírgula até a última. */
+  const frase = partes.length === 1 ? partes[0]
+    : `${partes.slice(0, -1).join(", ")} e ${partes[partes.length - 1]}`;
+  return frase.charAt(0).toUpperCase() + frase.slice(1) + ".";
+}
+
 /* ── a escada que se adapta a cada tópico ────────────────────────────
  *
  * A escada de cima é a mesma para tudo que a pessoa estuda, e é assim que

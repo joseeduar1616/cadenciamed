@@ -19,6 +19,7 @@ corpo = s[s.index(inicio):s.index(fim)].rstrip()
 for alvo in ('function somarEstudo', 'function aproveitamento', 'function lerRegistro',
              'function fichaDoTopico', 'function dificuldadeSugerida',
              'function fazQuantoTempo', 'function diasDesde', 'function perfDeAproveitamento',
+             'function fraseDoDia',
              'const MAX_MIN_REGISTRO', 'const MAX_QUESTOES_REGISTRO'):
     if alvo not in corpo:
         raise SystemExit(f'não achei {alvo} no trecho extraído')

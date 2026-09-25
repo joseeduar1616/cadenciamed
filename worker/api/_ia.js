@@ -7,7 +7,8 @@
  * Com as duas, o Gemini ganha. IA_PROVEDOR força um dos dois.
  * GEMINI_MODELO e ANTHROPIC_MODELO trocam o modelo sem mexer no código.
  */
-import { contaDeServico, tokenDeAcesso, validoAte, ehDono } from "./_comum.js";
+import { contaDeServico, tokenDeAcesso, validoAte, ehDono, BASE_FIRESTORE } from "./_comum.js";
+import { podePelaCota, registroApos } from "./_limites.js";
 
 /* Modelo padrão do Gemini.
  *
@@ -35,19 +36,79 @@ export const GEMINI_PADRAO = "gemini-3.6-flash";
  * Sem a conta de serviço cadastrada não há como conferir plano, e aí só o
  * dono passa. Liberar geral nesse caso deixaria qualquer pessoa gastando a
  * cota da conta que paga. */
-export async function podeUsar(pessoa, env) {
+export async function podeUsar(pessoa, env, rota) {
   if (ehDono(pessoa.email)) return { ok: true };
   const conta = contaDeServico(env);
   if (!conta) {
     return { ok: false, erro: "O assistente está indisponível: falta configurar o servidor." };
   }
+  let token;
   try {
-    const token = await tokenDeAcesso(conta);
-    if (await validoAte(token, pessoa.uid) > Date.now()) return { ok: true };
+    token = await tokenDeAcesso(conta);
+    if (await validoAte(token, pessoa.uid) <= Date.now()) {
+      return { ok: false, erro: "Esta função faz parte do plano completo." };
+    }
   } catch (e) {
     return { ok: false, erro: "Não consegui conferir sua assinatura. Tente de novo em instantes." };
   }
-  return { ok: false, erro: "Esta função faz parte do plano completo." };
+
+  if (!rota) return { ok: true };
+  return cobrar(token, pessoa.uid, rota);
+}
+
+/* ── o teto diário ────────────────────────────────────────────────────
+ *
+ * A assinatura é um valor fixo por mês; o custo de cada chamada à IA é
+ * variável. Sem teto, uma conta que processe um acervo inteiro num sábado
+ * gasta mais num dia do que paga num ano — e sem ter feito nada de errado,
+ * porque o site é que oferece o botão.
+ *
+ * A conta é marcada ANTES da chamada ao provedor, e não depois. Assim uma
+ * resposta que falhe no meio ainda conta um ponto, o que é injusto de vez
+ * em quando; contar depois seria não contar nada quando o Worker fosse
+ * interrompido, que é como um teto deixa de existir sem ninguém notar.
+ *
+ * Se o banco não responder, a chamada PASSA. O teto existe para conter o
+ * caso extremo, não para ser mais uma peça capaz de derrubar o site: uma
+ * falha de leitura do Firestore não pode virar "a IA parou para todo
+ * mundo".
+ */
+const ORCAMENTO = (uid) => `${BASE_FIRESTORE}/uso/${encodeURIComponent(uid)}`;
+
+async function cobrar(token, uid, rota) {
+  const agora = Date.now();
+  let registro = null;
+  try {
+    const r = await fetch(ORCAMENTO(uid), { headers: { Authorization: `Bearer ${token}` } });
+    if (r.ok) {
+      const f = ((await r.json().catch(() => null)) || {}).fields || {};
+      registro = {
+        dia: (f.dia && f.dia.stringValue) || "",
+        pontos: Number((f.pontos && (f.pontos.integerValue || f.pontos.doubleValue)) || 0),
+      };
+    }
+  } catch (e) {
+    return { ok: true };   /* banco fora do ar não derruba a IA */
+  }
+
+  const veredito = podePelaCota({ registro, rota, dono: false, agora });
+  if (!veredito.ok) return { ok: false, erro: veredito.erro };
+
+  const novo = registroApos(registro, rota, agora);
+  try {
+    await fetch(ORCAMENTO(uid), {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fields: {
+          dia: { stringValue: novo.dia },
+          pontos: { integerValue: String(novo.pontos) },
+          em: { doubleValue: novo.em },
+        },
+      }),
+    });
+  } catch (e) { /* não gravou: no pior caso esta chamada saiu de graça */ }
+  return { ok: true, restante: veredito.restante };
 }
 
 /* Traduz o erro do provedor para uma frase que o estudante entenda, sem

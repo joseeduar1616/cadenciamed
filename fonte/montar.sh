@@ -60,6 +60,8 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-lotes.mjs
   node testar-revisao.mjs
   node testar-semana.mjs
+  node testar-push.mjs
+  node testar-limites.mjs
   node testar-ficha.mjs
   node testar-lembretes.mjs
   echo "── funções do servidor ─────────────────────────────"

@@ -44,7 +44,7 @@ const DEFAULTS = {
     peso: "normal", altura: "normal",
   },
   /* Aviso do navegador para revisão do dia e bloco que vai começar. */
-  lembretes: { ligado: false },
+  lembretes: { ligado: false, push: { ligado: false, hora: 7 } },
   /* Cronograma que a pessoa recebeu do curso dela, em texto, para o
      assistente organizar a rotina em cima do que ela realmente tem.
      As duas datas dizem quando esse período começa e quando acaba: sem elas
@@ -327,7 +327,16 @@ function normalize(raw) {
        curto — uma opção que não existe mais cai no padrão sozinha. */
     /* O aviso é do aparelho, mas a escolha de querer ou não é da
        pessoa, então acompanha a conta como o resto. */
-    lembretes: { ligado: !!obj(d.lembretes).ligado },
+    lembretes: {
+      ligado: !!obj(d.lembretes).ligado,
+      /* O aviso do dia que vem do servidor, separado do aviso imediato: a
+         pessoa pode querer um e não o outro, e ligar o de servidor exige
+         assinar este aparelho — não basta o interruptor. */
+      push: {
+        ligado: !!obj(obj(d.lembretes).push).ligado,
+        hora: Math.max(0, Math.min(23, Math.round(Number(obj(obj(d.lembretes).push).hora) || 7))),
+      },
+    },
     cartaoEstilo: (() => {
       const ce = obj(d.cartaoEstilo);
       const t = (v, padrao) => (typeof v === "string" && v.length <= 20 ? v : padrao);

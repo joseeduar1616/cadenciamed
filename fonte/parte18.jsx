@@ -663,7 +663,7 @@ function Configuracoes({ data, setData, today, notify, nuvem, pro, aoLiberar, ir
       <PerfilPublico data={data} setData={setData} notify={notify} />
 
       <BaixarApp notify={notify} />
-      <Lembretes data={data} setData={setData} notify={notify} />
+      <Lembretes data={data} setData={setData} notify={notify} nuvem={nuvem} />
       <Aparencia data={data} setData={setData} />
       <EscolhaLayout data={data} setData={setData} />
       <MetasDoEstudo data={data} setData={setData} />

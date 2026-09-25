@@ -38,6 +38,16 @@
   "vars": {
     "GOOGLE_CLIENT_ID": "499777815393-h6j6pf9ce3l12t423jb0nqbspl3bgpn0.apps.googleusercontent.com"
   },
+  // A batida dos lembretes por notificação.
+  //
+  // De hora em hora, no minuto 7. De hora em hora porque cada pessoa
+  // escolhe o horário dela e os fusos não coincidem: a batida confere quem
+  // está na hora local escolhida e ignora o resto sem custo. No minuto 7
+  // porque o minuto 0 é quando todo mundo no Cloudflare agenda, e a fila
+  // atrasa justamente ali.
+  "triggers": {
+    "crons": ["7 * * * *"]
+  },
   "observability": {
     "enabled": true
   }

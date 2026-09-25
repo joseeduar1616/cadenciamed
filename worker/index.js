@@ -26,6 +26,7 @@ import { onRequest as duplas } from "./api/duplas.js";
 import { onRequest as questoesIa } from "./api/questoes-ia.js";
 import { onRequest as provasIa } from "./api/provas-ia.js";
 import { onRequest as provas } from "./api/provas.js";
+import { onRequest as push, enviarRodada } from "./api/push.js";
 
 const ROTAS = {
   "/api/assistente": assistente,
@@ -47,6 +48,7 @@ const ROTAS = {
   "/api/questoes-ia": questoesIa,
   "/api/provas-ia": provasIa,
   "/api/provas": provas,
+  "/api/push": push,
 };
 
 /* ── quem pode chamar de outro endereço ────────────────────────────────
@@ -133,5 +135,27 @@ export default {
 
     /* Qualquer outra coisa é arquivo do site. */
     return env.ASSETS.fetch(request);
+  },
+
+  /* ── a batida dos lembretes ─────────────────────────────────────────
+   *
+   * De hora em hora, e não uma vez por dia, porque cada pessoa escolhe o
+   * horário dela e ninguém mora no fuso do servidor. Quem não está na hora
+   * escolhida é descartado sem custo nenhum; quem está recebe.
+   *
+   * O horário do cron está no wrangler.jsonc. Uma batida que falha não
+   * marca ninguém como avisado, então a próxima hora tenta de novo — e, se
+   * a hora da pessoa já passou, ela perde o aviso do dia em vez de receber
+   * às três da tarde um lembrete de manhã.
+   */
+  async scheduled(evento, env, ctx) {
+    ctx.waitUntil((async () => {
+      try {
+        const r = await enviarRodada(env, evento.scheduledTime || Date.now());
+        console.log("lembretes", JSON.stringify(r));
+      } catch (e) {
+        console.error("lembretes falharam", e && e.stack);
+      }
+    })());
   },
 };

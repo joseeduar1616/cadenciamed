@@ -417,11 +417,19 @@ function PainelDesenvolvedor({ nuvem, notify }) {
 
 /* ── lembretes ─────────────────────────────────────────────────────────
  *
- * Notificação do navegador para o que vence hoje e para o bloco que vai
- * começar. Mora no aparelho: nada de servidor, nada de push — o site não
- * tem servidor acordado para empurrar notificação, e prometer isso seria
- * mentira. O que existe de verdade é: com o site aberto numa aba (ou
- * instalado no celular), ele avisa na hora.
+ * São dois avisos diferentes, e a diferença importa:
+ *
+ *   · o IMEDIATO, daqui do aparelho: o bloco que começa em dez minutos, o
+ *     convite para um duelo. Precisa de uma aba aberta, e é o certo para
+ *     ele: é sobre os próximos minutos.
+ *   · o do DIA, que vem do servidor por push e chega com o site fechado.
+ *     Esse é o que faltava — e era justamente o único que importava, porque
+ *     quem precisa de lembrete é quem não abriu o site.
+ *
+ * O de baixo está em worker/api/push.js. A frase que ele entrega é montada
+ * aqui e guardada lá a cada abertura: o que a pessoa tem para estudar mora
+ * neste aparelho, e mandar isso para o servidor seria subir o histórico de
+ * estudo de todo mundo só para poder contar revisões.
  *
  * A permissão só é pedida quando a pessoa liga o lembrete. Pedir de saída,
  * antes de a pessoa saber o que é, é o jeito mais rápido de ouvir "não"
@@ -458,6 +466,184 @@ function ehIOS() {
     return /iPad|iPhone|iPod/.test(ua)
       || (/Mac/.test(ua) && typeof document !== "undefined" && "ontouchend" in document);
   } catch (e) { return false; }
+}
+
+/* ── o aviso que chega com o site fechado ─────────────────────────────
+ *
+ * Web Push: o navegador registra um endereço de entrega no servidor do
+ * fabricante dele, e o nosso servidor entrega ali de hora em hora. Chega
+ * com o site fechado; no iPhone, chega com o site instalado.
+ *
+ * Nada aqui guarda segredo: a chave que o navegador recebe é pública de
+ * propósito, e a de assinar nunca sai do Worker.
+ */
+const ROTA_PUSH = "/api/push";
+
+/* O pedido de reassinatura que o service worker deixou quando o navegador
+   trocou o endereço de entrega por conta dele. Ver sw.js. */
+const PEDIDO_REASSINAR = "/__reassinar";
+
+function temPush() {
+  try {
+    return "serviceWorker" in navigator && "PushManager" in window && podeNotificar();
+  } catch (e) { return false; }
+}
+
+async function falarComPush(nuvem, corpo) {
+  let token = "";
+  try {
+    if (nuvem && nuvem.sdk && nuvem.sdk.auth && nuvem.sdk.auth.currentUser) {
+      token = await nuvem.sdk.auth.currentUser.getIdToken();
+    }
+  } catch (e) { /* sem conta, a rota recusa */ }
+  if (!token) return { erro: "Entre na sua conta para receber lembretes com o site fechado." };
+  const { dados, erro } = await chamarApi(ROTA_PUSH, { ...corpo, token }, "Os lembretes");
+  return erro ? { erro } : (dados || {});
+}
+
+/* A assinatura deste aparelho, se já existir. */
+async function assinaturaAtual() {
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    return await reg.pushManager.getSubscription();
+  } catch (e) { return null; }
+}
+
+/* Assina este aparelho e registra no servidor.
+ *
+ * A chave pública vem do servidor em vez de estar escrita na página: assim
+ * ela é gerada uma vez pelo Worker e nunca precisou ser copiada à mão de um
+ * painel para o código — que é por onde chave privada vaza. */
+async function assinarPush(nuvem, { hora, resumo, titulo }) {
+  if (!temPush()) return { erro: "Este navegador não recebe notificação com o site fechado." };
+
+  let permissao = Notification.permission;
+  if (permissao === "default") {
+    try { permissao = await Notification.requestPermission(); } catch (e) { permissao = "denied"; }
+  }
+  if (permissao !== "granted") return { erro: "O navegador não liberou as notificações." };
+
+  const j = await falarComPush(nuvem, { acao: "chave" });
+  if (j.erro || !j.chave) return { erro: j.erro || "Não consegui pegar a chave do site." };
+
+  let assinatura;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    assinatura = await reg.pushManager.getSubscription();
+    /* Uma assinatura antiga pode ter sido feita com outra chave do site —
+       reusá-la faria toda entrega ser descartada pelo navegador, sem erro
+       nenhum aparecendo. Mais seguro trocar. */
+    if (assinatura) await assinatura.unsubscribe().catch(() => {});
+    assinatura = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: deBase64UrlParaBytes(j.chave),
+    });
+  } catch (e) {
+    return { erro: (e && e.message) || "O navegador recusou a assinatura." };
+  }
+
+  const bruta = assinatura.toJSON();
+  const r = await falarComPush(nuvem, {
+    acao: "assinar",
+    endpoint: bruta.endpoint,
+    p256dh: (bruta.keys || {}).p256dh,
+    auth: (bruta.keys || {}).auth,
+    hora, resumo, titulo,
+    fuso: new Date().getTimezoneOffset(),
+  });
+  if (r.erro) return { erro: r.erro };
+  return { ok: true };
+}
+
+async function desassinarPush(nuvem) {
+  const a = await assinaturaAtual();
+  const endpoint = a ? a.endpoint : "";
+  if (a) await a.unsubscribe().catch(() => {});
+  await falarComPush(nuvem, { acao: "desassinar", endpoint });
+  return { ok: true };
+}
+
+/* A chave vem em base64url e o navegador quer bytes. */
+function deBase64UrlParaBytes(texto) {
+  const s = String(texto || "").replace(/-/g, "+").replace(/_/g, "/");
+  const cru = atob(s + "=".repeat((4 - (s.length % 4)) % 4));
+  const b = new Uint8Array(cru.length);
+  for (let i = 0; i < cru.length; i++) b[i] = cru.charCodeAt(i);
+  return b;
+}
+
+/* ── a frase do dia, guardada no servidor ─────────────────────────────
+ *
+ * Roda na raiz do aplicativo, uma vez por abertura e quando o que está
+ * pendente muda. É o que faz a notificação de amanhã de manhã dizer "3
+ * revisões atrasadas" em vez de uma frase genérica.
+ *
+ * Também é aqui que a reassinatura pedida pelo service worker é cumprida:
+ * ele não tem token de conta nenhum, então deixa o pedido guardado e a
+ * primeira abertura do site o executa.
+ */
+function usePushDoDia({ nuvem, ligado, hora, atrasadas, cartoes, blocos }) {
+  const frase = fraseDoDia({ atrasadas, cartoes, blocos });
+  const ultima = useRef("");
+
+  useEffect(() => {
+    if (!ligado || !temPush()) return undefined;
+    let vivo = true;
+
+    const marca = `${frase}|${hora}`;
+    if (ultima.current === marca) return undefined;
+
+    const t = window.setTimeout(async () => {
+      if (!vivo) return;
+      /* Só manda se este aparelho está mesmo assinado: sem isso, toda
+         abertura em computador sem permissão viraria um pedido inútil. */
+      if (!(await assinaturaAtual())) return;
+      const r = await falarComPush(nuvem, {
+        acao: "resumo",
+        resumo: frase,
+        titulo: "Cadência Med",
+        hora,
+        fuso: new Date().getTimezoneOffset(),
+      });
+      if (!r.erro) ultima.current = marca;
+    }, 4000);
+
+    return () => { vivo = false; window.clearTimeout(t); };
+  }, [nuvem, ligado, frase, hora]);
+
+  /* O endereço de entrega que o navegador trocou sozinho. */
+  useEffect(() => {
+    if (!ligado || !temPush()) return undefined;
+    let vivo = true;
+    (async () => {
+      try {
+        /* O nome do cache leva o carimbo da versão publicada (ver
+           publicar.py), então ele muda a cada publicação e não dá para
+           escrevê-lo aqui. Procurar em todos é o que sobra — e são dois
+           ou três. */
+        const nomes = await caches.keys();
+        let c = null, guardado = null;
+        for (const nome of nomes) {
+          const cache = await caches.open(nome);
+          const achado = await cache.match(PEDIDO_REASSINAR);
+          if (achado) { c = cache; guardado = achado; break; }
+        }
+        if (!guardado || !vivo) return;
+        const nova = await guardado.json();
+        await c.delete(PEDIDO_REASSINAR);
+        if (!nova || !nova.endpoint) return;
+        await falarComPush(nuvem, {
+          acao: "assinar",
+          endpoint: nova.endpoint,
+          p256dh: (nova.keys || {}).p256dh,
+          auth: (nova.keys || {}).auth,
+          hora,
+          fuso: new Date().getTimezoneOffset(),
+        });
+      } catch (e) { /* na próxima abertura tenta de novo */ }
+    })();
+    return () => { vivo = false; };
+  }, [nuvem, ligado, hora]);
 }
 
 /* ── instalar o aplicativo ────────────────────────────────────────────
@@ -784,8 +970,11 @@ function BaixarApp({ notify }) {
   );
 }
 
-function Lembretes({ data, setData, notify }) {
+function Lembretes({ data, setData, notify, nuvem }) {
   const ligado = !!(data.lembretes && data.lembretes.ligado);
+  const push = (data.lembretes && data.lembretes.push) || {};
+  const [ocupado, setOcupado] = useState("");
+  const [aparelhos, setAparelhos] = useState(null);
   const [permissao, setPermissao] = useState(
     podeNotificar() ? Notification.permission : "indisponivel");
   const [testando, setTestando] = useState(false);
@@ -807,10 +996,64 @@ function Lembretes({ data, setData, notify }) {
     };
   }, []);
 
+  /* Quantos aparelhos desta conta estão assinados. Vem do servidor porque
+     é ele que tem a lista: o celular não sabe do computador. */
+  useEffect(() => {
+    if (!temPush() || !nuvem) return undefined;
+    let vivo = true;
+    (async () => {
+      const r = await falarComPush(nuvem, { acao: "estado" });
+      if (vivo && !r.erro) setAparelhos(Number(r.aparelhos) || 0);
+    })();
+    return () => { vivo = false; };
+  }, [nuvem, push.ligado]);
+
   /* No iPhone a notificação só existe para o site instalado na tela de
      início. Antes disso o botão pedir permissão falha calado, e a pessoa
      fica achando que o site é que está quebrado. */
   const precisaInstalar = ehIOS() && !instalado();
+
+  const horaEscolhida = Math.max(0, Math.min(23, Math.round(Number(push.hora ?? 7))));
+
+  const ligarPush = async (hora) => {
+    setOcupado("ligando");
+    const r = await assinarPush(nuvem, {
+      hora,
+      titulo: "Cadência Med",
+      resumo: fraseDoDia({
+        atrasadas: (data.rever || []).length,
+        cartoes: 0,
+        blocos: [],
+      }),
+    });
+    setOcupado("");
+    if (r.erro) { notify(r.erro); return; }
+    setData((x) => ({
+      ...x,
+      lembretes: { ...(x.lembretes || {}), ligado: true, push: { ligado: true, hora } },
+    }));
+    notify("Pronto. O aviso do dia passa a chegar mesmo com o site fechado.");
+  };
+
+  const desligarPush = async () => {
+    setOcupado("desligando");
+    await desassinarPush(nuvem);
+    setOcupado("");
+    setData((x) => ({
+      ...x,
+      lembretes: { ...(x.lembretes || {}), push: { ...(x.lembretes || {}).push, ligado: false } },
+    }));
+    notify("Não vou mais avisar com o site fechado.");
+  };
+
+  const testarPush = async () => {
+    setOcupado("testando");
+    const r = await falarComPush(nuvem, { acao: "testar" });
+    setOcupado("");
+    notify(r.erro
+      ? r.erro
+      : "Mandei pelo servidor. Feche o site: o aviso chega mesmo assim, em alguns segundos.");
+  };
 
   const ligar = async () => {
     if (!podeNotificar()) return;
@@ -893,11 +1136,73 @@ function Lembretes({ data, setData, notify }) {
               sozinha.
             </Mini>
           ) : null}
-          {/* Prometer aviso com o site fechado seria mentira: não há
-              servidor empurrando notificação aqui. */}
+          {/* ── o aviso do dia, com o site fechado ────────────────────
+            * O de cima é sobre os próximos minutos e precisa de uma aba
+            * aberta. Este é sobre o dia e não precisa de nada: sai do
+            * servidor no horário escolhido, para o aparelho, com o
+            * Cadência fechado. Era o que faltava — quem precisa de
+            * lembrete é justamente quem não abriu o site. */}
+          {temPush() ? (
+            <div className="mt-5 pt-5" style={{ borderTop: `1px solid ${T.line}` }}>
+              <Label>Aviso do dia, mesmo com o site fechado</Label>
+              <Texto style={{ marginTop: 6 }}>
+                Uma vez por dia, no horário que você escolher, o servidor manda o que
+                ficou pendente: revisões atrasadas, cartões e o primeiro bloco da agenda.
+                Se não houver nada pendente, não chega nada.
+              </Texto>
+
+              <div className="mt-4 flex items-center gap-3 flex-wrap">
+                <Mini style={{ minWidth: 58 }}>horário</Mini>
+                <Select value={String(horaEscolhida)} style={{ width: 120 }}
+                  onChange={(e) => {
+                    const h = Number(e.target.value);
+                    setData((x) => ({
+                      ...x,
+                      lembretes: { ...(x.lembretes || {}), push: { ...(x.lembretes || {}).push, hora: h } },
+                    }));
+                    if (push.ligado) ligarPush(h);
+                  }}>
+                  {Array.from({ length: 24 }, (_, h) => (
+                    <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>
+                  ))}
+                </Select>
+                <Mini>no horário deste aparelho</Mini>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2 items-center">
+                {push.ligado ? (
+                  <>
+                    <Btn size="sm" tone="outline" disabled={!!ocupado} onClick={desligarPush}>
+                      {ocupado === "desligando" ? "desligando…" : "desligar"}
+                    </Btn>
+                    <Btn size="sm" disabled={!!ocupado} onClick={testarPush}>
+                      {ocupado === "testando" ? "mandando…" : "mandar um pelo servidor"}
+                    </Btn>
+                    <Mini style={{ color: T.ok }}>
+                      ligado
+                      {aparelhos === null ? "" : aparelhos === 1
+                        ? " · neste aparelho" : ` · em ${aparelhos} aparelhos`}
+                    </Mini>
+                  </>
+                ) : (
+                  <Btn size="sm" tone="primary" disabled={!!ocupado || permissao === "denied"}
+                    onClick={() => ligarPush(horaEscolhida)}>
+                    {ocupado === "ligando" ? "ligando…" : "Avisar com o site fechado"}
+                  </Btn>
+                )}
+              </div>
+              <Mini style={{ marginTop: 10, lineHeight: 1.6 }}>
+                Cada aparelho assina o seu: ligar no celular não liga no computador. O
+                texto vai cifrado de ponta a ponta — ele passa pelo servidor do Google ou
+                da Apple no caminho, e só o seu aparelho consegue abrir.
+              </Mini>
+            </div>
+          ) : null}
+
           <Mini style={{ marginTop: 12, lineHeight: 1.6 }}>
-            Funciona com o site aberto numa aba, ou instalado no celular. Sem o site
-            aberto não há aviso: o Cadência não tem servidor empurrando notificação.
+            O aviso imediato — o bloco que vai começar, o convite para um duelo — precisa
+            do site aberto numa aba ou instalado no celular. O aviso do dia, acima, chega
+            de qualquer jeito.
           </Mini>
         </>
       )}

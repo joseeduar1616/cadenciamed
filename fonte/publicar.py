@@ -81,6 +81,28 @@ for f in ARQUIVOS:
         continue
     shutil.copy(f, os.path.join(DESTINO, f))
     total += os.path.getsize(f)
+# ── o aplicativo na Play Store, quando ele existir ────────────────────────
+#
+# Um app de Play Store feito de site (TWA) só abre sem a barra de endereço
+# se o site DECLARAR que aquele app é dele, e a declaração é este arquivo,
+# neste caminho exato. Sem ele o app até funciona, mas com a barra do
+# Chrome em cima — que é o mesmo que publicar um atalho na loja.
+#
+# Ele é opcional de propósito. A declaração precisa da impressão digital da
+# chave que assina o app, e essa chave só existe depois de a conta do Play
+# Console ser criada. Publicar um arquivo com impressão digital inventada
+# seria pior que não ter arquivo nenhum: o Chrome conferiria, não bateria, e
+# a barra apareceria do mesmo jeito — sem nada dizendo por quê.
+#
+# Quando a chave existir, é só criar fonte/assetlinks.json e publicar.
+EXTRA = 'assetlinks.json'
+if os.path.exists(EXTRA):
+    pasta = os.path.join(DESTINO, '.well-known')
+    os.makedirs(pasta, exist_ok=True)
+    shutil.copy(EXTRA, os.path.join(pasta, EXTRA))
+    total += os.path.getsize(EXTRA)
+    print('.well-known/assetlinks.json: o app da Play Store abre sem barra de endereço')
+
 # ── cabeçalhos, no formato que o Cloudflare Pages lê ──────────────────────
 # O HTML nunca fica em cache, então publicar já aparece na hora. Ícones e o
 # leitor de banco do Anki mudam pouco e podem ficar guardados.
@@ -118,6 +140,10 @@ CABECALHOS = """/index.html
 
 /recuperar.html
   Cache-Control: no-cache, no-store, must-revalidate
+
+/.well-known/assetlinks.json
+  Content-Type: application/json
+  Cache-Control: public, max-age=3600
 """
 open(os.path.join(DESTINO, '_headers'), 'w', encoding='utf-8').write(CABECALHOS)
 

@@ -699,6 +699,20 @@ export default function Cadencia() {
     today,
   });
 
+  /* A frase que a notificação do dia vai carregar amanhã de manhã. Mora
+     aqui pelo mesmo motivo dos lembretes: é a raiz que sabe quantas
+     revisões estão atrasadas, e é preciso atualizar isso a cada abertura
+     mesmo que a pessoa nunca abra Configurações. */
+  usePushDoDia({
+    nuvem,
+    ligado: !!(data.lembretes && data.lembretes.push && data.lembretes.push.ligado),
+    hora: Math.max(0, Math.min(23, Math.round(
+      Number((data.lembretes && data.lembretes.push && data.lembretes.push.hora) ?? 7)))),
+    atrasadas: late.length,
+    cartoes: cartoesHoje,
+    blocos: blocosHoje,
+  });
+
   /* O convite para duelar também mora aqui, e pelo mesmo motivo: quem foi
      chamado precisa saber disso com qualquer aba aberta. Devolve quantos
      duelos esperam por mim, que é o número que acende na aba Amigos. */
