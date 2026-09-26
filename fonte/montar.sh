@@ -77,6 +77,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-duplas.mjs
   node testar-anexo.mjs
   node testar-recursos.mjs
+  node testar-definidos.mjs
   node testar-ler-foto.mjs
   node testar-buscar-imagem.mjs
   node testar-google.mjs

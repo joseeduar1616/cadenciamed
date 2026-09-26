@@ -342,27 +342,61 @@ function Metas({ data, setData, today, qWeek, notify, ladder, gcal }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   16 · PROGRESSO
+   16c · CUPOM
+   O código é conferido no servidor, nunca aqui: se a lista de cupons
+   estivesse no navegador, bastaria abrir o código-fonte da página para
+   descobrir todos. Daqui só sai o que a pessoa digitou.
    ═══════════════════════════════════════════════════════════════════ */
+
+const ROTA_CUPOM = "/api/cupom";
+
+async function resgatarCupom(nuvem, codigo) {
+  let token = "";
+  try {
+    if (nuvem && nuvem.sdk && nuvem.sdk.auth && nuvem.sdk.auth.currentUser) {
+      token = await nuvem.sdk.auth.currentUser.getIdToken();
+    }
+  } catch (e) { /* segue sem token, o servidor recusa */ }
+  if (!token) return { erro: "Entre na sua conta antes de resgatar o cupom." };
+
+  /* 404 com JSON é cupom inválido; sem JSON é servidor ausente */
+  const { dados, erro } = await chamarApi(
+    ROTA_CUPOM, { token, codigo }, "O resgate de cupom");
+  return erro ? { erro } : dados;
+}
+
+/* Caixa avulsa, para quem já tem conta criada. */
 function Cupom({ nuvem, notify, aoLiberar }) {
   const [codigo, setCodigo] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [msg, setMsg] = useState("");
   const [bom, setBom] = useState(false);
 
+  /* O try/finally não é enfeite.
+     Sem ele, qualquer erro no meio do caminho escapa da função e o
+     setOcupado(false) nunca roda: o botão fica em "Conferindo…" para
+     sempre, sem mensagem nenhuma, e a pessoa não tem o que fazer a não
+     ser fechar o site. Foi exatamente o que aconteceu quando a função de
+     resgate sumiu num commit: o botão travava e nada dizia por quê. */
   const enviar = async () => {
     if (!codigo.trim()) { setBom(false); setMsg("Escreva o código."); return; }
     setOcupado(true); setMsg("");
-    const j = await resgatarCupom(nuvem, codigo.trim());
-    setOcupado(false);
-    setBom(!!j.ok);
-    setMsg(j.erro || j.mensagem || "");
-    if (j.ok) {
-      setCodigo(""); notify(j.mensagem || "Acesso liberado.");
-      /* A assinatura acabou de ser gravada pelo servidor. Perguntar de novo
-         agora é o que abre as abas na hora, sem depender de o navegador
-         conseguir ler a coleção por conta própria. */
-      if (aoLiberar) aoLiberar();
+    try {
+      const j = await resgatarCupom(nuvem, codigo.trim());
+      setBom(!!j.ok);
+      setMsg(j.erro || j.mensagem || "");
+      if (j.ok) {
+        setCodigo(""); notify(j.mensagem || "Acesso liberado.");
+        /* A assinatura acabou de ser gravada pelo servidor. Perguntar de novo
+           agora é o que abre as abas na hora, sem depender de o navegador
+           conseguir ler a coleção por conta própria. */
+        if (aoLiberar) aoLiberar();
+      }
+    } catch (e) {
+      setBom(false);
+      setMsg("Algo quebrou ao resgatar o cupom. Tente de novo, e se continuar avise o suporte.");
+    } finally {
+      setOcupado(false);
     }
   };
 
@@ -486,13 +520,17 @@ function ContaNuvem({ nuvem, notify }) {
     setF({ nome: "", email: "", senha: "", cupom: "" });
     if (!cod) return;
     setOcupado(true);
-    const j = await resgatarCupom(nuvem, cod);
-    setOcupado(false);
-    if (j.ok) {
-      setMsg(j.mensagem || "Cupom aceito."); notify(j.mensagem || "Acesso liberado.");
-      if (aoLiberar) aoLiberar();
+    try {
+      const j = await resgatarCupom(nuvem, cod);
+      if (j.ok) {
+        setMsg(j.mensagem || "Cupom aceito."); notify(j.mensagem || "Acesso liberado.");
+        if (aoLiberar) aoLiberar();
+      } else setMsg(`Conta criada, mas o cupom não passou: ${j.erro}`);
+    } catch (e) {
+      setMsg("Conta criada, mas algo quebrou ao resgatar o cupom. Tente pelo campo de cupom em Configurações.");
+    } finally {
+      setOcupado(false);
     }
-    else setMsg(`Conta criada, mas o cupom não passou: ${j.erro}`);
   };
 
   return (
@@ -1548,9 +1586,14 @@ function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar }) {
       const cod = f.cupom.trim();
       if (cod) {
         setOcupado(true);
-        const j = await resgatarCupom(nuvem, cod);
-        setOcupado(false);
-        if (!j.ok) setMsg(`Conta criada, mas o cupom não passou: ${j.erro}`);
+        try {
+          const j = await resgatarCupom(nuvem, cod);
+          if (!j.ok) setMsg(`Conta criada, mas o cupom não passou: ${j.erro}`);
+        } catch (e) {
+          setMsg("Conta criada, mas algo quebrou ao resgatar o cupom. Tente pelo campo de cupom em Configurações.");
+        } finally {
+          setOcupado(false);
+        }
       }
     }
   };
