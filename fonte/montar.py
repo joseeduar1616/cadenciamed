@@ -18,6 +18,11 @@ TPL = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#04030A">
 <meta name="description" content="__DESC__">
+<!-- O carimbo do build, para a tela conferir se o que está no ar é mais
+     novo do que o que ela está rodando. Uma meta própria, e não um texto
+     qualquer da página: qualquer outra coisa muda de redação um dia e a
+     conferência passa a mentir em silêncio. -->
+<meta name="cadencia-versao" content="__VERSAO__">
 <link rel="canonical" href="__SITE__/">
 
 <!-- Compartilhamento. Sem isto, colar o link no WhatsApp, no Instagram ou
@@ -125,6 +130,29 @@ html,body{margin:0;padding:0;background:#04030A;-webkit-font-smoothing:antialias
 html[data-theme="light"],html[data-theme="light"] body{background:#F1EFF8}
 #root{min-height:100vh}
 *,*::before,*::after{box-sizing:border-box}
+
+/* A tarja de "tem versão nova". Mora aqui, no estilo do documento, e não
+   no do app: ela é desenhada pelo script de registro do service worker,
+   que roda fora do React e precisa funcionar mesmo se o app não tiver
+   montado. Usa as variáveis do tema quando elas existem, e tem valor de
+   reserva para quando ainda não existirem. */
+#tarja-versao{position:fixed;left:12px;right:12px;z-index:9999;
+  bottom:calc(12px + env(safe-area-inset-bottom,0px));
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:12px 14px;border-radius:18px;
+  background:var(--card3,#2A2342);color:var(--ink,#F5F2FF);
+  border:1px solid var(--line2,rgba(185,160,255,.30));
+  box-shadow:0 18px 44px rgba(0,0,0,.45);
+  font-family:var(--f-ui,system-ui,sans-serif);font-size:14.5px;line-height:1.45}
+#tarja-versao span{flex:1;min-width:150px}
+#tarja-versao button{border-radius:999px;padding:8px 15px;cursor:pointer;
+  font-family:inherit;font-size:14px;font-weight:600;border:1px solid transparent;
+  min-height:40px}
+#tarja-recarregar{background:var(--neon,#35E4FF);color:#08050F}
+#tarja-depois{background:transparent;color:var(--dim,#B5ACD4);
+  border-color:var(--line2,rgba(185,160,255,.30))}
+@media(min-width:560px){#tarja-versao{left:auto;right:16px;max-width:430px}}
+
 __CSS__
 </style>
 </head>
@@ -136,11 +164,80 @@ __JS__
 <script>
 /* Service worker: é o que faz o site abrir sem internet e carregar na
    hora na segunda visita. Registrado depois do load para não disputar
-   banda com a primeira pintura, e só em https (ou localhost) — aberto
-   como arquivo, o navegador recusa e não adianta tentar. */
-if ("serviceWorker" in navigator && location.protocol === "https:") {
+   banda com a primeira pintura.
+
+   Em https, e também em localhost: o navegador trata localhost como
+   origem segura de propósito, justamente para dar de exercitar isto sem
+   publicar. A condição só olhava o https, embora este comentário já
+   dissesse "ou localhost" — e o resultado era que o caminho da
+   atualização não tinha como ser testado em lugar nenhum a não ser em
+   produção. Aberto como ARQUIVO o navegador recusa mesmo, e aí não
+   adianta tentar.
+
+   E, mais importante, é aqui que a ATUALIZAÇÃO é percebida.
+
+   O service worker chama skipWaiting e clients.claim, então ele troca
+   sozinho assim que a versão nova chega. Só que a PÁGINA já aberta
+   continua rodando o código velho até alguém recarregar — e o site é um
+   arquivo só, com tudo dentro do HTML, então "o código" é a página
+   inteira. Num aplicativo instalado na tela de início, que a pessoa nunca
+   fecha de verdade, isso dura indefinidamente: o servidor publica, o
+   service worker atualiza, e a tela continua a mesma de semanas atrás.
+   Foi exatamente o que aconteceu.
+
+   Então: assim que o novo assume, aparece uma tarja perguntando se pode
+   recarregar. Perguntando, e não recarregando sozinho — recarregar por
+   conta própria no meio de um flashcard ou de um duelo faz a pessoa
+   perder o que estava fazendo. */
+var origemSegura = location.protocol === "https:"
+  || location.hostname === "localhost" || location.hostname === "127.0.0.1";
+if ("serviceWorker" in navigator && origemSegura) {
   window.addEventListener("load", function () {
-    navigator.serviceWorker.register("/sw.js").catch(function () { /* segue sem */ });
+    navigator.serviceWorker.register("/sw.js").then(function (reg) {
+      /* Já havia um controlando? Então esta troca é uma ATUALIZAÇÃO, e
+         não a primeira instalação. Na primeira não há o que avisar: a
+         página já é a mais nova. */
+      var primeiraVez = !navigator.serviceWorker.controller;
+
+      var avisar = function () {
+        if (primeiraVez) return;
+        if (document.getElementById("tarja-versao")) return;
+        var d = document.createElement("div");
+        d.id = "tarja-versao";
+        d.setAttribute("role", "status");
+        d.innerHTML = '<span>Tem uma versão nova do Cadência.</span>'
+          + '<button type="button" id="tarja-recarregar">atualizar agora</button>'
+          + '<button type="button" id="tarja-depois" aria-label="Depois">depois</button>';
+        document.body.appendChild(d);
+        document.getElementById("tarja-recarregar").onclick = function () {
+          location.reload();
+        };
+        document.getElementById("tarja-depois").onclick = function () {
+          d.remove();
+        };
+      };
+
+      /* O novo assumiu o controle: é o sinal mais confiável, porque o
+         service worker daqui chama skipWaiting. */
+      navigator.serviceWorker.addEventListener("controllerchange", avisar);
+
+      /* E o caminho normal, para quando a troca demorar: um novo foi
+         instalado e está esperando. */
+      reg.addEventListener("updatefound", function () {
+        var novo = reg.installing;
+        if (!novo) return;
+        novo.addEventListener("statechange", function () {
+          if (novo.state === "installed" && navigator.serviceWorker.controller) avisar();
+        });
+      });
+
+      /* Voltar para o aplicativo é quando mais adianta conferir: no
+         celular ele fica horas em segundo plano, e sem isto a procura por
+         versão nova só aconteceria na próxima abertura de verdade. */
+      document.addEventListener("visibilitychange", function () {
+        if (!document.hidden) reg.update().catch(function () { /* segue */ });
+      });
+    }).catch(function () { /* segue sem */ });
   });
 }
 </script>
@@ -151,9 +248,14 @@ if ("serviceWorker" in navigator && location.protocol === "https:") {
 
 SITE = 'https://cadenciamed.com.br'
 
+# O mesmo carimbo que vai para o JS (ver montar.sh). Fora do montar.sh
+# ele não existe, e aí vale "dev" — igual ao que o base.jsx faz.
+VERSAO = os.environ.get('VERSAO', 'dev')
+
 
 def build(js, out, title, desc):
     html = (TPL.replace('__CSS__', css).replace('__TITLE__', title)
+            .replace('__VERSAO__', VERSAO)
             .replace('__DESC__', desc).replace('__SITE__', SITE)
             .replace('__FAVICON32__', ICONES['FAVICON32'])
             .replace('__APPLE180__', ICONES['APPLE180'])

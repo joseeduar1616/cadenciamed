@@ -574,6 +574,68 @@ function PerfilPublico({ data, setData, notify }) {
   );
 }
 
+/* ── qual versão está rodando aqui ────────────────────────────────────
+ *
+ * O carimbo do build só aparecia no rodapé da página de entrada, que
+ * ninguém com conta chega a ver. O resultado: quando o site publicava e o
+ * celular continuava velho, não havia como saber — nem para quem usa, nem
+ * para quem conserta. A conversa virava "publiquei" contra "não mudou
+ * nada", sem nenhum dado no meio.
+ *
+ * Agora a versão está escrita aqui, e o botão pergunta ao servidor se há
+ * uma mais nova. A tarja de atualização faz o resto (ver o registro do
+ * service worker, no montar.py).
+ */
+function VersaoDoSite({ notify }) {
+  const [procurando, setProcurando] = useState(false);
+
+  const procurar = async () => {
+    setProcurando(true);
+    try {
+      const reg = navigator.serviceWorker
+        ? await navigator.serviceWorker.getRegistration()
+        : null;
+      if (reg) await reg.update();
+      /* Uma ida ao servidor sem passar por cache nenhum. É ela que
+         responde de verdade "o que está publicado agora?", mesmo onde o
+         service worker não existe (Safari sem instalar, aba anônima). */
+      const r = await fetch(`/?v=${Date.now()}`, { cache: "no-store" });
+      const html = await r.text();
+      /* A meta que o montar.py carimba com o mesmo VERSAO do JS. Ler
+         qualquer outro texto da página daria certo hoje e passaria a
+         mentir no dia em que alguém mudasse a redação. */
+      const m = html.match(/name="cadencia-versao"\s+content="([^"]*)"/);
+      const publicada = m ? m[1].trim() : "";
+      setProcurando(false);
+      if (publicada && publicada !== VERSAO) {
+        notify("Tem uma versão nova. Feche e abra o site para ela entrar.");
+      } else {
+        notify("Você já está na versão mais nova.");
+      }
+    } catch (e) {
+      setProcurando(false);
+      notify("Não consegui falar com o servidor para conferir.");
+    }
+  };
+
+  return (
+    <Card className="px-6 py-5">
+      <H size={18} color="var(--dim)" icon={<RefreshCw size={16} />}>Versão</H>
+      <div className="mt-4 flex items-center gap-3 flex-wrap">
+        <span style={{ fontFamily: F_MONO, fontSize: 13.5, color: T.ink }}>{VERSAO}</span>
+        <Btn size="sm" tone="outline" disabled={procurando} onClick={procurar}>
+          {procurando ? "conferindo…" : "procurar atualização"}
+        </Btn>
+      </div>
+      <Mini style={{ marginTop: 10, lineHeight: 1.6 }}>
+        O site se atualiza sozinho, mas a tela que já está aberta continua na versão
+        antiga até ser recarregada. Se alguma coisa parecer velha, é isto: feche e
+        abra de novo. No celular com o site instalado, feche o aplicativo de vez.
+      </Mini>
+    </Card>
+  );
+}
+
 function Configuracoes({ data, setData, today, notify, nuvem, pro, aoLiberar, irPara }) {
   return (
     <div className="flex flex-col gap-5">
@@ -613,6 +675,7 @@ function Configuracoes({ data, setData, today, notify, nuvem, pro, aoLiberar, ir
       </Card>
 
       <SeusDados data={data} setData={setData} today={today} notify={notify} />
+      <VersaoDoSite notify={notify} />
 
       {/* Ferramenta de obra fica no fim: quem abre Configurações quer
           mexer na conta e na aparência, não em cupom. */}
