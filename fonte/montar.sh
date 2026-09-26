@@ -14,6 +14,8 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 VERSAO="${VERSAO:-$(date +'%d/%m %H:%M')}"
+# O montar.py também carimba a versão numa meta do HTML, e lê daqui.
+export VERSAO
 
 echo "── ícones ──────────────────────────────────────────"
 python3 gerar_icones.py
@@ -57,6 +59,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   echo "── conferindo o arquivo de produção ────────────────"
   node testar.mjs index.html
   node testar-contraste.mjs
+  node testar-atualizacao.mjs index.html
   node testar-perfil.mjs
   node testar-nuvem.mjs
   node testar-lotes.mjs

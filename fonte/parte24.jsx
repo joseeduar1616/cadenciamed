@@ -236,6 +236,18 @@ document.addEventListener("visibilitychange", () => {
   if (gravadorAula.estado.ativo && document.visibilityState === "visible") manterTelaAcesa();
 });
 
+/* Enquanto há aula gravando, o navegador pede confirmação antes de
+   recarregar ou fechar a página. Cobre o fechar sem querer, o puxar para
+   atualizar do celular e o "atualizar agora" da tarja de versão nova —
+   qualquer um deles pararia a gravação no meio. O que já foi gravado fica
+   salvo de qualquer jeito; o que isto evita é perder o resto da aula. */
+function avisoAoSairDaAula(ev) {
+  if (!gravadorAula.estado.ativo) return undefined;
+  ev.preventDefault();
+  ev.returnValue = "";
+  return "";
+}
+
 function comecarTrechoAula() {
   const g = gravadorAula;
   const id = g.estado.id;
@@ -334,6 +346,7 @@ async function iniciarGravacaoAula({ subjectId, titulo }) {
   } catch (e) { /* sem medidor; a gravação segue */ }
 
   manterTelaAcesa();
+  window.addEventListener("beforeunload", avisoAoSairDaAula);
   comecarTrechoAula();
   return { ok: true, id };
 }
@@ -363,6 +376,7 @@ async function pararGravacaoAula() {
   if (g._girar) window.clearTimeout(g._girar);
   if (g._medidor) window.clearInterval(g._medidor);
   g.mudar({ ativo: false, pausado: false, nivel: 0 });
+  window.removeEventListener("beforeunload", avisoAoSairDaAula);
   /* Espera o último pedaço sair antes de soltar o microfone: parar o
      microfone primeiro corta o fim do último trecho. */
   if (g._rec && g._rec.state !== "inactive") {
