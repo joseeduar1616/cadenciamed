@@ -44,7 +44,7 @@ const DEFAULTS = {
     peso: "normal", altura: "normal",
   },
   /* Aviso do navegador para revisão do dia e bloco que vai começar. */
-  lembretes: { ligado: false },
+  lembretes: { ligado: false, push: { ligado: false, hora: 7 } },
   /* Cronograma que a pessoa recebeu do curso dela, em texto, para o
      assistente organizar a rotina em cima do que ela realmente tem.
      As duas datas dizem quando esse período começa e quando acaba: sem elas
@@ -63,6 +63,13 @@ const DEFAULTS = {
   cronogramaModo: "somar",
   /* Anotação rica por matéria (parte17.jsx), por id de aula. */
   anotacoes: {},
+  /* O quanto cada especialidade importa PARA ESTA PESSOA, de 0 a 10.
+     Prova de residência não cobra tudo igual: cardiologia e pediatria
+     valem muito mais questão que genética médica, e a banca de cada
+     estado pesa diferente. Sem isso, "o que estudar agora" trata as 34
+     especialidades como se fossem a mesma coisa. Cinco é o neutro, e
+     especialidade sem peso declarado vale cinco. */
+  pesos: {},
   /* Se os números desta pessoa aparecem no ranking das salas de amigos.
      Começa ligado, que é o motivo de entrar numa sala; desligar mantém a
      pessoa na sala, sem os números dela à mostra. */
@@ -223,6 +230,15 @@ function normalize(raw) {
     /* O que já foi cumprido na agenda precisa sobreviver ao recarregar a
        página: o que não for copiado aqui se perde. */
     blocos: obj(d.blocos),
+    /* Peso por especialidade: só número de 0 a 10 entra. */
+    pesos: (() => {
+      const fora = {};
+      for (const [k, v] of Object.entries(obj(d.pesos))) {
+        const n = Math.round(Number(v));
+        if (Number.isFinite(n) && n >= 0 && n <= 10) fora[String(k).slice(0, 60)] = n;
+      }
+      return fora;
+    })(),
     goals: {
       daily: Number(g.daily) > 0 ? Number(g.daily) : 120,
       weekly: Number(g.weekly) > 0 ? Number(g.weekly) : 720,
@@ -311,7 +327,16 @@ function normalize(raw) {
        curto — uma opção que não existe mais cai no padrão sozinha. */
     /* O aviso é do aparelho, mas a escolha de querer ou não é da
        pessoa, então acompanha a conta como o resto. */
-    lembretes: { ligado: !!obj(d.lembretes).ligado },
+    lembretes: {
+      ligado: !!obj(d.lembretes).ligado,
+      /* O aviso do dia que vem do servidor, separado do aviso imediato: a
+         pessoa pode querer um e não o outro, e ligar o de servidor exige
+         assinar este aparelho — não basta o interruptor. */
+      push: {
+        ligado: !!obj(obj(d.lembretes).push).ligado,
+        hora: Math.max(0, Math.min(23, Math.round(Number(obj(obj(d.lembretes).push).hora) || 7))),
+      },
+    },
     cartaoEstilo: (() => {
       const ce = obj(d.cartaoEstilo);
       const t = (v, padrao) => (typeof v === "string" && v.length <= 20 ? v : padrao);
@@ -508,6 +533,151 @@ function diagnostico(e) {
     return "O navegador bloqueou o armazenamento nesta página. Costuma acontecer em aba anônima, ou ao abrir o arquivo direto do computador.";
   }
   return "Não consegui gravar os dados neste navegador.";
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   3c · VERSÕES ANTERIORES
+   Um histórico do que estava guardado, para que voltar atrás nunca
+   dependa de alguém ter tido o reflexo de baixar um backup.
+
+   Existe porque uma pessoa perdeu meses de estudo. O caminho foi este:
+   um aparelho novo subiu o próprio vazio para a conta, e todos os outros
+   baixaram esse vazio por cima do que tinham. A trava que impede isso já
+   foi posta, mas ela protege contra o erro que já conhecemos — e o
+   próximo vai ser outro. O que protege contra o próximo é ter as versões
+   anteriores guardadas.
+
+   Fica no IndexedDB, e não no localStorage, por uma razão prática: o
+   localStorage tem uns 5 MB no total e é onde os dados ativos já moram.
+   Guardar doze cópias ali encheria o espaço e derrubaria justamente a
+   gravação que interessa.
+
+   As cópias são locais, deste aparelho. Não sobem para a nuvem: são a
+   rede de proteção para quando a nuvem for a coisa errada.
+   ═══════════════════════════════════════════════════════════════════ */
+
+const BD_VERSOES = "cadencia-versoes";
+const LOJA_VERSOES = "copias";
+/* Doze cópias. A mais antiga nunca é descartada enquanto houver outra
+   para descartar no lugar dela: é ela que cobre o estrago que só foi
+   notado semanas depois, que é como esse tipo de estrago costuma ser
+   notado. */
+const MAX_VERSOES = 12;
+/* Uma cópia automática por meio dia de uso. Mais que isso enche o
+   histórico de versões iguais e empurra as antigas para fora. */
+const ESPERA_VERSAO = 12 * 60 * 60 * 1000;
+
+function abrirBDVersoes() {
+  return new Promise((ok, falha) => {
+    if (typeof window === "undefined" || !window.indexedDB) return falha(new Error("sem indexedDB"));
+    const req = window.indexedDB.open(BD_VERSOES, 1);
+    req.onupgradeneeded = () => {
+      const bd = req.result;
+      if (!bd.objectStoreNames.contains(LOJA_VERSOES)) {
+        bd.createObjectStore(LOJA_VERSOES, { keyPath: "em" });
+      }
+    };
+    req.onsuccess = () => ok(req.result);
+    req.onerror = () => falha(req.error);
+  });
+}
+
+/* O que há dentro de uma cópia, para a lista poder dizer qual vale a pena
+   sem abrir nenhuma. Sem isto, escolher entre doze datas é adivinhação. */
+function resumirDados(d) {
+  const sessoes = (d && d.sessions) || [];
+  return {
+    aulas: Object.values((d && d.marks) || {}).filter((m) => m && m.aula).length,
+    revisoes: Object.values((d && d.reviews) || {})
+      .reduce((a, r) => a + Object.keys((r && r.done) || {}).length, 0),
+    sessoes: sessoes.length,
+    horas: Math.round(sessoes.reduce((a, x) => a + (Number(x.minutes) || 0), 0) / 60),
+    questoes: sessoes.reduce((a, x) => a + (Number(x.questions) || 0), 0),
+    cartoes: ((d && d.flash) || []).length,
+  };
+}
+
+async function listarVersoes() {
+  try {
+    const bd = await abrirBDVersoes();
+    const todas = await new Promise((ok, falha) => {
+      const tx = bd.transaction(LOJA_VERSOES, "readonly");
+      const r = tx.objectStore(LOJA_VERSOES).getAll();
+      r.onsuccess = () => ok(r.result || []);
+      r.onerror = () => falha(r.error);
+    });
+    bd.close();
+    return todas.sort((a, b) => b.em - a.em);
+  } catch (e) { return []; }
+}
+
+async function apagarVersao(em) {
+  try {
+    const bd = await abrirBDVersoes();
+    await new Promise((ok) => {
+      const tx = bd.transaction(LOJA_VERSOES, "readwrite");
+      tx.objectStore(LOJA_VERSOES).delete(em);
+      tx.oncomplete = () => ok(true);
+      tx.onerror = () => ok(false);
+    });
+    bd.close();
+  } catch (e) { /* segue */ }
+}
+
+/* Guarda uma cópia do que está em mãos AGORA, antes de mexer nisso.
+ *
+ * Nunca lança: uma cópia de segurança que quebra a tela ao falhar é pior
+ * do que cópia nenhuma. O "motivo" é o que a lista mostra depois, e é ele
+ * que dá sentido à data — "antes de carregar a conta" diz muito mais do
+ * que um horário.
+ */
+async function guardarVersao(dados, motivo) {
+  if (!dados) return false;
+  try {
+    const texto = JSON.stringify(dados);
+    const resumo = resumirDados(dados);
+
+    const antigas = await listarVersoes();
+    /* Cópia automática só se a última já tiver idade, e nunca se nada
+       mudou desde ela: histórico cheio de versões iguais empurra para
+       fora justamente as diferentes. */
+    if (motivo === "automática") {
+      const ultima = antigas[0];
+      if (ultima && Date.now() - ultima.em < ESPERA_VERSAO) return false;
+      if (ultima && ultima.tamanho === texto.length
+        && JSON.stringify(ultima.resumo) === JSON.stringify(resumo)) return false;
+    }
+
+    const gravar = async () => {
+      const bd = await abrirBDVersoes();
+      await new Promise((ok, falha) => {
+        const tx = bd.transaction(LOJA_VERSOES, "readwrite");
+        tx.objectStore(LOJA_VERSOES).put({
+          em: Date.now(), motivo: String(motivo || ""), resumo,
+          tamanho: texto.length, dados: texto,
+        });
+        tx.oncomplete = () => ok(true);
+        tx.onerror = () => falha(tx.error);
+      });
+      bd.close();
+    };
+
+    try { await gravar(); } catch (e) {
+      /* Sem espaço: abre lugar jogando fora a segunda mais antiga (a mais
+         antiga fica, que é a âncora) e tenta uma vez. */
+      const sobrando = antigas.slice(0, -1);
+      if (sobrando.length) await apagarVersao(sobrando[sobrando.length - 1].em);
+      await gravar();
+    }
+
+    /* Poda: sai a segunda mais antiga, nunca a primeira. */
+    let lista = await listarVersoes();
+    while (lista.length > MAX_VERSOES) {
+      await apagarVersao(lista[lista.length - 2].em);
+      lista = await listarVersoes();
+    }
+    return true;
+  } catch (e) { return false; }
 }
 
 /* ═══════════════════════════════════════════════════════════════════

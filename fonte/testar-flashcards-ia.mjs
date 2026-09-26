@@ -291,6 +291,45 @@ else falha('assinante: ' + JSON.stringify(r));
 
 QUEM = { email: 'joseeduardo1616@gmail.com', localId: 'uid-dono' };
 
+/* ── 7b. as figuras do material chegam ao modelo como imagem ───────────
+ *
+ * O marcador sozinho não resolve. "[[img:pagina-3.jpg]]" não diz o que a
+ * imagem mostra, e sem saber se aquilo é um eletrocardiograma ou o
+ * logotipo do cursinho no rodapé, o modelo joga pelo seguro e não põe
+ * imagem em cartão nenhum — era exatamente a reclamação: baralho montado
+ * pela IA saindo sem nenhuma figura, com o PDF cheio delas.
+ */
+const PIXEL = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+r = await pedir(await carregar(), {
+  ...PEDIDO,
+  figuras: [{ nome: 'pagina-3.jpg', dataUri: `data:image/png;base64,${PIXEL}` }],
+});
+
+const partes = ((((ultimoPedido.corpo.contents || [])[0] || {}).parts) || []);
+const imagens = partes.filter((x) => x.inline_data);
+if (imagens.length === 1) ok('a figura do material vai para o modelo como imagem, e não só como nome de arquivo');
+else falha('a figura não virou imagem no pedido: ' + JSON.stringify(partes.map((x) => Object.keys(x))));
+if (imagens[0] && imagens[0].inline_data.data === PIXEL) ok('e vai a imagem de verdade, não o marcador');
+else falha('o conteúdo da imagem não bateu');
+if (partes.some((x) => (x.text || '').includes('Figura: pagina-3.jpg'))) {
+  ok('com o nome escrito logo antes, que é o que amarra a imagem ao marcador do cartão');
+} else falha('a figura foi sem o nome: o modelo não teria como saber qual marcador escrever');
+if (r.corpo.figurasVistas === 1) ok('e a resposta diz quantas figuras a IA recebeu, para a tela não chutar');
+else falha('figurasVistas: ' + JSON.stringify(r.corpo.figurasVistas));
+
+/* Figura grande demais, ou de tipo que o modelo não lê, fica de fora em
+   silêncio: melhor um baralho sem aquela imagem do que um pedido recusado. */
+r = await pedir(await carregar(), {
+  ...PEDIDO,
+  figuras: [
+    { nome: 'gorda.jpg', dataUri: 'data:image/jpeg;base64,' + 'A'.repeat(800000) },
+    { nome: 'estranha.tiff', dataUri: `data:image/tiff;base64,${PIXEL}` },
+    { nome: 'boa.png', dataUri: `data:image/png;base64,${PIXEL}` },
+  ],
+});
+if (r.corpo.figurasVistas === 1) ok('figura pesada demais ou de tipo esquisito fica de fora, e o resto segue');
+else falha('filtro de figura: ' + JSON.stringify(r.corpo.figurasVistas));
+
 /* ── 8. sem chave nenhuma de IA ───────────────────────────────────────── */
 delete env.GEMINI_API_KEY;
 delete env.ANTHROPIC_API_KEY;

@@ -84,6 +84,18 @@ let r = await pedir({ token: 't', acao: 'estado' });
 if (r.corpo.ligado === false && r.corpo.disponivel === true) ok('estado: diz que dá para ligar e que ainda não está');
 else falha('estado inicial: ' + JSON.stringify(r));
 
+/* A página abre a janela com o id que ESTA rota informa.
+ *
+ * Isto é o que impede o defeito que derrubou a agenda por semanas: o
+ * código de autorização é emitido PARA um cliente e só pode ser trocado
+ * por aquele mesmo. Com o id escrito dentro da página, trocar a
+ * credencial do Worker fazia o navegador pedir o código com uma e o
+ * servidor tentar trocar com outra, e o Google recusava a troca. */
+if (r.corpo.clientId === 'id-do-cliente') ok('o estado informa qual credencial a janela deve usar');
+else falha('o estado não disse o client_id: ' + JSON.stringify(r.corpo));
+if (!JSON.stringify(r.corpo).includes('segredo-do-cliente')) ok('e o segredo continua sem sair do servidor');
+else falha('O SEGREDO DO GOOGLE VAZOU NA RESPOSTA');
+
 r = await pedir({ token: 't', acao: 'token' });
 if (r.corpo.ligado === false && /Ligue sua conta/.test(r.corpo.erro || '')) ok('pedir token sem ligar: manda ligar antes');
 else falha('token sem ligar: ' + JSON.stringify(r));
@@ -98,6 +110,10 @@ if (ultimoOAuth.redirect_uri === 'postmessage') ok('o retorno é "postmessage", 
 else falha('retorno errado: ' + ultimoOAuth.redirect_uri);
 if (ultimoOAuth.client_secret === 'segredo-do-cliente') ok('o segredo vai no servidor, não na página');
 else falha('sem segredo na troca');
+/* A troca tem de usar a MESMA credencial que o estado mandou a janela
+   usar, senão o código não vale para ela. */
+if (ultimoOAuth.client_id === 'id-do-cliente') ok('a troca usa a mesma credencial que a janela usou para pedir o código');
+else falha('a troca foi com outra credencial: ' + ultimoOAuth.client_id);
 
 const gravado = JSON.stringify(BANCO['google/uid-1'] || {});
 if (/atualiza-1/.test(gravado)) ok('o token de atualização fica guardado no servidor');
@@ -170,7 +186,26 @@ r = await pedir({ token: 't', acao: 'ligar', codigo: 'x' }, semSegredo);
 if (/GOOGLE_CLIENT_SECRET/.test(r.corpo.erro || '')) ok('e explica qual variável falta');
 else falha('sem segredo, ligar: ' + JSON.stringify(r));
 
-/* ── 9. método e ação ─────────────────────────────────────────────────── */
+/* ── 9. o segredo de outra credencial ─────────────────────────────────
+ *
+ * Era o erro de verdade: a janela pedia o código com uma credencial e o
+ * servidor tentava trocar com outra. O Google responde invalid_client, e a
+ * mensagem antiga mandava conferir "as variáveis do Worker" — justo o lado
+ * que estava certo. Agora ela diz de qual credencial o servidor está
+ * falando, para dar para comparar com a que aparece na janela.
+ */
+respostaOAuth = () => ({ status: 401, corpo: { error: 'invalid_client', error_description: 'The OAuth client was not found.' } });
+r = await pedir({ token: 't', acao: 'ligar', codigo: 'cod-de-outro-cliente' });
+if (/recusou a credencial/.test(r.corpo.erro || '')) ok('credencial recusada: diz que o problema é a credencial, não o código');
+else falha('invalid_client: ' + JSON.stringify(r.corpo));
+if (/do-cliente/.test(r.corpo.erro || '')) ok('e diz qual credencial o servidor está usando, para dar para comparar');
+else falha('a recusa não identifica a credencial: ' + JSON.stringify(r.corpo.erro));
+if (!/id-do-cliente/.test(r.corpo.erro || '')) ok('mostrando só o final dela, que já basta para comparar');
+else falha('a recusa despejou o id inteiro: ' + r.corpo.erro);
+if (!BANCO['google/uid-1']) ok('e nada fica gravado de uma ligação que não aconteceu');
+else falha('gravou ligação com credencial recusada');
+
+/* ── 10. método e ação ────────────────────────────────────────────────── */
 const res = await (await carregar())({ request: new Request('http://local/api/google', { method: 'GET' }), env });
 if (res.status === 405) ok('GET não é aceito');
 else falha('GET respondeu ' + res.status);

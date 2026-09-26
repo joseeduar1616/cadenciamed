@@ -19,17 +19,26 @@
  * cima a baixo. Em grupos, é olhar cinco títulos e depois três ou quatro
  * nomes dentro de um.
  *
- * A ordem dos grupos é a ordem do dia de quem estuda: primeiro o que se
- * faz agora, depois o que se revisa, depois o que se olha para saber como
- * está indo, depois as outras pessoas, e por último a conta. Uma aba que
- * não esteja em grupo nenhum cai no último, em vez de sumir.
+ * O primeiro grupo não é uma categoria: é a lista do que se abre todo dia.
+ * Ele existe porque agrupar por assunto espalhou as seis funções que
+ * sustentam o site — o cronômetro, o cronograma, os flashcards, o
+ * assistente, a agenda e os amigos — por quatro grupos diferentes, três
+ * deles abaixo da dobra no celular. Um recurso que a pessoa precisa
+ * procurar é um recurso que ela não usa, e um que ela não usa é um que
+ * não segura a assinatura.
+ *
+ * Os outros grupos seguem a ordem do dia de quem estuda: o que se faz
+ * agora, o que se revisa, o que se olha para saber como está indo, as
+ * outras pessoas, e por último a conta. Uma aba que não esteja em grupo
+ * nenhum cai no último, em vez de sumir.
  */
 const GRUPOS_DE_ABAS = [
-  { nome: "Estudar", abas: ["hoje", "foco", "materias", "clinico", "cronograma", "temas"] },
-  { nome: "Fixar", abas: ["cartoes", "revisoes", "provas", "assistente"] },
+  { nome: "Todo dia", abas: ["foco", "cronograma", "cartoes", "assistente", "rotina", "amigos"] },
+  { nome: "Estudar", abas: ["hoje", "materias", "clinico", "temas"] },
+  { nome: "Fixar", abas: ["revisoes", "provas"] },
   { nome: "Acompanhar", abas: ["desempenho", "progresso", "metas", "simulados"] },
-  { nome: "Com outras pessoas", abas: ["amigos", "mentor"] },
-  { nome: "Você", abas: ["rotina", "treino", "planos", "config"] },
+  { nome: "Com outras pessoas", abas: ["mentor"] },
+  { nome: "Você", abas: ["treino", "planos", "config"] },
 ];
 
 /* Devolve [{ nome, itens }] só com o que existe na barra desta pessoa: um
@@ -286,6 +295,20 @@ export default function Cadencia() {
     return () => { cancelado = true; if (saveRef.current) window.clearTimeout(saveRef.current); };
   }, [data, ready]);
 
+  /* Uma cópia guardada por meio dia de uso, sem ninguém pedir.
+   *
+   * É a parte que faltava: o app já sabia fazer backup, mas só quando a
+   * pessoa clicava — e quem perde dados é justamente quem não clicou.
+   * Roda uma vez por abertura, depois que os dados terminaram de carregar;
+   * a própria guardarVersao decide se já é hora e se mudou alguma coisa. */
+  useEffect(() => {
+    if (!ready) return undefined;
+    /* "data" aqui é o que acabou de ser carregado do disco, que é
+       exatamente o que se quer copiar. */
+    const t = window.setTimeout(() => { guardarVersao(data, "automática"); }, 4000);
+    return () => window.clearTimeout(t);
+  }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /* A personalização de aparência é escrita direto no <html>: assim vale
      também para o que é pintado fora do React, como o fundo da página e a
      cor da barra do navegador no celular. */
@@ -421,8 +444,15 @@ export default function Cadencia() {
       const anchor = rec.anchor || s.date || today;
       const marked = { ...(rec.done || {}) };
       for (const k of Object.keys(rec.undone || {})) delete marked[k];
-      const steps = degraus.map((st) => {
-        const due = addDays(anchor, st.d);
+      /* Os dias saem da escada JÁ esticada ou encurtada para este tópico:
+         o que a pessoa achou difícil volta mais cedo, o que ela domina
+         some da frente por mais tempo. A chave do degrau continua sendo o
+         dia do esqueleto (st.d) — é por ela que o que já foi marcado como
+         feito é encontrado, e mexer nisso apagaria o histórico de quem já
+         usa o site. */
+      const ajustados = diasDoTopico(degraus, rec, s.perf);
+      const steps = degraus.map((st, i) => {
+        const due = addDays(anchor, ajustados[i] === undefined ? st.d : ajustados[i]);
         const on = marked[String(st.d)] || null;
         let state = "futura";
         if (on) state = "feita";
@@ -501,15 +531,52 @@ export default function Cadencia() {
   const salvarAnotacao = useCallback((id, html) => {
     setData((p) => ({ ...p, anotacoes: { ...p.anotacoes, [id]: { html, atualizadoEm: Date.now() } } }));
   }, []);
-  const toggleStep = useCallback((id, days, anchor) => {
+  /* "comoFoi" é o que alimenta a adaptação: "facil", "ok", "dificil" ou
+     "errei". Sem ele — desmarcar um degrau, por exemplo — o fator não se
+     mexe, porque desmarcar é corrigir um clique, não relatar um estudo. */
+  const toggleStep = useCallback((id, days, anchor, comoFoi) => {
     setData((p) => {
-      const rec = { ...(p.reviews[id] || {}) };
-      const doneMap = { ...(rec.done || {}) }, undo = { ...(rec.undone || {}) };
+      let rec = { ...(p.reviews[id] || {}) };
       const k = String(days);
+      const jaFeito = !!(rec.done || {})[k];
+
+      if (!jaFeito && comoFoi) {
+        rec = depoisDaRevisao(rec, comoFoi, todayISO());
+        /* Errar recomeça o ciclo de hoje: depoisDaRevisao já zerou os
+           degraus e mudou a âncora, então não há degrau para marcar. */
+        if (comoFoi === "errei") {
+          return { ...p, reviews: { ...p.reviews, [id]: rec } };
+        }
+      }
+
+      const doneMap = { ...(rec.done || {}) }, undo = { ...(rec.undone || {}) };
       if (doneMap[k]) { delete doneMap[k]; undo[k] = 1; }
       else { doneMap[k] = todayISO(); delete undo[k]; }
       rec.done = doneMap; rec.undone = undo;
       if (!rec.anchor) rec.anchor = anchor;
+      return { ...p, reviews: { ...p.reviews, [id]: rec } };
+    });
+  }, []);
+
+  /* A dificuldade que a pessoa declara para um tópico. É o ponto de
+     partida da escada dele, antes de qualquer revisão ter acontecido. */
+  /* A prioridade de uma especialidade. Zero quer dizer "não entra na
+     semana": é diferente de "importa pouco", e quem monta a semana precisa
+     dessa diferença. */
+  const setPeso = useCallback((esp, valor) => {
+    setData((p) => ({
+      ...p,
+      pesos: { ...(p.pesos || {}), [esp]: Math.max(0, Math.min(10, Math.round(Number(valor) || 0))) },
+    }));
+  }, []);
+
+  const marcarDificuldade = useCallback((id, valor) => {
+    setData((p) => {
+      const rec = { ...(p.reviews[id] || {}) };
+      rec.dificuldade = Math.max(0, Math.min(10, Math.round(Number(valor) || 0)));
+      /* Mudar a dificuldade reabre a conta: o fator acumulado veio de uma
+         premissa que a pessoa acabou de corrigir. */
+      delete rec.facilidade;
       return { ...p, reviews: { ...p.reviews, [id]: rec } };
     });
   }, []);
@@ -630,6 +697,20 @@ export default function Cadencia() {
     vencendoHoje: late.length,
     blocosHoje,
     today,
+  });
+
+  /* A frase que a notificação do dia vai carregar amanhã de manhã. Mora
+     aqui pelo mesmo motivo dos lembretes: é a raiz que sabe quantas
+     revisões estão atrasadas, e é preciso atualizar isso a cada abertura
+     mesmo que a pessoa nunca abra Configurações. */
+  usePushDoDia({
+    nuvem,
+    ligado: !!(data.lembretes && data.lembretes.push && data.lembretes.push.ligado),
+    hora: Math.max(0, Math.min(23, Math.round(
+      Number((data.lembretes && data.lembretes.push && data.lembretes.push.hora) ?? 7)))),
+    atrasadas: late.length,
+    cartoes: cartoesHoje,
+    blocos: blocosHoje,
   });
 
   /* O convite para duelar também mora aqui, e pelo mesmo motivo: quem foi
@@ -1082,8 +1163,8 @@ export default function Cadencia() {
               </div>
               {tab === "hoje" && <Hoje {...{ data, setData, today, minToday, minWeek, qWeek, streak, late, done, bonusDone, addSession, delSession, notify, go: setTab, blocosHoje, projecao: pro ? projecao : null, pro, verPlanos: () => setTab("planos"), cartoesHoje }} />}
               {tab === "foco" && <Foco {...{ data, setData, today, P, subjectId: pomoSubject, setSubjectId: setPomoSubject }} />}
-              {tab === "materias" && <Materias {...{ subjects: subjectsResidencia, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, salvarAnotacao, notify, setData, nuvem, pastas: data.pastas, vazioEm: subjectsClinico.length ? "clinico" : null, irPara: setTab }} />}
-              {tab === "clinico" && <Materias {...{ subjects: subjectsClinico, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, salvarAnotacao, notify, setData, nuvem, pastas: data.pastas, irPara: setTab }} />}
+              {tab === "materias" && <Materias {...{ sessions: data.sessions, reviews: data.reviews, today, addSession, marcarDificuldade, subjects: subjectsResidencia, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, salvarAnotacao, notify, setData, nuvem, pastas: data.pastas, vazioEm: subjectsClinico.length ? "clinico" : null, irPara: setTab }} />}
+              {tab === "clinico" && <Materias {...{ sessions: data.sessions, reviews: data.reviews, today, addSession, marcarDificuldade, subjects: subjectsClinico, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, salvarAnotacao, notify, setData, nuvem, pastas: data.pastas, irPara: setTab }} />}
               {tab === "cronograma" && <AbaCronograma {...{ data, setData, notify, nuvem, pro, verPlanos: () => setTab("planos") }} />}
               {tab === "temas" && !pro && <Bloqueado recurso={RECURSOS_PRO.temas} onVerPlanos={() => setTab("planos")} />}
               {tab === "rotina" && !pro && <Bloqueado recurso={RECURSOS_PRO.rotina} onVerPlanos={() => setTab("planos")} />}
@@ -1092,7 +1173,7 @@ export default function Cadencia() {
               {tab === "revisoes" && !pro && <Bloqueado recurso={RECURSOS_PRO.revisoes} onVerPlanos={() => setTab("planos")} />}
               {tab === "metas" && !pro && <Bloqueado recurso={RECURSOS_PRO.metas} onVerPlanos={() => setTab("planos")} />}
               {tab === "planos" && <Precos usuario={nuvem.usuario} plano={assinatura.plano} aviso={assinatura.aviso} />}
-              {tab === "temas" && pro && <Temas {...{ subjects, setMark, minutos: minutesBySubject, sessoes: data.sessions, today }} />}
+              {tab === "temas" && pro && <Temas {...{ subjects, setMark, minutos: minutesBySubject, sessoes: data.sessions, today, pesos: data.pesos, setPeso }} />}
               {tab === "assistente" && ver.assistente && (
                 <div className="flex flex-col gap-5">
                   <Assistente {...{ data, setData, subjects, ladder, today, totals, minWeek, qWeek, notify, nuvem }} />
@@ -1101,8 +1182,13 @@ export default function Cadencia() {
                   <Notion {...{ nuvem, subjects, data, setData, notify }} />
                 </div>
               )}
-              {tab === "revisoes" && pro && <Revisoes {...{ rows: ladder, toggleStep, resetCycle, data, setData, degraus, notify }} />}
-              {tab === "rotina" && pro && <Rotina {...{ data, setData, gcal, today }} />}
+              {tab === "revisoes" && pro && <Revisoes {...{ rows: ladder, toggleStep, resetCycle, marcarDificuldade, data, setData, degraus, notify }} />}
+              {tab === "rotina" && pro && (
+                <div className="flex flex-col gap-5">
+                  <MontarSemana {...{ data, setData, subjects, ladder, notify }} />
+                  <Rotina {...{ data, setData, gcal, today }} />
+                </div>
+              )}
               {tab === "amigos" && !pro && <Bloqueado recurso={RECURSOS_PRO.amigos} onVerPlanos={() => setTab("planos")} />}
               {tab === "amigos" && pro && <Amigos {...{ nuvem, notify, data, setData, irPara: setTab }} />}
               {tab === "metas" && pro && <Metas {...{ data, setData, today, qWeek, notify, ladder, gcal }} />}

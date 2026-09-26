@@ -1,4 +1,6 @@
+import json
 import os
+import re
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 css = open('utils.css', encoding='utf-8').read()
@@ -10,6 +12,24 @@ ICONES = dict(
     for linha in open('icones-embutidos.txt', encoding='utf-8').read().splitlines()
     if '=' in linha
 )
+
+# O id do cliente do Google vem do wrangler.jsonc, que é o mesmo arquivo que
+# entrega esse valor ao Worker. A página só o usa de reserva, para quando a
+# rota /api/google não responder — mas uma reserva diferente da credencial
+# de verdade é pior que reserva nenhuma: a janela pediria o código para um
+# cliente e o servidor tentaria trocar com outro, que é o erro
+# invalid_client. Lendo daqui, os dois lados não têm como divergir.
+def _id_do_google():
+    bruto = open('../wrangler.jsonc', encoding='utf-8').read()
+    # jsonc: o json do Python não aceita os comentários //
+    limpo = re.sub(r'^\s*//.*$', '', bruto, flags=re.M)
+    valor = json.loads(limpo).get('vars', {}).get('GOOGLE_CLIENT_ID', '')
+    if not valor:
+        raise SystemExit('falta GOOGLE_CLIENT_ID em vars, no wrangler.jsonc')
+    return valor
+
+
+GOOGLE_CLIENT_ID = _id_do_google()
 
 TPL = """<!DOCTYPE html>
 <html lang="pt-BR" data-theme="dark" data-layout="auto">
@@ -85,15 +105,26 @@ window.CADENCIA_FIREBASE = {
      https://cadenciamed.joseeduardo1616.workers.dev
    Sem isso da erro 400 origin_mismatch ao conectar o Google Agenda.
    ══════════════════════════════════════════════════════════════════════ */
+/* Este id é só a RESERVA. Quem manda é o GOOGLE_CLIENT_ID do Worker: a
+   rota /api/google devolve o dela em "estado", e a página abre a janela com
+   aquele. O motivo é que o código de autorização é emitido PARA um cliente
+   e só pode ser trocado por aquele mesmo — com o id fixado aqui, trocar a
+   credencial do Worker fazia as duas pontas apontarem para clientes
+   diferentes, e o Google recusava a troca com invalid_client.
+
+   Ele é o que vale se a rota não responder, então não pode divergir. Para
+   isso não depender de ninguém lembrar, o valor abaixo é copiado do
+   wrangler.jsonc na hora de montar a página: existe um literal só no
+   repositório, e é o mesmo que o Worker recebe. */
 window.CADENCIA_GOOGLE = {
-  clientId: "499777815393-3br9aadldo4vdqfpqfhmai2qrud2t89u.apps.googleusercontent.com"
+  clientId: "__GOOGLE_CLIENT_ID__"
 };
 
 /* ══════════════════════════════════════════════════════════════════════
    LINKS DE PAGAMENTO — e o que falta para vender
 
-   1. Crie dois produtos na Kiwify ou na Hotmart: um mensal (R$ 30) e um
-      anual (R$ 250). O nome do produto precisa ter a palavra "anual" no
+   1. Crie dois produtos na Kiwify ou na Hotmart: um mensal (R$ 39) e um
+      anual (R$ 300). O nome do produto precisa ter a palavra "anual" no
       anual: e por ela que o servidor sabe qual plano liberar.
    2. Cole os dois links de checkout aqui embaixo.
    3. Na plataforma, cadastre o aviso de compra (webhook):
@@ -107,8 +138,8 @@ window.CADENCIA_GOOGLE = {
    diz "em breve" a quem visita.
    ══════════════════════════════════════════════════════════════════════ */
 window.CADENCIA_CHECKOUT = {
-  mensal: "https://pay.kiwify.com.br/tnUuamR",
-  anual: "https://pay.kiwify.com.br/MHVKdUS"
+  mensal: "https://pay.kiwify.com.br/BaolhdL",
+  anual: "https://pay.kiwify.com.br/1kOIQ8c"
 };
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -161,6 +192,18 @@ __CSS__
 <script>
 __JS__
 </script>
+<script>
+/* O convite de instalação do navegador chega UMA vez, e cedo — em geral
+   antes de o aplicativo terminar de carregar. Guardado aqui, ele espera
+   pela tela que oferece o botão; sem isto o evento passava e o botão
+   "Instalar agora" nunca aparecia para quem abrisse Configurações alguns
+   segundos depois. */
+window.addEventListener("beforeinstallprompt", function (e) {
+  e.preventDefault();
+  window.__cadenciaInstalar = e;
+});
+</script>
+
 <script>
 /* Service worker: é o que faz o site abrir sem internet e carregar na
    hora na segunda visita. Registrado depois do load para não disputar
@@ -259,8 +302,10 @@ def build(js, out, title, desc):
             .replace('__DESC__', desc).replace('__SITE__', SITE)
             .replace('__FAVICON32__', ICONES['FAVICON32'])
             .replace('__APPLE180__', ICONES['APPLE180'])
+            .replace('__GOOGLE_CLIENT_ID__', GOOGLE_CLIENT_ID)
             .replace('__JS__', open(js, encoding='utf-8').read()))
-    for sobrou in ('__CSS__', '__TITLE__', '__DESC__', '__SITE__', '__JS__', '__FAVICON32__', '__APPLE180__'):
+    for sobrou in ('__CSS__', '__TITLE__', '__DESC__', '__SITE__', '__JS__', '__FAVICON32__', '__APPLE180__',
+                   '__GOOGLE_CLIENT_ID__'):
         if sobrou in html:
             raise SystemExit('marcador não substituído: ' + sobrou)
     open(out, 'w', encoding='utf-8').write(html)

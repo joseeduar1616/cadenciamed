@@ -44,6 +44,11 @@ if [ "${1:-}" != "--sem-teste" ]; then
   python3 extrair_cores.py
   python3 extrair_pastas.py
   python3 extrair_agenda.py
+  python3 extrair_nuvem.py
+  python3 extrair_lotes.py
+  python3 extrair_revisao.py
+  python3 extrair_semana.py
+  python3 extrair_ficha.py
   python3 extrair_treino.py
   python3 extrair_anexo.py
   echo "── teste no navegador ──────────────────────────────"
@@ -54,6 +59,13 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-contraste.mjs
   node testar-atualizacao.mjs index.html
   node testar-perfil.mjs
+  node testar-nuvem.mjs
+  node testar-lotes.mjs
+  node testar-revisao.mjs
+  node testar-semana.mjs
+  node testar-push.mjs
+  node testar-limites.mjs
+  node testar-ficha.mjs
   node testar-lembretes.mjs
   echo "── funções do servidor ─────────────────────────────"
   node testar-assistente.mjs
@@ -83,6 +95,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-plano.mjs
   node testar-mentor.mjs
   node testar-baralhos.mjs
+  node testar-provas.mjs
   node testar-worker.mjs
   node testar-api.mjs
 fi

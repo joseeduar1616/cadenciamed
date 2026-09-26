@@ -19,7 +19,7 @@
  * O que NUNCA entra em cache: /api/. São respostas por pessoa, com token,
  * e guardá-las seria mostrar dado de uma conta em outra.
  */
-const VERSAO = "cadencia-ac81c3dfd4";
+const VERSAO = "cadencia-5045f5280a";
 const CASCA = "/";
 
 /* Instala já guardando a casca do app, para a primeira visita offline
@@ -81,4 +81,82 @@ self.addEventListener("fetch", (e) => {
       return guardado || daRede;
     }),
   );
+});
+
+/* ── notificação que chega com o site fechado ─────────────────────────
+ *
+ * É aqui que o push vira aviso na tela. O navegador acorda este arquivo
+ * mesmo sem nenhuma aba aberta — que é exatamente o caso em que o lembrete
+ * serve para alguma coisa.
+ *
+ * O corpo chega cifrado e o navegador já o abre antes de entregar aqui: a
+ * chave de leitura é do aparelho e nunca saiu dele. O que se lê abaixo é o
+ * texto claro, do lado de dentro.
+ *
+ * O aviso tem de aparecer SEMPRE. Um push recebido e não mostrado faz o
+ * navegador desconfiar do site e, depois de algumas vezes, revogar a
+ * permissão — então mesmo um corpo ilegível vira uma frase genérica, em vez
+ * de silêncio.
+ */
+self.addEventListener("push", (e) => {
+  let aviso = {};
+  try { aviso = (e.data && e.data.json()) || {}; } catch (err) { /* frase padrão abaixo */ }
+
+  const titulo = String(aviso.titulo || "Cadência Med").slice(0, 80);
+  const corpo = String(aviso.corpo || "Você tem estudo marcado para hoje.").slice(0, 240);
+
+  e.waitUntil(self.registration.showNotification(titulo, {
+    body: corpo,
+    icon: "/icone-192.png",
+    badge: "/icone-192.png",
+    lang: "pt-BR",
+    /* Uma etiqueta só: o lembrete de hoje substitui o de ontem que ficou
+       na bandeja, em vez de empilhar sete avisos numa semana ocupada. */
+    tag: String(aviso.etiqueta || "cadencia-lembrete"),
+    renotify: true,
+    data: { url: String(aviso.url || "/") },
+  }));
+});
+
+/* Tocar no aviso abre o site. Se já houver uma aba, é ela que vem para a
+   frente — abrir uma segunda aba do mesmo aplicativo perderia o que a
+   pessoa estava fazendo na primeira. */
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const destino = new URL((e.notification.data && e.notification.data.url) || "/", self.location.origin);
+  e.waitUntil((async () => {
+    const abas = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const aba of abas) {
+      if (new URL(aba.url).origin === self.location.origin) {
+        await aba.focus();
+        if ("navigate" in aba && aba.url !== destino.href) await aba.navigate(destino.href).catch(() => {});
+        return;
+      }
+    }
+    await self.clients.openWindow(destino.href);
+  })());
+});
+
+/* O navegador troca o endereço de entrega de vez em quando, por conta dele.
+ * Sem tratar isto, o lembrete simplesmente para de chegar um dia — e não há
+ * nada na tela dizendo por quê. Aqui o novo endereço é reassinado na hora,
+ * usando a mesma chave do site que o antigo usava. */
+self.addEventListener("pushsubscriptionchange", (e) => {
+  e.waitUntil((async () => {
+    try {
+      const antiga = e.oldSubscription || await self.registration.pushManager.getSubscription();
+      const chave = (antiga && antiga.options && antiga.options.applicationServerKey) || null;
+      if (!chave) return;
+      const nova = e.newSubscription || await self.registration.pushManager.subscribe({
+        userVisibleOnly: true, applicationServerKey: chave,
+      });
+      /* O service worker não tem token de conta nenhum: quem sabe falar com
+         /api/push é a página. Então o aparelho guarda o pedido e a próxima
+         abertura do site o cumpre. */
+      const c = await caches.open(VERSAO);
+      await c.put("/__reassinar", new Response(JSON.stringify(nova.toJSON()), {
+        headers: { "Content-Type": "application/json" },
+      }));
+    } catch (err) { /* na próxima abertura o site reassina de qualquer jeito */ }
+  })());
 });

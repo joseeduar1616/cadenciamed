@@ -158,67 +158,12 @@ function CartaoDupla({ d, nuvem, notify, aoMudar, aoDuelar, aoEntrarNoDuelo }) {
   );
 }
 
-/* ── as figuras do material ──────────────────────────────────────────
- *
- * O leitor de PDF já recorta cada figura, guarda no aparelho e deixa um
- * marcador [[img:nome]] no texto — é o mesmo caminho dos flashcards. Aqui
- * as figuras que a IA citou são lidas de volta, encolhidas e mandadas
- * junto ao criar o duelo.
- *
- * Elas TÊM de viajar: o material foi lido no aparelho de quem enviou, e a
- * outra pessoa não tem aquele arquivo em lugar nenhum. Sem isto a questão
- * de imagem chegaria para ela como um enunciado falando de uma figura que
- * não existe na tela.
- */
-const LADO_FIGURA_DUELO = 1000;
-const QUALIDADE_FIGURA_DUELO = 0.72;
-
-/* Maior que a foto do mural de treino: aqui a pessoa precisa LER a figura
-   (um ECG, uma lâmina) para responder, não só reconhecer o que é. */
-function encolherFigura(dataUri) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      try {
-        const fator = Math.min(1, LADO_FIGURA_DUELO / Math.max(img.width, img.height));
-        const c = document.createElement("canvas");
-        c.width = Math.max(1, Math.round(img.width * fator));
-        c.height = Math.max(1, Math.round(img.height * fator));
-        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-        resolve(c.toDataURL("image/jpeg", QUALIDADE_FIGURA_DUELO));
-      } catch (e) { resolve(""); }
-    };
-    /* Figura que não abre é figura que fica de fora, e a questão segue sem
-       ela: melhor perder a imagem do que não conseguir montar o duelo. */
-    img.onerror = () => resolve("");
-    img.src = dataUri;
-  });
-}
-
-/* As figuras que o material trouxe, pelos marcadores que o leitor deixou
-   no texto. Elas são lidas ANTES de chamar a IA: é ela quem precisa ver a
-   imagem para decidir o que perguntar. */
-const MAX_FIGURAS_DUELO = 8;
-
-function nomesDeFigura(texto) {
-  const nomes = [];
-  for (const m of String(texto || "").matchAll(/\[\[img:([^\]]+)\]\]/g)) {
-    const nome = String(m[1] || "").trim();
-    if (nome && nomes.indexOf(nome) < 0) nomes.push(nome);
-  }
-  return nomes;
-}
-
-async function figurasDoMaterial(texto) {
-  const fora = [];
-  for (const nome of nomesDeFigura(texto).slice(0, MAX_FIGURAS_DUELO)) {
-    const bruto = await lerMidia(nome).catch(() => "");
-    if (!bruto) continue;
-    const menor = await encolherFigura(bruto);
-    if (menor) fora.push({ nome, dataUri: menor });
-  }
-  return fora;
-}
+/* As figuras do material — encolherFigura, nomesDeFigura e
+   figurasDoMaterial — moram no parte12.jsx, junto do leitor de PDF que as
+   recorta e do marcador [[img:nome]] que as nomeia. Ficam lá porque os
+   flashcards montados pela IA precisam exatamente das mesmas: duas cópias
+   divergiriam, e a diferença apareceria como "no duelo a imagem vai e no
+   baralho não". */
 
 /* A figura de uma questão, baixada quando ela abre.
  *
@@ -261,10 +206,28 @@ function FiguraDaQuestao({ nuvem, id, nome }) {
 
 /* ── montar o duelo ──────────────────────────────────────────────────── */
 
+/* O estilo da banca fica guardado no aparelho, e não junto dos dados de
+   estudo, por dois motivos: são milhares de caracteres que não têm nada a
+   ver com o progresso da pessoa, e ela cola isso uma vez e usa em todo
+   duelo — reescrever a cada duelo é o que faria o campo não ser usado. */
+const CHAVE_BANCA = "cadencia:v3:estilo-da-banca";
+
+/* O mesmo teto do servidor. Cortar aqui evita mandar 200 KB de questões
+   colada para a rota devolver só os 8 KB primeiros sem avisar. */
+const MAX_BANCA = 8000;
+
+const lerBancaGuardada = () => {
+  try { return window.localStorage.getItem(CHAVE_BANCA) || ""; }
+  catch (e) { return ""; }
+};
+
+
 function MontarDuelo({ dupla, nuvem, notify, aoComecar, aoFechar }) {
   const [texto, setTexto] = useState("");
   const [quantas, setQuantas] = useState(10);
   const [segundos, setSegundos] = useState(45);
+  const [banca, setBanca] = useState(lerBancaGuardada);
+  const [verBanca, setVerBanca] = useState(false);
   const [passo, setPasso] = useState("");
   const [erro, setErro] = useState("");
   const arquivoRef = useRef(null);
@@ -288,9 +251,16 @@ function MontarDuelo({ dupla, nuvem, notify, aoComecar, aoFechar }) {
        figura. Mandar só o nome do arquivo não dizia nada a ela. */
     const figuras = await figurasDoMaterial(texto);
 
+    const estiloBanca = banca.trim().slice(0, MAX_BANCA);
+    try {
+      if (estiloBanca) window.localStorage.setItem(CHAVE_BANCA, estiloBanca);
+      else window.localStorage.removeItem(CHAVE_BANCA);
+    } catch (e) { /* aparelho sem espaço: o duelo segue sem guardar */ }
+
     setPasso("Escrevendo as questões…");
     const { dados, erro: falhou } = await chamarApi(
-      ROTA_QUESTOES_IA, { token, texto, quantas, figuras }, "O montador de questões");
+      ROTA_QUESTOES_IA, { token, texto, quantas, figuras, estiloBanca },
+      "O montador de questões");
     if (falhou || !dados || dados.erro) {
       setPasso("");
       setErro(falhou || (dados && dados.erro) || "Não consegui montar as questões.");
@@ -355,8 +325,8 @@ function MontarDuelo({ dupla, nuvem, notify, aoComecar, aoFechar }) {
             <Mini>
               {quantasFiguras === 0
                 ? "nenhuma figura neste material"
-                : quantasFiguras > MAX_FIGURAS_DUELO
-                  ? `${quantasFiguras} figuras · as ${MAX_FIGURAS_DUELO} primeiras entram`
+                : quantasFiguras > MAX_FIGURAS_IA
+                  ? `${quantasFiguras} figuras · as ${MAX_FIGURAS_IA} primeiras entram`
                   : `${quantasFiguras} ${quantasFiguras === 1 ? "figura, que a IA vai ver" : "figuras, que a IA vai ver"}`}
             </Mini>
           ) : null}
@@ -382,6 +352,49 @@ function MontarDuelo({ dupla, nuvem, notify, aoComecar, aoFechar }) {
             ))}
           </div>
         </div>
+      </div>
+
+      {/* Estilo da banca · opcional, e escondido até ser pedido.
+          Fica fechado porque o duelo funciona sem ele, e um campo grande
+          aberto no meio da tela faria a pessoa achar que é obrigatório
+          colar prova antes de conseguir duelar. */}
+      <div className="mt-5">
+        {verBanca ? (
+          <div>
+            <Label>Estilo da banca · opcional</Label>
+            <Texto style={{ marginTop: 6 }}>
+              Cole algumas questões da banca que você vai prestar. A IA copia só a FORMA —
+              tamanho do enunciado, vinheta clínica, jeito das alternativas — e escreve
+              sobre o material que você mandou acima. As questões coladas não entram no
+              duelo.
+            </Texto>
+            <Area style={{ marginTop: 8, minHeight: 100 }} value={banca}
+              placeholder="Cole aqui duas ou três questões da banca, com as alternativas"
+              onChange={(e) => setBanca(e.target.value.slice(0, MAX_BANCA))} />
+            <div className="mt-2 flex items-center gap-3 flex-wrap">
+              <Mini>
+                {banca.trim()
+                  ? `${banca.trim().length} de ${MAX_BANCA} caracteres · fica guardado neste aparelho`
+                  : "sem exemplo, as questões saem no estilo geral de residência"}
+              </Mini>
+              {banca.trim()
+                ? <Btn size="sm" tone="quiet" onClick={() => setBanca("")}>limpar</Btn>
+                : null}
+              <Btn size="sm" tone="quiet" onClick={() => setVerBanca(false)}>fechar</Btn>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3 flex-wrap">
+            <Btn size="sm" tone="outline" onClick={() => setVerBanca(true)}>
+              <Sparkles size={14} /> Estilo da banca
+            </Btn>
+            <Mini>
+              {banca.trim()
+                ? "as questões vão sair com a cara da banca que você colou"
+                : "opcional: cole questões da sua banca e as do duelo saem parecidas"}
+            </Mini>
+          </div>
+        )}
       </div>
 
       <div className="mt-5 flex flex-wrap gap-2 items-center">
@@ -436,6 +449,9 @@ function DueloAoVivo({ dupla, nuvem, notify, aoSair }) {
       position: "fixed", inset: 0, zIndex: 60, background: T.bg,
       overflowY: "auto", WebkitOverflowScrolling: "touch",
       padding: "calc(14px + env(safe-area-inset-top,0px)) 14px calc(20px + env(safe-area-inset-bottom,0px))",
+      /* Sem cursor de texto piscando: o duelo se responde clicando na
+         alternativa, e não há campo nenhum aqui. Ver parte12.jsx. */
+      caretColor: "transparent",
     }}>
       <div className="mx-auto" style={{ maxWidth: 680 }}>{dentro}</div>
     </div>, document.body);

@@ -110,7 +110,7 @@ export async function onRequest({ request, env }) {
   if (!corpo.token) return json({ erro: "Entre na sua conta para usar o assistente." }, 403);
   const pessoa = await quemPede(corpo.token, env.FIREBASE_API_KEY);
   if (!pessoa) return json({ erro: "Sua sessão expirou. Entre de novo." }, 403);
-  const permissao = await podeUsar(pessoa, env);
+  const permissao = await podeUsar(pessoa, env, "assistente");
   if (!permissao.ok) return json({ erro: permissao.erro }, 403);
 
   const mensagens = Array.isArray(corpo.mensagens) ? corpo.mensagens.slice(-14) : [];

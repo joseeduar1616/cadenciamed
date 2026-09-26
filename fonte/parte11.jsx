@@ -5,15 +5,35 @@
    de serviço. Assim ninguém se promove a assinante mexendo no navegador.
    ═══════════════════════════════════════════════════════════════════ */
 
-/* Preço de lançamento. O "de" é o valor cheio, que fica riscado ao lado do
-   que está sendo cobrado agora: uma promoção só quer dizer alguma coisa ao
-   lado do preço que ela substitui. Quando o lançamento acabar, é só apagar
-   o "de" de cada plano — a tela deixa de riscar sozinha. */
+/* O "de" é um preço cheio que fica riscado ao lado do que está sendo
+   cobrado. Está vazio de propósito, e o motivo importa: riscar um valor
+   que nunca foi cobrado de ninguém é propaganda enganosa — e, mesmo que
+   não fosse, "de R$ 799 por R$ 250" em produto recém-lançado não passa a
+   impressão de oferta, passa a de que o preço cheio foi inventado.
+   Desconto de lançamento se faz com CUPOM, que já existe aqui: o preço de
+   tabela continua sendo um só, e quem entra com cupom paga menos sem que o
+   valor do produto seja desmentido na própria vitrine.
+
+   Se algum dia houver preço antigo de verdade, basta devolver o "de" ao
+   plano: a tela volta a riscar e a mostrar a tarja de promoção sozinha. */
 const PROMO = "Promoção de lançamento";
 
+/* O anual sai por menos de oito mensalidades — desconto grande de
+   propósito, para empurrar a escolha para ele. A conta que justifica:
+   descontada a taxa da Kiwify, um anual deixa R$ 270,54 de uma vez, e um
+   mensal deixa R$ 33,00 por mês. O anual só perde para quem ficar mais de
+   oito meses pagando mês a mês — e quem paga mês a mês cancela bem antes
+   disso. Além do caixa adiantado, o anual paga a taxa fixa de transação
+   uma vez por ano, contra doze do mensal. */
 const PRECOS = {
-  mensal: { rotulo: "Mensal", de: "R$ 99", valor: "R$ 30", periodo: "por mês", chave: "mensal" },
-  anual: { rotulo: "Anual", de: "R$ 799", valor: "R$ 250", periodo: "por ano", chave: "anual", economia: "economiza R$ 110" },
+  mensal: { rotulo: "Mensal", valor: "R$ 39", periodo: "por mês", chave: "mensal" },
+  anual: {
+    rotulo: "Anual", valor: "R$ 300", periodo: "por ano", chave: "anual",
+    economia: "quatro meses de graça",
+    /* A comparação que decide a escolha é esta, e não um preço riscado:
+       quanto sai o mês pagando o ano inteiro, contra o plano mensal. */
+    equivale: "R$ 25 por mês · contra R$ 39 no mensal",
+  },
 };
 
 /* Garantia e suporte. Ficam aqui, junto do preço, porque é ao lado dele que
@@ -284,6 +304,7 @@ function Precos({ compacto, onFechar, usuario, plano, aviso }) {
                   <Num size={38} weight={700} color={destaque ? "var(--neon2)" : T.ink}>{p.valor}</Num>
                   <Mini>{p.periodo}</Mini>
                 </div>
+                {p.equivale ? <Mini style={{ marginTop: 6 }}>{p.equivale}</Mini> : null}
                 {destaque ? <Mini style={{ marginTop: 4 }}>válido até 31/12/2027</Mini> : null}
               </div>
               <div className="mt-5">

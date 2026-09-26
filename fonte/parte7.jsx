@@ -344,69 +344,6 @@ function Metas({ data, setData, today, qWeek, notify, ladder, gcal }) {
 /* ═══════════════════════════════════════════════════════════════════
    16 · PROGRESSO
    ═══════════════════════════════════════════════════════════════════ */
-
-function Heatmap({ byDay, today, weeks = 22 }) {
-  const cells = [];
-  const end = weekStart(today);
-  const start = addDays(end, -7 * (weeks - 1));
-  let max = 1;
-  for (let i = 0; i < weeks * 7; i++) max = Math.max(max, byDay[addDays(start, i)] || 0);
-  for (let w = 0; w < weeks; w++) {
-    const col = [];
-    for (let d = 0; d < 7; d++) {
-      const iso = addDays(start, w * 7 + d);
-      const v = byDay[iso] || 0;
-      const lvl = v === 0 ? 0 : v < max * 0.25 ? 1 : v < max * 0.5 ? 2 : v < max * 0.75 ? 3 : 4;
-      col.push({ iso, v, lvl, future: iso > today });
-    }
-    cells.push(col);
-  }
-  const shade = [T.card2, soft("var(--ok)", 22), soft("var(--ok)", 42), soft("var(--ok)", 68), "var(--ok)"];
-  return (
-    <div className="overflow-x-auto">
-      <div className="flex gap-1" style={{ minWidth: weeks * 15 }}>
-        {cells.map((col, i) => (
-          <div key={i} className="flex flex-col gap-1">
-            {col.map((c) => (
-              <div key={c.iso} title={`${brDate(c.iso)} · ${fmtMin(c.v)}`}
-                style={{
-                  width: 11, height: 11, borderRadius: 3,
-                  background: c.future ? "transparent" : shade[c.lvl],
-                  border: c.future ? `1px dashed ${T.line}` : "none",
-                }} />
-            ))}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════════
-   16c · CUPOM
-   O código é conferido no servidor, nunca aqui: se a lista de cupons
-   estivesse no navegador, bastaria abrir o código-fonte da página para
-   descobrir todos. Daqui só sai o que a pessoa digitou.
-   ═══════════════════════════════════════════════════════════════════ */
-
-const ROTA_CUPOM = "/api/cupom";
-
-async function resgatarCupom(nuvem, codigo) {
-  let token = "";
-  try {
-    if (nuvem && nuvem.sdk && nuvem.sdk.auth && nuvem.sdk.auth.currentUser) {
-      token = await nuvem.sdk.auth.currentUser.getIdToken();
-    }
-  } catch (e) { /* segue sem token, o servidor recusa */ }
-  if (!token) return { erro: "Entre na sua conta antes de resgatar o cupom." };
-
-  /* 404 com JSON é cupom inválido; sem JSON é servidor ausente */
-  const { dados, erro } = await chamarApi(
-    ROTA_CUPOM, { token, codigo }, "O resgate de cupom");
-  return erro ? { erro } : dados;
-}
-
-/* Caixa avulsa, para quem já tem conta criada. */
 function Cupom({ nuvem, notify, aoLiberar }) {
   const [codigo, setCodigo] = useState("");
   const [ocupado, setOcupado] = useState(false);
@@ -803,6 +740,102 @@ function Aparencia({ data, setData }) {
   );
 }
 
+/* ── constância ───────────────────────────────────────────────────────
+ *
+ * Um quadradinho por dia do último ano, mais escuro quanto mais tempo
+ * estudado. É o gráfico que responde à pergunta que nenhum total responde:
+ * "eu sou constante?". Trezentas horas em três meses de maratona e
+ * trezentas horas espalhadas por um ano são a mesma soma e duas histórias
+ * diferentes, e só esta tela mostra qual das duas é a sua.
+ *
+ * Dia sem estudo fica vazio, e não invisível: é o buraco que ensina.
+ */
+const SEMANAS_CONSTANCIA = 53;
+
+function Constancia({ sessions, today }) {
+  const { colunas, total, dias, maiorSeq } = useMemo(() => {
+    const porDia = {};
+    for (const s of (sessions || [])) {
+      if (!s || !s.date) continue;
+      porDia[s.date] = (porDia[s.date] || 0) + (Number(s.minutes) || 0);
+    }
+
+    /* A grade termina no domingo da semana de hoje, para a última coluna
+       ser a semana atual e não uma semana pela metade no meio do quadro. */
+    const fim = new Date(`${today}T12:00:00`);
+    fim.setDate(fim.getDate() + (6 - fim.getDay()));
+
+    const cols = [];
+    let soma = 0, quantos = 0, seq = 0, melhor = 0;
+    for (let c = SEMANAS_CONSTANCIA - 1; c >= 0; c--) {
+      const coluna = [];
+      for (let d = 0; d < 7; d++) {
+        const dia = new Date(fim);
+        dia.setDate(fim.getDate() - (c * 7) - (6 - d));
+        const iso = dia.toISOString().slice(0, 10);
+        const min = porDia[iso] || 0;
+        if (iso <= today) {
+          if (min > 0) { soma += min; quantos += 1; seq += 1; melhor = Math.max(melhor, seq); }
+          else seq = 0;
+        }
+        coluna.push({ iso, min, futuro: iso > today });
+      }
+      cols.unshift(coluna);
+    }
+    return { colunas: cols, total: soma, dias: quantos, maiorSeq: melhor };
+  }, [sessions, today]);
+
+  /* Quatro tons, por faixa de minutos. Escala fixa e não relativa ao
+     próprio máximo: relativa, um dia de quatro horas encolheria todos os
+     outros para quase invisíveis, e a grade passaria a mentir sobre um ano
+     inteiro por causa de um domingo. */
+  const tom = (min) => {
+    if (min <= 0) return T.card2;
+    if (min < 30) return soft("var(--neon)", 22);
+    if (min < 90) return soft("var(--neon)", 45);
+    if (min < 180) return soft("var(--neon)", 70);
+    return "var(--neon)";
+  };
+
+  return (
+    <Card className="px-6 py-6">
+      <H size={18} color="var(--neon)" icon={<Flame size={16} />}>Constância</H>
+      <Texto style={{ marginTop: 8 }}>
+        {dias} dia{dias === 1 ? "" : "s"} de estudo no último ano
+        {maiorSeq > 1 ? ` · maior sequência: ${maiorSeq} dias seguidos` : ""}
+        {total ? ` · ${fmtMin(total)} no total` : ""}
+      </Texto>
+
+      <div style={{ overflowX: "auto", marginTop: 16, paddingBottom: 4 }}>
+        <div style={{ display: "flex", gap: 3, minWidth: 0 }}>
+          {colunas.map((col, i) => (
+            <div key={i} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              {col.map((d) => (
+                <span key={d.iso}
+                  title={d.futuro ? "" : `${brDate(d.iso)}: ${d.min ? fmtMin(d.min) : "nada"}`}
+                  style={{
+                    width: 11, height: 11, borderRadius: 3,
+                    background: d.futuro ? "transparent" : tom(d.min),
+                    border: d.futuro ? "none" : `1px solid ${T.line}`,
+                    display: "block",
+                  }} />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-3 flex items-center gap-2">
+        <Mini>menos</Mini>
+        {[0, 20, 60, 120, 240].map((m) => (
+          <span key={m} style={{ width: 11, height: 11, borderRadius: 3, background: tom(m), border: `1px solid ${T.line}` }} />
+        ))}
+        <Mini>mais</Mini>
+      </div>
+    </Card>
+  );
+}
+
 function Progresso({ data, byDay, today, totals, subjects }) {
   const ativo = useAtivo();
 
@@ -866,6 +899,7 @@ function Progresso({ data, byDay, today, totals, subjects }) {
 
   return (
     <div className="flex flex-col gap-5">
+      <Constancia sessions={data.sessions} today={today} />
       <Card className="px-6 sm:px-8 py-7">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-7">
           <div><Num size={34}>{fmtMin(totals.min)}</Num><Label style={{ marginTop: 9 }}>horas registradas</Label></div>
@@ -878,12 +912,6 @@ function Progresso({ data, byDay, today, totals, subjects }) {
             <Label style={{ marginTop: 9 }}>{totals.q ? `acerto em ${totals.q} questões` : "sem questões lançadas"}</Label>
           </div>
         </div>
-      </Card>
-
-      <Card className="px-6 py-6">
-        <H size={18} color="var(--ok)" icon={<Flame size={16} />}>Constância</H>
-        <Label style={{ marginTop: 4 }}>cada quadradinho é um dia, das últimas 22 semanas</Label>
-        <div className="mt-5"><Heatmap byDay={byDay} today={today} /></div>
       </Card>
 
       <Card className="px-5 sm:px-7 py-6">
