@@ -1299,6 +1299,9 @@ export default function Cadencia() {
         </div>
       ) : null}
 
+      {/* A aula que está gravando, visível em qualquer aba (ver parte24.jsx). */}
+      <AvisoGravandoAula irPara={setTab} />
+
       {toast ? (
         <div className="fixed left-1/2 bottom-7 rounded-full px-5 py-3"
           style={{ transform: "translateX(-50%)", background: T.card3, border: `1px solid ${T.line}`, color: T.ink, fontSize: 14.5, zIndex: 80, boxShadow: T.shadow, maxWidth: "90vw" }}>

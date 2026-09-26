@@ -873,6 +873,21 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
     };
   }, [aberto]);
 
+  /* Enquanto esta anotação estiver aberta, as notas de uma aula gravada
+     entram no EDITOR, e não direto nos dados — ver entregarNotasDaAula. */
+  useEffect(() => {
+    if (!aberto || !pronto) return undefined;
+    const inserir = (html) => {
+      const raiz = editorRef.current;
+      if (!raiz) return;
+      raiz.insertAdjacentHTML("beforeend", (raiz.innerHTML.trim() ? "<hr>" : "") + html);
+      aoMudar();
+    };
+    editoresAbertos.set(subjectId, inserir);
+    return () => { if (editoresAbertos.get(subjectId) === inserir) editoresAbertos.delete(subjectId); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aberto, pronto, subjectId]);
+
   const prepararParaSalvar = async () => {
     const raiz = editorRef.current;
     if (!raiz) return "";
@@ -1138,6 +1153,8 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
           <Btn size="sm" tone="outline" onClick={() => (cheia ? alternarCheia() : setAberto(false))}>fechar</Btn>
         </div>
       </div>
+
+      <GravarAula subjectId={subjectId} titulo={titulo} notify={notify} nuvem={nuvem} setData={setData} />
 
       <div className="flex items-center gap-1 flex-wrap rounded-xl px-2 py-1.5" style={{ background: T.card2, border: `1px solid ${T.line}`, position: "relative" }}>
         <BotaoFerramenta icon={<Bold size={15} />} title="Negrito" onClick={() => cmd("bold")} />

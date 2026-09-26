@@ -35,6 +35,12 @@ ARQUIVOS = [
     'recuperar.html',
     'regras-firestore.txt',
     'sql-asm.js',
+    # O codificador de MP3 da gravação de aula. Viaja à parte, e não dentro
+    # do app, por dois motivos: só quem converte áudio o baixa, e ele é
+    # LGPL-3.0 — a licença pede que continue sendo um arquivo separado e
+    # substituível, com o texto dela ao lado.
+    'lame.min.js',
+    'lame.LICENSE.txt',
     'favicon.ico',
     'icone-32.png',
     'icone-180.png',
@@ -120,6 +126,9 @@ CABECALHOS = """/index.html
   Cache-Control: public, max-age=604800
 
 /sql-asm.js
+  Cache-Control: public, max-age=2592000
+
+/lame.min.js
   Cache-Control: public, max-age=2592000
 
 /sw.js

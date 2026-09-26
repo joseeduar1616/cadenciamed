@@ -156,16 +156,24 @@ const pedacos = (conteudo) => (
 );
 
 function partesGemini(conteudo) {
-  return pedacos(conteudo).map((p) => (p.imagem
-    ? { inline_data: { mime_type: p.imagem.tipo, data: p.imagem.dados } }
-    : { text: p.texto || "" }));
+  return pedacos(conteudo).map((p) => {
+    const midia = p.imagem || p.audio;
+    return midia
+      ? { inline_data: { mime_type: midia.tipo, data: midia.dados } }
+      : { text: p.texto || "" };
+  });
 }
 
 function partesAnthropic(conteudo) {
   if (typeof conteudo === "string") return conteudo;
+  /* A API da Anthropic não recebe áudio. Quem precisa de áudio (a gravação
+     de aula) confere o provedor antes de chamar; isto aqui só impede que um
+     pedaço de áudio vire uma requisição malformada se algum dia escapar. */
   return pedacos(conteudo).map((p) => (p.imagem
     ? { type: "image", source: { type: "base64", media_type: p.imagem.tipo, data: p.imagem.dados } }
-    : { type: "text", text: p.texto || "" }));
+    : p.audio
+      ? { type: "text", text: "[trecho de áudio: este provedor não recebe áudio]" }
+      : { type: "text", text: p.texto || "" }));
 }
 
 /* ── Gemini ────────────────────────────────────────────────────────────
@@ -192,7 +200,7 @@ export async function chamarGemini(chave, modelo, { sistema, mensagens, maxSaida
     let real = "";
     try { real = (JSON.parse(detalhe).error || {}).message || ""; } catch (e) { /* texto puro */ }
     console.error("gemini", r.status, detalhe.slice(0, 500));
-    return { erro: recado(r.status, real, "gemini", modelo) };
+    return { erro: recado(r.status, real, "gemini", modelo), status: r.status, real };
   }
 
   const j = await r.json();
@@ -254,6 +262,13 @@ export function escolherProvedor(env) {
   if (gem) return { nome: "gemini", chave: gem };
   if (ant) return { nome: "anthropic", chave: ant };
   return null;
+}
+
+/* Quem entende áudio. Só o Gemini recebe áudio, então a gravação de aula
+   usa ele mesmo quando IA_PROVEDOR aponta para a Anthropic — desde que a
+   chave dele exista. */
+export function provedorDeAudio(env) {
+  return env.GEMINI_API_KEY ? { nome: "gemini", chave: env.GEMINI_API_KEY } : null;
 }
 
 export function modeloAtual(provedor, env) {

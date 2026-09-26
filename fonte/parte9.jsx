@@ -999,8 +999,65 @@ function juntarAnexos(anexos) {
     .slice(0, TETO_ANEXO);
 }
 
+/* ── o histórico das conversas ────────────────────────────────────────
+ *
+ * As conversas ficam no servidor (worker/api/conversas.js), e não junto
+ * dos dados de estudo: o documento de estudo tem teto de 1 MiB, e uma
+ * dúzia de conversas longas o estouraria, travando a sincronização do
+ * cronograma inteiro.
+ *
+ * A conversa aberta também fica guardada no aparelho, a cada mensagem.
+ * Trocar de aba desmonta a tela; sem essa cópia, a conversa sumia antes
+ * mesmo de chegar ao servidor.
+ */
+const ROTA_CONVERSAS = "/api/conversas";
+const CHAVE_CONVERSA_ABERTA = "cadencia:v3:conversa-aberta";
+
+function lerConversaAberta() {
+  try {
+    const j = JSON.parse(window.localStorage.getItem(CHAVE_CONVERSA_ABERTA) || "null");
+    if (!j || !Array.isArray(j.msgs)) return { id: "", msgs: [] };
+    return {
+      id: typeof j.id === "string" ? j.id : "",
+      msgs: j.msgs.filter((m) => m && (m.papel === "user" || m.papel === "claude") && typeof m.texto === "string"),
+    };
+  } catch (e) { return { id: "", msgs: [] }; }
+}
+
+function guardarConversaAberta(id, msgs) {
+  try {
+    if (!msgs.length) window.localStorage.removeItem(CHAVE_CONVERSA_ABERTA);
+    else window.localStorage.setItem(CHAVE_CONVERSA_ABERTA, JSON.stringify({ id: id || "", msgs }));
+  } catch (e) { /* aparelho sem espaço: a cópia do servidor continua valendo */ }
+}
+
+async function falarComConversas(nuvem, corpo) {
+  let token = "";
+  try {
+    if (nuvem && nuvem.sdk && nuvem.sdk.auth && nuvem.sdk.auth.currentUser) {
+      token = await nuvem.sdk.auth.currentUser.getIdToken();
+    }
+  } catch (e) { /* sem conta, a rota recusa */ }
+  if (!token) return { erro: "Entre na sua conta para guardar as conversas." };
+  const { dados, erro } = await chamarApi(ROTA_CONVERSAS, { ...corpo, token }, "O histórico");
+  return erro ? { erro } : (dados || {});
+}
+
+const quandoFoiConversa = (ms) => {
+  const d = new Date(Number(ms) || 0);
+  if (!ms) return "";
+  const hoje = todayISO();
+  const dia = toISO(d);
+  if (dia === hoje) return `hoje, ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return brDate(dia);
+};
+
 function Assistente({ data, setData, subjects, ladder, today, totals, minWeek, qWeek, notify, nuvem }) {
-  const [msgs, setMsgs] = useState([]);
+  const aberta = useMemo(lerConversaAberta, []);
+  const [msgs, setMsgs] = useState(aberta.msgs);
+  const [conversaId, setConversaId] = useState(aberta.id);
+  const [historico, setHistorico] = useState(null);     // null = fechado; [] = aberto
+  const [carregandoHist, setCarregandoHist] = useState(false);
   const [txt, setTxt] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState("");
@@ -1022,6 +1079,46 @@ function Assistente({ data, setData, subjects, ladder, today, totals, minWeek, q
     if (distancia > 160) return;
     caixa.scrollTop = caixa.scrollHeight;
   }, [msgs, ocupado]);
+
+  useEffect(() => { guardarConversaAberta(conversaId, msgs); }, [conversaId, msgs]);
+
+  /* Guarda no servidor depois de cada resposta. O id volta na primeira
+     vez, e daí em diante a mesma conversa é atualizada. */
+  const guardarNoServidor = useCallback(async (lista, id) => {
+    const j = await falarComConversas(nuvem, { acao: "salvar", id: id || undefined, mensagens: lista });
+    if (!j.erro && j.id) setConversaId(j.id);
+  }, [nuvem]);
+
+  const abrirHistorico = useCallback(async () => {
+    if (historico) { setHistorico(null); return; }
+    setCarregandoHist(true);
+    const j = await falarComConversas(nuvem, { acao: "listar" });
+    setCarregandoHist(false);
+    if (j.erro) { notify(j.erro); return; }
+    setHistorico(j.conversas || []);
+  }, [historico, nuvem, notify]);
+
+  const abrirConversa = useCallback(async (id) => {
+    setCarregandoHist(true);
+    const j = await falarComConversas(nuvem, { acao: "abrir", id });
+    setCarregandoHist(false);
+    if (j.erro) { notify(j.erro); return; }
+    setMsgs(j.mensagens || []);
+    setConversaId(j.id || id);
+    setHistorico(null);
+    setErro("");
+  }, [nuvem, notify]);
+
+  const apagarConversa = useCallback(async (id) => {
+    const j = await falarComConversas(nuvem, { acao: "apagar", id });
+    if (j.erro) { notify(j.erro); return; }
+    setHistorico((h) => (h || []).filter((c) => c.id !== id));
+    if (id === conversaId) { setMsgs([]); setConversaId(""); }
+  }, [nuvem, notify, conversaId]);
+
+  const novaConversa = () => {
+    setMsgs([]); setConversaId(""); setErro(""); setHistorico(null);
+  };
 
   const aplicarAcoes = useCallback((texto) => {
     const m = texto.match(/<acoes>([\s\S]*?)<\/acoes>/i);
@@ -1085,8 +1182,8 @@ function Assistente({ data, setData, subjects, ladder, today, totals, minWeek, q
     if (!p || ocupado) return;
     setErro("");
     setTxt("");
-    const historico = [...msgs, { papel: "user", texto: p }];
-    setMsgs(historico);
+    const ateAqui = [...msgs, { papel: "user", texto: p }];
+    setMsgs(ateAqui);
     setOcupado(true);
     try {
       let tokenFirebase = "";
@@ -1100,23 +1197,25 @@ function Assistente({ data, setData, subjects, ladder, today, totals, minWeek, q
         contexto: resumoParaIA({ subjects, ladder, data, today, totals, minWeek, qWeek, totalBonus: ativo.totalBonus }),
         instrucoes: INSTRUCOES_IA,
         anexo: anexos.length ? juntarAnexos(anexos) : "",
-        mensagens: historico.slice(-14).map((m) => ({
+        mensagens: ateAqui.slice(-14).map((m) => ({
           role: m.papel === "user" ? "user" : "assistant",
           content: m.texto,
         })),
       }, "O assistente");
-      if (falha) { setErro(falha); setMsgs(historico); return; }
+      if (falha) { setErro(falha); setMsgs(ateAqui); return; }
       if (!j || !j.texto) {
         setErro("O assistente não respondeu. Tente de novo em alguns instantes.");
         return;
       }
       const { limpo, feitas } = aplicarAcoes(j.texto);
-      setMsgs([...historico, { papel: "claude", texto: limpo || j.texto, cortado: !!j.cortado }]);
+      const comResposta = [...ateAqui, { papel: "claude", texto: limpo || j.texto, cortado: !!j.cortado }];
+      setMsgs(comResposta);
+      guardarNoServidor(comResposta, conversaId);
       if (feitas) notify(`${feitas} ite${feitas === 1 ? "m adicionado" : "ns adicionados"} ao painel.`);
     } catch (e) {
       setErro("Não consegui falar com o assistente. Verifique a conexão.");
     } finally { setOcupado(false); }
-  }, [txt, ocupado, msgs, anexos, subjects, ladder, data, today, totals, minWeek, qWeek, aplicarAcoes, notify, nuvem]);
+  }, [txt, ocupado, msgs, anexos, subjects, ladder, data, today, totals, minWeek, qWeek, aplicarAcoes, notify, nuvem, conversaId, guardarNoServidor]);
 
   const sugestoes = [
     "O que eu deveria estudar hoje?",
@@ -1144,6 +1243,55 @@ function Assistente({ data, setData, subjects, ladder, today, totals, minWeek, q
       </Card>
 
       <Card className="flex flex-col" style={{ minHeight: 420 }}>
+        {/* ── nova conversa e histórico ─────────────────────────────── */}
+        <div className="px-5 sm:px-6 pt-4 pb-3 flex items-center justify-between gap-2 flex-wrap"
+          style={{ borderBottom: `1px solid ${T.line}` }}>
+          <Mini style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: "1 1 160px" }}>
+            {msgs.length
+              ? (conversaId ? "conversa guardada" : "conversa nova · é guardada na primeira resposta")
+              : "nenhuma conversa aberta"}
+          </Mini>
+          <div className="flex items-center gap-2">
+            <Btn size="sm" tone={historico ? "primary" : "quiet"} onClick={abrirHistorico} disabled={carregandoHist}>
+              <History size={14} /> {carregandoHist && !historico ? "abrindo…" : "Histórico"}
+            </Btn>
+            <Btn size="sm" tone="outline" onClick={novaConversa} disabled={!msgs.length || ocupado}>
+              <MessageSquarePlus size={14} /> Nova
+            </Btn>
+          </div>
+        </div>
+
+        {historico ? (
+          <div className="px-5 sm:px-6 py-4 flex flex-col gap-2" style={{ borderBottom: `1px solid ${T.line}`, maxHeight: 340, overflowY: "auto" }}>
+            {historico.length === 0 ? (
+              <Mini>Nenhuma conversa guardada ainda. Elas aparecem aqui depois da primeira resposta.</Mini>
+            ) : historico.map((c) => (
+              <div key={c.id} className="flex items-center gap-2 rounded-xl"
+                style={{
+                  background: c.id === conversaId ? soft("var(--neon)", 12) : T.card2,
+                  border: `1px solid ${c.id === conversaId ? soft("var(--neon)", 40) : T.line}`,
+                }}>
+                <button type="button" onClick={() => abrirConversa(c.id)}
+                  className="flex-1 min-w-0 text-left px-3.5 py-2.5"
+                  style={{ background: "none", border: "none", cursor: "pointer", color: T.ink }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {c.titulo || "Conversa"}
+                  </div>
+                  <Mini style={{ marginTop: 2 }}>
+                    {quandoFoiConversa(c.atualizadoEm)} · {c.mensagens} mensage{c.mensagens === 1 ? "m" : "ns"}
+                  </Mini>
+                </button>
+                <button type="button" aria-label={`Apagar a conversa ${c.titulo}`} title="Apagar esta conversa"
+                  onClick={() => apagarConversa(c.id)}
+                  className="flex items-center justify-center rounded-full"
+                  style={{ width: 30, height: 30, marginRight: 8, flexShrink: 0, background: "none", border: `1px solid ${T.line}`, color: T.ghost, cursor: "pointer" }}>
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
         <div ref={conversa} className="flex-1 px-5 sm:px-6 py-5 flex flex-col gap-4"
           style={{ maxHeight: 520, overflowY: "auto", overscrollBehavior: "contain" }}>
           {msgs.length === 0 ? (

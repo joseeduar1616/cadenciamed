@@ -27,6 +27,8 @@ import { onRequest as questoesIa } from "./api/questoes-ia.js";
 import { onRequest as provasIa } from "./api/provas-ia.js";
 import { onRequest as provas } from "./api/provas.js";
 import { onRequest as push, enviarRodada } from "./api/push.js";
+import { onRequest as conversas } from "./api/conversas.js";
+import { onRequest as aulaIa } from "./api/aula-ia.js";
 
 const ROTAS = {
   "/api/assistente": assistente,
@@ -49,6 +51,8 @@ const ROTAS = {
   "/api/provas-ia": provasIa,
   "/api/provas": provas,
   "/api/push": push,
+  "/api/conversas": conversas,
+  "/api/aula-ia": aulaIa,
 };
 
 /* ── quem pode chamar de outro endereço ────────────────────────────────
