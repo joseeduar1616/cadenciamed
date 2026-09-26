@@ -15,6 +15,7 @@ import {
   Palette, Highlighter, ImagePlus, NotebookPen, FileDown, FolderInput,
   Folder, FolderPlus, ALargeSmall, Camera, Flag, CalendarClock,
   Dumbbell, Timer, Ruler, TrendingUp, Youtube, Calculator, Music,
+  Brain, Mic, Lightbulb, History, MessageSquarePlus, CircleStop, AudioLines,
 } from "lucide-react";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip,
@@ -451,6 +452,364 @@ function limparDias(lista) {
     .sort((a, b) => a - b)
     .slice(0, MAX_DEGRAUS);
   return dias;
+}
+
+/* ── o perfil de memória: de que escada ESTA pessoa precisa ───────────
+ *
+ * A escada de revisão costuma ser escolhida num cardápio — 1-7-30-90,
+ * Leitner, "intensivo" — sem nada dizendo qual serve para quem está
+ * escolhendo. Seis perguntas curtas resolvem isso melhor que o cardápio:
+ * elas estimam quão depressa esta pessoa esquece, quanto cada revisão
+ * rende para ela, e até quando ela precisa lembrar. Disso sai a escada.
+ *
+ * O modelo, em três linhas, e é o mesmo da literatura de espaçamento:
+ *
+ *   1. A lembrança cai como R(t) = e^(-t/S), onde S é a "estabilidade"
+ *      da memória, em dias. Quem esquece rápido tem S pequeno.
+ *   2. Cada revisão feita na hora certa multiplica S por um fator g. É o
+ *      que faz os intervalos CRESCEREM. Tentar lembrar sem olhar (questão,
+ *      explicar em voz alta) rende mais que reler — o efeito de teste —,
+ *      então o jeito de estudar entra em g, e não em S.
+ *   3. A próxima revisão cai quando a lembrança prevista chega ao alvo:
+ *      intervalo = S × ln(1/alvo). Prova perto pede alvo alto (mais
+ *      revisões, mais segurança); prova longe aceita alvo menor.
+ *
+ * As respostas não são guardadas como rótulo, e sim como número: é isso
+ * que deixa o cálculo testável, e é o que permite mudar o texto de uma
+ * pergunta sem invalidar o perfil de quem já respondeu.
+ */
+const PERGUNTAS_MEMORIA = [
+  {
+    id: "esquece",
+    texto: "Depois de estudar um assunto novo, quando você já não consegue explicar a maior parte dele?",
+    opcoes: [
+      { rotulo: "No mesmo dia", valor: 0.5 },
+      { rotulo: "No dia seguinte", valor: 1 },
+      { rotulo: "Em 2 ou 3 dias", valor: 2.5 },
+      { rotulo: "Em uma semana", valor: 7 },
+      { rotulo: "Depois de mais de uma semana", valor: 12 },
+    ],
+  },
+  {
+    id: "jeito",
+    texto: "Qual é o seu jeito mais comum de estudar um tema?",
+    opcoes: [
+      { rotulo: "Reler o material", valor: 1.6 },
+      { rotulo: "Ler e grifar", valor: 1.7 },
+      { rotulo: "Fazer resumo ou mapa", valor: 2.0 },
+      { rotulo: "Resolver questões", valor: 2.5 },
+      { rotulo: "Explicar em voz alta, sem olhar", valor: 2.6 },
+    ],
+  },
+  {
+    id: "memoria",
+    texto: "Comparando com seus colegas, a sua memória para detalhes é…",
+    opcoes: [
+      { rotulo: "Bem pior", valor: 0.7 },
+      { rotulo: "Um pouco pior", valor: 0.85 },
+      { rotulo: "Parecida", valor: 1 },
+      { rotulo: "Um pouco melhor", valor: 1.15 },
+      { rotulo: "Bem melhor", valor: 1.3 },
+    ],
+  },
+  {
+    id: "ativo",
+    texto: "Quanto do seu tempo de estudo é tentando lembrar, sem olhar a resposta?",
+    opcoes: [
+      { rotulo: "Quase nada", valor: 0.8 },
+      { rotulo: "Uns 25%", valor: 0.9 },
+      { rotulo: "Metade", valor: 1 },
+      { rotulo: "Uns 75%", valor: 1.1 },
+      { rotulo: "Quase todo", valor: 1.2 },
+    ],
+  },
+  {
+    id: "revisar",
+    texto: "Quando você volta a um tema depois de alguns dias, em geral…",
+    opcoes: [
+      { rotulo: "Parece que nunca vi", valor: 0.75 },
+      { rotulo: "Reconheço, mas não lembro", valor: 0.9 },
+      { rotulo: "Lembro com esforço", valor: 1 },
+      { rotulo: "Lembro quase tudo", valor: 1.12 },
+      { rotulo: "Lembro tudo, só confirmo", valor: 1.25 },
+    ],
+  },
+  {
+    id: "prazo",
+    texto: "Até quando você precisa lembrar disso?",
+    opcoes: [
+      { rotulo: "Prova em menos de 1 mês", valor: 25 },
+      { rotulo: "Prova em 1 a 3 meses", valor: 75 },
+      { rotulo: "Prova em 3 a 6 meses", valor: 150 },
+      { rotulo: "Prova em mais de 6 meses", valor: 270 },
+      { rotulo: "Sem data: quero guardar para a vida", valor: 365 },
+    ],
+  },
+];
+
+/* Quanto da lembrança "a maior parte esquecida" representa. Com 35%
+   sobrando, S = dias ÷ ln(1/0,35) ≈ dias ÷ 1,05. */
+const LEMBRANCA_QUE_SOBRA = 0.35;
+
+/* O alvo de lembrança na hora de revisar, pelo tempo até a prova. */
+function alvoDoPrazo(dias) {
+  const d = Number(dias);
+  if (!Number.isFinite(d)) return 0.88;
+  if (d <= 30) return 0.92;
+  if (d <= 90) return 0.9;
+  if (d <= 180) return 0.88;
+  if (d <= 300) return 0.85;
+  return 0.82;
+}
+
+/* O perfil a partir das respostas. Pergunta sem resposta vale o meio da
+   escala, e a data da prova cadastrada ganha da resposta de prazo: ela é
+   exata, a resposta é uma faixa. */
+function perfilDeMemoria(respostas, diasAteProva) {
+  const r = respostas || {};
+  const num = (id, padrao) => {
+    const v = Number(r[id]);
+    return Number.isFinite(v) && v > 0 ? v : padrao;
+  };
+  const esquece = Math.min(30, num("esquece", 2.5));
+  const memoria = Math.min(1.5, Math.max(0.5, num("memoria", 1)));
+  const revisar = Math.min(1.5, Math.max(0.5, num("revisar", 1)));
+  const jeito = Math.min(3, Math.max(1.2, num("jeito", 2)));
+  const ativo = Math.min(1.5, Math.max(0.5, num("ativo", 1)));
+
+  const estabilidade = (esquece / Math.log(1 / LEMBRANCA_QUE_SOBRA)) * memoria * revisar;
+  /* O quanto se estuda ativamente puxa o ganho para cima ou para baixo,
+     mas nunca abaixo de 1,3: uma revisão sempre ajuda um pouco. */
+  const crescimento = Math.max(1.3, 1 + (jeito - 1) * ativo);
+
+  const prova = Number(diasAteProva);
+  const horizonte = Number.isFinite(prova) && prova > 0
+    ? Math.min(400, Math.max(7, Math.round(prova)))
+    : Math.round(num("prazo", 150));
+
+  return {
+    estabilidade: Math.round(estabilidade * 100) / 100,
+    crescimento: Math.round(crescimento * 100) / 100,
+    alvo: alvoDoPrazo(horizonte),
+    horizonte,
+  };
+}
+
+/* A escada que sai do perfil.
+ *
+ * Duas travas que o cálculo puro não tem, e que a pessoa sentiria:
+ *   · o espaço entre revisões nunca encolhe nem se repete: cada intervalo
+ *     é pelo menos um dia maior que o anterior. Sem isso, quem esquece
+ *     muito rápido receberia 1, 2, 3 — três dias seguidos do mesmo
+ *     assunto, que é revisar sem dar tempo de esquecer nada. E intervalo
+ *     que cresce é justamente o que a literatura manda;
+ *   · no mínimo duas revisões, mesmo com a prova amanhã: uma só não
+ *     consolida nada, e é o que a pessoa pediria de qualquer jeito. */
+const MAX_DEGRAUS_PERFIL = 8;
+
+function escadaDoPerfil(perfil) {
+  const p = perfil || {};
+  const S0 = Number(p.estabilidade) > 0 ? Number(p.estabilidade) : 2.4;
+  const g = Number(p.crescimento) > 1 ? Number(p.crescimento) : 2;
+  const alvo = Number(p.alvo) > 0 && Number(p.alvo) < 1 ? Number(p.alvo) : 0.88;
+  const horizonte = Number(p.horizonte) > 0 ? Number(p.horizonte) : 150;
+
+  const dias = [];
+  let S = S0;
+  let t = 0;
+  let intervalo = 0;
+  while (dias.length < MAX_DEGRAUS_PERFIL) {
+    t += S * Math.log(1 / alvo);
+    const anterior = dias.length ? dias[dias.length - 1] : 0;
+    let dia = Math.max(1, Math.round(t));
+    if (anterior) dia = Math.max(dia, anterior + intervalo + 1);
+    if (dia > horizonte && dias.length >= 2) break;
+    intervalo = dia - anterior;
+    dias.push(Math.min(3650, dia));
+    /* O relógio acompanha o degrau de verdade: se a trava empurrou a
+       revisão para depois, a próxima conta a partir dali. */
+    t = dia;
+    S *= g;
+  }
+  return dias;
+}
+
+/* A lembrança prevista num dia, com as revisões da escada ou sem nenhuma.
+   É o que desenha a curva: o dente de serra que sobe a cada revisão e cai
+   devagar, contra a curva lisa de quem estudou uma vez e parou. */
+function lembrancaNoDia(perfil, dias, t, comRevisoes) {
+  const S0 = Number((perfil || {}).estabilidade) > 0 ? Number(perfil.estabilidade) : 2.4;
+  const g = Number((perfil || {}).crescimento) > 1 ? Number(perfil.crescimento) : 2;
+  if (!comRevisoes) return Math.exp(-t / S0);
+  let S = S0;
+  let ultima = 0;
+  for (const d of (dias || [])) {
+    if (d > t) break;
+    ultima = d;
+    S *= g;
+  }
+  return Math.exp(-(t - ultima) / S);
+}
+
+function curvaDeRetencao(perfil, dias, ate, pontos = 80) {
+  const fim = Math.max(1, Number(ate) || 1);
+  const fora = [];
+  for (let i = 0; i <= pontos; i++) {
+    const t = (fim * i) / pontos;
+    fora.push({
+      dia: Math.round(t * 10) / 10,
+      com: Math.round(lembrancaNoDia(perfil, dias, t, true) * 1000) / 10,
+      sem: Math.round(lembrancaNoDia(perfil, dias, t, false) * 1000) / 10,
+    });
+  }
+  return fora;
+}
+
+/* ── cartões: o quanto você sabe cada um, e a múltipla escolha ────────
+ *
+ * "Confiança" no baralho não é quantos cartões você já viu nem quantos
+ * acertou da última vez: é a chance de lembrar HOJE, estimada pelo próprio
+ * agendamento do cartão. O agendador marca a próxima revisão para quando a
+ * lembrança cai a ~90%; então, a meio caminho do intervalo, ela está perto
+ * de 95%, e um cartão atrasado há dois intervalos está perto de 81%. Isso
+ * faz a barra cair sozinha com o tempo sem estudo, que é o que a memória
+ * faz — um número que só sobe mentiria.
+ */
+/* As cores que um baralho pode ter. São as variáveis do tema, e não
+   códigos fixos: assim a cor continua legível no tema claro e no escuro,
+   que é o que um "#FFD400" escolhido à mão não garante. */
+const CORES_BARALHO = [
+  { id: "neon", nome: "Roxo" },
+  { id: "a-CL", nome: "Azul" },
+  { id: "ok", nome: "Verde" },
+  { id: "a-GO", nome: "Rosa" },
+  { id: "warn", nome: "Âmbar" },
+  { id: "bad", nome: "Vermelho" },
+  { id: "a-PE", nome: "Laranja" },
+  { id: "a-PR", nome: "Turquesa" },
+];
+const corDoBaralho = (id) =>
+  `var(--${CORES_BARALHO.some((c) => c.id === id) ? id : "neon"})`;
+
+function diasEntreISO(a, b) {
+  const x = Date.parse(String(a || "") + "T00:00:00Z");
+  const y = Date.parse(String(b || "") + "T00:00:00Z");
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return Math.round((y - x) / 86400000);
+}
+
+function chanceDeLembrar(c, hoje) {
+  if (!c || !(Number(c.revisoes) > 0)) return 0;
+  const inter = Number(c.inter) || 0;
+  /* Intervalo zero é cartão que acabou de ser errado: está na fila de hoje
+     de novo. Nem sabido, nem esquecido. */
+  if (inter <= 0) return 0.5;
+  const faltam = diasEntreISO(hoje, c.prox);
+  if (faltam === null) return 0.5;
+  const decorrido = Math.max(0, inter - faltam);
+  return Math.max(0, Math.min(1, Math.pow(0.9, decorrido / inter)));
+}
+
+/* A confiança de um baralho, em porcentagem, ou null quando ele está vazio
+   — um baralho sem cartão não tem 0% de confiança, não tem nada. */
+function confiancaDoBaralho(cartoes, hoje) {
+  const lista = Array.isArray(cartoes) ? cartoes.filter(Boolean) : [];
+  if (!lista.length) return null;
+  const soma = lista.reduce((n, c) => n + chanceDeLembrar(c, hoje), 0);
+  return Math.round((soma / lista.length) * 100);
+}
+
+/* As alternativas de um cartão em múltipla escolha.
+ *
+ * As erradas vêm das respostas dos OUTROS cartões — do mesmo baralho
+ * primeiro, porque é de lá que sai a confusão que vale treinar (troponina
+ * contra CK-MB, e não troponina contra "Guerra do Paraguai"). Nenhuma
+ * chamada à IA: é instantâneo, não gasta cota e funciona sem internet.
+ *
+ * Duas respostas iguais, escritas de jeito diferente, não podem aparecer
+ * como alternativas distintas: a pessoa escolheria a "errada" que é a
+ * certa, e o cartão marcaria erro. A comparação ignora caixa, acento e
+ * pontuação. */
+/* O texto de uma resposta como ele aparece numa alternativa: sem os
+   marcadores de figura, sem etiqueta de HTML, espaços juntos. Uma resposta
+   que é só figura sobra vazia — e vazia não vira alternativa, senão
+   aparecia um botão em branco para a pessoa escolher. */
+function textoDaAlternativa(s) {
+  return String(s || "")
+    .replace(/\[\[img:[^\]]*\]\]/g, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const chaveResposta = (s) => String(s || "")
+  .normalize("NFD").replace(/[̀-ͯ]/g, "")
+  .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+function alternativasDoCartao(cartao, outros, sorteio = Math.random, quantas = 4) {
+  const certa = textoDaAlternativa(cartao && cartao.verso);
+  if (!certa) return { possivel: false, opcoes: [] };
+  const vistas = new Set([chaveResposta(certa)]);
+
+  const candidatas = [];
+  for (const o of (outros || [])) {
+    if (!o || o.id === cartao.id) continue;
+    const t = textoDaAlternativa(o.verso);
+    const k = chaveResposta(t);
+    if (!k || vistas.has(k)) continue;
+    vistas.add(k);
+    candidatas.push({ texto: t, mesmo: o.baralho === cartao.baralho && o.pasta === cartao.pasta });
+  }
+  /* Do mesmo baralho primeiro, sorteadas dentro de cada grupo. */
+  const embaralhar = (l) => {
+    const a = l.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(sorteio() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  };
+  const ordem = [
+    ...embaralhar(candidatas.filter((c) => c.mesmo)),
+    ...embaralhar(candidatas.filter((c) => !c.mesmo)),
+  ];
+  const erradas = ordem.slice(0, Math.max(1, quantas - 1));
+  /* Com menos de duas erradas vira um cara ou coroa, e o cartão volta para
+     o modo de virar. */
+  if (erradas.length < 2) return { possivel: false, opcoes: [] };
+
+  const opcoes = embaralhar([
+    { texto: certa, certa: true },
+    ...erradas.map((e) => ({ texto: e.texto, certa: false })),
+  ]);
+  return { possivel: true, opcoes };
+}
+
+/* A nota que uma resposta de múltipla escolha vale no agendador.
+ *
+ * Acertar numa lista de quatro é mais fácil que lembrar do nada, então o
+ * teto é "bom" — só vira "fácil" quando foi rápido, que é o sinal de que a
+ * resposta veio da memória, e não da eliminação. Usar a dica é acertar
+ * com ajuda: "difícil". Revelar ou errar é "errei", e o cartão volta hoje. */
+const SEGUNDOS_RESPOSTA_RAPIDA = 6;
+
+function notaDaEscolha({ acertou, usouDica, revelou, segundos } = {}) {
+  if (revelou || !acertou) return "errei";
+  if (usouDica) return "dificil";
+  const s = Number(segundos);
+  if (Number.isFinite(s) && s >= 0 && s <= SEGUNDOS_RESPOSTA_RAPIDA) return "facil";
+  return "bom";
+}
+
+/* Pontos da sessão. A sequência dá bônus, mas limitado: sem teto, uma
+   sequência longa valeria mais que o estudo em si, e a pessoa passaria a
+   evitar cartão difícil para não quebrá-la. */
+function pontosDaResposta(nota, sequencia) {
+  const base = { errei: 0, dificil: 5, bom: 10, facil: 15 }[nota] || 0;
+  if (!base) return 0;
+  const seq = Math.max(0, Math.min(5, Math.round(Number(sequencia) || 0)));
+  return base + seq * 2;
 }
 
 /* ── a ficha de cada tópico ───────────────────────────────────────────

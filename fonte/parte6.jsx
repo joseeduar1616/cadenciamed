@@ -446,6 +446,172 @@ const Leg = ({ color, t }) => (
   </span>
 );
 
+/* ── o teste de memória ───────────────────────────────────────────────
+ *
+ * Seis perguntas que dizem de que escada de revisão ESTA pessoa precisa,
+ * em vez de ela escolher num cardápio de nomes sem saber qual serve.
+ * O cálculo mora no base.jsx (perfilDeMemoria, escadaDoPerfil) e está
+ * testado no testar-memoria.mjs; aqui é a tela.
+ *
+ * O resultado não é uma "categoria" de estudante, é uma escada de dias —
+ * e ela só vale quando a pessoa aperta "usar". Até lá o teste é só uma
+ * simulação, e a escada em uso continua a de antes.
+ */
+function TesteDeMemoria({ data, setData, notify }) {
+  const pm = data.perfilMemoria || {};
+  const [aberto, setAberto] = useState(!pm.aplicadoEm);
+  const [resp, setResp] = useState(() => ({ ...(pm.respostas || {}) }));
+
+  /* A data da prova cadastrada no perfil ganha da pergunta de prazo: ela é
+     exata, e a pergunta é uma faixa. */
+  const prova = data.profile && data.profile.examDate;
+  const diasProva = prova ? diasEntreISO(todayISO(), prova) : null;
+  const temData = Number.isFinite(diasProva) && diasProva > 0;
+  const perguntas = PERGUNTAS_MEMORIA.filter((q) => !(q.id === "prazo" && temData));
+  const respondidas = perguntas.filter((q) => resp[q.id] !== undefined).length;
+  const completo = respondidas === perguntas.length;
+
+  const perfil = useMemo(() => perfilDeMemoria(resp, temData ? diasProva : null), [resp, temData, diasProva]);
+  const dias = useMemo(() => escadaDoPerfil(perfil), [perfil]);
+  const curva = useMemo(() => curvaDeRetencao(perfil, dias, perfil.horizonte), [perfil, dias]);
+  const noFim = curva[curva.length - 1] || { com: 0, sem: 0 };
+
+  const usar = () => {
+    setData((x) => ({
+      ...x,
+      revisao: { esquema: "personalizado", dias },
+      perfilMemoria: { respostas: resp, dias, aplicadoEm: todayISO() },
+    }));
+    setAberto(false);
+    notify(`Escada do seu perfil em uso: ${dias.length} revisões por assunto.`);
+  };
+
+  const tip = { background: T.card3, border: `1px solid ${T.line}`, borderRadius: 14, color: T.ink, fontSize: 13.5, boxShadow: T.shadow };
+  const emUso = pm.aplicadoEm && (data.revisao || {}).esquema === "personalizado"
+    && JSON.stringify((data.revisao || {}).dias) === JSON.stringify(pm.dias);
+
+  if (!aberto) {
+    return (
+      <Card className="px-6 py-5" brilho="var(--neon)">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <H size={17} color="var(--neon)" icon={<Brain size={16} />}>Seu perfil de memória</H>
+          <Btn size="sm" tone="outline" onClick={() => setAberto(true)}>refazer o teste</Btn>
+        </div>
+        <Texto style={{ marginTop: 8 }}>
+          {emUso
+            ? <>Suas revisões seguem a escada do seu teste de {brDate(pm.aplicadoEm)}:{" "}
+                <span style={{ fontFamily: F_MONO, color: T.ink }}>{pm.dias.map(rotuloDias).join(" · ")}</span></>
+            : <>Você trocou de escada depois do teste. Refaça, ou volte a usar a dele quando quiser.</>}
+        </Texto>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="px-6 py-6" brilho="var(--neon)">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <H size={18} color="var(--neon)" icon={<Brain size={16} />}>Descubra a sua escada de revisão</H>
+        {pm.aplicadoEm ? <Btn size="sm" tone="quiet" onClick={() => setAberto(false)}>fechar</Btn> : null}
+      </div>
+      <Texto style={{ marginTop: 8 }}>
+        Cada pessoa esquece num ritmo diferente, e uma escada que serve para uma
+        revisa cedo demais ou tarde demais para outra. Responda com sinceridade:
+        daqui sai quando cada assunto volta para você.
+      </Texto>
+
+      <div className="mt-5 flex flex-col gap-5">
+        {perguntas.map((q, i) => (
+          <div key={q.id}>
+            <Label>{i + 1}. {q.texto}</Label>
+            <div className="mt-2.5 flex flex-wrap gap-2">
+              {q.opcoes.map((o) => {
+                const on = resp[q.id] === o.valor;
+                return (
+                  <button key={o.rotulo} type="button"
+                    onClick={() => setResp((r) => ({ ...r, [q.id]: o.valor }))}
+                    className="rounded-full px-3.5 py-2 brilhar"
+                    style={{
+                      fontSize: 13.5, cursor: "pointer",
+                      background: on ? soft("var(--neon)", 16) : T.card2,
+                      border: `1px solid ${on ? soft("var(--neon)", 55) : T.line}`,
+                      color: on ? "var(--neon)" : T.dim, fontWeight: on ? 700 : 500,
+                    }}>
+                    {o.rotulo}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+        {temData ? (
+          <Mini style={{ lineHeight: 1.6 }}>
+            O prazo vem da data da sua prova, {brDate(prova)} — daqui a {diasProva} dias.
+          </Mini>
+        ) : null}
+      </div>
+
+      {/* ── o resultado ──────────────────────────────────────────────────
+          Aparece desde a primeira resposta, e vai mudando: ver a escada
+          reagir a cada resposta é o que faz a pessoa entender o que cada
+          pergunta estava medindo. */}
+      <div className="mt-6 pt-5" style={{ borderTop: `1px solid ${T.line}` }}>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <Label>A escada que sai das suas respostas</Label>
+          <Mini>{respondidas} de {perguntas.length} respondidas</Mini>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {dias.map((d, i) => (
+            <span key={d} style={{
+              fontFamily: F_MONO, fontSize: 12, borderRadius: 99, padding: "4px 10px",
+              background: T.card2, border: `1px solid ${T.line}`, color: T.ink,
+            }}>{i + 1}ª · {rotuloDias(d)}</span>
+          ))}
+        </div>
+
+        <div className="mt-4" style={{ height: 190 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={curva} margin={{ top: 6, right: 6, left: -24, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="2 5" stroke="var(--line)" vertical={false} />
+              <XAxis dataKey="dia" type="number" domain={[0, perfil.horizonte]}
+                tick={{ fill: "var(--ghost)", fontSize: 10, fontFamily: F_MONO }} axisLine={false} tickLine={false}
+                tickFormatter={(v) => `${Math.round(v)}d`} />
+              <YAxis domain={[0, 100]} tick={{ fill: "var(--ghost)", fontSize: 10, fontFamily: F_MONO }}
+                axisLine={false} tickLine={false} tickFormatter={(v) => `${v}%`} />
+              <Tooltip contentStyle={tip}
+                labelFormatter={(v) => `dia ${Math.round(v)}`}
+                formatter={(v, k) => [`${Math.round(v)}%`, k === "com" ? "revisando" : "sem revisar"]} />
+              <Line type="linear" dataKey="sem" stroke="var(--bad)" strokeWidth={1.5}
+                strokeDasharray="4 4" dot={false} isAnimationActive={false} />
+              <Line type="linear" dataKey="com" stroke="var(--ok)" strokeWidth={2.2}
+                dot={false} isAnimationActive={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="mt-2 flex items-center gap-4 flex-wrap">
+          <Leg color="var(--ok)" t={`revisando: ${Math.round(noFim.com)}% no dia ${perfil.horizonte}`} />
+          <Leg color="var(--bad)" t={`sem revisar: ${Math.round(noFim.sem)}%`} />
+        </div>
+        <Mini style={{ marginTop: 10, lineHeight: 1.65 }}>
+          A linha sobe a cada revisão e cai mais devagar depois de cada uma: é a
+          memória ficando mais estável. São {dias.length} revisões por assunto — e
+          a escada se ajusta sozinha a cada tópico depois, conforme o "como foi"
+          de cada revisão.
+        </Mini>
+
+        <div className="mt-5 flex items-center gap-3 flex-wrap">
+          <Btn tone="primary" disabled={!completo} onClick={usar}>
+            <Check size={15} /> Usar esta escada nas minhas revisões
+          </Btn>
+          {!completo ? <Mini>responda todas para poder usar</Mini> : null}
+        </div>
+        <Mini style={{ marginTop: 10, lineHeight: 1.6 }}>
+          Trocar de escada não apaga nenhuma revisão já feita.
+        </Mini>
+      </div>
+    </Card>
+  );
+}
+
 /* Escolha do esquema de intervalos. Os degraus cumpridos são guardados pelo
    número de dias, não pela posição, então trocar de esquema não apaga nada:
    o que existe nos dois esquemas continua marcado, e o que só existia no
@@ -480,7 +646,11 @@ function EsquemaRevisao({ data, setData, degraus, notify }) {
         </button>
       </div>
       <Texto style={{ marginTop: 10 }}>
-        Em uso: <span style={{ color: T.ink, fontWeight: 700 }}>{atual.nome}</span> ·{" "}
+        Em uso: <span style={{ color: T.ink, fontWeight: 700 }}>
+          {cfg.esquema === "personalizado" && (data.perfilMemoria || {}).aplicadoEm
+            && JSON.stringify(cfg.dias) === JSON.stringify((data.perfilMemoria || {}).dias)
+            ? "Pelo seu perfil de memória" : atual.nome}
+        </span> ·{" "}
         {degraus.map((d) => d.label).join(" · ")}
       </Texto>
 
@@ -564,6 +734,7 @@ function Revisoes({ rows, toggleStep, resetCycle, marcarDificuldade, data, setDa
 
   return (
     <div className="flex flex-col gap-4">
+      <TesteDeMemoria data={data} setData={setData} notify={notify} />
       <EsquemaRevisao data={data} setData={setData} degraus={degraus} notify={notify} />
 
       {rows.length === 0 ? (

@@ -37,6 +37,11 @@ export const CUSTO = {
   /* A prova é comentada em lotes, e cada lote é uma chamada de verdade ao
      modelo. É a rota mais cara do site, com folga. */
   "provas-ia": 12,
+  /* A aula gravada: cada trecho de dez minutos é uma chamada com áudio, e a
+     organização final é uma chamada longa de texto. Uma aula de duas horas
+     dá doze trechos — 36 pontos mais 6, bem dentro do dia. */
+  "aula-transcrever": 3,
+  "aula-organizar": 6,
 };
 
 export const CUSTO_PADRAO = 2;

@@ -74,6 +74,24 @@ const semTexto = (cru) => {
       i += 1;
       while (i < cru.length) {
         if (cru[i] === '\\') { fora += '  '; i += 2; continue; }
+        /* Interpolação dentro de crase: ${...} carrega CÓDIGO, e esse
+           código pode ter outra crase dentro. Sem contar as chaves, a
+           varredura terminava na crase aninhada e passava a ler o resto
+           do texto como se fosse código — e o bloco de CSS do app, que é
+           um texto de crase comprido com interpolação, despejava nomes de
+           função de CSS e palavras de comentário no resultado. */
+        if (abre === '`' && cru[i] === '$' && cru[i + 1] === '{') {
+          let nivel = 1;
+          fora += '  ';
+          i += 2;
+          while (i < cru.length && nivel > 0) {
+            if (cru[i] === '{') nivel += 1;
+            else if (cru[i] === '}') nivel -= 1;
+            fora += cru[i] === '\n' ? '\n' : ' ';
+            i += 1;
+          }
+          continue;
+        }
         if (cru[i] === abre) { fora += ' '; i += 1; break; }
         fora += cru[i] === '\n' ? '\n' : ' ';
         i += 1;
@@ -121,14 +139,15 @@ const DE_FORA = new Set([
  * que apareça aqui é defeito até prova em contrário, e é esse o ponto do
  * teste. */
 const RUIDO_CONHECIDO = new Set([
-  /* funções de CSS, dentro de texto de estilo */
-  'bezier', 'clamp', 'gradient', 'rotate', 'scaleX', 'translateX',
+  /* funções de CSS e trechos de seletor, dentro do bloco de estilo */
+  'bezier', 'clamp', 'gradient', 'rotate', 'scale', 'scaleX', 'shadow',
+  'translate', 'translate3d', 'translateX', 'translateY', 'media', 'child',
   /* palavras dentro de expressão regular */
   'Descanso', 'Safari', 'baralho', 'cronograma', 'escaneado', 'semana',
-  'verdade', 'u2717',
+  'verdade', 'escuras', 'u2717',
   /* pedaço de escape (\xED, \xF5) que sobra de acento escrito dentro de
      expressão regular: "v\xEDdeo", "quest\xF5es" */
-  'xEDdeo', 'xF5es',
+  'xEDdeo', 'xF5es', 'xF3pria',
   /* propriedade passada entre componentes, que o compilador não renomeia */
   'aoLiberar',
 ]);

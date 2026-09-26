@@ -108,6 +108,15 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // O histórico do assistente, em conversas/{uid}/itens/{id}. Fechado
+    // para o navegador: quem lê e grava é a rota /api/conversas, que tira
+    // o uid do token conferido. Uma conversa com o assistente pode conter
+    // o que a pessoa não contaria a ninguém; ela não pode ficar ao alcance
+    // de quem souber o uid de outra.
+    match /conversas/{uid}/{resto=**} {
+      allow read, write: if false;
+    }
+
     // Papel de mentor e a lista de alunos de cada mentor (por uid, vindo
     // de emails/{uid}). Só o servidor mexe aqui: /api/cupom concede o
     // papel ao resgatar "mentor1612", e /api/mentor adiciona, remove e lê

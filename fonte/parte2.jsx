@@ -80,6 +80,10 @@ const DEFAULTS = {
   baralhoCfg: {},
   /* esquema da escada de revisão espaçada, escolhido em Revisões */
   revisao: { esquema: "cadencia", dias: [7, 21, 60, 150] },
+  /* As respostas do teste de memória e a escada que saiu dele. Guardadas
+     como número, não como rótulo: é o que deixa trocar o texto de uma
+     pergunta sem invalidar o perfil de quem já respondeu. */
+  perfilMemoria: { respostas: {}, dias: [], aplicadoEm: "" },
   /* aparência: cor de acento, fonte e tamanho do texto */
   tema: { cor: "cadencia", neon: "", neon2: "", fonte: "inter", tamanho: 1 },
   /* Claro e escuro da anotação, à parte do resto: "auto" segue o app. */
@@ -370,12 +374,28 @@ function normalize(raw) {
         return [String(k).slice(0, 90), {
           embaralhar: c.embaralhar !== false,
           min: limite(c.min), max: limite(c.max),
+          /* Sem esta linha a cor escolhida sumia no primeiro recarregar:
+             o que o normalizador não copia, ele apaga. */
+          cor: CORES_BARALHO.some((x) => x.id === c.cor) ? c.cor : "",
         }];
       })),
     revisao: {
       esquema: ESQUEMAS.some((e) => e.id === rv.esquema) ? rv.esquema : "cadencia",
       dias: limparDias(rv.dias).length ? limparDias(rv.dias) : DEFAULTS.revisao.dias,
     },
+    perfilMemoria: (() => {
+      const pm = obj(d.perfilMemoria);
+      const resp = {};
+      for (const q of PERGUNTAS_MEMORIA) {
+        const v = Number(obj(pm.respostas)[q.id]);
+        if (Number.isFinite(v) && v > 0) resp[q.id] = v;
+      }
+      return {
+        respostas: resp,
+        dias: limparDias(pm.dias),
+        aplicadoEm: typeof pm.aplicadoEm === "string" ? pm.aplicadoEm.slice(0, 10) : "",
+      };
+    })(),
     tema: {
       cor: CORES_TEMA.some((c) => c.id === tm.cor) || tm.cor === "propria" ? tm.cor : "cadencia",
       /* corLegivel mantém a cor dentro de uma faixa legível nos dois temas
