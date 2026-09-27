@@ -21,6 +21,7 @@
  */
 const VERSAO = "cadencia-v1";
 const CASCA = "/";
+const PAGINAS_SOLTAS = /^\/(app|app\.html|privacidade\.html|termos\.html|recuperar\.html)$/;
 
 /* Instala já guardando a casca do app, para a primeira visita offline
    depois desta já funcionar. */
@@ -54,12 +55,20 @@ self.addEventListener("fetch", (e) => {
 
   if (ehNavegacao(req)) {
     /* Rede primeiro: publicar tem de aparecer na hora para quem está
-       online. Sem rede, devolve a última página que funcionou. */
+       online. Sem rede, devolve a última página que funcionou.
+
+       Só a navegação para o APP vira casca. As páginas soltas (baixar o
+       app, termos, privacidade, resgate) são outra coisa: guardadas como
+       casca, quem abrisse /app e depois o app instalado sem internet
+       encontraria a página de download no lugar do Cadência. */
+    const solta = PAGINAS_SOLTAS.test(url.pathname);
     e.respondWith(
       fetch(req)
         .then((r) => {
-          const copia = r.clone();
-          caches.open(VERSAO).then((c) => c.put(CASCA, copia)).catch(() => undefined);
+          if (!solta && r && r.ok) {
+            const copia = r.clone();
+            caches.open(VERSAO).then((c) => c.put(CASCA, copia)).catch(() => undefined);
+          }
           return r;
         })
         .catch(() => caches.match(CASCA).then((r) => r || Response.error())),

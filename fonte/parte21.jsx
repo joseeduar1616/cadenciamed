@@ -1146,6 +1146,11 @@ function BaixarApp({ notify }) {
   return (
     <Card className="px-6 py-6">
       <H size={18} color="var(--neon)" icon={<Download size={16} />}>Instalar o aplicativo</H>
+      <Mini style={{ marginTop: 6 }}>
+        iPhone, Android, Mac e PC: o passo a passo de cada um está em{" "}
+        <a href="/app" style={{ color: "var(--neon)" }}>cadenciamed.com.br/app</a> — é o endereço para mandar a quem
+        quiser instalar.
+      </Mini>
 
       {jaInstalado ? (
         <Texto style={{ marginTop: 8 }}>

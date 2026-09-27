@@ -187,6 +187,23 @@ function BarraLateral({ abas, atual, onEscolher, estreita, aberta, onFechar, abe
           </Fragment>
         ))}
       </nav>
+
+      {/* Baixar o app: fica fora da lista de abas, no pé da barra, e some
+          para quem já está usando o app instalado. Leva à página pública
+          /app, que tem o passo a passo de cada aparelho. */}
+      {!instalado() ? (
+        <a href="/app" title={expandida ? undefined : "Baixar o app"}
+          className="aba flex items-center gap-3 rounded-2xl px-3 whitespace-nowrap"
+          style={{
+            minHeight: 42, flexShrink: 0, margin: "0 12px 14px", textDecoration: "none",
+            border: `1px solid ${soft("var(--neon)", 30)}`, background: soft("var(--neon)", 8),
+            color: "var(--neon)", fontSize: 12.5, fontWeight: 700, letterSpacing: "0.06em",
+            textTransform: "uppercase", justifyContent: expandida ? "flex-start" : "center",
+          }}>
+          <Download size={16} style={{ flexShrink: 0 }} />
+          {expandida ? <span className="flex-1 text-left">Baixar o app</span> : null}
+        </a>
+      ) : null}
     </>
   );
 
@@ -1231,6 +1248,8 @@ export default function Cadencia() {
                     abrem sem carregar o aplicativo inteiro e é esse
                     endereço que se cola no checkout. */}
                 <div className="mt-4 flex items-center justify-center gap-3 flex-wrap">
+                  <a href="/app" style={{ color: T.faint, fontSize: 13, textDecoration: "none" }}>Baixar o app</a>
+                  <span style={{ color: T.ghost, fontSize: 13 }}>·</span>
                   <a href="/termos.html" style={{ color: T.faint, fontSize: 13, textDecoration: "none" }}>Termos de uso</a>
                   <span style={{ color: T.ghost, fontSize: 13 }}>·</span>
                   <a href="/privacidade.html" style={{ color: T.faint, fontSize: 13, textDecoration: "none" }}>Privacidade</a>

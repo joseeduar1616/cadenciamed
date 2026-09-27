@@ -39,8 +39,13 @@ const navegador = await chromium.launch({
   ...(fs.existsSync(CHROME) ? { executablePath: CHROME } : {}),
 });
 const ctx = await navegador.newContext({ viewport: { width: 1440, height: 900 } });
-/* o convite de notificações do primeiro acesso cobriria a tela; quem o testa é o testar-presenca-tela.mjs */
-await ctx.addInitScript(() => { try { localStorage.setItem('cadencia:v3:convite-notificacoes-aparelho', 'teste'); } catch (e) { /* noop */ } });
+/* O convite de notificações do primeiro acesso cobriria a tela; quem o testa
+   é o testar-presenca-tela.mjs. Lê ANTES de gravar, e só grava se faltar:
+   gravar no localStorage logo no início de cada página, sem ler, fez o
+   Chromium do teste perder de vez em quando o 'cadencia:v3' num reload —
+   o app voltava para a página de entrada no meio do teste (1 a cada 3 ou 4
+   rodadas). Lendo primeiro, não aconteceu mais em 8 rodadas. */
+await ctx.addInitScript(() => { try { const k = 'cadencia:v3:convite-notificacoes-aparelho'; if (!localStorage.getItem(k)) localStorage.setItem(k, 'teste'); } catch (e) { /* noop */ } });
 const pag = await ctx.newPage();
 pag.on('pageerror', (e) => erros.push('pageerror: ' + e.message));
 pag.on('console', (m) => {

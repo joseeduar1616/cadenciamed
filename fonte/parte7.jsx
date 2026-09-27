@@ -1855,6 +1855,7 @@ function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar }) {
             {/* Exigência prática, não enfeite: a LGPD pede que esteja
                 escrito o que se coleta, e a plataforma de pagamento pede
                 o endereço dos termos para aprovar o produto. */}
+            <a className="pe-link" href="/app">Baixar o app</a>
             <a className="pe-link" href="/termos.html">Termos de uso</a>
             <a className="pe-link" href="/privacidade.html">Privacidade</a>
           </div>

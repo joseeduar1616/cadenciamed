@@ -550,6 +550,38 @@ para o site na tela de início. Os testes de navegador marcam o convite como
 já visto, para ele não cobrir a tela; quem o testa é o
 `testar-presenca-tela.mjs`.
 
+## O app (iPhone, Android, Mac e PC) e a página /app
+
+O Cadência é um só app instalável (PWA): `manifest.webmanifest` + `sw.js`.
+Instalado, ganha ícone, janela própria, funciona sem internet e recebe
+notificação — no iPhone pelo Safari (Adicionar à Tela de Início), no
+Android pelo Chrome (vira um app de verdade na gaveta), no Mac pelo Safari
+(Arquivo › Adicionar ao Dock) ou Chrome/Edge, e no PC pelo Chrome/Edge.
+Atualiza sozinho: não há versão para baixar de novo.
+
+`app.html` é a página pública de download, em `cadenciamed.com.br/app` (a
+regra do `firebase.json` leva `/app` a ela; no Cloudflare o próprio
+servidor de arquivos resolve). Ela reconhece o aparelho e o navegador,
+mostra o passo a passo certo no topo, troca pelo botão "Instalar o app"
+quando o Chrome/Edge oferece a instalação de um toque, avisa quem está no
+navegador de dentro do Instagram/WhatsApp (que não instala nada), e mostra
+um QR code no computador para abrir a página no celular. O QR é um SVG
+fixo, gerado uma vez; se o endereço mudar, gere outro.
+
+O link "Baixar o app" fica no pé do menu lateral (some para quem já usa o
+app instalado), na página de entrada, no rodapé e no cartão de instalar em
+Configurações.
+
+O `sw.js` NÃO guarda as páginas soltas (`/app`, termos, privacidade,
+resgate) como casca do app (`PAGINAS_SOLTAS`): antes, qualquer navegação
+virava casca, e quem abrisse `/app` e depois o app instalado sem internet
+veria a página de download no lugar do Cadência.
+
+Versões de loja (App Store, Play Store, Microsoft Store) dependem de contas
+de desenvolvedor no nome do dono; o ponto de partida para Android é a
+Trusted Web Activity (o `publicar.py` já publica o
+`.well-known/assetlinks.json` quando ele existir).
+
 ## Plano anual e painel de acessos
 
 O plano anual vale até **31/12/2027**, uma data fixa, não um ano contado a

@@ -159,7 +159,7 @@ for (const tela of TELAS) {
     timezoneId: 'America/Sao_Paulo',
   });
   /* o convite de notificações do primeiro acesso cobriria a tela; quem o testa é o testar-presenca-tela.mjs */
-  await ctx.addInitScript(() => { try { localStorage.setItem('cadencia:v3:convite-notificacoes-aparelho', 'teste'); } catch (e) { /* noop */ } });
+  await ctx.addInitScript(() => { try { const k = 'cadencia:v3:convite-notificacoes-aparelho'; if (!localStorage.getItem(k)) localStorage.setItem(k, 'teste'); } catch (e) { /* noop */ } });
   const pag = await ctx.newPage();
 
   await pag.route('**/api/**', (rota) => {

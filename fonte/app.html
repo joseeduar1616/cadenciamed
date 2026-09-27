@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Baixar o app · Cadência Med</title>
+<meta name="description" content="Instale o Cadência Med no iPhone, no Android, no Mac e no PC. Abre pelo ícone, funciona sem internet e avisa as revisões.">
+<meta name="theme-color" content="#020305">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icone-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="/icone-180.png">
+<meta property="og:title" content="Baixe o Cadência Med">
+<meta property="og:description" content="iPhone, Android, Mac e PC. Instala em segundos.">
+<meta property="og:image" content="https://cadenciamed.com.br/cartao.png">
+<style>
+  :root {
+    --fundo: #04030A; --caixa: #0E0B18; --caixa2: #151024; --linha: #262038;
+    --texto: #EDE9F7; --fraco: #9D93B4; --neon: #35E4FF; --roxo: #A855F7;
+    --bom: #45C08A;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--fundo); color: var(--texto);
+    font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: calc(28px + env(safe-area-inset-top)) 16px calc(56px + env(safe-area-inset-bottom));
+  }
+  main { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+  a { color: var(--neon); }
+  .topo { display: flex; align-items: center; gap: 14px; }
+  .topo img { width: 56px; height: 56px; border-radius: 14px; }
+  h1 { font-size: clamp(26px, 6vw, 34px); line-height: 1.15; margin: 0; letter-spacing: -0.01em; }
+  h2 { font-size: 13px; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--neon); }
+  h3 { font-size: 18px; margin: 0; }
+  p { margin: 0; }
+  .fraco { color: var(--fraco); font-size: 14.5px; }
+  .caixa { background: var(--caixa); border: 1px solid var(--linha); border-radius: 18px; padding: 20px; }
+  .destaque { border-color: color-mix(in srgb, var(--neon) 45%, transparent);
+    background: linear-gradient(160deg, color-mix(in srgb, var(--neon) 9%, var(--caixa)), var(--caixa) 60%); }
+  .botao {
+    display: inline-flex; align-items: center; gap: 8px; margin-top: 14px;
+    font: inherit; font-weight: 700; font-size: 16px; text-decoration: none;
+    padding: 12px 22px; border-radius: 999px; cursor: pointer; border: 0;
+    background: linear-gradient(90deg, var(--neon), var(--roxo)); color: #07050F;
+  }
+  .botao.secundario { background: var(--caixa2); color: var(--texto); border: 1px solid var(--linha); }
+  ol { margin: 12px 0 0; padding-left: 22px; }
+  ol li { margin: 6px 0; }
+  .grade { display: grid; grid-template-columns: 1fr; gap: 14px; }
+  @media (min-width: 640px) { .grade { grid-template-columns: 1fr 1fr; } }
+  .plataforma { display: flex; flex-direction: column; gap: 4px; }
+  .plataforma[data-sua="1"] { border-color: color-mix(in srgb, var(--roxo) 55%, transparent); }
+  .etiqueta { display: none; align-self: flex-start; font-size: 11px; font-weight: 700; letter-spacing: 0.1em;
+    text-transform: uppercase; color: #07050F; background: var(--roxo); border-radius: 99px; padding: 2px 9px; margin-bottom: 6px; }
+  .plataforma[data-sua="1"] .etiqueta { display: inline-block; }
+  .vantagens { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 4px; }
+  .vantagens div { background: var(--caixa2); border-radius: 12px; padding: 12px 14px; font-size: 14.5px; }
+  .vantagens b { display: block; color: var(--texto); }
+  .qr { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+  .qr svg { background: #fff; border-radius: 12px; padding: 8px; flex-shrink: 0; }
+  .icone { display: inline-block; vertical-align: -3px; }
+  .oculto { display: none !important; }
+  details { border-top: 1px solid var(--linha); padding: 12px 0; }
+  details:first-of-type { border-top: 0; }
+  summary { cursor: pointer; font-weight: 600; }
+  details p { margin-top: 8px; }
+  footer { display: flex; gap: 16px; flex-wrap: wrap; font-size: 14px; }
+  footer a { color: var(--fraco); text-decoration: none; }
+</style>
+</head>
+<body>
+<main>
+  <div class="topo">
+    <img src="/icone-192.png" alt="" width="56" height="56">
+    <div>
+      <h1>Baixe o Cadência Med</h1>
+      <p class="fraco">iPhone, Android, Mac e PC — o mesmo app, instalado em segundos.</p>
+    </div>
+  </div>
+
+  <!-- O que vale para ESTE aparelho: preenchido pelo script abaixo. -->
+  <section class="caixa destaque" id="agora" aria-live="polite">
+    <h2 id="agora-titulo">No seu aparelho</h2>
+    <h3 id="agora-nome">Carregando…</h3>
+    <div id="agora-corpo"></div>
+    <button type="button" class="botao oculto" id="instalar">Instalar o app</button>
+    <a class="botao oculto" id="abrir" href="/">Abrir o Cadência</a>
+  </section>
+
+  <section class="caixa">
+    <h2>Por que instalar</h2>
+    <div class="vantagens">
+      <div><b>Ícone na tela</b>Abre como qualquer app, sem barra de endereço.</div>
+      <div><b>Funciona sem internet</b>O cronômetro e os cartões continuam no metrô.</div>
+      <div><b>Avisa você</b>Revisões do dia, bloco da agenda e o "Você está aí?" do Foco.</div>
+      <div><b>Sempre atualizado</b>Nada de baixar versão nova: atualiza sozinho.</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Todos os aparelhos</h2>
+    <div class="grade">
+      <div class="caixa plataforma" data-plataforma="ios">
+        <span class="etiqueta">o seu</span>
+        <h3>iPhone e iPad</h3>
+        <ol class="fraco">
+          <li>Abra <b>cadenciamed.com.br</b> no <b>Safari</b>.</li>
+          <li>Toque no botão de compartilhar, o quadrado com a seta para cima.</li>
+          <li>Role e toque em <b>Adicionar à Tela de Início</b>, depois em <b>Adicionar</b>.</li>
+        </ol>
+        <p class="fraco" style="margin-top:8px">No iPhone, os avisos só funcionam com o app instalado assim.</p>
+      </div>
+      <div class="caixa plataforma" data-plataforma="android">
+        <span class="etiqueta">o seu</span>
+        <h3>Android</h3>
+        <ol class="fraco">
+          <li>Abra <b>cadenciamed.com.br</b> no <b>Chrome</b>.</li>
+          <li>Toque em <b>Instalar</b> quando aparecer — ou nos três pontinhos e em <b>Instalar app</b>.</li>
+          <li>O ícone aparece junto dos outros apps.</li>
+        </ol>
+      </div>
+      <div class="caixa plataforma" data-plataforma="mac">
+        <span class="etiqueta">o seu</span>
+        <h3>Mac</h3>
+        <ol class="fraco">
+          <li><b>Safari</b> (macOS 14 ou mais novo): menu <b>Arquivo › Adicionar ao Dock</b>.</li>
+          <li><b>Chrome</b> ou <b>Edge</b>: o ícone de instalar, à direita da barra de endereço.</li>
+          <li>O app fica no Dock e no Launchpad, com janela própria.</li>
+        </ol>
+      </div>
+      <div class="caixa plataforma" data-plataforma="windows">
+        <span class="etiqueta">o seu</span>
+        <h3>PC (Windows)</h3>
+        <ol class="fraco">
+          <li>Abra <b>cadenciamed.com.br</b> no <b>Chrome</b> ou no <b>Edge</b>.</li>
+          <li>Clique no ícone de instalar, à direita da barra de endereço.</li>
+          <li>O app vai para o menu Iniciar e pode ser fixado na barra de tarefas.</li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <section class="caixa qr oculto" id="bloco-qr">
+    <svg role="img" aria-label="QR code para cadenciamed.com.br/app" width="168" height="168" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 31 31" shape-rendering="crispEdges"><path fill="#FFFFFF" d="M0 0h31v31H0z"/><path stroke="#07050F" d="M1 1.5h7m1 0h2m5 0h2m1 0h1m3 0h7M1 2.5h1m5 0h1m4 0h4m1 0h1m1 0h1m1 0h1m1 0h1m5 0h1M1 3.5h1m1 0h3m1 0h1m1 0h4m2 0h4m4 0h1m1 0h3m1 0h1M1 4.5h1m1 0h3m1 0h1m3 0h1m3 0h1m2 0h1m1 0h1m2 0h1m1 0h3m1 0h1M1 5.5h1m1 0h3m1 0h1m2 0h7m2 0h1m3 0h1m1 0h3m1 0h1M1 6.5h1m5 0h1m1 0h1m1 0h2m3 0h1m1 0h2m1 0h1m1 0h1m5 0h1M1 7.5h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7M10 8.5h1m1 0h1m2 0h3m2 0h1M1 9.5h1m1 0h1m3 0h2m4 0h3m4 0h2m2 0h1m2 0h1m1 0h1M1 10.5h3m6 0h1m1 0h1m1 0h2m4 0h2m1 0h2m3 0h2M2 11.5h7m1 0h1m2 0h1m2 0h1m2 0h3m3 0h3m1 0h1M2 12.5h2m2 0h1m1 0h2m1 0h1m1 0h2m5 0h2m1 0h2m1 0h1M1 13.5h4m2 0h1m2 0h1m2 0h2m1 0h2m3 0h1m1 0h2m4 0h1M1 14.5h1m3 0h2m1 0h1m1 0h2m1 0h1m3 0h1m1 0h2m2 0h2m3 0h2M1 15.5h1m1 0h6m4 0h3m1 0h1m1 0h7m3 0h1M2 16.5h2m6 0h1m4 0h3m3 0h4M1 17.5h1m1 0h3m1 0h2m2 0h5m3 0h3m1 0h2m4 0h1M5 18.5h2m1 0h1m1 0h3m1 0h2m2 0h1m1 0h2m1 0h2m2 0h3M1 19.5h2m1 0h1m2 0h1m5 0h1m2 0h1m3 0h1m1 0h1m2 0h2m2 0h1M3 20.5h1m1 0h2m1 0h2m4 0h1m4 0h1m1 0h2M1 21.5h2m3 0h2m2 0h1m1 0h1m1 0h1m1 0h2m2 0h7m1 0h1M9 22.5h3m5 0h1m3 0h1m3 0h3m1 0h1M1 23.5h7m1 0h2m1 0h4m1 0h3m1 0h1m1 0h1m1 0h1m3 0h1M1 24.5h1m5 0h1m2 0h1m4 0h3m1 0h3m3 0h1m3 0h1M1 25.5h1m1 0h3m1 0h1m3 0h2m1 0h2m1 0h1m2 0h7M1 26.5h1m1 0h3m1 0h1m3 0h1m3 0h1m3 0h2m1 0h1m2 0h4M1 27.5h1m1 0h3m1 0h1m1 0h1m1 0h1m4 0h4m2 0h1m2 0h1m2 0h2M1 28.5h1m5 0h1m3 0h3m1 0h1m5 0h1m2 0h3M1 29.5h7m1 0h1m2 0h1m1 0h3m4 0h1m1 0h4m2 0h1"/></svg>
+    <div style="flex:1;min-width:200px">
+      <h2>Vai instalar no celular?</h2>
+      <p class="fraco">Aponte a câmera do celular para o código. Ele abre esta página lá, com o passo a passo do aparelho.</p>
+    </div>
+  </section>
+
+  <section class="caixa">
+    <h2>Dúvidas</h2>
+    <details>
+      <summary>É um app de verdade?</summary>
+      <p class="fraco">É. Ele se instala pelo próprio navegador, ganha ícone, abre em janela própria, funciona
+        sem internet e manda notificações — igual a um app de loja, só que sem precisar de loja.</p>
+    </details>
+    <details>
+      <summary>Meus dados passam para o app?</summary>
+      <p class="fraco">Com conta, sim: entre com a mesma conta e tudo aparece, em qualquer aparelho. Sem
+        conta, o que está guardado neste navegador continua aqui.</p>
+    </details>
+    <details>
+      <summary>Preciso baixar de novo quando sair versão nova?</summary>
+      <p class="fraco">Não. O app se atualiza sozinho; quando há novidade, ele avisa com um botão de atualizar.</p>
+    </details>
+    <details>
+      <summary>O botão de instalar não aparece.</summary>
+      <p class="fraco">Alguns navegadores não instalam sites: o Firefox no computador, e os navegadores
+        dentro do Instagram e do WhatsApp. Abra o endereço no Chrome, no Edge ou no Safari.</p>
+    </details>
+  </section>
+
+  <footer>
+    <a href="/">Abrir no navegador</a>
+    <a href="/termos.html">Termos de uso</a>
+    <a href="/privacidade.html">Privacidade</a>
+  </footer>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var ua = navigator.userAgent || "";
+  var toque = "ontouchend" in document;
+  var ios = /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && toque);
+  var android = /Android/.test(ua);
+  var mac = !ios && /Macintosh|Mac OS X/.test(ua);
+  var windows = /Windows/.test(ua);
+  var plataforma = ios ? "ios" : android ? "android" : mac ? "mac" : windows ? "windows" : "outro";
+
+  var safari = /Safari/.test(ua) && !/Chrome|CriOS|FxiOS|EdgiOS|Edg\/|OPR|SamsungBrowser/.test(ua);
+  var chromeOuEdge = /Chrome|CriOS|Edg/.test(ua) && !/OPR|SamsungBrowser/.test(ua);
+  var dentroDeApp = /Instagram|FBAN|FBAV|WhatsApp|Line\/|TikTok/.test(ua);
+  var instalado = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches)
+    || window.navigator.standalone === true;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var nome = $("agora-nome"), corpo = $("agora-corpo"), btn = $("instalar"), abrir = $("abrir");
+
+  /* marca o cartão deste aparelho e o põe primeiro na grade */
+  var cartao = document.querySelector('[data-plataforma="' + plataforma + '"]');
+  if (cartao) { cartao.setAttribute("data-sua", "1"); cartao.parentNode.insertBefore(cartao, cartao.parentNode.firstChild); }
+
+  /* o QR só serve para quem está no computador */
+  if (!ios && !android) $("bloco-qr").classList.remove("oculto");
+
+  function passos(lista) {
+    return '<ol class="fraco">' + lista.map(function (x) { return "<li>" + x + "</li>"; }).join("") + "</ol>";
+  }
+  var NOMES = { ios: "iPhone ou iPad", android: "Android", mac: "Mac", windows: "PC com Windows", outro: "Este aparelho" };
+  nome.textContent = NOMES[plataforma];
+
+  function mostrar() {
+    if (instalado) {
+      nome.textContent = "O app já está instalado";
+      corpo.innerHTML = '<p class="fraco" style="margin-top:6px">Você está usando o Cadência como aplicativo.</p>';
+      btn.classList.add("oculto"); abrir.classList.remove("oculto");
+      return;
+    }
+    if (dentroDeApp) {
+      corpo.innerHTML = '<p class="fraco" style="margin-top:6px">Este navegador de dentro do app não instala sites. '
+        + "Toque nos três pontinhos e escolha <b>Abrir no navegador</b> "
+        + (ios ? "(Safari)" : "(Chrome)") + ", e volte a esta página.</p>";
+      return;
+    }
+    if (pedido) {
+      corpo.innerHTML = '<p class="fraco" style="margin-top:6px">Um toque e pronto: o ícone aparece '
+        + (android ? "na tela de início." : plataforma === "mac" ? "no Dock e no Launchpad." : "no menu Iniciar.") + "</p>";
+      btn.classList.remove("oculto");
+      return;
+    }
+    btn.classList.add("oculto");
+    if (ios) {
+      corpo.innerHTML = safari || /CriOS|EdgiOS/.test(ua)
+        ? passos(["Toque no botão de compartilhar, o quadrado com a seta para cima"
+            + (safari ? ", na barra de baixo" : ", na barra de endereço") + ".",
+            "Role e toque em <b>Adicionar à Tela de Início</b>.", "Toque em <b>Adicionar</b>. Abra o Cadência pelo ícone novo."])
+        : '<p class="fraco" style="margin-top:6px">Abra <b>cadenciamed.com.br/app</b> no <b>Safari</b> para instalar.</p>';
+    } else if (android) {
+      corpo.innerHTML = chromeOuEdge
+        ? passos(["Toque nos três pontinhos, no canto de cima.", "Toque em <b>Instalar app</b> (ou <b>Adicionar à tela inicial</b>).", "Confirme. O ícone aparece com os outros apps."])
+        : /SamsungBrowser/.test(ua)
+          ? passos(["Toque no menu (três linhas), embaixo.", "Toque em <b>Adicionar página a</b> › <b>Tela inicial</b>."])
+          : '<p class="fraco" style="margin-top:6px">Abra <b>cadenciamed.com.br/app</b> no <b>Chrome</b> para instalar.</p>';
+    } else if (plataforma === "mac" && safari) {
+      corpo.innerHTML = passos(["No menu do Safari, clique em <b>Arquivo</b>.", "Clique em <b>Adicionar ao Dock</b> e confirme.", "O Cadência abre pelo Dock, com janela própria."]);
+    } else if (chromeOuEdge) {
+      corpo.innerHTML = passos(["Clique no ícone de instalar, à direita da barra de endereço (um monitor com uma seta).",
+        "Ou abra o menu dos três pontinhos e procure <b>Instalar Cadência Med</b>"
+          + (/Edg\//.test(ua) ? " (no Edge: <b>Aplicativos › Instalar este site como aplicativo</b>)" : "") + ".",
+        "O app ganha janela própria e ícone " + (plataforma === "mac" ? "no Dock." : "no menu Iniciar.")]);
+    } else {
+      corpo.innerHTML = '<p class="fraco" style="margin-top:6px">Este navegador não instala sites como app. Abra '
+        + "<b>cadenciamed.com.br/app</b> no <b>" + (plataforma === "mac" ? "Safari, no Chrome" : "Chrome") + "</b> ou no <b>Edge</b>.</p>";
+    }
+  }
+
+  /* O Chrome e o Edge avisam quando dá para instalar com um toque. */
+  var pedido = null;
+  window.addEventListener("beforeinstallprompt", function (e) {
+    e.preventDefault();
+    pedido = e;
+    mostrar();
+  });
+  window.addEventListener("appinstalled", function () {
+    pedido = null;
+    nome.textContent = "Instalado!";
+    corpo.innerHTML = '<p class="fraco" style="margin-top:6px">Procure o ícone do Cadência Med '
+      + (android ? "na tela de início." : plataforma === "mac" ? "no Dock." : "no menu Iniciar.") + "</p>";
+    btn.classList.add("oculto"); abrir.classList.remove("oculto");
+  });
+  btn.addEventListener("click", function () {
+    if (!pedido) return;
+    pedido.prompt();
+    pedido.userChoice.then(function () { pedido = null; mostrar(); }).catch(function () { /* noop */ });
+  });
+
+  mostrar();
+
+  /* O service worker é o que torna o site instalável e faz o app abrir sem
+     internet. É o mesmo do site: registrar aqui só adianta o trabalho. */
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("/sw.js").catch(function () { /* noop */ });
+    });
+  }
+})();
+</script>
+</body>
+</html>

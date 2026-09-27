@@ -33,6 +33,10 @@ ARQUIVOS = [
     # nenhuma — é o que garante que abrir esta página não traga a versão da
     # nuvem por cima do que ainda estiver guardado no aparelho.
     'recuperar.html',
+    # A página de baixar o app (cadenciamed.com.br/app). Também fica fora do
+    # app: é o endereço que se manda para quem ainda nem entrou, e precisa
+    # abrir leve em qualquer celular.
+    'app.html',
     # As regras do Firestore NÃO vão para o site: quem as publica é o
     # .github/workflows/firestore.yml, direto no Firebase. Servidas aqui,
     # só mostravam a qualquer visitante o mapa do banco.
@@ -151,6 +155,12 @@ CABECALHOS = """/index.html
 
 /recuperar.html
   Cache-Control: no-cache, no-store, must-revalidate
+
+/app
+  Cache-Control: public, max-age=3600
+
+/app.html
+  Cache-Control: public, max-age=3600
 
 /.well-known/assetlinks.json
   Content-Type: application/json
