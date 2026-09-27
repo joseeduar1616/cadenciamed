@@ -271,6 +271,7 @@ Como está no ar hoje, em dois lugares:
 |---|---|---|
 | **Firebase Hosting** | `cadenciamed.com.br`, as páginas | `.github/workflows/deploy-firebase.yml` |
 | **Cloudflare Worker** | as rotas `/api/...` | `.github/workflows/publicar.yml` |
+| **Firestore** | as regras (`fonte/regras-firestore.txt`) e o backup contínuo (PITR) | `.github/workflows/firestore.yml`, só quando o arquivo de regras muda |
 
 Os dois disparam no mesmo push para a `main` e nenhum dos dois compila nada:
 mandam a pasta `publicar/` como ela está no repositório.
@@ -496,21 +497,26 @@ conta (cadastro, plano) — ali não haveria de quem ser o currículo próprio.
 
 ## Cupons
 
-Os códigos ficam no `worker/api/cupom.js`, no servidor, e nunca no navegador.
-Para trocá-los sem mexer no código, cadastre `CUPONS` no Cloudflare, no formato
-`codigo:plano,codigo:plano` (planos: semanal, mensal, anual, vitalicio). Enquanto
-essa variável não existir, valem os dois cupons escritos no arquivo — hoje,
-`secdamocada` libera 7 dias (`semanal`) e `medeasysoft` libera o plano anual.
-Cada plano fora do `anual` conta os dias a partir do resgate (`DIAS`, em
-`_comum.js`); só o `anual` vence numa data fixa, veja "Plano anual", abaixo.
+Quem confere o código é o `worker/api/cupom.js`, no servidor, e nunca o
+navegador. Os cupons moram no banco, em `cupons/{codigo}`, e são criados e
+apagados pelo painel do dono (Gestão de Acessos › Cupons), com plano e, se
+quiser, um limite de usos. **Nenhum código fica escrito no repositório**:
+cupom escrito em código é cupom que qualquer pessoa com acesso ao código
+resgata — foi o que aconteceu com os três primeiros, que por isso deixaram
+de valer.
 
-O cupom `mentor1612` é especial: fica fora dessa lista (não dá para trocar
-pela variável `CUPONS`) e não libera plano nenhum — concede o papel de
+Como reserva, o Worker ainda lê a variável `CUPONS`, que deve ser cadastrada
+como **segredo** no Cloudflare (Workers & Pages › cadenciamed › Settings ›
+Variables and Secrets), no formato `codigo:plano,codigo:plano`. Planos:
+semanal, mensal, anual, vitalicio e mentor. Cada plano fora do `anual` conta
+os dias a partir do resgate (`DIAS`, em `_comum.js`); só o `anual` vence numa
+data fixa, veja "Plano anual", abaixo.
+
+O plano `mentor` é especial: não libera plano nenhum — concede o papel de
 mentor, gravando `mentores/{uid}` em vez de `assinaturas/{uid}`. Resgatar de
 novo não faz nada de errado, e não apaga a lista de alunos que a pessoa já
-tinha. O dono (`joseeduardo1616@gmail.com`, em `DONOS`, no `_comum.js`) já é
-mentor sem precisar resgatar nada — é a mesma lista que já dá acesso completo
-sem pagar.
+tinha. O dono (em `DONOS`, no `_comum.js`) já é mentor sem precisar resgatar
+nada — é a mesma lista que já dá acesso completo sem pagar.
 
 ## Plano anual e painel de acessos
 
@@ -524,7 +530,7 @@ para não vender por engano um ano a partir da data de hoje.
 
 No painel de acessos (`worker/api/acessos.js`), o dono também pode tornar
 alguém mentor pelo e-mail, sem mexer no plano da pessoa — mesmo caminho do
-cupom `mentor1612` (`concederMentor`, em `_comum.js`), só que iniciado pelo
+cupom de mentor (`concederMentor`, em `_comum.js`), só que iniciado pelo
 dono em vez de digitado pelo aluno. Botão "Tornar mentor(a)", ao lado de
 "Liberar acesso".
 
@@ -1409,7 +1415,7 @@ senão um worker velho preso no cache prenderia junto tudo o mais.
 
 ## Mentor
 
-Quem resgata o cupom `mentor1612` (veja "Cupons", acima) ganha a aba Mentor
+Quem resgata um cupom de mentor (veja "Cupons", acima) ganha a aba Mentor
 e adiciona alunos pelo e-mail com que eles se cadastraram — nunca pelo uid,
 que o mentor não tem como saber. A ligação usa a coleção `emails/{uid}` que
 cada pessoa já grava de si mesma ao entrar (é a mesma que o aviso de compra

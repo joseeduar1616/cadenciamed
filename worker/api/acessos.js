@@ -96,7 +96,8 @@ export async function onRequest({ request, env }) {
     const codigo = String(corpo.codigo || "").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 30);
     const plano = String(corpo.plano || "").toLowerCase();
     if (codigo.length < 4) return json({ erro: "O código precisa ter pelo menos 4 letras ou números." }, 400);
-    if (!DIAS[plano]) return json({ erro: "Plano desconhecido. Use semanal, mensal, anual ou vitalicio." }, 400);
+    /* "mentor" não é plano: o cupom dá o papel de mentor (ver cupom.js). */
+    if (!DIAS[plano] && plano !== "mentor") return json({ erro: "Plano desconhecido. Use semanal, mensal, anual, vitalicio ou mentor." }, 400);
     /* 0 = sem limite. É o padrão do cupom de divulgação, que é o caso
        comum; o limite existe para o cupom de parceria, que tem cota. */
     const maxUsos = Math.max(0, Math.min(100000, Math.round(Number(corpo.maxUsos) || 0)));
@@ -267,7 +268,7 @@ export async function onRequest({ request, env }) {
 
   /* ── concede o papel de mentor ────────────────────────────────────────
      Separado do plano: não mexe em assinaturas/{uid}, só em mentores/{uid}
-     — o mesmo caminho que o cupom "mentor1612" usa (concederMentor, em
+     — o mesmo caminho que um cupom de mentor usa (concederMentor, em
      _comum.js), preservando a lista de alunos se a pessoa já for mentora. */
   if (acao === "conceder-mentor") {
     const deu = await concederMentor(token, uid, email);

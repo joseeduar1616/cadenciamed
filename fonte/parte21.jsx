@@ -15,6 +15,7 @@
 
 const PLANOS_CUPOM = [
   ["semanal", "1 semana"], ["mensal", "1 mês"], ["anual", "1 ano"], ["vitalicio", "vitalício"],
+  ["mentor", "papel de mentor"],
 ];
 
 function Cupons({ nuvem, notify }) {

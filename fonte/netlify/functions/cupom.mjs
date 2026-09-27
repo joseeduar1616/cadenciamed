@@ -18,7 +18,7 @@
 const PROJETO = "cadencia-7c1f1";
 const DIAS = { mensal: 31, anual: 366, vitalicio: 36500 };
 
-const CUPONS_PADRAO = "secdamocada:anual,medeasysoft:anual";
+const CUPONS_PADRAO = "";
 
 /* Devolve { codigo: plano }, tudo em minúsculas e sem espaço em volta. */
 function lerCupons() {

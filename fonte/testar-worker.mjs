@@ -118,7 +118,7 @@ globalThis.fetch = async () => new Response(JSON.stringify({ users: [{ localId: 
 const r3 = await workerQuebrado.fetch(
   new Request('https://x/api/cupom', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token: 't', codigo: 'secdamocada' }),
+    body: JSON.stringify({ token: 't', codigo: 'qualquercodigo' }),
   }), envQuebrado, {});
 const corpo = await r3.json().catch(() => null);
 if (corpo && corpo.erro) ok('erro dentro da rota volta como JSON explicado');

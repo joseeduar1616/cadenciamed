@@ -1,6 +1,6 @@
 /* Aba Mentor · rota /api/mentor
  *
- * Quem vira mentor resgata o cupom "mentor1612" (ou é dono, via DONOS, em
+ * Quem vira mentor resgata um cupom de mentor (ou é dono, via DONOS, em
  * _comum.js) — isso é conferido em cupom.js, que grava mentores/{uid}. Aqui
  * só entra quem já tem esse papel.
  *

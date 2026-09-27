@@ -33,7 +33,9 @@ ARQUIVOS = [
     # nenhuma — é o que garante que abrir esta página não traga a versão da
     # nuvem por cima do que ainda estiver guardado no aparelho.
     'recuperar.html',
-    'regras-firestore.txt',
+    # As regras do Firestore NÃO vão para o site: quem as publica é o
+    # .github/workflows/firestore.yml, direto no Firebase. Servidas aqui,
+    # só mostravam a qualquer visitante o mapa do banco.
     'sql-asm.js',
     # O codificador de MP3 da gravação de aula. Viaja à parte, e não dentro
     # do app, por dois motivos: só quem converte áudio o baixa, e ele é

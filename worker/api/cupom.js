@@ -7,10 +7,15 @@
  * A liberação grava em assinaturas/{uid} com a conta de serviço, que é a
  * única coisa capaz de escrever nessa coleção.
  *
- * Para trocar os cupons sem mexer no código, cadastre CUPONS nas variáveis
- * do site, no formato "codigo:plano,codigo:plano". Planos: semanal, mensal,
- * anual, vitalicio. Enquanto essa variável não existir, valem os dois
- * abaixo.
+ * Os cupons moram no banco, em cupons/{codigo}, e são criados pelo painel
+ * do dono (Gestão de Acessos). Nenhum código fica escrito aqui: este
+ * arquivo vai para um repositório, e cupom escrito em código é cupom que
+ * qualquer pessoa com acesso ao código resgata.
+ *
+ * A variável CUPONS, cadastrada como segredo no Cloudflare no formato
+ * "codigo:plano,codigo:plano", continua valendo como reserva. Planos:
+ * semanal, mensal, anual, vitalicio — e mentor, que não libera plano
+ * nenhum: dá o papel de mentor (a aba Mentor).
  */
 import {
   json, corpoJson, quemPede, contaDeServico, tokenDeAcesso,
@@ -18,19 +23,15 @@ import {
   BASE_FIRESTORE,
 } from "./_comum.js";
 
-const CUPONS_PADRAO = "secdamocada:semanal,medeasysoft:anual";
-
-/* Cupom que não libera plano nenhum: dá o papel de mentor. Fica fora do
-   CUPONS de plano de propósito, para não poder ser trocado pela variável de
-   ambiente nem confundido com um cupom de assinatura. */
-const CUPOM_MENTOR = "mentor1612";
+/* O cupom que dá o papel de mentor em vez de um plano. */
+const PLANO_MENTOR = "mentor";
 
 function lerCupons(env) {
   const fora = {};
-  for (const parte of String(env.CUPONS || CUPONS_PADRAO).split(",")) {
+  for (const parte of String(env.CUPONS || "").split(",")) {
     const [cod, plano] = parte.split(":").map((x) => String(x || "").trim().toLowerCase());
     if (!cod) continue;
-    fora[cod] = DIAS[plano] ? plano : "anual";
+    fora[cod] = DIAS[plano] || plano === PLANO_MENTOR ? plano : "anual";
   }
   return fora;
 }
@@ -76,19 +77,6 @@ export async function onRequest({ request, env }) {
   const codigo = String(corpo.codigo || "").trim().toLowerCase();
   if (!codigo) return json({ erro: "Escreva o código do cupom." }, 400);
 
-  /* Cupom de mentor não passa pela lista de planos: não expira, não ocupa
-     lugar de plano pago, e resgatar de novo não faz nada de errado. */
-  if (codigo === CUPOM_MENTOR) {
-    const conta = contaDeServico(env);
-    if (!conta) return json({ erro: "Conta de serviço inválida." }, 500);
-    let token;
-    try { token = await tokenDeAcesso(conta); }
-    catch (e) { return json({ erro: "Não consegui autenticar no banco." }, 500); }
-    const deu = await concederMentor(token, pessoa.uid, pessoa.email);
-    if (!deu) return json({ erro: "Não consegui liberar. Tente de novo." }, 500);
-    return json({ ok: true, mentor: true, mensagem: "Cupom aceito! Agora você é mentor(a) — a aba Mentor apareceu no menu." });
-  }
-
   const conta = contaDeServico(env);
   if (!conta) return json({ erro: "Conta de serviço inválida." }, 500);
 
@@ -96,10 +84,8 @@ export async function onRequest({ request, env }) {
   try { token = await tokenDeAcesso(conta); }
   catch (e) { return json({ erro: "Não consegui autenticar no banco." }, 500); }
 
-  /* O banco primeiro, a variável de ambiente depois.
-     Os cupons criados pelo painel moram em cupons/{codigo}; a variável
-     CUPONS continua valendo como reserva, para os cupons antigos não
-     morrerem de um dia para o outro. */
+  /* O banco primeiro, a variável de ambiente depois: os cupons criados
+     pelo painel moram em cupons/{codigo}, e CUPONS é só reserva. */
   const doBanco = await cupomDoBanco(token, codigo);
   const plano = doBanco ? doBanco.plano : lerCupons(env)[codigo];
   /* Sem dizer se o código existe mas expirou, ou se nunca existiu: quanto
@@ -109,6 +95,15 @@ export async function onRequest({ request, env }) {
      o caso do cupom de divulgação. */
   if (doBanco && doBanco.maxUsos > 0 && doBanco.usos >= doBanco.maxUsos) {
     return json({ erro: "Esse cupom já foi todo usado." }, 410);
+  }
+
+  /* Cupom de mentor não passa pela assinatura: não expira, não ocupa
+     lugar de plano pago, e resgatar de novo não faz nada de errado. */
+  if (plano === PLANO_MENTOR) {
+    const deu = await concederMentor(token, pessoa.uid, pessoa.email);
+    if (!deu) return json({ erro: "Não consegui liberar. Tente de novo." }, 500);
+    if (doBanco) await contarUso(token, codigo, doBanco.usos);
+    return json({ ok: true, mentor: true, mensagem: "Cupom aceito! Agora você é mentor(a) — a aba Mentor apareceu no menu." });
   }
 
   /* Já tem plano em dia? Então o cupom não é gasto à toa. */

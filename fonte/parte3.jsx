@@ -1376,7 +1376,7 @@ function useGoogleDrive(nuvem) {
 
 /* ═══════════════════════════════════════════════════════════════════
    6.5 · MENTOR
-   Quem resgata o cupom "mentor1612" (rota /api/cupom) ganha esta aba, e
+   Quem resgata um cupom de mentor (rota /api/cupom) ganha esta aba, e
    adiciona alunos pelo e-mail com que eles se cadastraram. Os dados do
    aluno ficam inteiros na nuvem dele — o hook só chama o servidor, nunca
    mexe direto no Firestore, porque as regras não deixam ninguém ler o

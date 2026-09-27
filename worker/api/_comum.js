@@ -143,7 +143,7 @@ export async function validoAte(token, uid) {
 }
 
 /* Lê mentores/{uid} sem estourar em quem nunca resgatou. Compartilhada
-   entre cupom.js (resgate de "mentor1612") e acessos.js (o dono concede
+   entre cupom.js (resgate de cupom de mentor) e acessos.js (o dono concede
    direto, no painel). */
 export async function lerMentor(token, uid) {
   const r = await fetch(`${BASE_FIRESTORE}/mentores/${uid}`, {
