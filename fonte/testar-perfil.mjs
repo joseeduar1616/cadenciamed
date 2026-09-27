@@ -34,6 +34,7 @@ const navegador = await chromium.launch({
   ...(fs.existsSync(CHROME) ? { executablePath: CHROME } : {}),
 });
 const pag = await (await navegador.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
+await pag.addInitScript(() => { try { localStorage.setItem('cadencia:v3:convite-notificacoes-aparelho', 'teste'); } catch (e) { /* noop */ } });
 
 await pag.addInitScript(() => {
   try {

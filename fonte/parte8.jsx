@@ -1302,6 +1302,19 @@ export default function Cadencia() {
       {/* A aula que está gravando, visível em qualquer aba (ver parte24.jsx). */}
       <AvisoGravandoAula irPara={setTab} />
 
+      {/* "Você está aí?" do Foco, em qualquer aba: o cronômetro corre mesmo
+          com a pessoa em outra tela do site (ver usePomodoro, parte3.jsx). */}
+      {P.presenca.fase === "perguntando" ? (
+        <PerguntaPresenca restaMs={P.presenca.restaMs} oQue="o cronômetro do Foco"
+          aoConfirmar={P.confirmarPresenca} />
+      ) : null}
+
+      {/* Primeira vez neste aparelho: convida a ligar as notificações
+          (uma vez só por aparelho — ver parte21.jsx). */}
+      {!needsOnboarding && ready ? (
+        <ConviteNotificacoesAparelho data={data} setData={setData} nuvem={nuvem} notify={notify} />
+      ) : null}
+
       {toast ? (
         <div className="fixed left-1/2 bottom-7 rounded-full px-5 py-3"
           style={{ transform: "translateX(-50%)", background: T.card3, border: `1px solid ${T.line}`, color: T.ink, fontSize: 14.5, zIndex: 80, boxShadow: T.shadow, maxWidth: "90vw" }}>

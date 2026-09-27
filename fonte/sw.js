@@ -123,6 +123,19 @@ self.addEventListener("push", (e) => {
    pessoa estava fazendo na primeira. */
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
+  /* "Você está aí?": tocar no aviso (ou no botão "Estou aqui") É a
+     resposta. Traz a aba para frente e manda o recado, sem navegar: um
+     navigate recarregaria a página no meio do estudo. */
+  if (e.notification.data && e.notification.data.tipo === "presenca") {
+    e.waitUntil((async () => {
+      const abas = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      const nossas = abas.filter((a) => new URL(a.url).origin === self.location.origin);
+      nossas.forEach((a) => a.postMessage({ tipo: "presenca-ok" }));
+      if (nossas.length) await nossas[0].focus().catch(() => {});
+      else await self.clients.openWindow("/");
+    })());
+    return;
+  }
   const destino = new URL((e.notification.data && e.notification.data.url) || "/", self.location.origin);
   e.waitUntil((async () => {
     const abas = await self.clients.matchAll({ type: "window", includeUncontrolled: true });

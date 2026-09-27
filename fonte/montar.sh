@@ -60,6 +60,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar.mjs index.html
   node testar-contraste.mjs
   node testar-atualizacao.mjs index.html
+  node testar-presenca-tela.mjs index.html
   node testar-perfil.mjs
   node testar-nuvem.mjs
   node testar-lotes.mjs
@@ -71,6 +72,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-aula-ia.mjs
   node testar-ficha.mjs
   node testar-memoria.mjs
+  node testar-presenca.mjs
   node testar-aula.mjs
   node testar-lembretes.mjs
   echo "── funções do servidor ─────────────────────────────"

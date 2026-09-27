@@ -768,6 +768,113 @@ async function avisar(titulo, corpo, marca) {
   }
 }
 
+/* ── "você está aí?": o aviso do sistema e a pergunta na tela ──────────
+ *
+ * A regra mora no base.jsx (estadoDaPresenca); aqui fica só o que aparece.
+ *
+ * Com a aba à vista, basta a pergunta na tela. Com a pessoa em outra aba
+ * ou outro programa, a pergunta na tela não seria vista — e o minuto
+ * passaria sem chance de resposta. Por isso, fora de vista, sai também um
+ * aviso do sistema, com o botão "Estou aqui". Tocar nele responde, sem
+ * recarregar nada: o service worker só traz a aba para frente e manda o
+ * recado (ver sw.js, "presenca-ok").
+ */
+const MARCA_AVISO_PRESENCA = "presenca";
+const EVENTO_PRESENCA_OK = "cadencia:presenca-ok";
+
+async function avisarPresenca(corpo) {
+  try {
+    if (!podeNotificar() || Notification.permission !== "granted") return false;
+    if (document.visibilityState === "visible" && document.hasFocus()) return false;
+    const reg = navigator.serviceWorker ? await navigator.serviceWorker.getRegistration() : null;
+    if (!reg || !reg.showNotification) return false;
+    await reg.showNotification("Você está aí?", {
+      body: corpo,
+      icon: "/icone-192.png",
+      badge: "/icone-192.png",
+      tag: MARCA_AVISO_PRESENCA,
+      renotify: true,
+      requireInteraction: true,
+      data: { tipo: "presenca" },
+      actions: [{ action: "estou-aqui", title: "Estou aqui" }],
+    });
+    return true;
+  } catch (e) { return false; }
+}
+
+async function fecharAvisoPresenca() {
+  try {
+    const reg = navigator.serviceWorker ? await navigator.serviceWorker.getRegistration() : null;
+    if (!reg || !reg.getNotifications) return;
+    const avisos = await reg.getNotifications({ tag: MARCA_AVISO_PRESENCA });
+    avisos.forEach((n) => n.close());
+  } catch (e) { /* noop */ }
+}
+
+/* O recado do service worker vira um evento da janela, para quem quer que
+   esteja perguntando (o Foco, os cartões) responder por conta própria. */
+let presencaOuvindoSw = false;
+function ligarRecadoDePresenca() {
+  if (presencaOuvindoSw) return;
+  presencaOuvindoSw = true;
+  try {
+    if (!navigator.serviceWorker) return;
+    navigator.serviceWorker.addEventListener("message", (e) => {
+      if (e && e.data && e.data.tipo === "presenca-ok") {
+        window.dispatchEvent(new Event(EVENTO_PRESENCA_OK));
+      }
+    });
+  } catch (e) { /* noop */ }
+}
+
+function useOuvirAvisoPresenca(aoResponder) {
+  const ref = useRef(aoResponder);
+  ref.current = aoResponder;
+  useEffect(() => {
+    ligarRecadoDePresenca();
+    const h = () => ref.current && ref.current();
+    window.addEventListener(EVENTO_PRESENCA_OK, h);
+    return () => window.removeEventListener(EVENTO_PRESENCA_OK, h);
+  }, []);
+}
+
+/* A pergunta na tela. O minuto aparece descendo, em número e em barra,
+   para ninguém achar que o site travou. Enter ou espaço também respondem:
+   o botão recebe o foco assim que a pergunta aparece. */
+function PerguntaPresenca({ restaMs, oQue, aoConfirmar }) {
+  const caixa = useRef(null);
+  useEffect(() => {
+    const b = caixa.current && caixa.current.querySelector("button");
+    if (b) b.focus();
+  }, []);
+  const seg = Math.max(0, Math.ceil((Number(restaMs) || 0) / 1000));
+  const fracao = Math.max(0, Math.min(1, (Number(restaMs) || 0) / PRESENCA_ESPERA_MS));
+  return (
+    <div role="alertdialog" aria-modal="true" aria-labelledby="pergunta-presenca-titulo"
+      style={{
+        position: "fixed", inset: 0, zIndex: 95, display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 16, background: "rgba(0,0,0,.45)",
+      }}>
+      <div style={{
+        width: "100%", maxWidth: 380, background: T.card, border: `1px solid ${soft("var(--neon)", 40)}`,
+        borderRadius: 22, padding: "26px 22px 22px", boxShadow: T.shadow, textAlign: "center",
+      }}>
+        <div id="pergunta-presenca-titulo" style={{ fontSize: 24, fontWeight: 700, color: T.ink }}>Você está aí?</div>
+        <Mini style={{ marginTop: 10, lineHeight: 1.6 }}>
+          Sem resposta, {oQue} para em <b style={{ fontFamily: F_MONO, color: T.ink }}>{seg}s</b> — e
+          conta só até agora.
+        </Mini>
+        <div style={{ marginTop: 14, height: 6, borderRadius: 99, background: T.card3, overflow: "hidden" }}>
+          <div style={{ width: `${fracao * 100}%`, height: "100%", background: "var(--neon)", transition: "width .25s linear" }} />
+        </div>
+        <div ref={caixa} style={{ marginTop: 18, display: "flex", justifyContent: "center" }}>
+          <Btn tone="primary" onClick={aoConfirmar}>Estou aqui</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* Roda com o site aberto e avisa uma vez por coisa por dia.
  *
  * "Uma vez por dia" é guardado por chave no próprio aparelho, e não no
@@ -883,6 +990,144 @@ function ConviteLembrete({ data, setData, notify, quantas }) {
       </Mini>
       <Btn size="sm" tone="primary" onClick={ligar}>Ligar lembretes</Btn>
       <Btn size="sm" tone="quiet" onClick={dispensar}>agora não</Btn>
+    </div>
+  );
+}
+
+/* ── o convite do primeiro acesso em cada aparelho ────────────────────
+ *
+ * Aparece UMA vez por aparelho (a marca fica no próprio aparelho, e não na
+ * conta: o celular novo precisa perguntar mesmo que o computador já tenha
+ * ligado). Sem notificação, o "Você está aí?" do Foco só é visto com o
+ * site na frente, e os lembretes não chegam.
+ *
+ * O pedido de permissão só sai do clique no botão: pedido sem clique é
+ * bloqueado pelos navegadores, e quem nega de primeira não é perguntado
+ * de novo nunca mais.
+ */
+const CHAVE_CONVITE_APARELHO = "cadencia:v3:convite-notificacoes-aparelho";
+
+function jaConvidouEsteAparelho() {
+  try { return !!window.localStorage.getItem(CHAVE_CONVITE_APARELHO); }
+  catch (e) { return true; }   /* sem onde guardar, melhor não insistir a cada abertura */
+}
+function marcarConviteDoAparelho(como) {
+  try { window.localStorage.setItem(CHAVE_CONVITE_APARELHO, `${como}|${Date.now()}`); } catch (e) { /* noop */ }
+}
+
+/* O que o convite deve mostrar neste aparelho, agora. */
+function conviteDoAparelho() {
+  if (jaConvidouEsteAparelho()) return "nada";
+  if (ehIOS() && !instalado()) return "instalar";
+  if (!podeNotificar()) return "nada";
+  if (Notification.permission !== "default") return "nada";
+  return "pedir";
+}
+
+function ConviteNotificacoesAparelho({ data, setData, nuvem, notify }) {
+  const [tipo, setTipo] = useState("nada");
+  const [ocupado, setOcupado] = useState(false);
+
+  /* Espera o site assentar: logo na abertura já há o suficiente
+     acontecendo, e um convite por cima de tudo vira ruído. */
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      const v = conviteDoAparelho();
+      /* permissão já decidida (dada ou negada) não tem o que pedir */
+      if (v === "nada" && !jaConvidouEsteAparelho()) marcarConviteDoAparelho("ja-decidido");
+      setTipo(v);
+    }, 2500);
+    return () => window.clearTimeout(t);
+  }, []);
+
+  if (tipo === "nada") return null;
+
+  const fechar = (como) => { marcarConviteDoAparelho(como); setTipo("nada"); };
+
+  const ativar = async () => {
+    setOcupado(true);
+    let p = "denied";
+    try { p = await Notification.requestPermission(); } catch (e) { p = "denied"; }
+    if (p !== "granted") {
+      setOcupado(false);
+      notify("O navegador não liberou. Dá para ligar depois em Configurações › Lembretes.");
+      fechar("negou");
+      return;
+    }
+    setData((x) => ({ ...x, lembretes: { ...(x.lembretes || {}), ligado: true } }));
+    /* Com conta, assina também o aviso com o site fechado. Se isso falhar,
+       o resto continua valendo: a permissão já foi dada. */
+    let comSiteFechado = false;
+    if (nuvem && nuvem.usuario && temPush()) {
+      const hora = Math.max(0, Math.min(23, Math.round(Number(((data.lembretes || {}).push || {}).hora ?? 7))));
+      const r = await assinarPush(nuvem, {
+        hora,
+        titulo: "Cadência Med",
+        resumo: fraseDoDia({ atrasadas: (data.rever || []).length, cartoes: 0, blocos: [] }),
+      });
+      if (!r.erro) {
+        comSiteFechado = true;
+        setData((x) => ({
+          ...x,
+          lembretes: { ...(x.lembretes || {}), ligado: true, push: { ligado: true, hora } },
+        }));
+      }
+    }
+    setOcupado(false);
+    notify(comSiteFechado
+      ? "Notificações ligadas neste aparelho, inclusive com o site fechado."
+      : "Notificações ligadas neste aparelho.");
+    fechar("ativou");
+  };
+
+  return (
+    <div role="dialog" aria-modal="true" aria-labelledby="convite-aparelho-titulo"
+      style={{
+        position: "fixed", inset: 0, zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 16, background: "rgba(0,0,0,.45)",
+      }}>
+      <div style={{
+        width: "100%", maxWidth: 420, background: T.card, border: `1px solid ${T.line}`,
+        borderRadius: 22, padding: "24px 22px 20px", boxShadow: T.shadow,
+      }}>
+        <H size={19} color="var(--neon)" icon={<Flame size={17} />}>
+          <span id="convite-aparelho-titulo">Ativar as notificações</span>
+        </H>
+        {tipo === "instalar" ? (
+          <>
+            <Texto style={{ marginTop: 10 }}>
+              No iPhone e no iPad, as notificações só funcionam com o Cadência instalado na
+              tela de início.
+            </Texto>
+            <ol style={{ margin: "10px 0 0", paddingLeft: 20, fontSize: 14.5, lineHeight: 1.75, color: T.dim }}>
+              <li>No <b>Safari</b>, toque no quadrado com a seta para cima, o botão de <b>compartilhar</b>.</li>
+              <li>Toque em <b>Adicionar à Tela de Início</b>.</li>
+              <li>Abra o Cadência pelo ícone — este convite aparece lá para ligar.</li>
+            </ol>
+            <div className="mt-5 flex justify-end">
+              <Btn tone="primary" onClick={() => fechar("instalar")}>Entendi</Btn>
+            </div>
+          </>
+        ) : (
+          <>
+            <Texto style={{ marginTop: 10 }}>
+              Para este aparelho avisar você:
+            </Texto>
+            <ul style={{ margin: "8px 0 0", paddingLeft: 20, fontSize: 14.5, lineHeight: 1.75, color: T.dim }}>
+              <li>das revisões que vencem no dia;</li>
+              <li>do bloco da agenda que vai começar;</li>
+              <li>do <b>"Você está aí?"</b> do Foco, mesmo com você em outra aba;</li>
+              <li>de quando alguém chamar você para um duelo.</li>
+            </ul>
+            <div className="mt-5 flex items-center justify-end gap-2 flex-wrap">
+              <Btn tone="quiet" disabled={ocupado} onClick={() => fechar("agora-nao")}>agora não</Btn>
+              <Btn tone="primary" disabled={ocupado} onClick={ativar}>
+                {ocupado ? "Ativando…" : "Ativar notificações"}
+              </Btn>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

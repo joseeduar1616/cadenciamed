@@ -518,6 +518,38 @@ novo não faz nada de errado, e não apaga a lista de alunos que a pessoa já
 tinha. O dono (em `DONOS`, no `_comum.js`) já é mentor sem precisar resgatar
 nada — é a mesma lista que já dá acesso completo sem pagar.
 
+## "Você está aí?" e o convite de notificações
+
+Cronômetro correndo com a pessoa longe infla as horas que a Constância, as
+metas e o ranking das salas somam. Por isso o **Foco** (pomodoro e tempo
+corrido) e o **relógio da sessão de cartões** perguntam "Você está aí?" a
+cada 30 minutos sem sinal de vida. A pergunta fica 1 minuto na tela; sem
+resposta, o tempo para **no instante da pergunta** — o minuto sem resposta
+não conta. Sinal de vida: começar, retomar, responder a pergunta, e nos
+cartões também responder um cartão.
+
+A regra é conta sobre instantes absolutos (`estadoDaPresenca`, no
+`base.jsx`), então vale igual com o site fechado: quem fecha o site com o
+tempo corrido ligado e volta 3 horas depois encontra 30 minutos contados, e
+não 3 horas. Com a aba fora de vista sai também um aviso do sistema com o
+botão "Estou aqui"; tocar nele responde sem recarregar a página (o
+`sw.js` só manda o recado `presenca-ok`).
+
+Ficaram de fora, de propósito: a gravação de aula (ela existe para rodar
+sem ninguém tocar na tela, e parar por falta de clique perderia a aula), o
+foco combinado das salas e das duplas (é uma marca da sala inteira; o tempo
+de cada um é o Foco dele, que já pergunta — e o "estudando agora" da sala
+apaga sozinho quando o Foco para) e o descanso entre séries (segundos).
+
+Na primeira abertura de cada aparelho, depois das boas-vindas, o site
+convida a ligar as notificações (`ConviteNotificacoesAparelho`, em
+`parte21.jsx`). A marca fica no aparelho, não na conta: o celular novo
+pergunta mesmo que o computador já tenha ligado. No iPhone sem o site
+instalado, o convite ensina a instalar, porque lá notificação só existe
+para o site na tela de início. Os testes de navegador marcam o convite como
+já visto, para ele não cobrir a tela; quem o testa é o
+`testar-presenca-tela.mjs`.
+
 ## Plano anual e painel de acessos
 
 O plano anual vale até **31/12/2027**, uma data fixa, não um ano contado a

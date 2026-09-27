@@ -1048,6 +1048,12 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
   const [inicioSessao, setInicioSessao] = useState(0);
   const [inicioCartao, setInicioCartao] = useState(0);
   const [agoraSessao, setAgoraSessao] = useState(0);
+  /* "Você está aí?" (base.jsx): responder um cartão é sinal de vida; meia
+     hora sem nenhum, pergunta; sem resposta, o relógio da sessão para no
+     instante da pergunta e o tempo parado é descontado. */
+  const [vivoDesde, setVivoDesde] = useState(0);
+  const [pausadaEm, setPausadaEm] = useState(0);
+  const [descontoSessao, setDescontoSessao] = useState(0);
   const [pontos, setPontos] = useState(0);
   const [sequencia, setSequencia] = useState(0);
   const [escolha, setEscolha] = useState(null);   // { idx, nota } depois de escolher
@@ -1335,6 +1341,9 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
     setInicioSessao(t);
     setInicioCartao(t);
     setAgoraSessao(t);
+    setVivoDesde(t);
+    setPausadaEm(0);
+    setDescontoSessao(0);
     setModo("estudo");
   };
 
@@ -1396,6 +1405,38 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
     return () => window.clearInterval(t);
   }, [modo]);
 
+  const presencaSessao = modo === "estudo" && atual && !pausadaEm
+    ? estadoDaPresenca(vivoDesde, agoraSessao) : PRESENCA_OK;
+  const tempoSessao = Math.max(0, ((pausadaEm || agoraSessao) - inicioSessao - descontoSessao) / 1000);
+
+  /* Sinal de vida: volta a contar se estava parado, e recomeça a meia hora. */
+  const sinalDeVida = useCallback(() => {
+    const t = Date.now();
+    if (pausadaEm) {
+      setDescontoSessao((d) => d + (t - pausadaEm));
+      setPausadaEm(0);
+      setInicioCartao(t);
+    }
+    setVivoDesde(t);
+    setAgoraSessao(t);
+    fecharAvisoPresenca();
+  }, [pausadaEm]);
+  useOuvirAvisoPresenca(() => { if (modo === "estudo") sinalDeVida(); });
+
+  const perguntouSessao = useRef(false);
+  useEffect(() => {
+    if (presencaSessao.fase === "ok") { perguntouSessao.current = false; return; }
+    if (presencaSessao.fase === "perguntando") {
+      if (perguntouSessao.current) return;
+      perguntouSessao.current = true;
+      avisarPresenca("O relógio dos cartões para em 1 minuto se ninguém responder.");
+      return;
+    }
+    setPausadaEm(presencaSessao.perguntaEm);
+    fecharAvisoPresenca();
+    notify("Parei o relógio dos cartões: ninguém respondeu \"Você está aí?\".");
+  }, [presencaSessao.fase]); // eslint-disable-line
+
   const responder = useCallback((nota) => {
     if (!atual) return;
     const atualizado = reagendar(atual, nota);
@@ -1411,13 +1452,14 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
     setSequencia((n) => (nota === "errei" ? 0 : n + 1));
     setEscolha(null);
     setDica(false);
+    sinalDeVida();
     setInicioCartao(Date.now());
     setFila((f) => {
       const resto = f.slice(1);
       /* errou volta para o fim da fila, para ser visto de novo hoje */
       return nota === "errei" ? [...resto, atual.id] : resto;
     });
-  }, [atual, setData, sequencia]);
+  }, [atual, setData, sequencia, sinalDeVida]);
 
   useEffect(() => {
     estudandoCartoes = modo === "estudo";
@@ -1547,8 +1589,17 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
                   pressa vira chute. */}
               <span className="hidden sm:inline" style={{ width: 1, height: 16, background: T.line, flexShrink: 0 }} />
               <span className="hidden sm:inline" style={{ fontFamily: F_MONO, fontSize: 13, color: T.faint }}>
-                {fmtRelogio((agoraSessao - inicioSessao) / 1000)}
+                {fmtRelogio(tempoSessao)}
               </span>
+              {pausadaEm ? (
+                <button type="button" onClick={sinalDeVida} title='O relógio parou porque ninguém respondeu "Você está aí?"'
+                  style={{
+                    background: soft("var(--warn)", 14), color: "var(--warn)", border: "none", cursor: "pointer",
+                    borderRadius: 99, padding: "3px 9px", fontSize: 12, whiteSpace: "nowrap",
+                  }}>
+                  relógio parado · continuar
+                </button>
+              ) : null}
             </div>
             <div className="flex items-center gap-2" style={{ flexShrink: 0 }}>
               <span title="Pontos da sessão · a sequência de acertos dá bônus"
@@ -1749,6 +1800,11 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
             </div>
           )}
         </div>
+
+        {presencaSessao.fase === "perguntando" ? (
+          <PerguntaPresenca restaMs={presencaSessao.restaMs} oQue="o relógio dos cartões"
+            aoConfirmar={sinalDeVida} />
+        ) : null}
       </div>
     ), document.body);
   }

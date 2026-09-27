@@ -39,6 +39,8 @@ const navegador = await chromium.launch({
   ...(fs.existsSync(CHROME) ? { executablePath: CHROME } : {}),
 });
 const ctx = await navegador.newContext({ viewport: { width: 1440, height: 900 } });
+/* o convite de notificações do primeiro acesso cobriria a tela; quem o testa é o testar-presenca-tela.mjs */
+await ctx.addInitScript(() => { try { localStorage.setItem('cadencia:v3:convite-notificacoes-aparelho', 'teste'); } catch (e) { /* noop */ } });
 const pag = await ctx.newPage();
 pag.on('pageerror', (e) => erros.push('pageerror: ' + e.message));
 pag.on('console', (m) => {
