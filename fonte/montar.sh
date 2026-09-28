@@ -50,6 +50,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   python3 extrair_semana.py
   python3 extrair_ficha.py
   python3 extrair_memoria.py
+  python3 extrair_cronograma.py
   python3 extrair_aula.py
   python3 extrair_treino.py
   python3 extrair_anexo.py
@@ -74,6 +75,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-ficha.mjs
   node testar-memoria.mjs
   node testar-presenca.mjs
+  node testar-cronograma-partes.mjs
   node testar-aula.mjs
   node testar-lembretes.mjs
   echo "── funções do servidor ─────────────────────────────"

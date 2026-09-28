@@ -518,6 +518,28 @@ novo não faz nada de errado, e não apaga a lista de alunos que a pessoa já
 tinha. O dono (em `DONOS`, no `_comum.js`) já é mentor sem precisar resgatar
 nada — é a mesma lista que já dá acesso completo sem pagar.
 
+## O cronograma que a pessoa envia (tetos)
+
+Dois caminhos, e os dois cortavam o fim do curso sem ninguém perceber — um
+calendário de 46 semanas chegava até a semana 36:
+
+- **Calendário em texto** (aba Cronograma, "as datas e o calendário do seu
+  curso"): era cortado em 20 mil caracteres no envio *e* na leitura do
+  disco/nuvem. Agora o teto é um só, `LIMITE_CRONOGRAMA` no `base.jsx`
+  (100 mil), usado nos dois lugares. O assistente enxerga até 40 mil
+  caracteres dele (antes, 12 mil: só o começo do curso).
+- **Organizar com a IA** (vira as matérias do painel): ia só o começo do
+  texto (45 mil caracteres), e a resposta da IA também tem teto. Agora o
+  texto vai em partes de 10 mil caracteres, cortadas antes de "Semana",
+  "Módulo" ou de linha em branco (`partesParaOrganizar`, `parte9.jsx`),
+  cada parte é organizada numa chamada, e as listas se juntam na ordem
+  (`juntarMaterias`), desfazendo só a repetição da emenda entre partes. O
+  currículo próprio guarda até `MAX_AULAS_PROPRIAS` (1000) aulas.
+
+O `testar-cronograma-partes.mjs` monta um curso de 46 semanas do tamanho
+do que chegou (com o corte antigo, ele parava na 36) e cobra que tudo vá
+até a semana 46.
+
 ## "Você está aí?" e o convite de notificações
 
 Cronômetro correndo com a pessoa longe infla as horas que a Constância, as

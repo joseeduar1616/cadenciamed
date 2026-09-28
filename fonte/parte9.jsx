@@ -48,7 +48,9 @@ function resumoParaIA({ subjects, ladder, data, today, totals, minWeek, qWeek, t
   /* O cronograma que a pessoa recebeu do curso dela. Vai marcado como
      material dela, e não como instrução: é texto de fora, e o modelo não
      deve obedecer ao que estiver escrito lá dentro. */
-  const doCurso = String((data.cronograma || {}).texto || "").slice(0, 12000);
+  /* 40 mil caracteres: o calendário inteiro de um curso anual cabe, e o
+     assistente enxerga até a última semana, não só o começo. */
+  const doCurso = String((data.cronograma || {}).texto || "").slice(0, 40000);
   const cron = data.cronograma || {};
   /* As datas do período vão em linha separada, e não dentro do texto: elas
      são dado do painel, conferido pela pessoa, e o texto do curso é material
@@ -202,8 +204,75 @@ function Markdown({ texto }) {
  * (carregarPdfJs/carregarMammoth, em parte12.jsx), só que sem capturar
  * imagem — aqui interessa só o texto, para a IA separar em matérias.
  */
-const LIMITE_CRONOGRAMA = 20000;
-const LIMITE_ORGANIZAR = 45000;
+/* ── a lógica pura do organizar em partes (copiada e testada pelo extrair_cronograma.py)
+ *
+ * O cronograma inteiro não cabe numa chamada só. Antes ia só o começo (45
+ * mil caracteres), e a resposta da IA também tem teto: um curso de 46
+ * semanas com quatro aulas por semana rende perto de 200 matérias, e o fim
+ * não voltava. Agora o texto vai em partes, cortadas em fim de linha — de
+ * preferência antes de "Semana", "Módulo" ou de uma linha em branco, para
+ * uma semana não ficar dividida —, cada parte é organizada sozinha, e as
+ * listas se juntam na ordem em que vieram.
+ */
+const PARTE_ORGANIZAR = 10000;
+const MAX_PARTES_ORGANIZAR = 12;
+
+function partesParaOrganizar(texto, tamanho = PARTE_ORGANIZAR) {
+  const linhas = String(texto || "").replace(/\r\n?/g, "\n").split("\n");
+  const partes = [];
+  let atual = [];
+  let n = 0;
+  const fechar = () => {
+    const t = atual.join("\n").trim();
+    if (t) partes.push(t);
+    atual = []; n = 0;
+  };
+  for (let linha of linhas) {
+    /* linha maior que uma parte inteira (PDF sem quebra de linha): corta seco */
+    while (linha.length > tamanho) {
+      fechar();
+      partes.push(linha.slice(0, tamanho));
+      linha = linha.slice(tamanho);
+    }
+    const comecaBloco = /^\s*$/.test(linha)
+      || /^\s*(semana|m[óo]dulo|bloco|unidade|ciclo|m[êe]s)\b/i.test(linha);
+    if (n + linha.length + 1 > tamanho || (comecaBloco && n > tamanho * 0.75)) fechar();
+    atual.push(linha);
+    n += linha.length + 1;
+  }
+  fechar();
+  return partes;
+}
+
+function chaveMateria(m) {
+  const t = String((m && m.titulo) || "").normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase().replace(/\s+/g, " ").trim();
+  return `${(m && m.area) || ""}|${t}`;
+}
+
+/* Junta as listas na ordem. Só a emenda entre uma parte e a seguinte é
+   conferida: uma aula que ficou nas duas pontas do corte vem repetida, e
+   vira uma só, somando os tópicos. Repetição longe da emenda é do próprio
+   cronograma (a mesma aula em dois módulos) e fica. */
+function juntarMaterias(listas) {
+  const fora = [];
+  for (const lista of listas || []) {
+    const cauda = fora.slice(-3);
+    (lista || []).forEach((m, i) => {
+      if (!m || !m.titulo) return;
+      const igual = i < 3 ? cauda.find((x) => chaveMateria(x) === chaveMateria(m)) : null;
+      if (igual) {
+        for (const t of m.topicos || []) {
+          if (igual.topicos.length < 6 && igual.topicos.indexOf(t) < 0) igual.topicos.push(t);
+        }
+        return;
+      }
+      fora.push({ ...m, topicos: [...(m.topicos || [])] });
+    });
+  }
+  return fora;
+}
+/* ── fim da lógica pura do organizar */
 
 async function lerPdfSoTexto(arquivo, aviso) {
   aviso("carregando o leitor de PDF");
@@ -318,12 +387,28 @@ async function lerFotosComIA(nuvem, arquivos, aviso) {
   return erro ? { erro } : dados;
 }
 
-async function organizarComIA(nuvem, texto) {
+async function organizarComIA(nuvem, texto, aviso) {
   const token = await pegarTokenDaConta(nuvem);
   if (!token) return { erro: "Entre na sua conta para usar esta função." };
-  const { dados, erro } = await chamarApi(
-    "/api/cronograma-ia", { token, texto: texto.slice(0, LIMITE_ORGANIZAR) }, "Organizar o cronograma");
-  return erro ? { erro } : dados;
+  const todas = partesParaOrganizar(texto);
+  const partes = todas.slice(0, MAX_PARTES_ORGANIZAR);
+  const listas = [];
+  let cortado = todas.length > partes.length;
+  for (let i = 0; i < partes.length; i++) {
+    if (aviso) aviso(partes.length > 1 ? `organizando a parte ${i + 1} de ${partes.length}…` : "conversando com a IA…");
+    /* O aviso de trecho vai dentro do material: a IA sabe que o começo
+       desta parte não é o começo do curso, e não o trata como introdução. */
+    const material = partes.length > 1 ? `(Trecho ${i + 1} de ${partes.length} do mesmo cronograma.)\n${partes[i]}` : partes[i];
+    const { dados, erro } = await chamarApi("/api/cronograma-ia", { token, texto: material }, "Organizar o cronograma");
+    if (erro) {
+      return { erro: partes.length > 1 ? `Parte ${i + 1} de ${partes.length}: ${erro}` : erro };
+    }
+    listas.push((dados && dados.materias) || []);
+    if (dados && dados.cortado) cortado = true;
+  }
+  const materias = juntarMaterias(listas);
+  if (!materias.length) return { erro: "Não encontrei matérias reconhecíveis nesse material." };
+  return { materias, cortado, partes: partes.length };
 }
 
 /* Vira item de currículo, no mesmo formato de curriculo.js — "pp-" na
@@ -592,13 +677,14 @@ function AbaCronograma({ data, setData, notify, nuvem, pro, verPlanos }) {
     const texto = rascunho.trim();
     if (!texto) { setErro("Cole o texto ou escolha um arquivo antes de organizar."); return; }
     setOcupado(true); setErro(""); setProgresso("conversando com a IA…");
-    const r = await organizarComIA(nuvem, texto);
+    const r = await organizarComIA(nuvem, texto, setProgresso);
     setOcupado(false); setProgresso("");
     if (r.erro) { setErro(r.erro); return; }
     setMaterias(r.materias);
     setAreasOn(new Set(r.materias.map((m) => m.area)));
     setFase("revisar");
-    if (r.cortado) notify("O material era grande e foi cortado antes de organizar.");
+    if (r.cortado) notify("Alguma parte do material ficou de fora. Confira se a lista vai até o fim do curso.");
+    else if (r.partes > 1) notify(`Organizado em ${r.partes} partes: ${r.materias.length} matérias.`);
   };
 
   const aplicar = () => {

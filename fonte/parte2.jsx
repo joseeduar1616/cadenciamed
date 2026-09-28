@@ -269,7 +269,7 @@ function normalize(raw) {
       /* Cortado aqui, e não só na hora de enviar: um arquivo enorme colado
          encheria o armazenamento do navegador e derrubaria o salvamento
          inteiro, não só o assistente. */
-      texto: String(obj(d.cronograma).texto || "").slice(0, 20000),
+      texto: String(obj(d.cronograma).texto || "").slice(0, LIMITE_CRONOGRAMA),
       /* Data solta vira vazio: o campo é um <input type="date">, então o que
          vale é AAAA-MM-DD, e qualquer outra coisa só quebraria a conta de
          dias mais adiante. */
@@ -281,7 +281,7 @@ function normalize(raw) {
        Cronograma (parte9.jsx). Mesmo formato do currículo padrão, para o
        resto do app (Matérias, Rotina, Progresso...) não precisar saber a
        diferença. */
-    cronogramaProprio: arr(d.cronogramaProprio, []).slice(0, 300).map((s) => (obj(s))).filter((s) => (
+    cronogramaProprio: arr(d.cronogramaProprio, []).slice(0, MAX_AULAS_PROPRIAS).map((s) => (obj(s))).filter((s) => (
       typeof s.id === "string" && s.id && typeof s.title === "string" && s.title.trim()
       && AREA_IDS.indexOf(s.area) >= 0
     )).map((s) => ({

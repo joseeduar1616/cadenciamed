@@ -12,7 +12,7 @@
 import { json, quemPede, corpoJson } from "./_comum.js";
 import { podeUsar, escolherProvedor, modeloAtual, chamarIA } from "./_ia.js";
 
-const LIMITE_ENTRADA = 24000;   // caracteres, para conter o custo por chamada
+const LIMITE_ENTRADA = 55000;   // caracteres: o painel + o calendário do curso inteiro (40 mil, parte9.jsx)
 /* O anexo tem teto próprio, e maior: um PDF de cronograma inteiro não cabe
    em 6000 caracteres, e cortar no meio faria a IA responder sobre metade
    do material sem avisar ninguém. */
