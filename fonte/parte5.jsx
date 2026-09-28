@@ -113,7 +113,11 @@ function Foco({ data, setData, today, P, subjectId, setSubjectId }) {
   const subj = subjectId ? ativo.byId[subjectId] : null;
 
   if (full) {
-    return (
+    /* Por portal, no <body>. Dentro da página, o "fixed" ficava preso ao
+       bloco com a animação de entrada (.rise, que usa transform) e não à
+       tela: o relógio gigante saía por cima do cabeçalho, com o menu e o
+       rodapé aparecendo em volta. É a mesma saída dos cartões, parte12.jsx. */
+    return createPortal((
       <div className="fixed flex flex-col items-center justify-center px-6"
         style={{
           inset: 0, background: T.bg, zIndex: 90,
@@ -162,7 +166,7 @@ function Foco({ data, setData, today, P, subjectId, setSubjectId }) {
         </div>
         <Mini style={{ marginTop: 26 }}>espaço inicia e pausa · F ou Esc sai da tela cheia</Mini>
       </div>
-    );
+    ), document.body);
   }
 
   return (

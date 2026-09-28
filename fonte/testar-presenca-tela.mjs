@@ -73,6 +73,26 @@ if (permissao === 'default') {
 /* ── o Foco em tempo corrido ──────────────────────────────────────────── */
 await pag.locator('nav button:has-text("Foco")').first().click();
 await pag.waitForTimeout(400);
+
+/* A tela cheia do Foco cobre a tela INTEIRA. Dentro da página, o "fixed"
+   ficava preso ao bloco com animação de entrada: o relógio saía por cima
+   do cabeçalho, com o menu e o rodapé em volta (1120 × 59, no meio). */
+await pag.evaluate(() => window.scrollTo(0, 300));
+await pag.locator('main button:has-text("Tela cheia")').first().click();
+await pag.waitForTimeout(400);
+const cheia = await pag.evaluate(() => {
+  const b = document.querySelector('button[aria-label="Sair da tela cheia"]');
+  if (!b) return null;
+  const r = b.parentElement.getBoundingClientRect();
+  return { top: r.top, left: r.left, w: r.width, h: r.height, vw: innerWidth, vh: innerHeight };
+});
+if (cheia && cheia.top === 0 && cheia.left === 0 && cheia.w === cheia.vw && cheia.h === cheia.vh) {
+  ok('a tela cheia do Foco cobre a tela inteira, mesmo com a página rolada');
+} else falha('a tela cheia do Foco não cobre a tela: ' + JSON.stringify(cheia));
+await pag.locator('button[aria-label="Sair da tela cheia"]').first().click();
+await pag.waitForTimeout(300);
+await pag.evaluate(() => window.scrollTo(0, 0));
+
 await pag.locator('button:has-text("Tempo corrido")').first().click();
 await pag.waitForTimeout(300);
 await pag.locator('main button:has-text("Começar")').first().click();
