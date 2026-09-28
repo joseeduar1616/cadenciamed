@@ -1578,7 +1578,7 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
         <div style={{ flexShrink: 0, borderBottom: `1px solid ${T.line}` }}>
           <div className="flex items-center justify-between gap-3 px-4 sm:px-6"
             style={{ height: 56 }}>
-            <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex items-center gap-2.5 min-w-0" style={{ overflow: "hidden" }}>
               <Num size={19} weight={700} color="var(--neon)">{fila.length}</Num>
               <Label>na fila</Label>
               <span style={{ width: 1, height: 16, background: T.line, flexShrink: 0 }} />
@@ -1616,7 +1616,10 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
                   fontSize: 12.5, padding: "6px 11px", cursor: "pointer", whiteSpace: "nowrap",
                   background: T.card2, border: `1px solid ${T.line}`, color: T.dim,
                 }}>
-                {jeito === "escolha" ? "múltipla escolha" : "virar cartão"}
+                {/* No celular a barra não tem os ~385 px que o nome inteiro pede:
+                    "0 feitos" encavalava nos pontos. Lá vai a forma curta. */}
+                <span className="sm:hidden">{jeito === "escolha" ? "escolha" : "virar"}</span>
+                <span className="hidden sm:inline">{jeito === "escolha" ? "múltipla escolha" : "virar cartão"}</span>
               </button>
               <Mini style={{ display: "none" }} className="sm:inline">
                 {baralhoAtivo === "todos" ? "" : baralhoAtivo}

@@ -380,6 +380,12 @@ export default function Cadencia() {
       raiz.style.setProperty("--f-ui", aparencia.fonte);
       document.body.style.background = "var(--bg)";
       document.body.style.margin = "0";
+      /* A letra também no <body>: as telas cheias (Foco, cartões) vão por
+         portal direto para ele, fora da div raiz que define a fonte, e o
+         texto miúdo delas saía na fonte padrão do navegador, serifada. */
+      document.body.style.fontFamily = "var(--f-ui)";
+      document.body.style.fontWeight = "500";
+      document.body.style.color = "var(--ink)";
       const barra = document.querySelector('meta[name="theme-color"]');
       const fundo = ambienteVars["--bg"] || (data.theme === "light" ? "#F1EFF8" : "#04030A");
       if (barra) barra.setAttribute("content", fundo);

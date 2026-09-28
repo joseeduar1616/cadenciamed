@@ -1751,6 +1751,7 @@ if (liberado) {
     const vazaCartoes = await pag.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2);
     if (vazaCartoes) falha('celular: a aba Cartões passou da largura da tela');
     else ok('celular: a aba Cartões cabe na largura da tela');
+
     await pag.screenshot({ path: 'captura-celular-cartoes.png' });
   }
 }
