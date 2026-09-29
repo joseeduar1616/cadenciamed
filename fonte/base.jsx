@@ -16,10 +16,11 @@ import {
   Folder, FolderPlus, ALargeSmall, Camera, Flag, CalendarClock,
   Dumbbell, Timer, Ruler, TrendingUp, Youtube, Calculator, Music,
   Brain, Mic, Lightbulb, History, MessageSquarePlus, CircleStop, AudioLines,
+  Utensils, Droplets, Footprints, Scale, FileSpreadsheet, Salad, BedDouble, Beef,
 } from "lucide-react";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, CartesianGrid,
+  ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from "recharts";
 import { CURSO, ID_ANTIGO } from "./curriculo.js";
 

@@ -22,6 +22,7 @@ import { onRequest as lerFoto } from "./api/ler-foto.js";
 import { onRequest as buscarImagem } from "./api/buscar-imagem.js";
 import { onRequest as google } from "./api/google.js";
 import { onRequest as treinoIa } from "./api/treino-ia.js";
+import { onRequest as refeicaoIa } from "./api/refeicao-ia.js";
 import { onRequest as duplas } from "./api/duplas.js";
 import { onRequest as questoesIa } from "./api/questoes-ia.js";
 import { onRequest as provasIa } from "./api/provas-ia.js";
@@ -46,6 +47,7 @@ const ROTAS = {
   "/api/buscar-imagem": buscarImagem,
   "/api/google": google,
   "/api/treino-ia": treinoIa,
+  "/api/refeicao-ia": refeicaoIa,
   "/api/duplas": duplas,
   "/api/questoes-ia": questoesIa,
   "/api/provas-ia": provasIa,

@@ -34,6 +34,8 @@ export const CUSTO = {
   "flashcards-ia": 4,
   "questoes-ia": 4,
   "treino-ia": 2,
+  /* Uma foto de prato e uma resposta curta: o mesmo peso de ler uma foto. */
+  "refeicao-ia": 2,
   /* A prova é comentada em lotes, e cada lote é uma chamada de verdade ao
      modelo. É a rota mais cara do site, com folga. */
   "provas-ia": 12,

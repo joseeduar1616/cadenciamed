@@ -35,6 +35,7 @@ fonte/_cronograma.mjs
 fonte/_cartoes.mjs
 fonte/_aula.mjs
 fonte/_treino.mjs
+fonte/_plano_mes.mjs
 
 # refeitos por material/capturar.mjs e material/gerar.mjs
 material/capturas/

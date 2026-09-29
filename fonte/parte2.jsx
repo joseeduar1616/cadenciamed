@@ -37,7 +37,12 @@ const DEFAULTS = {
   googleCal: { id: "", ultima: 0, autoSync: false, autoEnviar: true, opts: {}, enviados: {} },
   /* Academia. Fica separado de tudo que é estudo de propósito: não conta
      hora, não entra no cronograma, não mexe em meta semanal. */
-  treino: { perfil: {}, planos: [], planoAtivo: "", emCurso: null, sessoes: [], medidas: [] },
+  treino: {
+    perfil: {}, planos: [], planoAtivo: "", emCurso: null, sessoes: [], medidas: [],
+    /* O plano do mês (parte25.jsx): metas, semana de atividades,
+       cardápio, refeições anotadas e o controle de cada dia. */
+    meta: {}, semana: [], cardapio: null, comidas: [], diario: {},
+  },
   /* Como o cartão de flashcard aparece na tela de estudo. */
   cartaoEstilo: {
     fonte: "app", tamanho: "normal", fundo: "limpo", alinhar: "centro",
@@ -173,6 +178,7 @@ function normalizarTreino(tr) {
       id: txt(o(pl).id, 30) || uid(),
       nome: txt(o(pl).nome, 50) || "Meu treino",
       aviso: txt(o(pl).aviso, 400),
+      regras: a(o(pl).regras).slice(0, 12).map((r) => txt(r, 220)).filter(Boolean),
       criadoEm: num(o(pl).criadoEm, 0, 4102444800000, 0),
       dias: a(o(pl).dias).slice(0, 7).map((d) => ({
         id: txt(o(d).id, 30) || uid(),
@@ -186,7 +192,90 @@ function normalizarTreino(tr) {
     emCurso: emCurso.id ? sessao(emCurso) : null,
     sessoes: a(tr.sessoes).slice(0, 1500).map(sessao).filter((s) => s.data),
     medidas: a(tr.medidas).slice(0, 2000).map(medida).filter((m) => m.data),
+    ...planoDoMesNormalizado(tr, { o, a, txt, num }),
   };
+}
+
+/* O plano do mês dentro da aba Treino: metas, semana, cardápio, refeições
+ * anotadas e o controle de cada dia. Os tetos seguem a mesma razão dos de
+ * cima, e o das refeições é o MAX_COMIDAS do parte25.jsx: o documento da
+ * nuvem tem 1 MiB, e o diário alimentar é o que mais cresce. */
+function planoDoMesNormalizado(tr, { o, a, txt, num }) {
+  const dia = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? String(v) : "");
+  const m = o(tr.meta);
+  const meta = {};
+  for (const k of ["titulo", "nota"]) if (txt(m[k], 300)) meta[k] = txt(m[k], k === "titulo" ? 80 : 300);
+  for (const k of ["inicio", "fim"]) if (dia(m[k])) meta[k] = dia(m[k]);
+  const limites = {
+    altura: [0.5, 250], pesoInicial: [20, 400], cinturaInicial: [30, 250], perdaAlvo: [0, 150],
+    cinturaAlvo: [0, 100], kcalMin: [0, 10000], kcalMax: [0, 10000], kcalPiso: [0, 10000],
+    protMin: [0, 600], protMax: [0, 600], passosMin: [0, 100000], passosMax: [0, 100000],
+    sonoMin: [0, 16], aguaMin: [0, 15], aguaMax: [0, 15], idade: [1, 120], fatorAtividade: [1, 2.5],
+  };
+  for (const [k, [mi, ma]] of Object.entries(limites)) {
+    const v = num(m[k], mi, ma, null);
+    if (v !== null) meta[k] = v;
+  }
+  if (m.sexo === "m" || m.sexo === "f") meta.sexo = m.sexo;
+  meta.regras = a(m.regras).slice(0, 12).map((r) => txt(r, 220)).filter(Boolean);
+  if (!meta.regras.length) delete meta.regras;
+
+  const semana = a(tr.semana).slice(0, 7).map((x) => ({
+    atividade: txt(o(x).atividade, 40), descricao: txt(o(x).descricao, 160), diaPlanoId: txt(o(x).diaPlanoId, 30),
+  }));
+
+  const itemCardapio = (i) => ({
+    id: txt(o(i).id, 30) || uid(), alimento: txt(o(i).alimento, 80), quantidade: txt(o(i).quantidade, 40),
+    kcal: num(o(i).kcal, 0, 5000, 0), proteina: num(o(i).proteina, 0, 500, 0),
+    carbo: num(o(i).carbo, 0, 800, 0), gordura: num(o(i).gordura, 0, 500, 0),
+  });
+  const c = tr.cardapio && typeof tr.cardapio === "object" ? o(tr.cardapio) : null;
+  const cardapio = c ? {
+    nota: txt(c.nota, 300),
+    refeicoes: a(c.refeicoes).slice(0, 12).map((r) => ({
+      id: txt(o(r).id, 30) || uid(), nome: txt(o(r).nome, 40), horario: txt(o(r).horario, 10),
+      itens: a(o(r).itens).slice(0, 20).map(itemCardapio).filter((i) => i.alimento),
+    })).filter((r) => r.nome),
+    substituicoes: a(c.substituicoes).slice(0, 12).map((g) => ({
+      grupo: txt(o(g).grupo, 30), referencia: txt(o(g).referencia, 80),
+      opcoes: a(o(g).opcoes).slice(0, 12).map((x) => txt(x, 80)).filter(Boolean),
+    })).filter((g) => g.grupo),
+    secoes: a(c.secoes).slice(0, 8).map((x) => ({
+      titulo: txt(o(x).titulo, 60), itens: a(o(x).itens).slice(0, 15).map((i) => txt(i, 220)).filter(Boolean),
+    })).filter((x) => x.titulo),
+    avisos: a(c.avisos).slice(0, 6).map((x) => txt(x, 300)).filter(Boolean),
+  } : null;
+
+  const comidas = a(tr.comidas).slice(0, 600).map((x) => ({
+    id: txt(o(x).id, 30) || uid(), data: dia(o(x).data), refeicao: txt(o(x).refeicao, 40),
+    descricao: txt(o(x).descricao, 200),
+    itens: a(o(x).itens).slice(0, 15).map((i) => ({
+      nome: txt(o(i).nome, 60), quantidade: txt(o(i).quantidade, 40),
+      kcal: num(o(i).kcal, 0, 5000, 0), proteina: num(o(i).proteina, 0, 500, 0),
+      carbo: num(o(i).carbo, 0, 800, 0), gordura: num(o(i).gordura, 0, 500, 0),
+    })).filter((i) => i.nome),
+    kcal: num(o(x).kcal, 0, 10000, 0), proteina: num(o(x).proteina, 0, 1000, 0),
+    carbo: num(o(x).carbo, 0, 1500, 0), gordura: num(o(x).gordura, 0, 1000, 0),
+    fonte: ["foto", "texto", "cardapio", "manual"].indexOf(o(x).fonte) >= 0 ? o(x).fonte : "manual",
+    confianca: ["alta", "media", "baixa"].indexOf(o(x).confianca) >= 0 ? o(x).confianca : "",
+    em: num(o(x).em, 0, 4102444800000, 0),
+  })).filter((x) => x.data);
+
+  const diario = {};
+  for (const [k, v] of Object.entries(o(tr.diario)).slice(-800)) {
+    if (!dia(k)) continue;
+    const x = o(v);
+    const d = {};
+    if (x.treino === "sim" || x.treino === "nao") d.treino = x.treino;
+    const passos = num(x.passos, 1, 200000, 0); if (passos) d.passos = Math.round(passos);
+    const sono = num(x.sono, 0.1, 24, 0); if (sono) d.sono = sono;
+    const agua = num(x.agua, 1, 12000, 0); if (agua) d.agua = Math.round(agua);
+    if (typeof x.semAlcool === "boolean") d.semAlcool = x.semAlcool;
+    if (typeof x.proteinaOk === "boolean") d.proteinaOk = x.proteinaOk;
+    if (txt(x.obs, 200)) d.obs = txt(x.obs, 200);
+    if (Object.keys(d).length) diario[k] = d;
+  }
+  return { meta, semana, cardapio, comidas, diario };
 }
 
 function normalize(raw) {

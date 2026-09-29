@@ -424,6 +424,12 @@ function EditorPlano({ plano, gravar, notify }) {
         </div>
       ) : null}
 
+      {(plano.regras || []).length ? (
+        <ul style={{ margin: "14px 0 0", paddingLeft: 18, color: T.dim, fontSize: 14, lineHeight: 1.7 }}>
+          {plano.regras.map((r) => <li key={r}>{r}</li>)}
+        </ul>
+      ) : null}
+
       {(plano.dias || []).length === 0 ? (
         <Blank icon={<Dumbbell size={22} />} title="Plano vazio" hint="Adicione o primeiro dia de treino." />
       ) : (
@@ -645,6 +651,9 @@ function ExecutarTreino({ treino, gravar, notify, today }) {
       <Card className="px-6 py-6">
         <H color="var(--a-PE)" icon={<Dumbbell size={16} />}>Começar o treino de hoje</H>
         <Label style={{ marginTop: 6 }}>{plano.nome}</Label>
+        {(plano.regras || []).length ? (
+          <Mini style={{ marginTop: 8, lineHeight: 1.6 }}>{plano.regras[0]}</Mini>
+        ) : null}
         <div className="mt-5 flex flex-col gap-2">
           {plano.dias.map((d) => {
             const ultimo = (treino.sessoes || []).find((s) => s.diaId === d.id);
@@ -1255,8 +1264,8 @@ function Treino({ data, setData, notify, today, nuvem }) {
   );
   const plano = (treino.planos || []).find((p) => p.id === treino.planoAtivo) || (treino.planos || [])[0];
 
-  const VISTAS = [["hoje", "Hoje"], ["plano", "Plano"], ["corpo", "Corpo"],
-    ["cargas", "Cargas"], ["sala", "Competição"]];
+  const VISTAS = [["hoje", "Hoje"], ["mes", "Mês"], ["comida", "Alimentação"], ["plano", "Plano"],
+    ["corpo", "Corpo"], ["cargas", "Cargas"], ["sala", "Competição"]];
 
   return (
     <div className="flex flex-col gap-5">
@@ -1269,9 +1278,18 @@ function Treino({ data, setData, notify, today, nuvem }) {
         {treino.emCurso ? <Mini style={{ color: T.neon }}>treino em andamento</Mini> : null}
       </div>
 
-      {vista === "hoje" ? <ExecutarTreino {...{ treino, gravar, notify, today }} /> : null}
+      {vista === "hoje" ? (
+        <>
+          <HojeDoPlano {...{ treino, gravar, notify, today }} irPara={setVista} />
+          <ExecutarTreino {...{ treino, gravar, notify, today }} />
+          {treino.meta && treino.meta.inicio ? <ControleDoDia {...{ treino, gravar, notify }} dia={today} /> : null}
+        </>
+      ) : null}
+      {vista === "mes" ? <PainelDoMes {...{ treino, gravar, notify, today }} /> : null}
+      {vista === "comida" ? <Alimentacao {...{ treino, gravar, notify, today, nuvem }} /> : null}
       {vista === "plano" ? (
         <>
+          <ImportarPlanilha {...{ treino, gravar, notify }} compacto />
           <PerfilETreino {...{ treino, gravar, notify, nuvem }} />
           {(treino.planos || []).length > 1 ? (
             <Card className="px-6 py-5">
@@ -1294,7 +1312,12 @@ function Treino({ data, setData, notify, today, nuvem }) {
         </>
       ) : null}
       {vista === "corpo" ? <Medidas {...{ treino, gravar, notify, today }} /> : null}
-      {vista === "cargas" ? <Cargas {...{ treino, today }} /> : null}
+      {vista === "cargas" ? (
+        <>
+          <RegistroDoMes treino={treino} />
+          <Cargas {...{ treino, today }} />
+        </>
+      ) : null}
       {vista === "sala" ? <Competicao {...{ treino, nuvem, notify }} /> : null}
     </div>
   );

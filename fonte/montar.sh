@@ -25,7 +25,7 @@ python3 gerar_legais.py
 echo "── juntando os pedaços ─────────────────────────────"
 cat base.jsx parte2.jsx parte3.jsx parte10.jsx parte11.jsx parte13.jsx \
     parte12.jsx parte17.jsx parte4.jsx parte5.jsx parte6.jsx parte7.jsx parte9.jsx \
-    parte14.jsx parte15.jsx parte16.jsx parte18.jsx parte19.jsx parte20.jsx parte21.jsx parte22.jsx parte23.jsx parte24.jsx parte8.jsx > app.jsx
+    parte14.jsx parte15.jsx parte16.jsx parte18.jsx parte19.jsx parte25.jsx parte20.jsx parte21.jsx parte22.jsx parte23.jsx parte24.jsx parte8.jsx > app.jsx
 
 echo "── compilando ──────────────────────────────────────"
 npx esbuild main.jsx --bundle --minify --format=iife --loader:.jsx=jsx \
@@ -53,6 +53,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   python3 extrair_cronograma.py
   python3 extrair_aula.py
   python3 extrair_treino.py
+  python3 extrair_plano_mes.py
   python3 extrair_anexo.py
   echo "── teste no navegador ──────────────────────────────"
   python3 montar_teste.py > /dev/null
@@ -64,6 +65,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-presenca-tela.mjs index.html
   node testar-app.mjs
   node testar-celular-cartoes.mjs teste.html
+  node testar-plano-mes-tela.mjs teste.html
   node testar-perfil.mjs
   node testar-nuvem.mjs
   node testar-lotes.mjs
@@ -84,6 +86,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-flashcards-ia.mjs
   node testar-cronograma-ia.mjs
   node testar-treino-ia.mjs
+  node testar-refeicao-ia.mjs
   node testar-questoes-ia.mjs
   node testar-provas-ia.mjs
   node testar-duplas.mjs
@@ -99,6 +102,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-agenda.mjs
   node testar-janela-google.mjs
   node testar-treino.mjs
+  node testar-plano-mes.mjs
   node testar-recorte-pdf.mjs
   node testar-cupom.mjs
   node testar-acessos.mjs
