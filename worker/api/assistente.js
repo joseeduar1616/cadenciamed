@@ -11,6 +11,10 @@
  */
 import { json, quemPede, corpoJson } from "./_comum.js";
 import { podeUsar, escolherProvedor, modeloAtual, chamarIA } from "./_ia.js";
+import {
+  INSTRUCOES_MENTORIA, METODOS, contextoDaMentoria,
+  separarBlocos, lerPerfil, lerOpcoes, lerPlano,
+} from "./_metodos.js";
 
 const LIMITE_ENTRADA = 55000;   // caracteres: o painel + o calendário do curso inteiro (40 mil, parte9.jsx)
 /* O anexo tem teto próprio, e maior: um PDF de cronograma inteiro não cabe
@@ -22,6 +26,11 @@ const LIMITE_ANEXO = 30000;
    modelos de hoje também gastam parte deste teto pensando antes de escrever,
    o que apertava ainda mais o que sobrava para o texto. */
 const MAX_SAIDA = 4000;
+/* A mentoria escreve o plano da semana inteira, com o JSON dele no fim:
+   texto explicando cada escolha mais sete dias de blocos. No teto da
+   conversa comum ele saía cortado no meio do JSON, e um plano pela
+   metade não pode ser aplicado. */
+const MAX_SAIDA_MENTORIA = 9000;
 
 /* Os modelos que a chave do Gemini alcança, do jeito que o Google os
    descreve. Só os que geram texto entram: a lista crua traz também os de
@@ -126,6 +135,47 @@ export async function onRequest({ request, env }) {
      foto do mural —, e um texto assim pode conter qualquer coisa escrita
      para parecer instrução. Vale a mesma regra das outras rotas. */
   const anexo = String(corpo.anexo || "").slice(0, LIMITE_ANEXO);
+
+  /* ── a mentoria de estudo ─────────────────────────────────────────
+   *
+   * Aqui as instruções NÃO vêm da tela: vêm do servidor, junto com a base
+   * de métodos (ver _metodos.js). E a resposta não volta crua: os blocos
+   * de perfil, opções e plano são lidos e conferidos aqui, porque o plano
+   * vira bloco na Agenda e, de lá, evento no Google Agenda da pessoa. */
+  if (corpo.modo === "mentoria") {
+    const sistemaMentoria = `${INSTRUCOES_MENTORIA}
+
+${METODOS}
+
+=== DADOS ATUAIS DO PAINEL ===
+${String(corpo.contexto || "").slice(0, LIMITE_ENTRADA)}
+
+${contextoDaMentoria(corpo.perfil, corpo.plano)}`;
+
+    const conversa = mensagens
+      .filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
+      .map((m) => ({ role: m.role, content: m.content.slice(0, 6000) }));
+    while (conversa.length && conversa[0].role === "assistant") conversa.shift();
+    if (conversa.length === 0) return json({ erro: "Nenhuma mensagem enviada." }, 400);
+
+    try {
+      const r = await chamarIA(provedor, modelo, {
+        sistema: sistemaMentoria, mensagens: conversa, maxSaida: MAX_SAIDA_MENTORIA,
+      });
+      if (r.erro) return json({ erro: r.erro }, 502);
+      const partes = separarBlocos(r.texto);
+      return json({
+        texto: partes.texto,
+        perfil: lerPerfil(partes.perfil),
+        opcoes: lerOpcoes(partes.opcoes),
+        plano: lerPlano(partes.plano),
+        cortado: !!r.cortado,
+      });
+    } catch (e) {
+      console.error("falha na mentoria", provedor.nome, e && e.message);
+      return json({ erro: "Não consegui alcançar o serviço da IA." }, 502);
+    }
+  }
 
   const sistema = `${String(corpo.instrucoes || "").slice(0, 6000)}
 \n=== DADOS ATUAIS DO PAINEL ===\n${String(corpo.contexto || "").slice(0, LIMITE_ENTRADA)}${anexo ? `

@@ -34,6 +34,13 @@ const DEFAULTS = {
   pomoLog: [],
   simulados: {}, provas: [], habits: HABITS_SEED, habitLog: {},
   rever: [], notes: {},
+  /* A mentoria de estudo (aba Assistente). Vai para a nuvem só o que é
+     pequeno e importa: o que a entrevista descobriu, o plano, e o
+     checklist do dia. A conversa da entrevista em si fica no aparelho —
+     ela pode ser longa, e o estado inteiro da conta é UM documento no
+     banco, com limite de tamanho. Perder a conversa ao trocar de aparelho
+     não perde nada: a mentoria retoma pelo perfil gravado aqui. */
+  mentoria: { perfil: {}, plano: null, planoEm: 0, aplicadoEm: 0, feitos: {} },
   googleCal: { id: "", ultima: 0, autoSync: false, autoEnviar: true, opts: {}, enviados: {} },
   /* Academia. Fica separado de tudo que é estudo de propósito: não conta
      hora, não entra no cronograma, não mexe em meta semanal. */
@@ -94,6 +101,66 @@ const DEFAULTS = {
   /* Claro e escuro da anotação, à parte do resto: "auto" segue o app. */
   notaTema: "auto",
 };
+
+/* A mentoria como ela pode ser guardada. O conteúdo já foi conferido pelo
+   servidor quando chegou; o que esta limpeza protege é a TELA, de um dado
+   corrompido no aparelho ou vindo de uma versão antiga, que derrubaria o
+   desenho do plano. */
+function limparMentoria(v) {
+  const m = v && typeof v === "object" ? v : {};
+  const perfil = {};
+  if (m.perfil && typeof m.perfil === "object") {
+    for (const [k, val] of Object.entries(m.perfil).slice(0, 15)) {
+      if (typeof val === "string" && val.trim()) perfil[k] = val.slice(0, 300);
+    }
+  }
+  const p = m.plano;
+  const plano = p && typeof p === "object" && Array.isArray(p.semana) && p.semana.length === 7
+    ? {
+      resumo: typeof p.resumo === "string" ? p.resumo.slice(0, 600) : "",
+      semana: p.semana.map((d, i) => ({
+        dia: i,
+        blocos: (Array.isArray(d && d.blocos) ? d.blocos : [])
+          .filter((b) => b && typeof b.inicio === "string" && typeof b.fim === "string" && typeof b.titulo === "string")
+          .slice(0, 8)
+          .map((b) => ({
+            inicio: b.inicio.slice(0, 5), fim: b.fim.slice(0, 5), titulo: b.titulo.slice(0, 60),
+            tipo: BLOCK_IDS.indexOf(b.tipo) >= 0 ? b.tipo : "Estudo",
+            como: typeof b.como === "string" ? b.como.slice(0, 200) : "",
+          })),
+      })),
+      comoEstudar: (Array.isArray(p.comoEstudar) ? p.comoEstudar : [])
+        .filter((c) => c && typeof c.situacao === "string" && Array.isArray(c.passos))
+        .slice(0, 8)
+        .map((c) => ({
+          situacao: c.situacao.slice(0, 60),
+          passos: c.passos.filter((x) => typeof x === "string").slice(0, 8).map((x) => x.slice(0, 200)),
+        })),
+      checklist: (Array.isArray(p.checklist) ? p.checklist : [])
+        .filter((x) => typeof x === "string").slice(0, 10).map((x) => x.slice(0, 150)),
+      metas: {
+        questoesDia: Math.max(0, Math.min(300, Math.round(Number(p.metas && p.metas.questoesDia) || 0))),
+        simuladosPorMes: Math.max(0, Math.min(8, Math.round(Number(p.metas && p.metas.simuladosPorMes) || 0))),
+      },
+    }
+    : null;
+  /* O checklist marcado guarda só a última semana: o de um mês atrás não
+     serve para nada, e cresceria para sempre no documento da conta. */
+  const feitos = {};
+  if (m.feitos && typeof m.feitos === "object") {
+    const datas = Object.keys(m.feitos).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort().slice(-7);
+    for (const d of datas) {
+      const l = m.feitos[d];
+      if (Array.isArray(l)) feitos[d] = l.filter((n) => Number.isInteger(n) && n >= 0 && n < 10);
+    }
+  }
+  return {
+    perfil, plano,
+    planoEm: Number(m.planoEm) || 0,
+    aplicadoEm: Number(m.aplicadoEm) || 0,
+    feitos,
+  };
+}
 
 const KEY = "cadencia:v3";
 
@@ -351,6 +418,7 @@ function normalize(raw) {
     pomoLog: arr(d.pomoLog, []), simulados: obj(d.simulados), provas: arr(d.provas, []),
     habits: arr(d.habits, HABITS_SEED), habitLog: obj(d.habitLog),
     rever: arr(d.rever, []), notes: obj(d.notes),
+    mentoria: limparMentoria(d.mentoria),
     mostrarDesempenho: d.mostrarDesempenho !== false,
     notaTema: ["light", "dark"].indexOf(d.notaTema) >= 0 ? d.notaTema : "auto",
     cronograma: {
