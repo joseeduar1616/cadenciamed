@@ -137,7 +137,7 @@ function Cupons({ nuvem, notify }) {
    responde isso em dois segundos. */
 const ROTAS_DO_SITE = [
   "/api/assistente", "/api/flashcards-ia", "/api/cronograma-ia", "/api/treino-ia",
-  "/api/refeicao-ia",
+  "/api/refeicao-ia", "/api/plano-ia",
   "/api/ler-foto", "/api/buscar-imagem", "/api/salas", "/api/baralhos",
   "/api/google", "/api/notion", "/api/mentor", "/api/plano", "/api/cupom",
   "/api/acessos", "/api/compra",

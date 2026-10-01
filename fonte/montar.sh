@@ -87,6 +87,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-cronograma-ia.mjs
   node testar-treino-ia.mjs
   node testar-refeicao-ia.mjs
+  node testar-plano-ia.mjs
   node testar-questoes-ia.mjs
   node testar-provas-ia.mjs
   node testar-duplas.mjs

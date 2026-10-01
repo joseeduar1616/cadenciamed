@@ -312,7 +312,10 @@ const TIPOS_FOTO = "image/png,image/jpeg,image/webp";
 async function lerArquivoParaTexto(f, aviso) {
   if (/\.pdf$/i.test(f.name)) return lerPdfSoTexto(f, aviso);
   if (/\.docx$/i.test(f.name)) return lerDocxSoTexto(f, aviso);
-  if (/\.(docm?|pptx?|xlsx?)$/i.test(f.name)) {
+  if (/\.xlsx?$/i.test(f.name)) {
+    throw new Error(`${f.name} é uma planilha, e este campo lê texto. Se for o plano de treino e dieta, importe em Treino › Mês.`);
+  }
+  if (/\.(docm?|pptx?)$/i.test(f.name)) {
     throw new Error(`${f.name} é um formato fechado que ainda não leio. Abra, copie o texto e cole aqui.`);
   }
   if (/^image\//i.test(f.type)) {

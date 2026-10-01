@@ -59,6 +59,20 @@ const ANALISE = {
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'plano-mes-'));
 const arquivoPlanilha = path.join(tmp, 'Plano_Novembro.xlsx');
 fs.writeFileSync(arquivoPlanilha, xlsx(FOLHAS));
+/* Um PDF de verdade só no começo: quem lê é o pdf.js de mentira abaixo. O
+   que se testa é o caminho (reconhecer o PDF pelo conteúdo, tirar o texto,
+   mandar para a IA, conferir o que volta), não o pdf.js. */
+const arquivoPdf = path.join(tmp, 'Plano_Dezembro.pdf');
+fs.writeFileSync(arquivoPdf, '%PDF-1.4\n% plano de mentira\n');
+const TEXTO_PDF = 'Plano Dezembro 01/12 a 31/12/2025 Treino A Superior Supino reto 4 6 a 8 2 min';
+const PDFJS_FALSO = `window.pdfjsLib = { GlobalWorkerOptions: {}, OPS: {}, getDocument: () => ({ promise: Promise.resolve({
+  numPages: 1, getPage: async () => ({ getTextContent: async () => ({ items: [{ str: ${JSON.stringify(TEXTO_PDF)} }] }) }) }) }) };`;
+const PLANO_DO_PDF = {
+  meta: { titulo: 'Plano Dezembro', inicio: '2025-12-01', fim: '2025-12-31', pesoInicial: 88, perdaAlvo: 3 },
+  semana: [{ atividade: 'Treino A', descricao: 'Superior' }],
+  plano: { nome: 'Treino · Dezembro', dias: [{ nome: 'Treino A · Superior', exercicios: [{ nome: 'Supino reto', series: 4, reps: '6 a 8', descanso: 120 }] }] },
+  cardapio: { refeicoes: [] },
+};
 const arquivoFoto = path.join(tmp, 'prato.png');
 fs.writeFileSync(arquivoFoto, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'));
 
@@ -80,8 +94,14 @@ await ctx.route('https://www.gstatic.com/firebasejs/**', (r) => {
 await ctx.route('https://accounts.google.com/gsi/client', (r) => r.fulfill({ status: 200, contentType: 'text/javascript', body: '' }));
 
 const pedidosIA = [];
+const pedidosPlano = [];
+await ctx.route('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/**', (r) => r.fulfill({ status: 200, contentType: 'text/javascript', body: PDFJS_FALSO }));
 await ctx.route('**/api/**', (r) => {
   const u = r.request().url();
+  if (u.includes('/api/plano-ia')) {
+    pedidosPlano.push(JSON.parse(r.request().postData() || '{}'));
+    return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ plano: PLANO_DO_PDF }) });
+  }
   if (u.includes('/api/refeicao-ia')) {
     pedidosIA.push(JSON.parse(r.request().postData() || '{}'));
     return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(ANALISE) });
@@ -115,15 +135,34 @@ const foto = async (nome) => {
 };
 
 try {
+  let t = '';
   await irPara('Treino');
 
   /* ── importar ── */
   await vista('Mês');
   if (/Importar o plano do mês/i.test(await texto())) ok('mês: sem plano, a tela oferece importar a planilha');
   else falha('mês: não ofereceu importar');
-  await pag.locator('input[type="file"][accept*=".xlsx"]').first().setInputFiles(arquivoPlanilha);
+  const seletor = pag.locator('input[type="file"][aria-label="Arquivo do plano"]').first();
+  if (await seletor.getAttribute('accept') === null) ok('importar: o seletor não filtra tipo (no iPhone, filtrar deixava a planilha cinza)');
+  else falha('importar: o seletor filtra ' + await seletor.getAttribute('accept'));
+
+  /* o PDF do plano, pela IA */
+  await seletor.setInputFiles(arquivoPdf);
+  await pag.waitForTimeout(900);
+  const pp = pedidosPlano[0] || {};
+  if (pp.token === 'token-teste' && pp.texto && pp.texto.includes('Supino reto 4 6 a 8')) ok('PDF: o texto do PDF vai para a IA com o token');
+  else falha('PDF: pedido ' + JSON.stringify(pp).slice(0, 200));
+  t = await texto();
+  if (/em Plano_Dezembro\.pdf/.test(t) && /1 fichas de treino/.test(t) && /período de 01\/12\/2025/.test(t)) ok('PDF: mostra o que a IA achou antes de aplicar');
+  else falha('PDF: resumo ' + t.slice(0, 400));
+  await pag.getByRole('button', { name: 'cancelar', exact: true }).click();
+  await pag.waitForTimeout(300);
+  if (!/Plano_Dezembro/.test(await texto())) ok('PDF: cancelar não aplica nada');
+  else falha('PDF: cancelar não sumiu com o resumo');
+
+  await seletor.setInputFiles(arquivoPlanilha);
   await pag.waitForTimeout(700);
-  let t = await texto();
+  t = await texto();
   if (/2 fichas de treino/.test(t) && /cardápio com 2 refeições/.test(t) && /período de 01\/11\/2025 a 30\/11\/2025/.test(t)) ok('importar: mostra o que achou antes de aplicar');
   else falha('importar: resumo não apareceu: ' + t.slice(0, 400));
   await foto('1-importar');

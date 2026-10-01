@@ -152,6 +152,77 @@ const lido = P.planoDaPlanilha(P.lerXlsx(xlsx(FOLHAS), unzipSync));
   else falha('aplicar: apagou o plano antigo');
 }
 
+/* ── 4b. o plano que a IA leu de um PDF ─────────────────────────────── */
+{
+  const r = P.planoDoJson({
+    meta: {
+      titulo: 'Plano Dezembro', inicio: '2025-12-01', fim: '2025-12-31', pesoInicial: '88,5 kg', perdaAlvo: 3,
+      kcalMin: '1.900', kcalMax: 2000, protMin: 150, altura: 9999, sonoMin: '7 h',
+      regras: ['• Nada de ficar abaixo de 1.600 kcal.', '', 42],
+    },
+    semana: [{ atividade: 'Treino A', descricao: 'Superior' }, { atividade: '' }, null, { atividade: 'Treino B' }],
+    plano: {
+      nome: 'Treino · Dezembro',
+      dias: [
+        { nome: 'Treino A', exercicios: [
+          { nome: 'Supino reto', grupo: 'Peitoral', series: 40, reps: '8 a 10', descanso: '2 min', observacao: 'devagar' },
+          { nome: '', series: 3 },
+          { nome: 'Rosca martelo', grupo: 'Bíceps', series: '3', reps: 12, descanso: 3600 },
+        ] },
+        { nome: 'Vazio', exercicios: [] },
+      ],
+    },
+    cardapio: {
+      refeicoes: [
+        { nome: 'Almoço', horario: '12h', itens: [{ alimento: 'Frango', quantidade: '150 g', kcal: '240', proteina: 45 }, { alimento: '', kcal: 10 }] },
+        { nome: 'Fantasma', itens: [] },
+      ],
+      substituicoes: [{ grupo: 'Proteínas', referencia: 'no lugar do frango', opcoes: ['• atum', ''] }, { grupo: 'Vazio', opcoes: [] }],
+      secoes: [{ titulo: 'Na rua', itens: ['• Peça grelhado.'] }],
+      avisos: ['Semana 1 com menos arroz.'],
+    },
+    diario: { '2025-12-01': { treino: 'sim' } },
+  });
+  const m = r.meta;
+  if (m.pesoInicial === 88.5 && m.kcalMin === 1900 && m.kcalMax === 2000 && m.sonoMin === 7) ok('PDF: número escrito como texto ("88,5 kg", "1.900") vira número');
+  else falha('PDF: números ' + JSON.stringify(m));
+  if (m.altura === undefined) ok('PDF: altura de 9999 é descartada, não vira meta');
+  else falha('PDF: aceitou altura ' + m.altura);
+  if (JSON.stringify(m.regras) === JSON.stringify(['Nada de ficar abaixo de 1.600 kcal.', '42']) && m.kcalPiso === 1600) ok('PDF: regras sem marcador, vazias fora, e o piso de calorias tirado delas');
+  else falha('PDF: regras ' + JSON.stringify(m.regras) + ' piso ' + m.kcalPiso);
+  if (r.semana[0].atividade === 'Treino A' && r.semana[1] === undefined && r.semana[3].atividade === 'Treino B' && r.semana.length === 7) ok('PDF: a semana com os dias vazios em branco');
+  else falha('PDF: semana ' + JSON.stringify(r.semana));
+  const [sup, rosca] = r.plano.dias[0].exercicios;
+  if (r.plano.dias.length === 1 && r.plano.dias[0].exercicios.length === 2) ok('PDF: ficha vazia e exercício sem nome ficam de fora');
+  else falha('PDF: fichas ' + JSON.stringify(r.plano.dias));
+  if (sup.series === 10 && sup.descanso === 120 && sup.grupo === 'Peito' && rosca.series === 3 && rosca.descanso === 600 && rosca.reps === '12' && rosca.grupo === 'Bíceps') ok('PDF: 40 séries viram 10, "2 min" vira 120 s, uma hora vira 10 min, grupo inventado sai do nome');
+  else falha('PDF: exercícios ' + JSON.stringify([sup, rosca]));
+  const c = r.cardapio;
+  if (c.refeicoes.length === 1 && c.refeicoes[0].itens.length === 1 && c.refeicoes[0].itens[0].kcal === 240) ok('PDF: refeição sem item e item sem alimento ficam de fora; "240" vira 240');
+  else falha('PDF: cardápio ' + JSON.stringify(c.refeicoes));
+  if (c.substituicoes.length === 1 && JSON.stringify(c.substituicoes[0].opcoes) === '["atum"]' && c.secoes[0].itens[0] === 'Peça grelhado.' && c.avisos.length === 1) ok('PDF: substituições, seções e avisos limpos');
+  else falha('PDF: listas ' + JSON.stringify(c));
+  if (JSON.stringify(r.diario) === '{}' && r.medidas.length === 0) ok('PDF: a IA não escreve no controle diário nem nas medidas');
+  else falha('PDF: diário veio da IA ' + JSON.stringify(r.diario));
+  if (r.achados.some((x) => /1 fichas de treino/.test(x)) && r.achados.some((x) => /período de 01\/12\/2025/.test(x))) ok('PDF: o resumo do que foi achado, igual ao da planilha');
+  else falha('PDF: achados ' + JSON.stringify(r.achados));
+  const vazio = P.planoDoJson({ meta: { inicio: '31/12/2025', fim: 'amanhã' } });
+  if (!vazio.meta.inicio && vazio.achados.length === 0 && !vazio.plano && !vazio.cardapio) ok('PDF: data fora do formato e nada mais: nada é aplicado');
+  else falha('PDF: vazio ' + JSON.stringify(vazio));
+  const zoado = P.planoDoJson('não é objeto');
+  if (zoado.achados.length === 0) ok('PDF: resposta que não é objeto não quebra');
+  else falha('PDF: lixo virou plano');
+}
+
+/* ── 4c. que arquivo é este ──────────────────────────────────────────── */
+{
+  const b = (s) => Array.from(s, (ch) => ch.charCodeAt(0));
+  if (P.tipoDoArquivo(b('PK\x03\x04'), 'plano') === 'xlsx' && P.tipoDoArquivo(b('%PDF-1.7'), 'plano.xlsx') === 'pdf') ok('arquivo: reconhecido pelo conteúdo, não pelo nome');
+  else falha('arquivo: PK/PDF');
+  if (P.tipoDoArquivo([0xd0, 0xcf, 0x11], 'a.xls') === 'xls' && P.tipoDoArquivo(b('ola'), 'plano.txt') === 'texto' && P.tipoDoArquivo(b('GIF89'), 'foto.gif') === '') ok('arquivo: Excel antigo, texto, e o resto recusado');
+  else falha('arquivo: outros tipos');
+}
+
 /* ── 5. números em português ─────────────────────────────────────────── */
 {
   if (igual(P.numerosDoTexto('1.95 m, 2.200 kcal, 7,5 h, 13.000 passos'), [1.95, 2200, 7.5, 13000])) ok('números: 1.95, 2.200, 7,5 e 13.000 lidos do jeito brasileiro');

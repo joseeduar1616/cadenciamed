@@ -22,6 +22,7 @@
    ═══════════════════════════════════════════════════════════════════ */
 
 const ROTA_REFEICAO_IA = "/api/refeicao-ia";
+const ROTA_PLANO_IA = "/api/plano-ia";
 
 /* ── a lógica pura do plano do mês ─────────────────────────────────────
    Sem React e sem navegador: é o que o testar-plano-mes.mjs exercita,
@@ -305,10 +306,6 @@ function planoDaPlanilha(folhas) {
       const m = /abaixo de\s+([\d.]+)\s*kcal/i.exec(r);
       if (m) meta.kcalPiso = numerosDoTexto(m[1])[0];
     }
-    const br = (v) => String(Math.round(v * 10) / 10).replace(".", ",");
-    if (meta.pesoInicial) achados.push(`metas do mês: ${br(meta.pesoInicial)} kg${meta.perdaAlvo ? ` → ${br(meta.pesoInicial - meta.perdaAlvo)} kg` : ""}`);
-    if (meta.kcalMin) achados.push(`${meta.kcalMin} a ${meta.kcalMax || meta.kcalMin} kcal e ${meta.protMin || "?"} g de proteína por dia`);
-    if ((meta.regras || []).length) achados.push(`${meta.regras.length} regras de ouro`);
   }
 
   /* ── Treino: a semana e as fichas ── */
@@ -361,12 +358,7 @@ function planoDaPlanilha(folhas) {
       }
     }
     plano.dias = plano.dias.filter((d) => d.exercicios.length);
-    if (plano.dias.length) {
-      lido.plano = plano;
-      achados.push(`${plano.dias.length} fichas de treino (${plano.dias.map((d) => d.nome).join(", ")})`);
-    }
-    const nSemana = lido.semana.filter(Boolean).length;
-    if (nSemana) achados.push(`a semana de atividades (${nSemana} dias)`);
+    if (plano.dias.length) lido.plano = plano;
   }
 
   /* ── Alimentação: cardápio, substituições e dicas ── */
@@ -450,12 +442,7 @@ function planoDaPlanilha(folhas) {
       }
       if (soA && na.length > 50) card.avisos.push(semEnfeite(a).slice(0, 300));
     }
-    if (card.refeicoes.length) {
-      lido.cardapio = card;
-      const total = card.refeicoes.reduce((s, r) => s + r.itens.reduce((x, it) => x + it.kcal, 0), 0);
-      achados.push(`cardápio com ${card.refeicoes.length} refeições (${Math.round(total)} kcal no dia)`);
-    }
-    if (card.substituicoes.length) achados.push(`${card.substituicoes.length} grupos de substituição`);
+    if (card.refeicoes.length) lido.cardapio = card;
   }
 
   /* ── Controle diário: o que já estiver preenchido ── */
@@ -512,12 +499,133 @@ function planoDaPlanilha(folhas) {
       if (Object.keys(m).length) lido.medidas.push({ data: iso, ...m });
     }
     if (!meta.inicio && datas.length) { meta.inicio = datas[0]; meta.fim = datas[datas.length - 1]; }
-    const preenchidos = Object.keys(lido.diario).length + lido.medidas.length;
-    if (preenchidos) achados.push(`${preenchidos} anotações do controle diário`);
   }
 
-  if (meta.inicio) achados.unshift(`período de ${meta.inicio.split("-").reverse().join("/")} a ${meta.fim.split("-").reverse().join("/")}`);
+  achados.push(...achadosDoPlano(lido));
   return lido;
+}
+
+/* O que foi achado, em frases, para a tela mostrar antes de aplicar. Vale
+   para a planilha e para o plano que a IA leu de um PDF. */
+function achadosDoPlano(lido) {
+  const saida = [];
+  const meta = lido.meta || {};
+  const br = (v) => String(Math.round(v * 10) / 10).replace(".", ",");
+  if (meta.inicio && meta.fim) saida.push(`período de ${meta.inicio.split("-").reverse().join("/")} a ${meta.fim.split("-").reverse().join("/")}`);
+  if (meta.pesoInicial) saida.push(`metas do mês: ${br(meta.pesoInicial)} kg${meta.perdaAlvo ? ` → ${br(meta.pesoInicial - meta.perdaAlvo)} kg` : ""}`);
+  if (meta.kcalMin) saida.push(`${meta.kcalMin} a ${meta.kcalMax || meta.kcalMin} kcal e ${meta.protMin || "?"} g de proteína por dia`);
+  if ((meta.regras || []).length) saida.push(`${meta.regras.length} regras de ouro`);
+  if (lido.plano && lido.plano.dias.length) saida.push(`${lido.plano.dias.length} fichas de treino (${lido.plano.dias.map((d) => d.nome).join(", ")})`);
+  const nSemana = (lido.semana || []).filter((x) => x && x.atividade).length;
+  if (nSemana) saida.push(`a semana de atividades (${nSemana} dias)`);
+  const card = lido.cardapio;
+  if (card && card.refeicoes.length) {
+    const total = card.refeicoes.reduce((s, r) => s + r.itens.reduce((x, it) => x + it.kcal, 0), 0);
+    saida.push(`cardápio com ${card.refeicoes.length} refeições (${Math.round(total)} kcal no dia)`);
+  }
+  if (card && card.substituicoes.length) saida.push(`${card.substituicoes.length} grupos de substituição`);
+  const preenchidos = Object.keys(lido.diario || {}).length + (lido.medidas || []).length;
+  if (preenchidos) saida.push(`${preenchidos} anotações do controle diário`);
+  return saida;
+}
+
+/* O plano que a IA leu de um PDF (ou de um texto colado), conferido campo a
+ * campo. A IA devolve JSON no mesmo formato que a leitura da planilha
+ * produz, mas JSON de IA é palpite: número em texto, série 40, descanso
+ * de uma hora, data em outro formato. Tudo passa pelas mesmas réguas da
+ * planilha antes de chegar perto dos dados da conta. */
+function planoDoJson(j) {
+  const o = (x) => (x && typeof x === "object" && !Array.isArray(x) ? x : {});
+  const a = (x) => (Array.isArray(x) ? x : []);
+  const t = (v, n) => textoDe(typeof v === "number" || typeof v === "string" ? v : "").slice(0, n);
+  const n = (v, min, max) => {
+    const x = typeof v === "number" ? v : numerosDoTexto(v)[0];
+    return Number.isFinite(x) && x >= min && x <= max ? x : null;
+  };
+  const dia = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? String(v) : "");
+  const m = o(o(j).meta);
+  const meta = {};
+  if (t(m.titulo, 80)) meta.titulo = t(m.titulo, 80);
+  if (t(m.nota, 300)) meta.nota = t(m.nota, 300);
+  if (dia(m.inicio) && dia(m.fim) && dia(m.fim) >= dia(m.inicio)) { meta.inicio = dia(m.inicio); meta.fim = dia(m.fim); }
+  const faixas = {
+    altura: [0.5, 250], pesoInicial: [20, 400], cinturaInicial: [30, 250], perdaAlvo: [0, 150], cinturaAlvo: [0, 100],
+    kcalMin: [500, 10000], kcalMax: [500, 10000], kcalPiso: [500, 10000], protMin: [0, 600], protMax: [0, 600],
+    passosMin: [0, 100000], passosMax: [0, 100000], sonoMin: [0, 16], aguaMin: [0, 15], aguaMax: [0, 15],
+  };
+  for (const [k, [mi, ma]] of Object.entries(faixas)) { const v = n(m[k], mi, ma); if (v !== null) meta[k] = v; }
+  const regras = a(m.regras).map((r) => semMarcador(t(r, 220))).filter(Boolean).slice(0, 12);
+  if (regras.length) meta.regras = regras;
+
+  const semana = DIAS_PLANO.map((_, i) => {
+    const s = o(a(o(j).semana)[i]);
+    return t(s.atividade, 40) ? { atividade: t(s.atividade, 40), descricao: t(s.descricao, 160) } : undefined;
+  });
+
+  const p = o(o(j).plano);
+  const dias = a(p.dias).slice(0, 7).map((d, i) => ({
+    nome: t(o(d).nome, 40) || `Treino ${String.fromCharCode(65 + i)}`,
+    exercicios: a(o(d).exercicios).slice(0, 20).map((e) => {
+      const nome = t(o(e).nome, 60);
+      const grupo = GRUPO_POR_PALAVRA.some(([, g]) => g === o(e).grupo) ? o(e).grupo : grupoPeloNome(nome);
+      return {
+        nome, grupo,
+        series: Math.max(1, Math.min(10, Math.round(n(o(e).series, 1, 99) || 3))),
+        reps: t(o(e).reps, 12) || "8-12",
+        descanso: descansoEmSegundos(o(e).descanso),
+        observacao: t(o(e).observacao, 160),
+        video: "",
+      };
+    }).filter((e) => e.nome),
+  })).filter((d) => d.exercicios.length);
+  const plano = dias.length ? {
+    nome: t(p.nome, 50) || "Plano do mês", aviso: "",
+    regras: a(p.regras).map((r) => semMarcador(t(r, 220))).filter(Boolean).slice(0, 12),
+    dias,
+  } : null;
+
+  const c = o(o(j).cardapio);
+  const refeicoes = a(c.refeicoes).slice(0, 12).map((r) => ({
+    nome: t(o(r).nome, 40) || "Refeição",
+    horario: t(o(r).horario, 10),
+    itens: a(o(r).itens).slice(0, 20).map((it) => ({
+      alimento: t(o(it).alimento, 80), quantidade: t(o(it).quantidade, 40),
+      kcal: n(o(it).kcal, 0, 5000) || 0, proteina: n(o(it).proteina, 0, 500) || 0,
+      carbo: n(o(it).carbo, 0, 800) || 0, gordura: n(o(it).gordura, 0, 500) || 0,
+    })).filter((it) => it.alimento),
+  })).filter((r) => r.itens.length);
+  const cardapio = refeicoes.length ? {
+    nota: t(c.nota, 300),
+    refeicoes,
+    substituicoes: a(c.substituicoes).slice(0, 12).map((g) => ({
+      grupo: t(o(g).grupo, 30), referencia: t(o(g).referencia, 80),
+      opcoes: a(o(g).opcoes).map((x) => semMarcador(t(x, 80))).filter(Boolean).slice(0, 12),
+    })).filter((g) => g.grupo && g.opcoes.length),
+    secoes: a(c.secoes).slice(0, 8).map((x) => ({
+      titulo: t(o(x).titulo, 60), itens: a(o(x).itens).map((i) => semMarcador(t(i, 220))).filter(Boolean).slice(0, 15),
+    })).filter((x) => x.titulo && x.itens.length),
+    avisos: a(c.avisos).map((x) => t(x, 300)).filter(Boolean).slice(0, 6),
+  } : null;
+
+  for (const r of meta.regras || []) {
+    const pi = /abaixo de\s+([\d.]+)\s*kcal/i.exec(r);
+    if (pi && !meta.kcalPiso) meta.kcalPiso = numerosDoTexto(pi[1])[0];
+  }
+  const lido = { meta, semana, plano, cardapio, diario: {}, medidas: [], achados: [] };
+  lido.achados = achadosDoPlano(lido);
+  return lido;
+}
+
+/* Que arquivo é este, pelos primeiros bytes e não pelo nome: no celular o
+   arquivo que veio pelo WhatsApp ou pelo Drive às vezes chega sem a
+   extensão certa, e o seletor do iPhone esconde o que não bate com ela. */
+function tipoDoArquivo(bytes, nome) {
+  const b = bytes || [];
+  if (b[0] === 0x50 && b[1] === 0x4b) return "xlsx";
+  if (b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46) return "pdf";
+  if (b[0] === 0xd0 && b[1] === 0xcf) return "xls";
+  if (/\.(txt|csv|tsv|md)$/i.test(String(nome || ""))) return "texto";
+  return "";
 }
 
 /* Junta o que a planilha trouxe ao que a conta já tem.
@@ -885,27 +993,54 @@ function Painelzinho({ rotulo, valor, apoio, cor }) {
 
 /* ── importar a planilha ─────────────────────────────────────────────── */
 
-function ImportarPlanilha({ treino, gravar, notify, compacto }) {
+/* O seletor de arquivo NÃO filtra por tipo, de propósito. No iPhone, um
+   accept=".xlsx" deixa cinza a planilha que veio pelo WhatsApp ou pelo
+   Drive, e a pessoa só consegue escolher PDF. Quem decide o que é cada
+   arquivo são os primeiros bytes (tipoDoArquivo), não o nome. */
+function ImportarPlanilha({ treino, gravar, notify, compacto, nuvem }) {
   const [lido, setLido] = useState(null);
   const [erro, setErro] = useState("");
   const [nome, setNome] = useState("");
+  const [lendo, setLendo] = useState("");
   const ref = useRef(null);
+
+  const pelaIA = async (texto) => {
+    const token = await tokenDaConta(nuvem);
+    if (!token) throw new Error("Entre na sua conta para ler o plano em PDF. A planilha .xlsx é lida sem conta.");
+    setLendo("a IA está organizando o plano, leva uns 30 segundos");
+    const { dados, erro: falhou } = await chamarApi(ROTA_PLANO_IA, { token, texto }, "O leitor de plano");
+    if (falhou) throw new Error(falhou);
+    if (!dados || dados.erro || !dados.plano) throw new Error((dados && dados.erro) || "Não consegui ler o plano.");
+    return planoDoJson(dados.plano);
+  };
 
   const abrir = async (arquivo) => {
     setErro(""); setLido(null);
     if (!arquivo) return;
-    if (!/\.xlsx$/i.test(arquivo.name)) {
-      setErro("Mande a planilha em .xlsx (no Excel ou no Google Planilhas: Arquivo › Baixar › .xlsx).");
-      return;
-    }
     try {
+      setLendo("abrindo o arquivo");
       const bytes = new Uint8Array(await arquivo.arrayBuffer());
-      const r = planoDaPlanilha(lerXlsx(bytes, unzipSync));
-      if (!r.achados.length) { setErro("Abri a planilha, mas não achei metas, treino nem cardápio nela."); return; }
+      const tipo = tipoDoArquivo(bytes, arquivo.name);
+      let r;
+      if (tipo === "xlsx") {
+        r = planoDaPlanilha(lerXlsx(bytes, unzipSync));
+      } else if (tipo === "pdf") {
+        const texto = await lerPdfSoTexto(arquivo, setLendo);
+        r = await pelaIA(texto);
+      } else if (tipo === "texto") {
+        r = await pelaIA(new TextDecoder("utf-8").decode(bytes));
+      } else if (tipo === "xls") {
+        throw new Error("Essa é a planilha no formato antigo do Excel. Abra e salve como .xlsx, ou mande em PDF.");
+      } else {
+        throw new Error("Mande a planilha do Excel, em .xlsx, ou o PDF do plano.");
+      }
+      if (!r.achados.length) throw new Error("Abri o arquivo, mas não achei metas, treino nem cardápio nele.");
       setNome(arquivo.name);
       setLido(r);
     } catch (e) {
-      setErro((e && e.message) || "Não consegui ler essa planilha.");
+      setErro((e && e.message) || "Não consegui ler esse arquivo.");
+    } finally {
+      setLendo("");
     }
   };
 
@@ -923,17 +1058,18 @@ function ImportarPlanilha({ treino, gravar, notify, compacto }) {
       </H>
       {!compacto || !jaTem ? (
         <Texto style={{ marginTop: 10 }}>
-          Mande a planilha do plano, em .xlsx, e o site lê as metas, as fichas de treino,
-          a semana, o cardápio, as substituições e o que já estiver preenchido no
-          controle diário. Ela é lida aqui no aparelho e vai só para a sua conta.
+          Mande a planilha do plano, em Excel, ou o PDF dele, e o site lê as metas, as
+          fichas de treino, a semana, o cardápio e as substituições. A planilha é lida aqui
+          no aparelho; o PDF passa pela IA para virar tabela. Tudo vai só para a sua conta.
         </Texto>
       ) : null}
-      <input ref={ref} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      <input ref={ref} type="file" aria-label="Arquivo do plano"
         style={{ display: "none" }} onChange={(e) => { abrir(e.target.files && e.target.files[0]); e.target.value = ""; }} />
       <div className="mt-4 flex flex-wrap gap-2 items-center">
-        <Btn tone={jaTem ? "quiet" : "primary"} onClick={() => ref.current && ref.current.click()}>
-          <Upload size={15} /> escolher a planilha
+        <Btn tone={jaTem ? "quiet" : "primary"} disabled={!!lendo} onClick={() => ref.current && ref.current.click()}>
+          <Upload size={15} /> {lendo ? "lendo…" : "escolher planilha ou PDF"}
         </Btn>
+        {lendo ? <Mini>{lendo}</Mini> : null}
       </div>
       {erro ? <Label style={{ marginTop: 12, color: T.bad, textTransform: "none", letterSpacing: 0 }}>{erro}</Label> : null}
       {lido ? (
@@ -1204,7 +1340,19 @@ function ControleDoDia({ treino, gravar, notify, dia }) {
 function HojeDoPlano({ treino, gravar, notify, today, irPara }) {
   const meta = treino.meta || {};
   const temPlano = !!(meta.inicio || (treino.semana || []).some((s) => s && s.atividade));
-  if (!temPlano) return null;
+  if (!temPlano) {
+    return (
+      <Card className="px-6 py-5">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <span className="min-w-0">
+            <span style={{ display: "block", fontSize: 15.5, fontWeight: 700 }}>Tem um plano de treino e dieta?</span>
+            <Mini style={{ marginTop: 2 }}>importe a planilha ou o PDF em Mês, e o dia a dia aparece aqui</Mini>
+          </span>
+          <Btn size="sm" onClick={() => irPara("mes")}><FileSpreadsheet size={14} /> importar</Btn>
+        </div>
+      </Card>
+    );
+  }
   const atv = atividadeDoDia(treino.semana, today);
   const plano = (treino.planos || []).find((p) => p.id === treino.planoAtivo) || (treino.planos || [])[0];
   const ficha = atv && atv.diaPlanoId && plano ? (plano.dias || []).find((d) => d.id === atv.diaPlanoId) : null;
@@ -1271,7 +1419,7 @@ function HojeDoPlano({ treino, gravar, notify, today, irPara }) {
 
 /* ── o painel do mês ─────────────────────────────────────────────────── */
 
-function PainelDoMes({ treino, gravar, notify, today }) {
+function PainelDoMes({ treino, gravar, notify, today, nuvem }) {
   const meta = treino.meta || {};
   const [editando, setEditando] = useState(false);
   const prog = useMemo(() => progressoDaMeta(meta, treino.medidas), [meta, treino.medidas]);
@@ -1292,7 +1440,7 @@ function PainelDoMes({ treino, gravar, notify, today }) {
   if (!meta.inicio && !meta.pesoInicial) {
     return (
       <div className="flex flex-col gap-5">
-        <ImportarPlanilha {...{ treino, gravar, notify }} />
+        <ImportarPlanilha {...{ treino, gravar, notify, nuvem }} />
         <Card className="px-6 py-6">
           <Blank icon={<Target size={22} />} title="Sem plano do mês"
             hint="Importe a planilha acima, ou escreva as metas na mão." />
@@ -1486,7 +1634,7 @@ function PainelDoMes({ treino, gravar, notify, today }) {
         </Card>
       ) : null}
 
-      <ImportarPlanilha {...{ treino, gravar, notify }} compacto />
+      <ImportarPlanilha {...{ treino, gravar, notify, nuvem }} compacto />
     </div>
   );
 }

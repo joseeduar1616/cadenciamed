@@ -1285,11 +1285,11 @@ function Treino({ data, setData, notify, today, nuvem }) {
           {treino.meta && treino.meta.inicio ? <ControleDoDia {...{ treino, gravar, notify }} dia={today} /> : null}
         </>
       ) : null}
-      {vista === "mes" ? <PainelDoMes {...{ treino, gravar, notify, today }} /> : null}
+      {vista === "mes" ? <PainelDoMes {...{ treino, gravar, notify, today, nuvem }} /> : null}
       {vista === "comida" ? <Alimentacao {...{ treino, gravar, notify, today, nuvem }} /> : null}
       {vista === "plano" ? (
         <>
-          <ImportarPlanilha {...{ treino, gravar, notify }} compacto />
+          <ImportarPlanilha {...{ treino, gravar, notify, nuvem }} compacto />
           <PerfilETreino {...{ treino, gravar, notify, nuvem }} />
           {(treino.planos || []).length > 1 ? (
             <Card className="px-6 py-5">
