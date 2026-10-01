@@ -1141,7 +1141,16 @@ const quandoFoiConversa = (ms) => {
   return brDate(dia);
 };
 
+/* Qual modo do Assistente estava aberto: a pessoa que está no meio da
+   mentoria e troca de aba volta para a mentoria, e não para a conversa. */
+const CHAVE_MODO_ASSISTENTE = "cadencia:v3:assistente-modo";
+function lerModoAssistente() {
+  try { return window.localStorage.getItem(CHAVE_MODO_ASSISTENTE) === "mentoria" ? "mentoria" : "conversa"; }
+  catch (e) { return "conversa"; }
+}
+
 function Assistente({ data, setData, subjects, ladder, today, totals, minWeek, qWeek, notify, nuvem }) {
+  const [modo, setModo] = useState(lerModoAssistente);
   const aberta = useMemo(lerConversaAberta, []);
   const [msgs, setMsgs] = useState(aberta.msgs);
   const [conversaId, setConversaId] = useState(aberta.id);
@@ -1313,8 +1322,45 @@ function Assistente({ data, setData, subjects, ladder, today, totals, minWeek, q
     "Como está meu ritmo para a prova?",
   ];
 
+  const trocarModo = (novo) => {
+    setModo(novo);
+    try { window.localStorage.setItem(CHAVE_MODO_ASSISTENTE, novo); } catch (e) { /* segue */ }
+  };
+
+  /* Os dois modos no topo, sempre à vista. A mentoria é um modo do
+     Assistente, e não uma aba à parte, porque é a mesma IA com o mesmo
+     acesso ao painel: só muda o jeito de conversar. */
+  const seletor = (
+    <div className="flex gap-1 rounded-full p-1"
+      role="tablist" aria-label="Modo do assistente"
+      style={{ background: T.card2, border: `1px solid ${T.line}`, alignSelf: "flex-start", maxWidth: "100%" }}>
+      {[["conversa", "Conversa", <MessageCircle size={14} key="c" />],
+        ["mentoria", "Mentoria de estudo", <Compass size={14} key="m" />]].map(([id, rotulo, ic]) => (
+        <button key={id} type="button" role="tab" aria-selected={modo === id}
+          onClick={() => trocarModo(id)}
+          className="flex items-center gap-2 rounded-full px-4 toque-larg"
+          style={{
+            minHeight: 36, border: "none", cursor: "pointer", fontFamily: F_UI,
+            fontSize: 14, fontWeight: modo === id ? 700 : 500,
+            background: modo === id ? soft("var(--neon2)", 22) : "transparent",
+            color: modo === id ? T.ink : T.dim,
+          }}>{ic}{rotulo}</button>
+      ))}
+    </div>
+  );
+
+  if (modo === "mentoria") {
+    return (
+      <div className="flex flex-col gap-5">
+        {seletor}
+        <Mentoria {...{ data, setData, subjects, ladder, today, totals, minWeek, qWeek, notify, nuvem }} />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-5">
+      {seletor}
       <Card className="px-6 py-6" brilho="var(--neon)">
         <H color="var(--neon)" icon={<Sparkles size={16} />}>Assistente</H>
         <Texto style={{ marginTop: 10 }}>

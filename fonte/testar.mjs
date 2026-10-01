@@ -516,10 +516,16 @@ if (await linhaAula.count() === 0) {
     if (salvouSemImagemEmbutida.temNegrito) ok('anotação: a formatação (negrito) é salva');
     else falha('anotação: o negrito não foi salvo');
 
+    /* espera a barra voltar em vez de um tempo fixo: com o app maior, os
+       2,2s às vezes não bastavam para remontar e o clique ficava esperando */
     await pag.reload({ waitUntil: 'load' });
-    await pag.waitForTimeout(2200);
+    await pag.waitForSelector('nav button:has-text("Matérias")', { timeout: 15000 }).catch(() => {});
+    await pag.waitForTimeout(800);
     await ir('Matérias');
-    await pag.locator('[data-teste="titulo-materia"]').first().click();
+    const aulaDepois = pag.locator('[data-teste="titulo-materia"]').first();
+    await aulaDepois.waitFor({ timeout: 10000 }).catch(() => {});
+    if (await aulaDepois.count() === 0) falha('anotação: Matérias não mostrou as aulas depois de recarregar: ' + (await texto()).slice(0, 200));
+    else await aulaDepois.click();
     await pag.waitForTimeout(300);
     const verNota = pag.locator('text=Ver ou editar anotação');
     if (await verNota.count() === 0) {

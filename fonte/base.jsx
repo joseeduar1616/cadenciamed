@@ -10,7 +10,7 @@ import {
   BookMarked, FileText, Keyboard, ArrowUpRight, Maximize2, Minimize2,
   Smartphone, Monitor, Cloud, CloudOff, LogOut, User, RefreshCw, Stethoscope,
   Sparkles, Menu, PanelLeft, Users, Trophy, Clock, Lock,
-  MessageCircle, Send, GraduationCap,
+  MessageCircle, Send, GraduationCap, Compass,
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify,
   Palette, Highlighter, ImagePlus, NotebookPen, FileDown, FolderInput,
   Folder, FolderPlus, ALargeSmall, Camera, Flag, CalendarClock,
