@@ -35,7 +35,7 @@
 const GRUPOS_DE_ABAS = [
   { nome: "Todo dia", abas: ["foco", "cronograma", "cartoes", "assistente", "rotina", "amigos"] },
   { nome: "Estudar", abas: ["hoje", "materias", "clinico", "temas"] },
-  { nome: "Fixar", abas: ["revisoes", "provas"] },
+  { nome: "Fixar", abas: ["revisoes", "erros", "provas"] },
   { nome: "Acompanhar", abas: ["desempenho", "progresso", "metas", "simulados"] },
   { nome: "Com outras pessoas", abas: ["mentor"] },
   { nome: "Você", abas: ["treino", "planos", "config"] },
@@ -72,7 +72,7 @@ const ICONE_ABA = {
   assistente: Sparkles, cartoes: Layers, revisoes: RotateCcw,
   rotina: CalendarClock, amigos: Users, mentor: User,
   metas: Flame, desempenho: BarChart3, treino: Dumbbell, simulados: Flag,
-  provas: FileText,
+  provas: FileText, erros: NotebookPen,
   progresso: TrendingUp, planos: Zap, config: Settings2,
 };
 
@@ -658,6 +658,24 @@ export default function Cadencia() {
     }
   }, [ativo]);
 
+  /* O tempo de um bloco da agenda iniciado na hora (parte28): vira sessão
+     como o Foco, com o nome do bloco, e abre a mesma pergunta de tipo,
+     questões e acertos. */
+  const registrarBloco = useCallback((mins, b) => {
+    const id = uid();
+    const kind = b.type === "Questões" ? "Questões" : "Aula";
+    setData((p) => ({
+      ...p,
+      sessions: [{
+        id, date: todayISO(), subjectId: null, area: null,
+        topic: b.label, kind, minutes: mins,
+        questions: 0, correct: 0, notes: "bloco da agenda", createdAt: Date.now(),
+      }, ...p.sessions],
+    }));
+    setTipoSessao(kind); setQtdQuestoes(""); setQtdAcertos("");
+    setClassificar({ id, minutes: mins });
+  }, []);
+
   const salvarClassificacao = useCallback(() => {
     if (!classificar) return;
     const q = Math.max(0, Math.floor(Number(qtdQuestoes) || 0));
@@ -674,6 +692,23 @@ export default function Cadencia() {
   const P = usePomodoro({ pomo: data.pomo, onFocusDone, notify, pronto: ready });
   const [proAtivo, setProAtivo] = useState(false);
   const nuvem = useNuvem(data, setData, notify, ready, proAtivo);
+  /* O bloco da agenda iniciado na hora (parte28). Um cronômetro de cada
+     vez: iniciar um bloco pausa o Foco. */
+  const Pref = useRef(P);
+  Pref.current = P;
+  const pausarFoco = useCallback(() => { if (Pref.current.running) Pref.current.setRunning(false); }, []);
+  const B = useBlocoEmAndamento({ setData, notify, registrar: registrarBloco, pausarFoco });
+
+  /* "Você está aí?" marcado no servidor, para chegar mesmo com o celular
+     em outro aplicativo (parte21, useAvisoPresencaNoServidor). Vale para
+     o que estiver correndo: o Foco ou o bloco. */
+  const avisoPresencaFora = useAvisoPresencaNoServidor({
+    nuvem,
+    perguntaEm: P.running ? P.presenca.perguntaEm : B.ativo ? B.presenca.perguntaEm : 0,
+    corpo: P.running || !B.ativo
+      ? "O cronômetro do Foco para em 1 minuto se ninguém responder. Toque em Estou aqui."
+      : `O bloco "${B.ativo.label}" para em 1 minuto se ninguém responder. Toque em Estou aqui.`,
+  });
   const gcal = useGoogleAgenda({ data, setData, notify, ladder, today, nuvem });
   const mentorInfo = useMentor(nuvem);
   const assinatura = useAssinatura(nuvem.sdk, nuvem.usuario);
@@ -722,6 +757,7 @@ export default function Cadencia() {
     amigos: "quem estuda com você", mentor: "os seus alunos",
     metas: "simulados, provas e hábitos", desempenho: "acerto por área e matéria",
     provas: "prova enviada vira gabarito comentado",
+    erros: "o erro de hoje é o acerto da prova",
     treino: "academia, fora da conta do estudo", simulados: "acerto contra os amigos",
     progresso: "o caminho até aqui",
     planos: "assinatura", config: "tudo que dá para ajustar",
@@ -768,6 +804,7 @@ export default function Cadencia() {
     ...(ver.assistente ? [{ id: "assistente", label: "Assistente", acc: "var(--neon)" }] : []),
     { id: "cartoes", label: "Cartões", acc: "var(--neon)", badge: cartoesHoje },
     { id: "revisoes", label: "Revisões", acc: "var(--ok)", badge: late.length },
+    { id: "erros", label: "Caderno de erros", acc: "var(--warn)", badge: (data.erros || []).filter((e) => e.prox <= today).length },
     ...(ver.provas ? [{ id: "provas", label: "Provas", acc: "var(--warn)" }] : []),
     { id: "rotina", label: "Agenda", acc: "var(--a-PE)" },
     { id: "amigos", label: "Amigos", acc: "var(--neon2)", badge: duelosEsperando },
@@ -899,6 +936,7 @@ export default function Cadencia() {
 
   return (
     <AtivoContext.Provider value={ativo}>
+    <BlocoAtivoCtx.Provider value={B}>
     <TemaNotaContext.Provider value={temaDaNota}>
     {/* O ambiente do tema entra aqui, no style do próprio elemento: o
         THEME_CSS logo abaixo redeclara as mesmas variáveis num
@@ -1202,7 +1240,7 @@ export default function Cadencia() {
                 <h1 className="capa-t">{(TABS.find((t) => t.id === tab) || {}).label || ""}</h1>
               </div>
               {tab === "hoje" && <Hoje {...{ data, setData, today, minToday, minWeek, qWeek, streak, late, done, bonusDone, addSession, delSession, notify, go: setTab, blocosHoje, projecao: pro ? projecao : null, pro, verPlanos: () => setTab("planos"), cartoesHoje }} />}
-              {tab === "foco" && <Foco {...{ data, setData, today, P, subjectId: pomoSubject, setSubjectId: setPomoSubject }} />}
+              {tab === "foco" && <Foco {...{ data, setData, today, P, subjectId: pomoSubject, setSubjectId: setPomoSubject, avisoPresencaFora }} />}
               {tab === "materias" && <Materias {...{ sessions: data.sessions, reviews: data.reviews, today, addSession, marcarDificuldade, subjects: subjectsResidencia, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, salvarAnotacao, notify, setData, nuvem, pastas: data.pastas, vazioEm: subjectsClinico.length ? "clinico" : null, irPara: setTab }} />}
               {tab === "clinico" && <Materias {...{ sessions: data.sessions, reviews: data.reviews, today, addSession, marcarDificuldade, subjects: subjectsClinico, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, salvarAnotacao, notify, setData, nuvem, pastas: data.pastas, irPara: setTab }} />}
               {tab === "cronograma" && <AbaCronograma {...{ data, setData, notify, nuvem, pro, verPlanos: () => setTab("planos") }} />}
@@ -1235,6 +1273,7 @@ export default function Cadencia() {
               {tab === "mentor" && mentorInfo.mentor && <Mentor {...{ nuvem, notify, mentorInfo }} />}
               {tab === "desempenho" && <Desempenho {...{ data, today, addSession, delSession, notify }} />}
               {tab === "provas" && ver.provas && <Provas {...{ nuvem, notify }} />}
+              {tab === "erros" && <CadernoErros {...{ data, setData, today, notify, nuvem, subjects }} />}
               {tab === "treino" && ver.treino && <Treino {...{ data, setData, notify, today, nuvem }} />}
               {tab === "simulados" && pro && <Simulados {...{ nuvem, notify, irPara: setTab }} />}
               {tab === "simulados" && !pro && <Bloqueado recurso={RECURSOS_PRO.simulados} onVerPlanos={() => setTab("planos")} />}
@@ -1349,7 +1388,13 @@ export default function Cadencia() {
       {P.presenca.fase === "perguntando" ? (
         <PerguntaPresenca restaMs={P.presenca.restaMs} oQue="o cronômetro do Foco"
           aoConfirmar={P.confirmarPresenca} />
+      ) : B.ativo && B.presenca.fase === "perguntando" ? (
+        <PerguntaPresenca restaMs={B.presenca.restaMs} oQue={`o bloco "${B.ativo.label}"`}
+          aoConfirmar={B.estouAqui} />
       ) : null}
+
+      {/* O bloco da agenda que está contando, visível em qualquer aba. */}
+      <BarraBlocoAtivo irPara={setTab} />
 
       {/* Primeira vez neste aparelho: convida a ligar as notificações
           (uma vez só por aparelho — ver parte21.jsx). */}
@@ -1365,6 +1410,7 @@ export default function Cadencia() {
       ) : null}
     </div>
     </TemaNotaContext.Provider>
+    </BlocoAtivoCtx.Provider>
     </AtivoContext.Provider>
   );
 }

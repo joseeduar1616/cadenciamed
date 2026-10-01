@@ -97,6 +97,9 @@ function CartaoBloco({ b, iso, estado, onAlternar, onRemover, minutosAgora }) {
             {b.fixo ? " · toda semana" : " · só nesta data"}
           </Mini>
 
+          {/* contar o tempo do bloco, como o Foco (parte28) */}
+          {!feito ? <div style={{ marginTop: 10 }}><BotaoIniciarBloco b={b} iso={iso} /></div> : null}
+
           {agora ? (
             <div style={{ marginTop: 10, maxWidth: 260 }}>
               <Track pct={andamento} color="var(--neon)" height={4} />

@@ -185,7 +185,15 @@ function PlanoDaMentoria({ data, setData, today, notify, ocupado, perguntar }) {
     notify("Os blocos da mentoria saíram da Agenda. Os seus continuam lá.");
   };
 
-  const Bloco = ({ b, destaque }) => (
+  /* O bloco do plano corresponde a um da Agenda quando o plano já foi
+     posto lá (mesmo dia, mesmo início, origem mentoria). Iniciar usa o
+     da Agenda, para "Concluir" marcar o bloco certo como cumprido. */
+  const naAgenda = (b) => {
+    const r = (data.routine || []).find((x) => x && x.origem === "mentoria" && Number(x.day) === hoje && x.start === b.inicio);
+    return r || { id: `plano-${hoje}-${b.inicio}`, label: b.titulo, type: b.tipo, start: b.inicio, end: b.fim };
+  };
+
+  const Bloco = ({ b, destaque, iniciar }) => (
     <div className="flex items-start gap-3 rounded-xl px-3.5 py-2.5"
       style={{ background: destaque ? soft(BLOCKS[b.tipo] || "var(--warn)", 12) : T.card2 }}>
       <span style={{
@@ -200,6 +208,9 @@ function PlanoDaMentoria({ data, setData, today, notify, ocupado, perguntar }) {
           {b.titulo}
         </span>
         {b.como ? <Mini style={{ marginTop: 3, lineHeight: 1.55 }}>{b.como}</Mini> : null}
+        {iniciar && !(data.blocos || {})[`${iniciar.id}|${today}`]
+          ? <span style={{ display: "block", marginTop: 8 }}><BotaoIniciarBloco b={iniciar} iso={today} compacto /></span>
+          : null}
       </span>
     </div>
   );
@@ -217,7 +228,7 @@ function PlanoDaMentoria({ data, setData, today, notify, ocupado, perguntar }) {
         <Label style={{ color: T.ok }}>Hoje, {DIAS_MENTORIA[hoje].toLowerCase()}</Label>
         <div className="mt-2 flex flex-col gap-2">
           {deHoje.length
-            ? deHoje.map((b, i) => <Bloco key={i} b={b} destaque />)
+            ? deHoje.map((b, i) => <Bloco key={i} b={b} destaque iniciar={naAgenda(b)} />)
             : <Mini>Nada no plano para hoje. Se for o dia de descanso, aproveite: ele faz parte do método.</Mini>}
         </div>
         {remarcadosHoje.length ? (
@@ -225,9 +236,9 @@ function PlanoDaMentoria({ data, setData, today, notify, ocupado, perguntar }) {
             <Mini style={{ fontWeight: 700, color: T.warn, marginBottom: 6 }}>Remarcados para hoje (ficaram para trás)</Mini>
             <div className="flex flex-col gap-1.5">
               {remarcadosHoje.map((b) => (
-                <Bloco key={b.id} b={{
+                <Bloco key={b.id} iniciar={b} b={{
                   inicio: b.start, fim: b.end, titulo: b.label, tipo: b.type,
-                  como: `era de ${brDate(b.de)}${Number(b.vezes) > 1 ? `, remarcado ${b.vezes} vezes` : ""}. Marque como cumprido na Agenda.`,
+                  como: `era de ${brDate(b.de)}${Number(b.vezes) > 1 ? `, remarcado ${b.vezes} vezes` : ""}. Inicie aqui ou marque como cumprido na Agenda.`,
                 }} />
               ))}
             </div>
@@ -826,6 +837,7 @@ function Mentoria({ data, setData, subjects, ladder, today, totals, minWeek, qWe
         contexto: [
           resumoParaIA({ subjects, ladder, data, today, totals, minWeek, qWeek, totalBonus: ativo.totalBonus }),
           pendentesParaIA(data, today),
+          cadernoParaIA(data.erros, ativo.byId || {}),
         ].filter(Boolean).join("\n\n"),
         voz: !!extra.voz,
         ...(extra.audio ? { audio: extra.audio } : {}),

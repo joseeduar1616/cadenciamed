@@ -93,6 +93,13 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // avisosAgendados/{uid}_{origem}: o "Você está aí?" do Foco marcado
+    // para um instante. Só a rota /api/push e a batida de minuto em minuto,
+    // com a conta de serviço.
+    match /avisosAgendados/{id} {
+      allow read, write: if false;
+    }
+
     // A chave do site para assinar as notificações (VAPID), gerada uma vez
     // pelo próprio servidor. A parte privada está aqui dentro: quem a
     // lesse poderia mandar notificação em nome do Cadência para qualquer

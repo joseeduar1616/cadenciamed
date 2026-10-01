@@ -19,7 +19,7 @@
  * O que NUNCA entra em cache: /api/. São respostas por pessoa, com token,
  * e guardá-las seria mostrar dado de uma conta em outra.
  */
-const VERSAO = "cadencia-f38976e0e3";
+const VERSAO = "cadencia-837b118891";
 const CASCA = "/";
 const PAGINAS_SOLTAS = /^\/(app|app\.html|privacidade\.html|termos\.html|recuperar\.html)$/;
 
@@ -114,6 +114,29 @@ self.addEventListener("push", (e) => {
   const titulo = String(aviso.titulo || "Cadência Med").slice(0, 80);
   const corpo = String(aviso.corpo || "Você tem estudo marcado para hoje.").slice(0, 240);
 
+  /* "Você está aí?" do Foco, mandado pelo servidor na hora exata. Com o
+     site aberto e à frente, a própria página já pergunta: o aviso do
+     sistema seria repetido (e o navegador permite não mostrar quando a
+     página está em foco). Fora disso, aviso com o botão "Estou aqui". */
+  if (aviso.tipo === "presenca") {
+    e.waitUntil((async () => {
+      const abas = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      if (abas.some((a) => a.visibilityState === "visible" && a.focused)) return;
+      await self.registration.showNotification(titulo, {
+        body: corpo,
+        icon: "/icone-192.png",
+        badge: "/icone-192.png",
+        lang: "pt-BR",
+        tag: "presenca",
+        renotify: true,
+        requireInteraction: true,
+        data: { tipo: "presenca" },
+        actions: [{ action: "estou-aqui", title: "Estou aqui" }],
+      });
+    })());
+    return;
+  }
+
   e.waitUntil(self.registration.showNotification(titulo, {
     body: corpo,
     icon: "/icone-192.png",
@@ -139,9 +162,13 @@ self.addEventListener("notificationclick", (e) => {
     e.waitUntil((async () => {
       const abas = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
       const nossas = abas.filter((a) => new URL(a.url).origin === self.location.origin);
-      nossas.forEach((a) => a.postMessage({ tipo: "presenca-ok" }));
+      const em = Date.now();
+      nossas.forEach((a) => a.postMessage({ tipo: "presenca-ok", em }));
       if (nossas.length) await nossas[0].focus().catch(() => {});
-      else await self.clients.openWindow("/");
+      /* Sem aba viva (o celular descartou a página), abre o site levando
+         a hora da resposta: a página, ao abrir, conta como sinal de vida
+         em vez de achar que ninguém respondeu. */
+      else await self.clients.openWindow(`/?presenca=${em}`);
     })());
     return;
   }

@@ -35,7 +35,7 @@ const semana = Array.from({ length: 7 }, (_, dia) => ({
   blocos: dia === 0 ? [{ inicio: '19:00', fim: '20:30', titulo: 'Tema novo de cardio', tipo: 'Estudo', como: 'teoria e questões' }] : [],
 }));
 await pag.addInitScript((sem) => {
-  try { localStorage.setItem('cadencia:v3:convite-notificacoes-aparelho', '1'); } catch (e) { /* segue */ }
+  try { const k = 'cadencia:v3:convite-notificacoes-aparelho'; if (!localStorage.getItem(k)) localStorage.setItem(k, '1'); } catch (e) { /* segue */ }
   if (sessionStorage.getItem('semeado')) return;
   sessionStorage.setItem('semeado', '1');
   localStorage.setItem('cadencia:v3:assistente-modo', 'mentoria');

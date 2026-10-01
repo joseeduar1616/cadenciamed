@@ -1492,7 +1492,19 @@ function usePomodoro({ pomo, onFocusDone, notify, pronto }) {
   /* O último sinal de vida com o cronômetro correndo — ver "você está
      aí?", no base.jsx. Quem já estava com o cronômetro correndo antes desta
      regra existir começa a contar de agora, sem ser punido por ela. */
-  const [presencaDesde, setPresencaDesde] = useState(S.presencaDesde || (S.running ? Date.now() : 0));
+  const [presencaDesde, setPresencaDesde] = useState(() => {
+    const base = S.presencaDesde || (S.running ? Date.now() : 0);
+    /* "Estou aqui" tocado no aviso do sistema com a página já descartada:
+       o site reabre com a hora da resposta. Se ela veio antes de a
+       pergunta expirar, é sinal de vida — e o efeito de reabertura, que
+       lê o guardado, tem de ver o mesmo. */
+    const resposta = respostaDePresencaNaUrl();
+    if (S.running && base && resposta && estadoDaPresenca(base, resposta).fase !== "sumiu") {
+      S.presencaDesde = resposta;
+      return resposta;
+    }
+    return base;
+  });
   const [, force] = useState(0);
   const cfg = useRef(pomo);
   cfg.current = pomo;

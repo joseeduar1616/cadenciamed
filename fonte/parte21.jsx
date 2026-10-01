@@ -648,6 +648,66 @@ function usePushDoDia({ nuvem, ligado, hora, atrasadas, cartoes, blocos }) {
   }, [nuvem, ligado, hora]);
 }
 
+/* ── o "Você está aí?" do Foco, pelo servidor ─────────────────────────
+ *
+ * A pergunta da página só sai se a página estiver viva. No celular, trocar
+ * de aplicativo congela a aba em poucos minutos, e aos trinta ela não roda:
+ * o aviso não aparecia e o cronômetro parava sem perguntar. Então, a cada
+ * sinal de vida, a página marca no servidor o instante da pergunta, e o
+ * servidor manda o push na hora (worker/api/push.js, enviarAgendados).
+ * Pausar ou parar desmarca.
+ *
+ * Devolve se o aviso está chegando por fora ("servidor"), se falta algo
+ * ("sem-conta", "sem-assinatura") ou nada a dizer (null, parado). */
+function useAvisoPresencaNoServidor({ nuvem, perguntaEm, corpo }) {
+  const [situacao, setSituacao] = useState(null);
+  const marcado = useRef(0);
+  useEffect(() => {
+    let vivo = true;
+    const t = window.setTimeout(async () => {
+      if (!temPush()) { if (vivo) setSituacao(perguntaEm ? "sem-assinatura" : null); return; }
+      const logado = !!(nuvem && nuvem.sdk && nuvem.sdk.auth && nuvem.sdk.auth.currentUser);
+      if (!perguntaEm) {
+        if (marcado.current && logado) {
+          marcado.current = 0;
+          await falarComPush(nuvem, { acao: "cancelar", origem: "foco" });
+        }
+        if (vivo) setSituacao(null);
+        return;
+      }
+      if (!logado) { if (vivo) setSituacao("sem-conta"); return; }
+      if (!(await assinaturaAtual())) { if (vivo) setSituacao("sem-assinatura"); return; }
+      if (marcado.current === perguntaEm) { if (vivo) setSituacao("servidor"); return; }
+      const r = await falarComPush(nuvem, { acao: "agendar", origem: "foco", quando: perguntaEm, corpo });
+      if (!r.erro) marcado.current = perguntaEm;
+      if (vivo) setSituacao(r.erro ? "sem-assinatura" : "servidor");
+    }, 800);
+    return () => { vivo = false; window.clearTimeout(t); };
+  }, [nuvem, perguntaEm, corpo]);
+  return situacao;
+}
+
+/* Tocar em "Estou aqui" com a página já descartada pelo celular abre o
+   site com ?presenca=<instante>. Lido uma vez só e tirado da barra. */
+let respostaPresencaLida = null;
+function respostaDePresencaNaUrl() {
+  /* lida uma vez e guardada: o Foco e o bloco em andamento perguntam os
+     dois, e o segundo acharia a barra já limpa */
+  if (respostaPresencaLida !== null) return respostaPresencaLida;
+  respostaPresencaLida = lerRespostaDePresencaNaUrl();
+  return respostaPresencaLida;
+}
+function lerRespostaDePresencaNaUrl() {
+  try {
+    const u = new URL(window.location.href);
+    const v = Number(u.searchParams.get("presenca"));
+    if (!u.searchParams.has("presenca")) return 0;
+    u.searchParams.delete("presenca");
+    window.history.replaceState(null, "", u.pathname + (u.search || "") + u.hash);
+    return Number.isFinite(v) && v > 0 && v <= Date.now() + 5000 ? v : 0;
+  } catch (e) { return 0; }
+}
+
 /* ── instalar o aplicativo ────────────────────────────────────────────
  *
  * Não existe aplicativo na Play Store nem na App Store, e dizer que existe

@@ -28,7 +28,7 @@ const navegador = await chromium.launch({
 /* A voz e o microfone de mentira. A síntese anota o que falaria; o
    reconhecimento expõe window.__dizer(texto) para o teste "falar". */
 function falsos({ comReconhecimento }) {
-  try { localStorage.setItem('cadencia:v3:convite-notificacoes-aparelho', '1'); } catch (e) { /* segue */ }
+  try { const k = 'cadencia:v3:convite-notificacoes-aparelho'; if (!localStorage.getItem(k)) localStorage.setItem(k, '1'); } catch (e) { /* segue */ }
   if (!sessionStorage.getItem('semeado')) {
     sessionStorage.setItem('semeado', '1');
     localStorage.setItem('cadencia:v3', JSON.stringify({ profile: { name: 'Teste', onboarded: true, examDate: '2027-03-10' } }));

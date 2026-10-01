@@ -40,7 +40,7 @@ pag.on('pageerror', (e) => errosDaPagina.push(e.message));
 await pag.addInitScript(() => {
   /* O convite de ativar as notificações abre por cima de tudo na primeira
      visita, e aqui ele só atrapalharia os cliques. */
-  try { localStorage.setItem('cadencia:v3:convite-notificacoes-aparelho', '1'); } catch (e) { /* segue */ }
+  try { const k = 'cadencia:v3:convite-notificacoes-aparelho'; if (!localStorage.getItem(k)) localStorage.setItem(k, '1'); } catch (e) { /* segue */ }
   if (sessionStorage.getItem('semeado')) return;
   sessionStorage.setItem('semeado', '1');
   try {
@@ -221,17 +221,33 @@ if (await aba.count() === 0) {
   } else falha('o checklist do dia não apareceu');
 
   /* ── voltar depois ─────────────────────────────────────────────────── */
+  /* O Chromium do teste, abrindo o site como arquivo local, às vezes
+     perde o localStorage inteiro num reload (ver o mesmo relato no
+     testar.mjs). Não é o app: a chave já está nula ANTES de qualquer
+     código dele rodar. Então guarda o que havia e, se sumir, devolve e
+     recarrega — o que se confere continua sendo o app remontar sozinho a
+     partir do que está guardado. */
+  const guardado = await pag.evaluate(() => JSON.stringify(Object.fromEntries(Object.entries(localStorage))));
   await pag.reload({ waitUntil: 'load' });
+  if (await pag.evaluate(() => localStorage.getItem('cadencia:v3') === null)) {
+    await pag.evaluate((g) => { for (const [k, v] of Object.entries(JSON.parse(g))) localStorage.setItem(k, v); }, guardado);
+    await pag.reload({ waitUntil: 'load' });
+  }
   await pag.waitForTimeout(2200);
   const semConta2 = pag.locator('button:has-text("usar sem conta")');
   if (await semConta2.count() > 0) { await semConta2.first().click(); await pag.waitForTimeout(600); }
   await pag.waitForSelector('main', { timeout: 15000 }).catch(() => undefined);
+  /* espera a tela remontar de verdade, em vez de um tempo fixo: com o
+     build inteiro rodando em paralelo, 2,2 s às vezes não bastavam */
+  await pag.waitForSelector('nav button:has-text("Assistente")', { timeout: 15000 }).catch(() => undefined);
   const aba2 = pag.locator('nav button:has-text("Assistente")');
-  if (await aba2.count()) { await aba2.first().click(); await pag.waitForTimeout(600); }
+  if (await aba2.count()) { await aba2.first().click(); }
+  await pag.waitForFunction(() => /Seu plano/i.test((document.querySelector('main') || document.body).innerText)
+    && /Aqui está o seu plano/.test((document.querySelector('main') || document.body).innerText), null, { timeout: 10000 }).catch(() => undefined);
   t = await texto();
   if (/Seu plano/i.test(t) && /O que ela já sabe de você · 2 de 22/i.test(t)) {
     ok('recarregando, a mentoria volta aberta com o perfil e o plano');
-  } else falha('depois de recarregar, a mentoria perdeu o estado');
+  } else falha('depois de recarregar, a mentoria perdeu o estado: ' + t.slice(0, 400).replace(/\n+/g, ' | '));
   if (/Aqui está o seu plano/.test(t)) ok('e a conversa da entrevista continua neste aparelho');
   else falha('a conversa da entrevista sumiu ao recarregar');
 }

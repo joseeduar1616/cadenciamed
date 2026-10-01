@@ -31,6 +31,8 @@ const DEFAULTS = {
      só os da mentoria, todos os de estudo, ou nenhum. "ate" é o último dia
      já conferido, para não remarcar a mesma coisa duas vezes. */
   rolagem: { modo: "mentoria", ate: "", semLugar: [] },
+  /* Caderno de erros (parte29): uma ficha por questão errada. */
+  erros: [],
   goals: { daily: 120, weekly: 720, questions: 200 },
   pomo: {
     focus: 25, short: 5, long: 15, cycle: 4, modo: "pomodoro",
@@ -395,6 +397,7 @@ function normalize(raw) {
     /* O que já foi cumprido na agenda precisa sobreviver ao recarregar a
        página: o que não for copiado aqui se perde. */
     blocos: obj(d.blocos),
+    erros: limparErros(d.erros),
     rolagem: {
       modo: ["mentoria", "estudo", "nao"].indexOf(obj(d.rolagem).modo) >= 0 ? d.rolagem.modo : "mentoria",
       ate: /^\d{4}-\d{2}-\d{2}$/.test(obj(d.rolagem).ate || "") ? d.rolagem.ate : "",
