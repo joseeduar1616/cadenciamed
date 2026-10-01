@@ -19,7 +19,7 @@
  * O que NUNCA entra em cache: /api/. São respostas por pessoa, com token,
  * e guardá-las seria mostrar dado de uma conta em outra.
  */
-const VERSAO = "cadencia-8df0e4c4c1";
+const VERSAO = "cadencia-f38976e0e3";
 const CASCA = "/";
 const PAGINAS_SOLTAS = /^\/(app|app\.html|privacidade\.html|termos\.html|recuperar\.html)$/;
 

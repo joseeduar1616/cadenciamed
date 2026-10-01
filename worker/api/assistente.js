@@ -10,11 +10,17 @@
  * GEMINI_MODELO e ANTHROPIC_MODELO trocam o modelo sem mexer no código.
  */
 import { json, quemPede, corpoJson } from "./_comum.js";
-import { podeUsar, escolherProvedor, modeloAtual, chamarIA } from "./_ia.js";
+import { podeUsar, escolherProvedor, provedorDeAudio, modeloAtual, chamarIA } from "./_ia.js";
 import {
-  INSTRUCOES_MENTORIA, METODOS, contextoDaMentoria,
+  INSTRUCOES_MENTORIA, INSTRUCOES_VOZ, INSTRUCOES_AUDIO, METODOS, contextoDaMentoria,
   separarBlocos, lerPerfil, lerOpcoes, lerPlano,
 } from "./_metodos.js";
+import { TIPOS_AUDIO, tipoBase } from "./aula-ia.js";
+
+/* A fala da chamada de voz, quando o navegador não sabe transcrever
+   sozinho: uma frase, não uma aula. Dois minutos de opus a 24 kbps dão
+   ~360 KB; em base64, ~480 KB. O teto deixa folga para outros formatos. */
+const MAX_FALA_BASE64 = 3 * 1024 * 1024;
 
 const LIMITE_ENTRADA = 55000;   // caracteres: o painel + o calendário do curso inteiro (40 mil, parte9.jsx)
 /* O anexo tem teto próprio, e maior: um PDF de cronograma inteiro não cabe
@@ -143,8 +149,26 @@ export async function onRequest({ request, env }) {
    * de perfil, opções e plano são lidos e conferidos aqui, porque o plano
    * vira bloco na Agenda e, de lá, evento no Google Agenda da pessoa. */
   if (corpo.modo === "mentoria") {
-    const sistemaMentoria = `${INSTRUCOES_MENTORIA}
+    /* A fala em áudio só vem quando o navegador não transcreve sozinho
+       (Firefox, alguns iPhones). Só o Gemini ouve áudio; sem ele, a tela
+       já sabe que não pode oferecer a chamada nesses aparelhos. */
+    let audio = null;
+    if (corpo.audio) {
+      const tipo = tipoBase(corpo.audio.tipo);
+      const dados = String(corpo.audio.dados || "");
+      if (TIPOS_AUDIO.indexOf(tipo) < 0) return json({ erro: "Esse formato de áudio não é aceito." }, 415);
+      if (!dados || dados.length > MAX_FALA_BASE64 || !/^[A-Za-z0-9+/=]+$/.test(dados.slice(0, 2000))) {
+        return json({ erro: "A fala chegou vazia ou longa demais. Tente falar de novo, mais curto." }, 400);
+      }
+      if (!provedorDeAudio(env)) {
+        return json({ erro: "Ouvir a fala por aqui precisa do Gemini: falta GEMINI_API_KEY nas variáveis do site." }, 500);
+      }
+      audio = { tipo: tipo === "audio/mpeg" ? "audio/mp3" : tipo, dados };
+    }
+    const voz = !!corpo.voz;
 
+    const sistemaMentoria = `${INSTRUCOES_MENTORIA}
+${voz ? `\n${INSTRUCOES_VOZ}\n` : ""}${audio ? `\n${INSTRUCOES_AUDIO}\n` : ""}
 ${METODOS}
 
 === DADOS ATUAIS DO PAINEL ===
@@ -157,9 +181,15 @@ ${contextoDaMentoria(corpo.perfil, corpo.plano)}`;
       .map((m) => ({ role: m.role, content: m.content.slice(0, 6000) }));
     while (conversa.length && conversa[0].role === "assistant") conversa.shift();
     if (conversa.length === 0) return json({ erro: "Nenhuma mensagem enviada." }, 400);
+    if (audio) {
+      const ultima = conversa[conversa.length - 1];
+      if (ultima.role !== "user") return json({ erro: "Pedido inválido." }, 400);
+      ultima.content = [{ texto: "(mensagem falada, em áudio anexo)" }, { audio }];
+    }
 
+    const quem = audio ? provedorDeAudio(env) : provedor;
     try {
-      const r = await chamarIA(provedor, modelo, {
+      const r = await chamarIA(quem, modeloAtual(quem, env), {
         sistema: sistemaMentoria, mensagens: conversa, maxSaida: MAX_SAIDA_MENTORIA,
       });
       if (r.erro) return json({ erro: r.erro }, 502);
@@ -169,10 +199,11 @@ ${contextoDaMentoria(corpo.perfil, corpo.plano)}`;
         perfil: lerPerfil(partes.perfil),
         opcoes: lerOpcoes(partes.opcoes),
         plano: lerPlano(partes.plano),
+        ...(audio ? { ouvi: partes.ouvi || "" } : {}),
         cortado: !!r.cortado,
       });
     } catch (e) {
-      console.error("falha na mentoria", provedor.nome, e && e.message);
+      console.error("falha na mentoria", quem.nome, e && e.message);
       return json({ erro: "Não consegui alcançar o serviço da IA." }, 502);
     }
   }

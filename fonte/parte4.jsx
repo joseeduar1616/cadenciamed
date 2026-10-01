@@ -85,6 +85,11 @@ function CartaoBloco({ b, iso, estado, onAlternar, onRemover, minutosAgora }) {
             <Etiqueta cor={cor}>{b.type}</Etiqueta>
             {agora ? <Etiqueta cor="var(--neon)" forte>agora</Etiqueta> : null}
             {feito ? <Etiqueta cor="var(--ok)">cumprido</Etiqueta> : null}
+            {b.origem === "pendente" ? (
+              <Etiqueta cor="var(--warn)">
+                remarcado de {brDate(b.de)}{Number(b.vezes) > 1 ? ` · ${b.vezes}ª vez` : ""}{b.encurtado ? " · encurtado" : ""}
+              </Etiqueta>
+            ) : null}
           </div>
 
           <Mini style={{ marginTop: 5, fontFamily: F_MONO }}>
@@ -338,7 +343,7 @@ function MontarSemana({ data, setData, subjects, ladder, notify }) {
   );
 }
 
-function Rotina({ data, setData, gcal, today }) {
+function Rotina({ data, setData, gcal, today, notify }) {
   const [semana, setSemana] = useState(() => weekStart(today));
   const [vista, setVista] = useState("dia");
   const [escolhido, setEscolhido] = useState(() => (fromISO(today).getDay() + 6) % 7);
@@ -822,6 +827,9 @@ function Rotina({ data, setData, gcal, today }) {
           </Card>
         </>
       ) : null}
+
+      {/* ── o que não foi cumprido vai para a frente (parte27) ──────── */}
+      <QuadroPendentes data={data} setData={setData} today={today} notify={notify || (() => {})} />
 
       {/* ── acrescentar bloco ────────────────────────────────────────── */}
       {novo ? formulario : (

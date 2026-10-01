@@ -286,6 +286,21 @@ export default function Cadencia() {
     return () => { alive = false; };
   }, []);
 
+  /* O que passou sem ser cumprido vai para o próximo horário livre
+     (parte27). Ao abrir e a cada cinco minutos, que é o que pega a virada
+     do dia com o site aberto. Quando não há nada a fazer a função devolve
+     o mesmo objeto, e nada é redesenhado nem gravado. */
+  useEffect(() => {
+    if (!ready) return undefined;
+    const rodar = () => {
+      const agora = new Date();
+      setData((p) => rolarPendentes(p, todayISO(), agora.getHours() * 60 + agora.getMinutes()));
+    };
+    rodar();
+    const t = window.setInterval(rodar, 5 * 60000);
+    return () => window.clearInterval(t);
+  }, [ready]);
+
   useEffect(() => {
     if (!ready) return undefined;
     if (firstRef.current) { firstRef.current = false; return undefined; }
@@ -918,6 +933,8 @@ export default function Cadencia() {
         @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
         @keyframes breathe{0%,100%{opacity:1}50%{opacity:.4}}
         .breathe{animation:breathe 2.6s ease-in-out infinite}
+        @keyframes pulsar-voz{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
+        .pulsar-voz{animation:pulsar-voz 1.6s ease-in-out infinite}
         @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
         .rise{animation:rise .38s cubic-bezier(.2,.8,.2,1) both}
         /* os painéis de uma aba entram em cascata, um logo depois do outro */
@@ -1209,7 +1226,7 @@ export default function Cadencia() {
               {tab === "rotina" && pro && (
                 <div className="flex flex-col gap-5">
                   <MontarSemana {...{ data, setData, subjects, ladder, notify }} />
-                  <Rotina {...{ data, setData, gcal, today }} />
+                  <Rotina {...{ data, setData, gcal, today, notify }} />
                 </div>
               )}
               {tab === "amigos" && !pro && <Bloqueado recurso={RECURSOS_PRO.amigos} onVerPlanos={() => setTab("planos")} />}

@@ -111,7 +111,7 @@ if (await aba.count() === 0) {
   else falha('não achei o seletor da mentoria');
   await botaoModo.first().click();
   await pag.waitForTimeout(400);
-  if (/O que ela já sabe de você · 0 de 11/i.test(await texto())) ok('a mentoria abre mostrando que ainda não sabe nada');
+  if (/O que ela já sabe de você · 0 de 22/i.test(await texto())) ok('a mentoria abre mostrando que ainda não sabe nada');
   else falha('o andamento da entrevista não apareceu');
 
   /* ── começar ──────────────────────────────────────────────────────── */
@@ -143,7 +143,7 @@ if (await aba.count() === 0) {
   if (d && d.mentoria && d.mentoria.perfil && d.mentoria.perfil.horarios === 'noites de semana') {
     ok('o que a pessoa contou fica guardado no perfil da conta, e não só na conversa');
   } else falha('o perfil não foi guardado: ' + JSON.stringify(d && d.mentoria));
-  if (/O que ela já sabe de você · 1 de 11/i.test(await texto())) ok('e o andamento da entrevista anda');
+  if (/O que ela já sabe de você · 1 de 22/i.test(await texto())) ok('e o andamento da entrevista anda');
   else falha('o andamento não mudou depois da resposta');
 
   /* O perfil vai em toda chamada seguinte: é o que impede a mentoria de
@@ -229,7 +229,7 @@ if (await aba.count() === 0) {
   const aba2 = pag.locator('nav button:has-text("Assistente")');
   if (await aba2.count()) { await aba2.first().click(); await pag.waitForTimeout(600); }
   t = await texto();
-  if (/Seu plano/i.test(t) && /O que ela já sabe de você · 2 de 11/i.test(t)) {
+  if (/Seu plano/i.test(t) && /O que ela já sabe de você · 2 de 22/i.test(t)) {
     ok('recarregando, a mentoria volta aberta com o perfil e o plano');
   } else falha('depois de recarregar, a mentoria perdeu o estado');
   if (/Aqui está o seu plano/.test(t)) ok('e a conversa da entrevista continua neste aparelho');

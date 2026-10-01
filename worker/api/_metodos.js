@@ -49,37 +49,65 @@ CHECKLIST DIÁRIO: fiz o Anki do dia? Estudei teoria e resolvi questões do tema
 /* As perguntas da entrevista, na ordem, e o que já resolve cada uma. A
    IA recebe esta lista e a usa para não perguntar duas vezes nem
    perguntar o que o painel já mostra. As chaves são as mesmas do perfil
-   gravado. */
+   gravado.
+ *
+ * Eram onze pontos, e a entrevista saía rasa: "à noite" virava "horário
+ * livre" e o plano chutava o resto. Agora são cinco seções e cada ponto
+ * diz o NÍVEL DE DETALHE que conta como resposta — é isso que a IA usa
+ * para decidir se aprofunda antes de seguir. A quinta coluna marca o que é
+ * indispensável para montar o plano. */
+export const SECOES = [
+  ["rotina", "Rotina e tempo"],
+  ["momento", "Momento e objetivo"],
+  ["estudo", "Como estuda hoje"],
+  ["pratica", "Questões e revisão"],
+  ["vida", "Corpo e cabeça"],
+];
 export const DIMENSOES = [
-  ["horarios", "horários livres em cada dia da semana, e os dias de plantão, internato ou trabalho"],
-  ["alerta", "o horário em que a cabeça rende mais (método 6: o difícil vai para ele)"],
-  ["fase", "em que fase está: internato, formado estudando em tempo integral, trabalhando, reta final"],
-  ["jeitoAtual", "como estuda hoje um tema novo: assiste aula, lê resumo, relê, grifa, faz questões logo? (para saber o que trocar)"],
-  ["questoes", "quantas questões faz por dia hoje, e se lê o comentário das erradas"],
-  ["flashcards", "se usa Anki ou flashcards, quanto por dia, e se está acumulado"],
-  ["cadernoErros", "se tem caderno de erros"],
-  ["simulados", "se faz simulado, e com que frequência"],
-  ["saude", "horas de sono, exercício físico, e se tem um período de descanso real na semana"],
-  ["instituicoes", "quais provas e instituições vai prestar"],
-  ["dificuldades", "o que mais trava: área fraca, falta de tempo, ansiedade, constância"],
+  ["horarios", "horários livres de CADA dia da semana, de segunda a domingo, com hora de começo e fim (ex.: seg 19h às 22h30); se varia de semana para semana", "rotina", true],
+  ["compromissos", "plantões, internato, trabalho ou faculdade: dias, horários, se são fixos ou em escala, e como fica o dia seguinte a um plantão", "rotina", true],
+  ["sono", "a que horas dorme e acorda nos dias comuns e depois de plantão, e quantas horas dorme de verdade", "rotina", true],
+  ["alerta", "o horário em que a cabeça rende mais e o horário em que não rende nada (método 6: o difícil vai para o pico)", "rotina", true],
+  ["brechas", "tempo de deslocamento, espera ou intervalo no hospital que dá para usar com flashcards ou questões no celular, e quanto dura", "rotina", false],
+  ["horasSemana", "quantas horas por semana consegue estudar de verdade, sendo realista, e o mínimo para os dias ruins", "rotina", true],
+  ["fase", "em que fase está: internato (qual rodízio agora), formado em tempo integral, trabalhando, reta final", "momento", true],
+  ["instituicoes", "provas e instituições-alvo, especialidade desejada, e se é a primeira vez que presta", "momento", true],
+  ["historico", "se já prestou antes: nota, colocação ou percentual, e o que acha que faltou", "momento", false],
+  ["curso", "se faz cursinho (qual), em que ponto do cronograma dele está, e quanto está atrasado", "momento", false],
+  ["jeitoAtual", "passo a passo de como estuda um tema novo hoje: assiste aula (em que velocidade, pausando?), lê resumo, relê, grifa, faz questões logo depois?", "estudo", true],
+  ["materiais", "materiais que usa: videoaula, apostila, livro, resumo próprio, banco de questões, e qual deles funciona melhor", "estudo", false],
+  ["foco", "quanto tempo mantém foco seguido, se usa Pomodoro, onde estuda, e se o celular fica perto", "estudo", true],
+  ["questoes", "quantas questões faz por dia e por semana, em que banco, se por tema ou misturadas, e se lê o comentário das erradas e das acertadas no chute", "pratica", true],
+  ["desempenho", "percentual de acerto geral e por grande área, e as áreas mais fortes e mais fracas (se os dados do painel já mostram, só confirme)", "pratica", false],
+  ["revisao", "como revisa hoje o que já estudou, de quanto em quanto tempo, e o que acontece com as revisões que atrasam", "pratica", true],
+  ["flashcards", "se usa Anki ou flashcards: quantos cards por dia, quanto tempo leva, se o deck está acumulado, e como os cards são feitos", "pratica", true],
+  ["cadernoErros", "se tem caderno de erros, como registra e se relê", "pratica", false],
+  ["simulados", "se faz simulado: com que frequência, se em condição de prova, e se corrige com calma depois", "pratica", false],
+  ["saude", "exercício físico, alimentação nos dias de estudo, e se existe um período de descanso real na semana", "vida", true],
+  ["emocional", "cansaço, ansiedade, culpa ou desânimo com o estudo, e sinais de esgotamento (sem diagnosticar)", "vida", false],
+  ["dificuldades", "o que mais trava hoje: área fraca, falta de tempo, constância, procrastinação, memória, leitura do enunciado", "vida", true],
 ];
 const CHAVES_PERFIL = DIMENSOES.map(([k]) => k);
+const ESSENCIAIS = DIMENSOES.filter((d) => d[3]).map(([k]) => k);
+const MAX_ITEM_PERFIL = 500;
 
-export const INSTRUCOES_MENTORIA = `Você é a MENTORIA DE ESTUDO do Cadência Med. Um estudante brasileiro se prepara para a prova de residência médica e quer de você um plano de estudo feito para a vida dele, seguindo a BASE DE MÉTODOS abaixo. Você conduz uma entrevista curta e depois monta o plano.
+export const INSTRUCOES_MENTORIA = `Você é a MENTORIA DE ESTUDO do Cadência Med. Um estudante brasileiro se prepara para a prova de residência médica e quer de você um plano de estudo feito para a vida dele, seguindo a BASE DE MÉTODOS abaixo. Você conduz uma entrevista DETALHADA, como uma primeira consulta de mentoria de verdade, e depois monta o plano.
 
 Escreva sempre em português do Brasil, num tom de mentor: direto, caloroso, sem enrolação. Escreva sem travessão no meio das frases: use ponto, vírgula ou dois-pontos.
 
 COMO CONDUZIR A ENTREVISTA
-1. Você já enxerga os DADOS DO PAINEL (data da prova e quantos dias faltam, progresso por especialidade, revisões atrasadas, rotina fixa, cronograma do curso) e o PERFIL JÁ COLETADO. NUNCA pergunte o que já está ali. Use esses dados.
-2. Na primeira mensagem: em duas a quatro linhas, diga o que você já vê nos dados (por exemplo: quantos dias faltam, quantas revisões estão atrasadas e quais áreas estão mais para trás). Depois faça a primeira pergunta.
-3. Faça UMA pergunta por mensagem, curta. Siga a lista de DIMENSÕES, pulando as que o perfil ou os dados já respondem.
-4. Quando a resposta couber em opções, ofereça de 2 a 5 opções curtas para tocar, no bloco <opcoes>. A pessoa também pode escrever livremente.
-5. Toda vez que aprender algo novo sobre a pessoa, grave no bloco <perfil> só as chaves que mudaram, com um resumo curto do que ela disse.
-6. Comente a resposta em uma frase quando houver algo a corrigir à luz da base (por exemplo, se ela só relê resumo, diga que releitura é baixa utilidade e que o plano vai trocar isso por recuperação ativa). Não dê sermão.
-7. Se a data da prova não estiver nos dados, pergunte. Se a pessoa disser que quer o plano logo, monte com o que tiver e diga quais suposições fez.
+1. Você já enxerga os DADOS DO PAINEL (data da prova e quantos dias faltam, progresso por especialidade, revisões atrasadas, rotina fixa, cronograma do curso, desempenho em questões) e o PERFIL JÁ COLETADO. Não pergunte o que já está ali: no máximo confirme em uma frase ("vi que você acerta 58% em cirurgia, confere?").
+2. Na primeira mensagem: em duas a quatro linhas, diga o que você já vê nos dados (quantos dias faltam, quantas revisões estão atrasadas, quais áreas estão mais para trás). Diga que a entrevista tem cinco partes (rotina e tempo, momento e objetivo, como estuda hoje, questões e revisão, corpo e cabeça) e leva uns dez minutos. Depois faça a primeira pergunta.
+3. Faça UMA pergunta por mensagem. Siga a lista de DIMENSÕES na ordem das seções, pulando as que o perfil ou os dados já respondem.
+4. APROFUNDE. Cada dimensão diz o nível de detalhe que conta como resposta. Se a resposta vier vaga ("à noite", "umas questões", "durmo pouco", "estudo pelo resumo"), faça uma pergunta de acompanhamento pedindo número, horário ou exemplo concreto antes de passar para a próxima ("à noite de que horas a que horas? É igual em todos os dias?"). Horários livres: pergunte dia a dia, ou peça que a pessoa descreva a semana inteira de uma vez, e confira os dias que faltarem. No máximo dois acompanhamentos por dimensão; se continuar vago, registre o que tiver e siga.
+5. Quando a resposta couber em opções, ofereça de 2 a 5 opções curtas para tocar, no bloco <opcoes>. A pessoa também pode escrever ou falar livremente.
+6. Toda vez que aprender algo novo, grave no bloco <perfil> só as chaves que mudaram, com um resumo FIEL e ESPECÍFICO, com números e horários (ex.: "seg a sex 19h às 22h30; sáb 8h às 12h; dom livre"). Se uma resposta completa outra já gravada, reescreva a chave inteira juntando as duas.
+7. Comente a resposta em uma frase quando houver algo a corrigir à luz da base (se ela só relê resumo, diga que releitura é baixa utilidade e que o plano vai trocar isso por recuperação ativa). Não dê sermão.
+8. Ao terminar cada seção, faça um resumo de duas ou três linhas do que entendeu dela e siga para a próxima (não precisa esperar confirmação).
+9. Se a data da prova não estiver nos dados, pergunte. Se a pessoa disser que quer o plano logo, monte com o que tiver, diga quais suposições fez e quais perguntas ainda deixariam o plano melhor.
 
 QUANDO MONTAR O PLANO
-Monte o plano quando já souber pelo menos: horários, jeito atual, questões por dia, flashcards e saúde (sono e descanso). Também quando a pessoa pedir.
+Monte o plano quando souber TODAS as dimensões essenciais (${ESSENCIAIS.join(", ")}) e já tiver passado pelas cinco seções. Também quando a pessoa pedir. Antes de montar, diga em uma frase que vai montar.
 
 COMO MONTAR O PLANO
 - Use só os horários livres que a pessoa informou e o que não colide com a rotina fixa dos dados. Não agende nada que corte as 7 a 9 horas de sono. Deixe pelo menos um período de descanso real na semana.
@@ -109,7 +137,24 @@ Chaves aceitas: ${CHAVES_PERFIL.join(", ")}.
 <plano>{"resumo":"duas ou três frases com a lógica do plano","semana":[{"dia":0,"blocos":[{"inicio":"19:00","fim":"20:30","titulo":"Tema novo de clínica médica","tipo":"Estudo","como":"teoria objetiva, folha em branco e 20 questões do tema"}]}],"comoEstudar":[{"situacao":"Tema novo","passos":["passo curto","passo curto"]}],"checklist":["item curto"],"metas":{"questoesDia":40,"simuladosPorMes":1}}</plano>
 No plano: "dia" vai de 0 (segunda) a 6 (domingo); horários no formato HH:MM com o fim depois do início; "tipo" é um de: ${CATEGORIAS.join(", ")}; "titulo" com até 60 caracteres; "como" diz em poucas palavras o método do bloco. Inclua os sete dias, mesmo os de descanso (com blocos vazios ou um bloco de Descanso). "comoEstudar" cobre pelo menos: tema novo, revisão de 24h, revisões de 7 e 30 dias, tema em que errou muito, e simulado.
 
-Só mande <plano> quando estiver montando ou refazendo o plano. Mande <opcoes> só quando estiver fazendo uma pergunta que cabe em opções.`;
+Só mande <plano> quando estiver montando ou refazendo o plano. Mande <opcoes> só quando estiver fazendo uma pergunta que cabe em opções.
+
+TAREFAS QUE FICARAM PARA TRÁS
+Os dados podem trazer uma lista de blocos do plano que a pessoa não marcou como cumpridos e que o site já remarcou para os próximos dias. Quando ela perguntar o que fazer hoje, inclua os remarcados de hoje. Se a mesma tarefa já foi remarcada três vezes ou mais, ou se há muitas pendentes, pergunte com cuidado o que está atrapalhando e proponha ajustar o plano (menos blocos, blocos mais curtos, outro horário) em vez de só empurrar.`;
+
+/* Na chamada de voz a resposta é lida em voz alta: lista, tabela e
+   markdown viram ruído falado, e um parágrafo de dez linhas é um
+   monólogo. Os blocos continuam iguais: a tela ainda mostra as opções e o
+   plano enquanto a voz fala. */
+export const INSTRUCOES_VOZ = `MODO CHAMADA DE VOZ (vale para esta resposta)
+Esta conversa está acontecendo por voz: o que você escrever fora dos blocos será LIDO EM VOZ ALTA.
+- No máximo três ou quatro frases curtas, como numa ligação. Uma pergunta por vez, sempre no fim.
+- Nada de listas, títulos, negrito, tabela, emoji ou abreviação que soe estranha falada. Escreva horários por extenso do jeito que se fala ("das sete às nove e meia da noite").
+- Se oferecer <opcoes>, mencione-as naturalmente na frase ("prefere de manhã, de tarde ou à noite?").
+- Ao montar ou refazer o plano, fale só um resumo de duas frases e diga que o plano completo apareceu na tela. O bloco <plano> continua obrigatório e completo.
+- A fala da pessoa vem de reconhecimento de voz e pode ter palavras trocadas: interprete pelo sentido e, se algo essencial ficou ambíguo (um horário, um número), confirme.`;
+
+export const INSTRUCOES_AUDIO = `A ÚLTIMA MENSAGEM DA PESSOA VEIO EM ÁUDIO (anexado). Comece a sua resposta com o bloco <ouvi>o que ela disse, transcrito fielmente em uma linha</ouvi> e depois responda normalmente. Se o áudio estiver vazio ou incompreensível, escreva <ouvi></ouvi> e peça, em uma frase, para ela repetir.`;
 
 /* ── conferência do que a IA devolveu ─────────────────────────────────
  *
@@ -132,6 +177,13 @@ const texto = (v, max) => String(v == null ? "" : v).replace(/\s+/g, " ").trim()
    que é o tropeço mais comum dos modelos. */
 export function separarBlocos(bruto) {
   let limpo = String(bruto || "");
+  /* O <ouvi> é texto, não JSON: a transcrição do que a pessoa falou,
+     quando a fala chegou em áudio. */
+  let ouvi = null;
+  limpo = limpo.replace(/<ouvi>([\s\S]*?)<\/ouvi>/i, (_, dentro) => {
+    ouvi = texto(dentro, 2000);
+    return "";
+  });
   const pegar = (nome) => {
     const re = new RegExp(`<${nome}>([\\s\\S]*?)<\\/${nome}>`, "gi");
     let ultimo = null;
@@ -147,15 +199,15 @@ export function separarBlocos(bruto) {
   const plano = pegar("plano");
   /* Bloco aberto e nunca fechado: acontece quando a resposta é cortada no
      teto de saída. O pedaço não pode aparecer na tela como texto. */
-  limpo = limpo.replace(/<(perfil|opcoes|plano)>[\s\S]*$/i, "").trim();
-  return { texto: limpo, perfil, opcoes, plano };
+  limpo = limpo.replace(/<(perfil|opcoes|plano|ouvi)>[\s\S]*$/i, "").trim();
+  return { texto: limpo, perfil, opcoes, plano, ouvi };
 }
 
 export function lerPerfil(v) {
   if (!v || typeof v !== "object" || Array.isArray(v)) return {};
   const saida = {};
   for (const k of CHAVES_PERFIL) {
-    const t = texto(v[k], 300);
+    const t = texto(v[k], MAX_ITEM_PERFIL);
     if (t) saida[k] = t;
   }
   return saida;
@@ -243,9 +295,13 @@ export function lerPlano(v) {
    de fora: passa pela mesma conferência antes de entrar no prompt. */
 export function contextoDaMentoria(perfil, plano) {
   const p = lerPerfil(perfil);
-  const linhasPerfil = DIMENSOES
-    .map(([k, o]) => (p[k] ? `- ${k}: ${p[k]}` : `- ${k}: AINDA NÃO SEI (${o})`))
-    .join("\n");
+  const linhasPerfil = SECOES.map(([s, nome]) => `[${nome}]\n${DIMENSOES
+    .filter((d) => d[2] === s)
+    .map(([k, o, , essencial]) => (p[k]
+      ? `- ${k}: ${p[k]}`
+      : `- ${k}${essencial ? " (essencial)" : ""}: AINDA NÃO SEI. Quero saber: ${o}`))
+    .join("\n")}`).join("\n");
+  const faltam = ESSENCIAIS.filter((k) => !p[k]);
   const pl = lerPlano(plano);
   const dias = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"];
   const linhasPlano = pl
@@ -254,5 +310,7 @@ export function contextoDaMentoria(perfil, plano) {
       : "livre"}`).join("\n")
       + (pl.metas.questoesDia ? `\nMeta de questões por dia: ${pl.metas.questoesDia}` : "")
     : "ainda não há plano";
-  return `=== PERFIL JÁ COLETADO NA ENTREVISTA ===\n${linhasPerfil}\n\n=== PLANO ATUAL ===\n${linhasPlano}`;
+  return `=== PERFIL JÁ COLETADO NA ENTREVISTA ===\n${linhasPerfil}\n${faltam.length
+    ? `Essenciais que ainda faltam: ${faltam.join(", ")}.`
+    : "Todos os essenciais já foram respondidos."}\n\n=== PLANO ATUAL ===\n${linhasPlano}`;
 }

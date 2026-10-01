@@ -26,6 +26,11 @@ const DEFAULTS = {
      data porque um bloco que se repete toda semana é um compromisso
      diferente em cada segunda-feira. */
   blocos: {},
+  /* Bloco de estudo que passou sem ser marcado como cumprido é remarcado
+     no próximo horário livre (pendentes.jsx, parte27). "modo" diz quais:
+     só os da mentoria, todos os de estudo, ou nenhum. "ate" é o último dia
+     já conferido, para não remarcar a mesma coisa duas vezes. */
+  rolagem: { modo: "mentoria", ate: "", semLugar: [] },
   goals: { daily: 120, weekly: 720, questions: 200 },
   pomo: {
     focus: 25, short: 5, long: 15, cycle: 4, modo: "pomodoro",
@@ -110,8 +115,8 @@ function limparMentoria(v) {
   const m = v && typeof v === "object" ? v : {};
   const perfil = {};
   if (m.perfil && typeof m.perfil === "object") {
-    for (const [k, val] of Object.entries(m.perfil).slice(0, 15)) {
-      if (typeof val === "string" && val.trim()) perfil[k] = val.slice(0, 300);
+    for (const [k, val] of Object.entries(m.perfil).slice(0, 30)) {
+      if (typeof val === "string" && val.trim()) perfil[k] = val.slice(0, 500);
     }
   }
   const p = m.plano;
@@ -390,6 +395,13 @@ function normalize(raw) {
     /* O que já foi cumprido na agenda precisa sobreviver ao recarregar a
        página: o que não for copiado aqui se perde. */
     blocos: obj(d.blocos),
+    rolagem: {
+      modo: ["mentoria", "estudo", "nao"].indexOf(obj(d.rolagem).modo) >= 0 ? d.rolagem.modo : "mentoria",
+      ate: /^\d{4}-\d{2}-\d{2}$/.test(obj(d.rolagem).ate || "") ? d.rolagem.ate : "",
+      semLugar: arr(obj(d.rolagem).semLugar, [])
+        .filter((x) => x && typeof x.id === "string" && typeof x.label === "string" && Number(x.minutos) > 0)
+        .slice(0, 30),
+    },
     /* Peso por especialidade: só número de 0 a 10 entra. */
     pesos: (() => {
       const fora = {};

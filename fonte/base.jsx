@@ -15,7 +15,7 @@ import {
   Palette, Highlighter, ImagePlus, NotebookPen, FileDown, FolderInput,
   Folder, FolderPlus, ALargeSmall, Camera, Flag, CalendarClock,
   Dumbbell, Timer, Ruler, TrendingUp, Youtube, Calculator, Music,
-  Brain, Mic, Lightbulb, History, MessageSquarePlus, CircleStop, AudioLines,
+  Brain, Mic, Lightbulb, History, MessageSquarePlus, CircleStop, AudioLines, Phone, PhoneOff, MicOff,
   Utensils, Droplets, Footprints, Scale, FileSpreadsheet, Salad, BedDouble, Beef,
 } from "lucide-react";
 import {

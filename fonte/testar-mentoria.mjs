@@ -254,6 +254,78 @@ else falha('a conversa comum foi junto com a mentoria');
   const noServidor = DIMENSOES.map(([k]) => k);
   if (naTela.join() === noServidor.join()) ok('as dimensões da entrevista são as mesmas na tela e no servidor, na mesma ordem');
   else falha(`dimensões divergem: tela ${naTela.join(',')} x servidor ${noServidor.join(',')}`);
+  /* e cada uma na mesma seção, com as mesmas seções */
+  const secTela = [...bloco.matchAll(/\["(\w+)", "[^"]*", "(\w+)"\]/g)].map((x) => `${x[1]}:${x[2]}`).join();
+  const secServ = DIMENSOES.map((x) => `${x[0]}:${x[2]}`).join();
+  if (secTela === secServ) ok('e cada dimensão está na mesma seção nos dois lados');
+  else falha(`seções divergem: tela ${secTela} x servidor ${secServ}`);
+  const { SECOES } = await import('../worker/api/_metodos.js');
+  const ini = jsx.indexOf('const SECOES_MENTORIA = [');
+  const secoesTela = [...jsx.slice(ini, jsx.indexOf('];', ini)).matchAll(/\["(\w+)", "([^"]+)"\]/g)].map((x) => x[1] + '=' + x[2]).join();
+  if (secoesTela === SECOES.map(([k, n]) => k + '=' + n).join()) ok('as cinco seções têm o mesmo nome na tela e no servidor');
+  else falha(`nomes de seção divergem: ${secoesTela}`);
+}
+
+/* ── 11. a entrevista aprofunda ───────────────────────────────────────
+   A queixa foi "a entrevista não está detalhada". O que garante o detalhe
+   é o que vai no sistema: a regra de aprofundar resposta vaga, o nível de
+   detalhe de cada dimensão, e a lista do que ainda falta. */
+responder = (p) => { ultimoCorpo = p.corpo; return respostaIA('ok'); };
+await pedir(await carregar(), { ...PEDIDO, perfil: { horarios: 'seg a sex 19h às 22h' } });
+{
+  const s = JSON.stringify(ultimoCorpo || {});
+  if (/APROFUNDE/.test(s) && /acompanhamento/.test(s)) ok('a IA é instruída a aprofundar resposta vaga antes de seguir');
+  else falha('a regra de aprofundar não foi para a IA');
+  if (/Essenciais que ainda faltam: [^.]*sono/.test(s) && !/Essenciais que ainda faltam: [^.]*horarios/.test(s)) {
+    ok('e recebe a lista dos essenciais que ainda faltam (sem os já respondidos)');
+  } else falha('a lista do que falta não chegou certa');
+  if (/Quero saber: a que horas dorme/.test(s)) ok('cada ponto em aberto diz o nível de detalhe que conta como resposta');
+  else falha('as dimensões em aberto foram sem o detalhe esperado');
+  if (/\[Rotina e tempo\]/.test(s) && /\[Corpo e cabeça\]/.test(s)) ok('o perfil vai organizado nas cinco seções da entrevista');
+  else falha('as seções não aparecem no perfil mandado à IA');
+  if (!/MODO CHAMADA DE VOZ/.test(s)) ok('fora da chamada, nada de regra de voz');
+  else falha('a regra de voz foi junto numa conversa escrita');
+}
+responder = () => respostaIA('Anotei.\n<perfil>{"horarios":"' + 'x'.repeat(450) + '"}</perfil>');
+r = await pedir(await carregar(), PEDIDO);
+if ((r.corpo.perfil.horarios || '').length === 450) ok('resposta detalhada cabe no perfil (até 500 caracteres por ponto)');
+else falha('o perfil cortou a resposta detalhada: ' + (r.corpo.perfil.horarios || '').length);
+
+/* ── 12. a chamada de voz ─────────────────────────────────────────────── */
+responder = (p) => { ultimoCorpo = p.corpo; return respostaIA('Certo. E a que horas você dorme?'); };
+await pedir(await carregar(), { ...PEDIDO, voz: true });
+if (/MODO CHAMADA DE VOZ/.test(JSON.stringify(ultimoCorpo))) ok('na chamada, a IA sabe que a resposta será falada');
+else falha('a chamada não avisou a IA de que é por voz');
+
+/* A fala em áudio, para o navegador que não transcreve sozinho. */
+const AUDIO = { tipo: 'audio/webm;codecs=opus', dados: Buffer.from('fala de teste').toString('base64') };
+responder = (p) => { ultimoCorpo = p.corpo; return respostaIA('<ouvi>durmo à meia-noite e acordo às seis</ouvi>São seis horas. Dá para dormir mais cedo?'); };
+r = await pedir(await carregar(), { ...PEDIDO, voz: true, audio: AUDIO });
+{
+  const partes = ((ultimoCorpo && ultimoCorpo.contents) || []).slice(-1)[0];
+  const temAudio = partes && partes.parts.some((x) => x.inline_data && x.inline_data.mime_type === 'audio/webm');
+  if (temAudio) ok('a fala vai como áudio para o Gemini, na última mensagem');
+  else falha('o áudio não chegou à IA: ' + JSON.stringify(partes).slice(0, 200));
+  if (r.corpo.ouvi === 'durmo à meia-noite e acordo às seis') ok('o que ela entendeu volta separado, para aparecer como fala da pessoa');
+  else falha('ouvi: ' + JSON.stringify(r.corpo));
+  if (!/<ouvi>|meia-noite/.test(r.corpo.texto)) ok('e não fica no texto que a mentoria fala');
+  else falha('a transcrição vazou para a resposta: ' + r.corpo.texto);
+}
+r = await pedir(await carregar(), { ...PEDIDO, audio: { tipo: 'application/x-msdownload', dados: 'AAAA' } });
+if (r.status === 415) ok('arquivo que não é áudio é recusado');
+else falha('tipo inválido passou: ' + r.status);
+r = await pedir(await carregar(), { ...PEDIDO, audio: { tipo: 'audio/webm', dados: 'A'.repeat(4 * 1024 * 1024) } });
+if (r.status === 400) ok('fala longa demais é recusada antes de gastar a cota');
+else falha('áudio gigante passou: ' + r.status);
+{
+  const g = env.GEMINI_API_KEY;
+  delete env.GEMINI_API_KEY;
+  env.ANTHROPIC_API_KEY = 'chave-anthropic';
+  r = await pedir(await carregar(), { ...PEDIDO, audio: AUDIO });
+  if (r.status === 500 && /Gemini/.test(r.corpo.erro || '')) ok('sem Gemini, a fala em áudio é recusada com o motivo, sem mandar áudio a quem não ouve');
+  else falha('sem Gemini: ' + JSON.stringify(r));
+  env.GEMINI_API_KEY = g;
+  delete env.ANTHROPIC_API_KEY;
 }
 
 servidor.close();
