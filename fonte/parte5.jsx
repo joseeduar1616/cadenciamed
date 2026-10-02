@@ -40,6 +40,11 @@ function PlacaDeVirar({ valor, largura }) {
   const [atual, setAtual] = useState(valor);
   const [antigo, setAntigo] = useState(valor);
   const [virada, setVirada] = useState(0);
+  /* Com "reduzir movimento" ligado no sistema, a regra global desliga as
+     animações; as folhas ficariam paradas, cada uma mostrando uma metade
+     de um número. Então ali o número só troca, sem folha. */
+  const menosMovimento = typeof window !== "undefined" && window.matchMedia
+    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   useEffect(() => {
     if (valor === atual) return undefined;
     setAntigo(atual);
@@ -97,13 +102,19 @@ function PlacaDeVirar({ valor, largura }) {
         filter: "drop-shadow(0 10px 24px rgba(0,0,0,.35))" }}>
       {metade(atual, false)}
       {metade(antigo, true)}
-      {antigo !== atual ? (
+      {antigo !== atual && !menosMovimento ? (
         <>
-          <div key={`c${virada}`} className="virar-cai" style={{ position: "absolute", inset: 0, transformOrigin: "50% 50%" }}>
-            {metade(antigo, false, { transformOrigin: "50% 100%", backfaceVisibility: "hidden" })}
+          {/* A folha que cai: a metade de cima do número VELHO, dobrando
+              para baixo na dobradiça do meio. Em 2D (scaleY), e não 3D:
+              o rotateX com face de trás escondida some no Safari do
+              iPhone, e aí a metade de cima trocava sozinha, de uma vez —
+              era o "muda a parte de cima primeiro". */}
+          <div key={`c${virada}`} className="virar-cai" style={{ position: "absolute", inset: 0, zIndex: 2 }}>
+            {metade(antigo, false, { transformOrigin: "50% 100%" })}
           </div>
-          <div key={`b${virada}`} className="virar-desce" style={{ position: "absolute", inset: 0 }}>
-            {metade(atual, true, { transformOrigin: "50% 0%", backfaceVisibility: "hidden" })}
+          {/* e o verso dela, que desce com a metade de baixo do NOVO */}
+          <div key={`b${virada}`} className="virar-desce" style={{ position: "absolute", inset: 0, zIndex: 2 }}>
+            {metade(atual, true, { transformOrigin: "50% 0%" })}
           </div>
         </>
       ) : null}

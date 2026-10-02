@@ -70,6 +70,19 @@ if (v[0] === '24' && v[1] === '59') ok('um segundo depois: 24 e 59');
 else falha('depois de um segundo: ' + JSON.stringify(v));
 if (await pag.locator('.virar-cai').count() > 0) ok('e a placa que mudou faz a virada (a metade de cima cai)');
 else falha('a virada não aconteceu');
+/* A folha que cai é a metade de cima do número VELHO, e o verso que desce
+   é a metade de baixo do NOVO. Invertido, a parte de cima trocaria
+   sozinha antes da folha cair (o defeito relatado). */
+const folhas = await pag.evaluate(() => ({
+  cai: [...document.querySelectorAll('.virar-cai')].map((e) => e.textContent),
+  desce: [...document.querySelectorAll('.virar-desce')].map((e) => e.textContent),
+}));
+/* as duas placas viram juntas aqui: 25→24 nos minutos, 00→59 nos segundos */
+if (folhas.cai.join() === '25,00' && folhas.desce.join() === '24,59') ok('a folha que cai leva o número velho (25, 00) e o verso que desce traz o novo (24, 59)');
+else falha('folhas da virada: ' + JSON.stringify(folhas));
+const em3d = await pag.evaluate(() => [...document.styleSheets].some((ss) => { try { return [...ss.cssRules].some((r) => /virar-(cai|desce)/.test(r.cssText) && /rotateX/.test(r.cssText)); } catch (e) { return false; } }));
+if (!em3d) ok('a virada é em 2D (no iPhone o 3D com face escondida sumia, e a parte de cima trocava sozinha)');
+else falha('a virada ainda usa rotateX');
 await pag.clock.runFor(800);
 await pag.waitForTimeout(100);
 if (await pag.locator('.virar-cai').count() <= 1) ok('a virada termina e não se acumula');
@@ -119,6 +132,19 @@ await pag.waitForTimeout(300);
 const v3 = await valores();
 if (v3.length === 3 && v3[0] === '01') ok('no tempo corrido, passando de uma hora aparece a terceira placa: ' + v3.join(':'));
 else falha('tempo corrido com hora: ' + JSON.stringify(v3));
+
+/* ── 5. "reduzir movimento": troca sem folha parada no meio ───────────── */
+await pag.emulateMedia({ reducedMotion: 'reduce' });
+await pag.reload({ waitUntil: 'load' });
+await pag.clock.runFor(1500);
+await pag.waitForTimeout(300);
+if (await pag.locator('nav button:has-text("Foco")').count()) {
+  await pag.locator('nav button:has-text("Foco")').first().click();
+  await pag.clock.runFor(1200);
+  await pag.waitForTimeout(200);
+  if (!(await pag.locator('.virar-cai, .virar-desce').count())) ok('com "reduzir movimento", o número só troca, sem folhas paradas mostrando meio número');
+  else falha('com movimento reduzido, apareceram folhas paradas');
+} else falha('não voltei ao Foco depois de recarregar');
 
 if (!errosDaPagina.length) ok('nenhum erro de JavaScript na página');
 else falha('erros: ' + errosDaPagina.slice(0, 3).join(' | '));
