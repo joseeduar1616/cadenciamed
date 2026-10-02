@@ -760,8 +760,11 @@ function ModalDrive({ tituloAula, gerarBlob, sugestaoNome, notify, nuvem, onFech
   ), document.body);
 }
 
-function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, notify, setData, nuvem, pastas }) {
+function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, notify, setData, nuvem, pastas, folha }) {
   const [aberto, setAberto] = useState(false);
+  /* Folha em branco (parte30): enquanto a pessoa escreve de memória, a
+     anotação some da tela — folha em branco é sem consulta. */
+  const [escondida, setEscondida] = useState(false);
   const [pronto, setPronto] = useState(false);
   const [sujo, setSujo] = useState(false);
   const [corAberta, setCorAberta] = useState(false);
@@ -946,6 +949,14 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
       salvarAnotacao(subjectId, html);
       setSujo(false);
     }, 1200);
+  };
+
+  /* O que a IA organizou (arquivo importado, folha feita) entra no fim. */
+  const inserirNaAnotacao = (html) => {
+    const raiz = editorRef.current;
+    if (!raiz) return;
+    raiz.insertAdjacentHTML("beforeend", (raiz.innerHTML.trim() ? "<hr>" : "") + html);
+    aoMudar();
   };
 
   const cmd = (nome, valor) => {
@@ -1155,6 +1166,8 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
       </div>
 
       <GravarAula subjectId={subjectId} titulo={titulo} notify={notify} nuvem={nuvem} setData={setData} />
+      <ImportarParaAnotacao subjectId={subjectId} titulo={titulo} nuvem={nuvem} notify={notify}
+        inserirNaAnotacao={inserirNaAnotacao} folha={folha} setData={setData} />
 
       <div className="flex items-center gap-1 flex-wrap rounded-xl px-2 py-1.5" style={{ background: T.card2, border: `1px solid ${T.line}`, position: "relative" }}>
         <BotaoFerramenta icon={<Bold size={15} />} title="Negrito" onClick={() => cmd("bold")} />
@@ -1219,17 +1232,36 @@ function AnotacaoMateria({ subjectId, area, titulo, anotacao, salvarAnotacao, no
         ) : null}
       </div>
 
-      <div ref={editorRef} contentEditable suppressContentEditableWarning
-        onInput={aoMudar} onPaste={aoColar} onClick={aoClicarNoEditor}
-        className="rounded-xl px-4 py-3"
-        style={{
-          fontSize: 14.5, lineHeight: 1.6, overflowY: "auto", outline: "none",
-          color: papel.tinta, background: papel.fundo, border: `1px solid ${papel.linha}`,
-          ...(cheia
-            ? { flex: 1, minHeight: 0 }
-            : { minHeight: 140, maxHeight: 420 }),
-        }} />
+      <div style={{ position: "relative", ...(cheia ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" } : {}) }}>
+        <div ref={editorRef} contentEditable={!escondida} suppressContentEditableWarning
+          onInput={aoMudar} onPaste={aoColar} onClick={aoClicarNoEditor}
+          className="rounded-xl px-4 py-3" data-teste="editor-anotacao"
+          style={{
+            fontSize: 14.5, lineHeight: 1.6, overflowY: "auto", outline: "none",
+            color: papel.tinta, background: papel.fundo, border: `1px solid ${papel.linha}`,
+            ...(escondida ? { filter: "blur(7px)", userSelect: "none", pointerEvents: "none" } : {}),
+            ...(cheia
+              ? { flex: 1, minHeight: 0 }
+              : { minHeight: 140, maxHeight: 420 }),
+          }} />
+        {escondida ? (
+          <div className="flex flex-col items-center justify-center gap-2 text-center px-4"
+            style={{ position: "absolute", inset: 0 }} data-teste="anotacao-escondida">
+            <span style={{ fontSize: 14.5, fontWeight: 700, color: T.ink }}>Anotação escondida: folha em branco é sem consulta</span>
+            <Btn size="sm" tone="outline" onClick={() => setEscondida(false)}><Eye size={13} /> mostrar a anotação</Btn>
+          </div>
+        ) : null}
+      </div>
       {!pronto ? <Mini>carregando…</Mini> : null}
+
+      {/* a folha em branco, no fim da anotação (parte30) */}
+      <div className="pt-3" style={{ borderTop: `1px solid ${T.line}` }}>
+        <FolhaEmBranco subjectId={subjectId} titulo={titulo} area={area} folha={folha} setData={setData}
+          nuvem={nuvem} notify={notify} pastas={pastas}
+          lerTextoDaAnotacao={() => (editorRef.current ? editorRef.current.innerText || "" : "")}
+          inserirNaAnotacao={(html) => { setEscondida(false); inserirNaAnotacao(html); }}
+          aoEscrever={() => setEscondida(true)} />
+      </div>
 
       <div className="flex items-center gap-2 flex-wrap">
         {perdidas ? (

@@ -46,6 +46,10 @@ export const CUSTO = {
      dá doze trechos — 36 pontos mais 6, bem dentro do dia. */
   "aula-transcrever": 3,
   "aula-organizar": 6,
+  /* A folha em branco: montar as caixas lê a aula inteira (como organizar
+     a aula gravada); conferir uma caixa é curto, como uma pergunta. */
+  "folha-caixas": 5,
+  "folha-conferir": 1,
 };
 
 export const CUSTO_PADRAO = 2;

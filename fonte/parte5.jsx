@@ -21,6 +21,117 @@ function Ring({ pct, color, size = 240, children }) {
   );
 }
 
+/* ── relógio de virar ─────────────────────────────────────────────────
+ *
+ * O estilo "Virar": um cartão para os minutos e outro para os segundos
+ * (e um para as horas, no tempo corrido), com a linha no meio, e a
+ * metade de cima caindo quando o número muda — o relógio de mesa de
+ * placas. Na tela cheia, os cartões ocupam a tela.
+ *
+ * A virada são duas abas por cima de duas metades fixas: a metade de
+ * cima já mostra o número NOVO e a de baixo ainda o VELHO; a aba de cima
+ * (velho) cai até sumir, e a de baixo (novo) desce até cobrir o velho.
+ * Quem pediu menos movimento no sistema vê só a troca, sem a virada (a
+ * regra global de prefers-reduced-motion desliga as animações). */
+const FONTE_VIRAR = "'Oswald', 'Bebas Neue', 'Arial Narrow', 'Roboto Condensed', sans-serif";
+
+function PlacaDeVirar({ valor, largura }) {
+  const altura = Math.round(largura * 1.32);
+  const [atual, setAtual] = useState(valor);
+  const [antigo, setAntigo] = useState(valor);
+  const [virada, setVirada] = useState(0);
+  useEffect(() => {
+    if (valor === atual) return undefined;
+    setAntigo(atual);
+    setAtual(valor);
+    setVirada((n) => n + 1);
+    const t = window.setTimeout(() => setAntigo(valor), 620);
+    return () => window.clearTimeout(t);
+  }, [valor]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* Os números têm de caber no cartão com qualquer fonte. Com a Oswald
+     (estreita) cabem folgados; sem ela (sem internet, ou antes de ela
+     chegar) a fonte de reserva é larga e estouraria o cartão. Mede "00"
+     na fonte que estiver valendo e aperta na horizontal o que passar —
+     o que também dá à reserva o jeito estreito do relógio de placas. */
+  const tamanhoFonte = Math.round(altura * 0.84);
+  const [aperto, setAperto] = useState(1);
+  useLayoutEffect(() => {
+    let vivo = true;
+    const medir = () => {
+      try {
+        const ctx = document.createElement("canvas").getContext("2d");
+        ctx.font = `700 ${tamanhoFonte}px ${FONTE_VIRAR}`;
+        const w = ctx.measureText("00").width;
+        if (vivo && w > 0) setAperto(Math.min(1, (largura * 0.9) / w));
+      } catch (e) { /* sem canvas: fica como está */ }
+    };
+    medir();
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(medir).catch(() => {});
+    return () => { vivo = false; };
+  }, [largura, tamanhoFonte]);
+
+  const raio = Math.round(largura * 0.08);
+  const fundo = "linear-gradient(180deg, #b9c6d4 0%, #a4b2c2 100%)";
+  const numero = (txt) => (
+    <span style={{
+      position: "absolute", left: 0, right: 0, height: altura, lineHeight: `${altura}px`,
+      textAlign: "center", fontFamily: FONTE_VIRAR, fontWeight: 700, fontSize: tamanhoFonte,
+      letterSpacing: "-0.02em", color: "#ffffff", textShadow: "0 2px 6px rgba(20,30,45,.25)",
+      fontVariantNumeric: "tabular-nums", transform: aperto < 1 ? `scaleX(${aperto})` : undefined,
+    }}>{txt}</span>
+  );
+  const metade = (txt, embaixo, extra) => (
+    <div style={{
+      position: "absolute", left: 0, right: 0, height: altura / 2, overflow: "hidden",
+      top: embaixo ? altura / 2 : 0, background: fundo,
+      borderRadius: embaixo ? `0 0 ${raio}px ${raio}px` : `${raio}px ${raio}px 0 0`,
+      ...extra,
+    }}>
+      <div style={{ position: "absolute", left: 0, right: 0, top: embaixo ? -altura / 2 : 0, height: altura }}>{numero(txt)}</div>
+    </div>
+  );
+  return (
+    <div role="img" aria-label={valor} data-teste="placa-virar"
+      style={{ position: "relative", width: largura, height: altura, perspective: altura * 3, flexShrink: 0,
+        filter: "drop-shadow(0 10px 24px rgba(0,0,0,.35))" }}>
+      {metade(atual, false)}
+      {metade(antigo, true)}
+      {antigo !== atual ? (
+        <>
+          <div key={`c${virada}`} className="virar-cai" style={{ position: "absolute", inset: 0, transformOrigin: "50% 50%" }}>
+            {metade(antigo, false, { transformOrigin: "50% 100%", backfaceVisibility: "hidden" })}
+          </div>
+          <div key={`b${virada}`} className="virar-desce" style={{ position: "absolute", inset: 0 }}>
+            {metade(atual, true, { transformOrigin: "50% 0%", backfaceVisibility: "hidden" })}
+          </div>
+        </>
+      ) : null}
+      {/* a fresta do meio, onde as placas dobram */}
+      <div style={{ position: "absolute", left: 0, right: 0, top: altura / 2 - 1, height: 2, background: "rgba(30,38,50,.55)", zIndex: 3 }} />
+    </div>
+  );
+}
+
+function RelogioDeVirar({ relogio, largura }) {
+  const grupos = String(relogio || "").split(":");
+  return (
+    <div className="flex items-center justify-center" style={{ gap: Math.round(largura * 0.09) }}>
+      {grupos.map((g, i) => <PlacaDeVirar key={i} valor={g.padStart(2, "0")} largura={largura} />)}
+    </div>
+  );
+}
+
+/* Na tela cheia: cada placa o maior possível sem passar da largura nem
+   da altura da tela (sobra espaço para o nome da fase e os botões). */
+function larguraPlacaCheia(grupos) {
+  const w = typeof window !== "undefined" ? window.innerWidth : 1280;
+  const h = typeof window !== "undefined" ? window.innerHeight : 800;
+  const porLargura = (w - 48) / (grupos + (grupos - 1) * 0.09);
+  const porAltura = (h - 300) / 1.32;
+  return Math.max(90, Math.floor(Math.min(porLargura, porAltura, 520)));
+}
+
 /* Quatro jeitos de mostrar o mesmo estado (fase, cor, relógio, progresso),
    escolhido em Ajustes e guardado em data.pomo.estilo. Só vale na tela
    normal — a tela cheia (Foco, if (full)) continua com anel + barra
@@ -55,6 +166,16 @@ function Cronometro({ estilo, pct, color, name, relogio, corrido, cycle, round, 
       <div className="flex flex-col items-center" style={{ width: 240, flexShrink: 0 }}>
         {rotulo}{digitos}
         <div className="w-full mt-5"><Track pct={pct * 100} color={color} height={8} /></div>
+        {status}
+      </div>
+    );
+  }
+  if (estilo === "virar") {
+    const grupos = String(relogio || "").split(":").length;
+    return (
+      <div className="flex flex-col items-center" style={{ width: grupos > 2 ? 300 : 260, flexShrink: 0 }}>
+        {rotulo}
+        <div style={{ marginTop: 14 }}><RelogioDeVirar relogio={relogio} largura={grupos > 2 ? 84 : 112} /></div>
         {status}
       </div>
     );
@@ -136,11 +257,18 @@ function Foco({ data, setData, today, P, subjectId, setSubjectId, avisoPresencaF
           </div>
         ) : null}
         <div style={{ fontFamily: F_UI, fontSize: 17, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", color }}>{name}</div>
-        <div style={{
-          fontFamily: F_MONO, fontWeight: 700, color,
-          fontSize: corrido ? "clamp(64px, 19vw, 200px)" : "clamp(88px, 26vw, 260px)",
-          letterSpacing: "-0.05em", lineHeight: 1, marginTop: 18, fontVariantNumeric: "tabular-nums",
-        }}>{relogio}</div>
+        {data.pomo.estilo === "virar" ? (
+          /* as placas ocupam a tela: largura pela tela, sem passar da altura */
+          <div style={{ marginTop: 22 }}>
+            <RelogioDeVirar relogio={relogio} largura={larguraPlacaCheia(String(relogio).split(":").length)} />
+          </div>
+        ) : (
+          <div style={{
+            fontFamily: F_MONO, fontWeight: 700, color,
+            fontSize: corrido ? "clamp(64px, 19vw, 200px)" : "clamp(88px, 26vw, 260px)",
+            letterSpacing: "-0.05em", lineHeight: 1, marginTop: 18, fontVariantNumeric: "tabular-nums",
+          }}>{relogio}</div>
+        )}
         <div className="w-full mt-10" style={{ maxWidth: 640 }}><Track pct={pct * 100} color={color} height={10} /></div>
         {!corrido ? (
           <div className="flex gap-2 mt-5">
@@ -270,7 +398,7 @@ function Foco({ data, setData, today, P, subjectId, setSubjectId, avisoPresencaF
             </div>
             <div className="col-span-2 lg:col-span-4 pt-5 flex flex-wrap gap-2 items-center" style={{ borderTop: `1px solid ${T.line}` }}>
               <Label>Estilo do cronômetro</Label>
-              {[["anel", "Anel"], ["digitos", "Dígitos"], ["barra", "Barra"], ["minimalista", "Minimalista"]].map(([id, lb]) => (
+              {[["anel", "Anel"], ["digitos", "Dígitos"], ["barra", "Barra"], ["minimalista", "Minimalista"], ["virar", "Virar"]].map(([id, lb]) => (
                 <button key={id} type="button" onClick={() => set("estilo", id)} className="toque-larg rounded-full px-4 py-2"
                   style={{
                     background: (data.pomo.estilo || "anel") === id ? T.card3 : "transparent",

@@ -185,7 +185,7 @@ function FichaDoTopico({ s, sessions, rec, today, addSession, marcarDificuldade,
   );
 }
 
-function SubjectRow({ s, open, minutes, onToggleOpen, setMark, toggleBonus, anotacao, salvarAnotacao, notify, setData, nuvem, pastas,
+function SubjectRow({ s, open, minutes, onToggleOpen, setMark, toggleBonus, anotacao, salvarAnotacao, notify, setData, nuvem, pastas, folha,
   sessions, rec, today, addSession, marcarDificuldade }) {
   const temNota = temAnotacao(anotacao);
   return (
@@ -230,7 +230,7 @@ function SubjectRow({ s, open, minutes, onToggleOpen, setMark, toggleBonus, anot
           </div>
           <div className="sm:col-span-2 pb-4" style={{ borderBottom: `1px solid ${T.line}` }}>
             <AnotacaoMateria subjectId={s.id} area={s.area} titulo={s.title}
-              anotacao={anotacao} salvarAnotacao={salvarAnotacao} notify={notify} setData={setData} nuvem={nuvem} pastas={pastas} />
+              anotacao={anotacao} salvarAnotacao={salvarAnotacao} notify={notify} setData={setData} nuvem={nuvem} pastas={pastas} folha={folha} />
           </div>
           <div className="flex flex-col gap-3">
             <Label>Etapas</Label>
@@ -280,7 +280,7 @@ function SubjectRow({ s, open, minutes, onToggleOpen, setMark, toggleBonus, anot
   );
 }
 
-function Materias({ subjects, setMark, toggleBonus, minutes, done, bonusDone, anotacoes, salvarAnotacao, notify, setData, nuvem, pastas, vazioEm, irPara,
+function Materias({ subjects, setMark, toggleBonus, minutes, done, bonusDone, anotacoes, salvarAnotacao, notify, setData, nuvem, pastas, vazioEm, irPara, folhas,
   sessions, reviews, today, addSession, marcarDificuldade }) {
   const [area, setArea] = useState("todas");
   const [status, setStatus] = useState("todas");
@@ -325,6 +325,7 @@ function Materias({ subjects, setMark, toggleBonus, minutes, done, bonusDone, an
     <SubjectRow key={s.id} s={s} open={openId === s.id} minutes={minutes[s.id] || 0}
       onToggleOpen={() => setOpenId(openId === s.id ? null : s.id)} setMark={setMark} toggleBonus={toggleBonus}
       anotacao={(anotacoes || {})[s.id]} salvarAnotacao={salvarAnotacao} notify={notify} setData={setData} nuvem={nuvem} pastas={pastas}
+      folha={(folhas || {})[s.id]}
       sessions={sessions} rec={(reviews || {})[s.id]} today={today}
       addSession={addSession} marcarDificuldade={marcarDificuldade} />
   );

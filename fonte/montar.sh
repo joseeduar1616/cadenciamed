@@ -25,7 +25,7 @@ python3 gerar_legais.py
 echo "── juntando os pedaços ─────────────────────────────"
 cat base.jsx parte2.jsx parte3.jsx parte10.jsx parte11.jsx parte13.jsx \
     parte12.jsx parte17.jsx parte4.jsx parte5.jsx parte6.jsx parte7.jsx parte9.jsx \
-    parte14.jsx parte15.jsx parte16.jsx parte18.jsx parte19.jsx parte25.jsx parte20.jsx parte21.jsx parte22.jsx parte23.jsx parte24.jsx parte27.jsx parte28.jsx parte29.jsx parte26.jsx parte8.jsx > app.jsx
+    parte14.jsx parte15.jsx parte16.jsx parte18.jsx parte19.jsx parte25.jsx parte20.jsx parte21.jsx parte22.jsx parte23.jsx parte24.jsx parte27.jsx parte28.jsx parte29.jsx parte30.jsx parte26.jsx parte8.jsx > app.jsx
 
 echo "── compilando ──────────────────────────────────────"
 npx esbuild main.jsx --bundle --minify --format=iife --loader:.jsx=jsx \
@@ -72,6 +72,8 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-pendentes-tela.mjs
   node testar-bloco-iniciar.mjs
   node testar-caderno-erros.mjs
+  node testar-folha-tela.mjs
+  node testar-relogio-virar.mjs
   node testar-nuvem.mjs
   node testar-lotes.mjs
   node testar-revisao.mjs
@@ -98,6 +100,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-mentoria.mjs
   node testar-pendentes.mjs
   node testar-presenca-push.mjs
+  node testar-folha.mjs
   node testar-duplas.mjs
   node testar-anexo.mjs
   node testar-recursos.mjs

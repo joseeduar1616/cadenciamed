@@ -73,6 +73,21 @@ const ir = async (aba, opcional) => {
 };
 const texto = () => pag.evaluate(() => document.querySelector('main')?.innerText || '');
 
+/* Recarregar a página. O Chromium do teste, com o site aberto como
+   arquivo local, às vezes perde o localStorage inteiro num reload — a
+   chave já vem nula antes de qualquer código do app rodar, e o app cai na
+   página de entrada. Não acontece no site de verdade. Então guarda o que
+   havia e, se sumir, devolve e recarrega: o que se testa continua sendo o
+   app remontar a partir do que está guardado. */
+const recarregar = async () => {
+  const guardado = await pag.evaluate(() => JSON.stringify(Object.fromEntries(Object.entries(localStorage))));
+  await pag.reload({ waitUntil: 'load' });
+  if (await pag.evaluate(() => localStorage.getItem('cadencia:v3') === null)) {
+    await pag.evaluate((g) => { for (const [k, v] of Object.entries(JSON.parse(g))) localStorage.setItem(k, v); }, guardado);
+    await pag.reload({ waitUntil: 'load' });
+  }
+};
+
 await pag.goto('file://' + alvo, { waitUntil: 'load' });
 await pag.waitForTimeout(2200);
 
@@ -518,7 +533,7 @@ if (await linhaAula.count() === 0) {
 
     /* espera a barra voltar em vez de um tempo fixo: com o app maior, os
        2,2s às vezes não bastavam para remontar e o clique ficava esperando */
-    await pag.reload({ waitUntil: 'load' });
+    await recarregar();
     await pag.waitForSelector('nav button:has-text("Matérias")', { timeout: 15000 }).catch(() => {});
     await pag.waitForTimeout(800);
     await ir('Matérias');
@@ -615,7 +630,7 @@ if (await linhaAula.count() === 0) {
           d.pastas = (d.pastas || []).filter((p) => p !== 'PREVENTIVA');
           window.localStorage.setItem('cadencia:v3', JSON.stringify(d));
         });
-        await pag.reload({ waitUntil: 'load' });
+        await recarregar();
         await pag.waitForTimeout(2200);
       }
       }
@@ -879,7 +894,7 @@ if (liberado) {
       d.sessions = (d.sessions || []).filter((x) => x.kind !== 'Questões');
       window.localStorage.setItem('cadencia:v3', JSON.stringify(d));
     });
-    await pag.reload({ waitUntil: 'load' });
+    await recarregar();
     await pag.waitForTimeout(2200);
   }
 
@@ -956,7 +971,7 @@ if (liberado) {
       d.cronogramaModo = 'somar';
       window.localStorage.setItem('cadencia:v3', JSON.stringify(d));
     });
-    await pag.reload({ waitUntil: 'load' });
+    await recarregar();
     await pag.waitForTimeout(2400);
 
     if (await pag.locator('nav button:has-text("Ciclo clínico")').count() > 0) {
@@ -991,7 +1006,7 @@ if (liberado) {
       d.cronogramaProprio = [];
       window.localStorage.setItem('cadencia:v3', JSON.stringify(d));
     });
-    await pag.reload({ waitUntil: 'load' });
+    await recarregar();
     await pag.waitForTimeout(2400);
   }
 
@@ -1120,7 +1135,7 @@ if (liberado) {
   await a2.nth(1).fill('resposta');
   await pag.locator('button:has-text("Criar cartão")').first().click();
   await pag.waitForTimeout(2600);            // o salvamento em disco é adiado
-  await pag.reload({ waitUntil: 'load' });
+  await recarregar();
   await pag.waitForTimeout(2200);
   await ir('Cartões');
   if (/Cartão que precisa sobreviver/.test(await texto())) ok('os cartões sobrevivem ao recarregar');
@@ -1155,7 +1170,7 @@ if (liberado) {
     };
     window.localStorage.setItem('cadencia:v3', JSON.stringify(d));
   });
-  await pag.reload({ waitUntil: 'load' });
+  await recarregar();
   await pag.waitForTimeout(2200);
   /* Só ler de volta não provaria nada: se o normalize tivesse deixado o
      campo cair, o disco ainda teria o texto injetado aqui. Mexer em algo
@@ -1200,7 +1215,7 @@ if (liberado) {
     }));
     window.localStorage.setItem('cadencia:v3', JSON.stringify(d));
   });
-  await pag.reload({ waitUntil: 'load' });
+  await recarregar();
   await pag.waitForTimeout(2400);
   await ir('Cartões');
   await pag.waitForTimeout(900);
@@ -1242,7 +1257,7 @@ if (liberado) {
     d.flash = (d.flash || []).filter((c) => !String(c.id).startsWith('massa'));
     window.localStorage.setItem('cadencia:v3', JSON.stringify(d));
   });
-  await pag.reload({ waitUntil: 'load' });
+  await recarregar();
   await pag.waitForTimeout(2400);
 }
 
@@ -1298,7 +1313,7 @@ if (liberado) {
   if (parseFloat(depoisPeso.linha) > parseFloat(antesPeso.linha)) ok('estilo do cartão: "Solto" abre a entrelinha');
   else falha(`estilo do cartão: a entrelinha não mudou (${antesPeso.linha} → ${depoisPeso.linha})`);
   await pag.waitForTimeout(2600);
-  await pag.reload({ waitUntil: 'load' });
+  await recarregar();
   await pag.waitForTimeout(2200);
   const guardado = await pag.evaluate(() => {
     const d = JSON.parse(window.localStorage.getItem('cadencia:v3') || '{}');
@@ -1376,7 +1391,7 @@ if (liberado) {
 
   /* Nada disso pode passar pelo normalize e sumir. */
   await pag.waitForTimeout(2600);
-  await pag.reload({ waitUntil: 'load' });
+  await recarregar();
   await pag.waitForTimeout(2200);
   await ir('Treino', true);
   await pag.locator('main button:has-text("Cargas")').first().click();

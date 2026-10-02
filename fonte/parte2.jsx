@@ -33,6 +33,9 @@ const DEFAULTS = {
   rolagem: { modo: "mentoria", ate: "", semLugar: [] },
   /* Caderno de erros (parte29): uma ficha por questão errada. */
   erros: [],
+  /* Folha em branco por aula (parte30): as caixas, o que foi escrito e a
+     conferência. A conversa com a IA não fica; o resultado fica. */
+  folhas: {},
   goals: { daily: 120, weekly: 720, questions: 200 },
   pomo: {
     focus: 25, short: 5, long: 15, cycle: 4, modo: "pomodoro",
@@ -398,6 +401,7 @@ function normalize(raw) {
        página: o que não for copiado aqui se perde. */
     blocos: obj(d.blocos),
     erros: limparErros(d.erros),
+    folhas: limparFolhas(d.folhas),
     rolagem: {
       modo: ["mentoria", "estudo", "nao"].indexOf(obj(d.rolagem).modo) >= 0 ? d.rolagem.modo : "mentoria",
       ate: /^\d{4}-\d{2}-\d{2}$/.test(obj(d.rolagem).ate || "") ? d.rolagem.ate : "",
@@ -428,7 +432,7 @@ function normalize(raw) {
       autoNext: p.autoNext !== false, sound: p.sound !== false,
       corFoco: /^#[0-9a-fA-F]{6}$/.test(p.corFoco) ? p.corFoco : "#A182E6",
       corPausa: /^#[0-9a-fA-F]{6}$/.test(p.corPausa) ? p.corPausa : "#45C08A",
-      estilo: ["anel", "digitos", "barra", "minimalista"].indexOf(p.estilo) >= 0 ? p.estilo : "anel",
+      estilo: ["anel", "digitos", "barra", "minimalista", "virar"].indexOf(p.estilo) >= 0 ? p.estilo : "anel",
     },
     pomoLog: arr(d.pomoLog, []), simulados: obj(d.simulados), provas: arr(d.provas, []),
     habits: arr(d.habits, HABITS_SEED), habitLog: obj(d.habitLog),

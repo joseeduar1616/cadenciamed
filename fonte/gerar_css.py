@@ -25,6 +25,8 @@ DO_APP = {
     'toque', 'toque-larg', 'pe',
     # o visual trazido da página de entrada, no <style> do parte8.jsx
     'btn-neon', 'fio-h', 'capa-aba', 'capa-olho', 'capa-t', 'surge',
+    # a chamada de voz (parte26) e o relógio de virar do Foco (parte5)
+    'pulsar-voz', 'virar-cai', 'virar-desce',
 }
 
 # A página de entrada tem estilo próprio, escrito no <style> dela, e são
