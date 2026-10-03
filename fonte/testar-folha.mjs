@@ -93,6 +93,30 @@ r = await pedir({ acao: 'caixas', texto: 'curto' });
 if (r.status === 400) ok('conteúdo curto demais é recusado antes de gastar a cota');
 else falha('aceitou conteúdo curto');
 
+/* ── 1b. figuras do arquivo ──────────────────────────────────────────── */
+responder = () => ia(JSON.stringify({
+  titulo: 'IAM',
+  caixas: [
+    { titulo: 'Diagnóstico', pergunta: 'x', pontos: [{ texto: 'Supra de ST' }], figuras: ['F1', 'F9', 'F1'] },
+    { titulo: 'Tratamento', pergunta: 'x', pontos: [{ texto: 'Angioplastia' }], figuras: ['F1', 'F2', '<img>'] },
+  ],
+  legendas: { F1: 'ECG com supra de ST em DII, DIII e aVF', F9: 'inventada', F2: 'x'.repeat(400) },
+}));
+r = await pedir({ acao: 'caixas', texto: AULA, figuras: [{ id: 'F1', pagina: 2, contexto: 'Figura 1. ECG do paciente' }, { id: 'F2', pagina: 5, contexto: 'Fluxograma' }] });
+const s3 = JSON.stringify(ultimo || {});
+if (/<figuras>/.test(s3) && /F1 \(página 2\): Figura 1\. ECG do paciente/.test(s3)) ok('as figuras vão para a IA como código, página e texto em volta (a imagem fica no aparelho)');
+else falha('a lista de figuras não foi para a IA');
+if (JSON.stringify(r.corpo.caixas.map((c) => c.figuras)) === JSON.stringify([['F1'], ['F2']])) {
+  ok('cada figura entra numa caixa só, e código que a página não mandou (F9, "<img>") é descartado');
+} else falha('figuras por caixa: ' + JSON.stringify(r.corpo.caixas.map((c) => c.figuras)));
+if (r.corpo.legendas.F1 === 'ECG com supra de ST em DII, DIII e aVF' && !('F9' in r.corpo.legendas) && r.corpo.legendas.F2.length <= 140) {
+  ok('as legendas voltam podadas, só das figuras que existem');
+} else falha('legendas: ' + JSON.stringify(r.corpo.legendas));
+responder = () => ia(JSON.stringify(caixasBoas));
+await pedir({ acao: 'caixas', texto: AULA });
+if (!/<figuras>/.test(JSON.stringify(ultimo || {})) && !/FIGURAS DO MATERIAL/.test(JSON.stringify(ultimo || {}))) ok('sem figuras no arquivo, nada de instrução de figura');
+else falha('mandou instrução de figura sem figura nenhuma');
+
 /* ── 2. conferir ─────────────────────────────────────────────────────── */
 const caixa = { titulo: 'Tratamento', pergunta: 'x', pontos: [{ texto: 'IECA' }, { texto: 'Betabloqueador' }, { texto: 'Espironolactona' }] };
 responder = () => ia(JSON.stringify({

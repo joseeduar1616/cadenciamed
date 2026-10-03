@@ -92,16 +92,149 @@ function placarDaFolha(folha) {
 /* ── o HTML que vai para a anotação ────────────────────────────────── */
 const estiloCaixaNota = (cor) => `border-left:4px solid ${cor};background:${cor}14;padding:10px 14px;margin:12px 0;border-radius:0 8px 8px 0`;
 
-function htmlDasCaixas(folha, origem) {
+/* Só imagem que esta própria página recortou ou leu do arquivo, em
+   base64: nada de endereço de fora nem outro tipo de conteúdo no src. */
+const DADOS_FIGURA = /^data:image\/(jpeg|png|gif|webp);base64,[A-Za-z0-9+/=]+$/;
+
+function htmlDaFigura(f, legenda) {
+  if (!f || !DADOS_FIGURA.test(f.dados || "")) return "";
   const e = escaparHtml;
+  const leg = legenda || f.contexto || (f.pagina ? `Figura da página ${f.pagina}` : "Figura do material");
+  return `<p style="margin:10px 0 2px"><img src="${f.dados}" alt="${e(leg)}" style="max-width:100%;border-radius:10px"></p>`
+    + `<p style="margin:0 0 8px;font-size:13px;opacity:.85"><i>${e(leg)}</i></p>`;
+}
+
+/* As caixas na anotação. "figuras" é o que veio do arquivo ({ F1: {dados,
+   pagina, contexto} }): cada uma vai na caixa que a IA escolheu, com a
+   legenda dela; a que não coube em caixa nenhuma vai numa caixa final, em
+   vez de se perder. */
+function htmlDasCaixas(folha, origem, figuras) {
+  const e = escaparHtml;
+  const figs = figuras || {};
+  const legendas = folha.legendas || {};
+  const usadas = new Set();
   const partes = [`<h2>${e(folha.titulo || "Pontos principais")}</h2>`];
   if (origem) partes.push(`<p><i>${e(origem)}</i></p>`);
   for (const c of folha.caixas) {
     const cor = corDaCaixa(c.titulo);
     const itens = c.pontos.map((p) => `<li>${e(p.texto)}${p.complemento ? ' <i style="opacity:.75">(complemento da IA, confira)</i>' : ""}</li>`).join("");
-    partes.push(`<div data-caixa="1" style="${estiloCaixaNota(cor)}"><h3 style="color:${cor};margin:0 0 6px">${e(c.titulo)}</h3><ul>${itens}</ul></div>`);
+    const imagens = (c.figuras || []).filter((id) => figs[id] && !usadas.has(id))
+      .map((id) => { usadas.add(id); return htmlDaFigura(figs[id], legendas[id]); }).join("");
+    partes.push(`<div data-caixa="1" style="${estiloCaixaNota(cor)}"><h3 style="color:${cor};margin:0 0 6px">${e(c.titulo)}</h3><ul>${itens}</ul>${imagens}</div>`);
+  }
+  const sobras = Object.keys(figs).filter((id) => !usadas.has(id));
+  if (sobras.length) {
+    const cor = "#5B8DB8";
+    partes.push(`<div data-caixa="1" style="${estiloCaixaNota(cor)}"><h3 style="color:${cor};margin:0 0 6px">Figuras do material</h3>${sobras.map((id) => htmlDaFigura(figs[id], legendas[id])).join("")}</div>`);
   }
   return partes.join("");
+}
+
+/* ── ler o arquivo COM as figuras ──────────────────────────────────────
+ *
+ * O texto sozinho perdia o que mais ensina num material de medicina: o
+ * ECG, a radiografia, o fluxograma. Do PDF, cada figura embutida é
+ * recortada da página (o mesmo recorte dos flashcards, parte12) junto com o
+ * texto que está em volta dela — a legenda, ou o parágrafo vizinho —, que
+ * é o que a IA usa para decidir em que caixa ela entra. Do Word, as
+ * imagens já vêm dentro do arquivo. As imagens não saem do aparelho: só o
+ * texto em volta vai para a IA. */
+const MAX_FIGURAS_IMPORT = 20;
+
+async function figurasComContexto(pdfjsLib, page, conteudo, numero) {
+  const vp1 = page.getViewport({ scale: 1 });
+  const escala = Math.min(3, Math.max(1, 1900 / Math.max(vp1.width, vp1.height)));
+  const viewport = page.getViewport({ scale: escala });
+  const area = viewport.width * viewport.height;
+  /* nem enfeite pequeno, nem a página inteira (fundo de slide, página
+     escaneada) */
+  const caixas = (await retangulosDeImagem(pdfjsLib, page, viewport))
+    .filter((c) => c.w * c.h >= area * 0.012 && c.w * c.h <= area * 0.85 && c.w >= 60 * escala && c.h >= 45 * escala)
+    .filter((c, i, todas) => todas.findIndex((d) => Math.abs(d.x - c.x) < 4 && Math.abs(d.y - c.y) < 4 && Math.abs(d.w - c.w) < 4) === i);
+  if (!caixas.length) return [];
+
+  const tela = document.createElement("canvas");
+  tela.width = Math.ceil(viewport.width);
+  tela.height = Math.ceil(viewport.height);
+  await page.render({ canvasContext: tela.getContext("2d"), viewport }).promise;
+
+  const linhas = (conteudo.items || [])
+    .filter((it) => it.str && it.str.trim() && it.transform)
+    .map((it) => {
+      const [x, y] = aplicarMatriz(viewport.transform, it.transform[4], it.transform[5]);
+      return { x, y, t: it.str };
+    });
+  const textoPagina = linhas.map((l) => l.t).join(" ").replace(/\s+/g, " ");
+  const legendaDaPagina = (textoPagina.match(/(Figura|Fig\.|Imagem|Tabela|Quadro|Gr[aá]fico)\s*\d+[^.]{0,160}/i) || [""])[0];
+
+  return caixas.map((c) => {
+    const sx = Math.max(0, c.x), sy = Math.max(0, c.y);
+    const sw = Math.max(1, Math.min(tela.width - sx, c.w)), sh = Math.max(1, Math.min(tela.height - sy, c.h));
+    const fator = Math.min(1, 1400 / Math.max(sw, sh));
+    const alvo = document.createElement("canvas");
+    alvo.width = Math.max(1, Math.round(sw * fator));
+    alvo.height = Math.max(1, Math.round(sh * fator));
+    alvo.getContext("2d").drawImage(tela, sx, sy, sw, sh, 0, 0, alvo.width, alvo.height);
+    /* o texto logo abaixo (legenda) ou logo acima (título) da figura */
+    const perto = linhas
+      .filter((l) => l.x >= c.x - 40 * escala && l.x <= c.x + c.w + 40 * escala
+        && ((l.y > c.y + c.h && l.y < c.y + c.h + 70 * escala) || (l.y < c.y && l.y > c.y - 40 * escala)))
+      .sort((a, b) => a.y - b.y || a.x - b.x)
+      .map((l) => l.t).join(" ").replace(/\s+/g, " ").trim();
+    return {
+      dados: alvo.toDataURL("image/jpeg", 0.85),
+      pagina: numero,
+      contexto: (perto || legendaDaPagina || textoPagina.slice(0, 160)).slice(0, 220),
+      marca: `${Math.round(c.w / 8)}x${Math.round(c.h / 8)}`,
+    };
+  });
+}
+
+async function lerPdfComFiguras(arquivo, aviso) {
+  aviso("carregando o leitor de PDF");
+  const pdfjsLib = await carregarPdfJs();
+  aviso("abrindo o arquivo");
+  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(await arquivo.arrayBuffer()) }).promise;
+  const total = Math.min(doc.numPages, LIMITE_PAGINAS_PDF);
+  const blocos = [];
+  const achadas = [];
+  for (let n = 1; n <= total; n++) {
+    aviso(`lendo página ${n} de ${total}`);
+    const page = await doc.getPage(n);
+    const conteudo = await page.getTextContent();
+    const texto = conteudo.items.map((it) => it.str || "").join(" ").replace(/\s+/g, " ").trim();
+    if (texto) blocos.push(`--- página ${n} ---\n${texto}`);
+    if (achadas.length < MAX_FIGURAS_IMPORT * 2) {
+      try { achadas.push(...await figurasComContexto(pdfjsLib, page, conteudo, n)); }
+      catch (e) { /* essa página segue só com o texto */ }
+    }
+  }
+  /* a mesma figura em três páginas ou mais é logotipo ou cabeçalho */
+  const vezes = {};
+  for (const f of achadas) vezes[f.marca] = (vezes[f.marca] || 0) + 1;
+  const figuras = achadas.filter((f) => vezes[f.marca] < 3).slice(0, MAX_FIGURAS_IMPORT)
+    .map((f, i) => ({ id: `F${i + 1}`, dados: f.dados, pagina: f.pagina, contexto: f.contexto }));
+  return { texto: blocos.join("\n\n"), figuras };
+}
+
+async function lerDocxComFiguras(arquivo, aviso) {
+  aviso("carregando o leitor de Word");
+  const mammoth = await carregarMammoth();
+  aviso("lendo o arquivo");
+  const r = await mammoth.convertToHtml({ arrayBuffer: await arquivo.arrayBuffer() });
+  const doc = new DOMParser().parseFromString(String(r.value || ""), "text/html");
+  const blocos = [...doc.body.children];
+  const figuras = [];
+  blocos.forEach((b, i) => {
+    for (const img of b.querySelectorAll("img")) {
+      const src = img.getAttribute("src") || "";
+      if (!DADOS_FIGURA.test(src) || src.length > 4 * 1024 * 1024 || figuras.length >= MAX_FIGURAS_IMPORT) continue;
+      const vizinho = [b, blocos[i + 1], blocos[i - 1]].map((x) => (x ? x.textContent.trim() : "")).find((t) => t) || "";
+      figuras.push({ id: `F${figuras.length + 1}`, dados: src, pagina: 0, contexto: (img.getAttribute("alt") || vizinho).slice(0, 220) });
+    }
+  });
+  const texto = blocos.map((b) => b.textContent.trim()).filter(Boolean).join("\n");
+  return { texto, figuras };
 }
 
 /* A folha feita, levada para a anotação: o que a pessoa escreveu na cor
@@ -148,25 +281,34 @@ function ImportarParaAnotacao({ subjectId, titulo, nuvem, notify, inserirNaAnota
     if (!arquivos.length) return;
     try {
       let texto = "";
+      let figuras = [];
       const fotos = arquivos.filter((f) => /^image\//i.test(f.type));
       if (fotos.length) {
         const r = await lerFotosComIA(nuvem, fotos.slice(0, MAX_FOTOS), setStatus);
         if (r.erro) { notify(r.erro); return; }
         texto = String(r.texto || "");
+      } else if (/\.pdf$/i.test(arquivos[0].name)) {
+        ({ texto, figuras } = await lerPdfComFiguras(arquivos[0], setStatus));
+      } else if (/\.docx$/i.test(arquivos[0].name)) {
+        ({ texto, figuras } = await lerDocxComFiguras(arquivos[0], setStatus));
       } else {
         texto = await lerArquivoParaTexto(arquivos[0], setStatus);
       }
       if (String(texto).trim().length < 200) { notify("Quase não achei texto nesse arquivo. Se for um PDF escaneado, mande como foto."); return; }
       setStatus("a IA está organizando nas caixas…");
-      const r = await falarComFolha(nuvem, { acao: "caixas", texto, tema: titulo });
+      const r = await falarComFolha(nuvem, {
+        acao: "caixas", texto, tema: titulo,
+        figuras: figuras.map(({ id, pagina, contexto }) => ({ id, pagina, contexto })),
+      });
       if (r.erro) { notify(r.erro); return; }
       const nome = fotos.length ? `${fotos.length} foto${fotos.length === 1 ? "" : "s"}` : arquivos[0].name;
-      inserirNaAnotacao(htmlDasCaixas(r, `Organizado de ${nome}.`));
+      const porId = Object.fromEntries(figuras.map((f) => [f.id, f]));
+      inserirNaAnotacao(htmlDasCaixas(r, `Organizado de ${nome}.`, porId));
       const temEscrito = folha && folha.caixas.some((c) => c.escrito || c.conf);
       if (!temEscrito) {
         setData((p) => ({ ...p, folhas: { ...(p.folhas || {}), [subjectId]: limparFolha({ titulo: r.titulo, caixas: r.caixas, em: Date.now(), hist: (folha && folha.hist) || [] }) } }));
       }
-      notify(`${r.caixas.length} caixas entraram no fim da anotação.${temEscrito ? "" : " A folha em branco já está pronta lá embaixo."}${r.cortado ? " O arquivo era grande e foi lido até um ponto." : ""}`);
+      notify(`${r.caixas.length} caixas${figuras.length ? ` e ${figuras.length} figura${figuras.length === 1 ? "" : "s"}` : ""} entraram no fim da anotação.${temEscrito ? "" : " A folha em branco já está pronta lá embaixo."}${r.cortado ? " O arquivo era grande e foi lido até um ponto." : ""}`);
     } catch (e) {
       notify((e && e.message) || "Não consegui ler esse arquivo.");
     } finally { setStatus(""); }

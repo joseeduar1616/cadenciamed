@@ -973,10 +973,6 @@ export default function Cadencia() {
         .breathe{animation:breathe 2.6s ease-in-out infinite}
         @keyframes pulsar-voz{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
         .pulsar-voz{animation:pulsar-voz 1.6s ease-in-out infinite}
-        @keyframes virar-cai{from{transform:scaleY(1);filter:brightness(1)}to{transform:scaleY(0);filter:brightness(.62)}}
-        @keyframes virar-desce{from{transform:scaleY(0);filter:brightness(.62)}to{transform:scaleY(1);filter:brightness(1)}}
-        .virar-cai > div{animation:virar-cai .28s cubic-bezier(.55,0,.9,.45) both}
-        .virar-desce > div{animation:virar-desce .28s cubic-bezier(.1,.55,.45,1) .28s both}
         @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
         .rise{animation:rise .38s cubic-bezier(.2,.8,.2,1) both}
         /* os painéis de uma aba entram em cascata, um logo depois do outro */

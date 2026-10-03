@@ -35,6 +35,8 @@ function Ring({ pct, color, size = 240, children }) {
  * regra global de prefers-reduced-motion desliga as animações). */
 const FONTE_VIRAR = "'Oswald', 'Bebas Neue', 'Arial Narrow', 'Roboto Condensed', sans-serif";
 
+const DURACAO_VIRADA = 560;
+
 function PlacaDeVirar({ valor, largura }) {
   const altura = Math.round(largura * 1.32);
   const [atual, setAtual] = useState(valor);
@@ -45,13 +47,32 @@ function PlacaDeVirar({ valor, largura }) {
      de um número. Então ali o número só troca, sem folha. */
   const menosMovimento = typeof window !== "undefined" && window.matchMedia
     && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  /* A virada é conduzida aqui, quadro a quadro, com o transform escrito
+     direto no elemento — e não por animação de CSS. No Safari do iPhone a
+     animação de CSS da folha não aparecia (o cartão tinha um filter de
+     sombra, e o WebKit não redesenha animação dentro de elemento com
+     filtro): sobravam as metades fixas, e a de cima trocava de uma vez,
+     com a de baixo vindo depois. Conduzida assim, não depende disso. */
+  const [prog, setProg] = useState(1);
   useEffect(() => {
     if (valor === atual) return undefined;
     setAntigo(atual);
     setAtual(valor);
     setVirada((n) => n + 1);
-    const t = window.setTimeout(() => setAntigo(valor), 620);
-    return () => window.clearTimeout(t);
+    const inicio = Date.now();
+    let quadro = 0;
+    const passo = () => {
+      const p = Math.min(1, (Date.now() - inicio) / DURACAO_VIRADA);
+      setProg(p);
+      if (p < 1) quadro = window.requestAnimationFrame(passo);
+      else setAntigo(valor);
+    };
+    setProg(0);
+    quadro = window.requestAnimationFrame(passo);
+    /* aba em segundo plano não roda requestAnimationFrame: a placa
+       assenta mesmo assim */
+    const fim = window.setTimeout(() => { setProg(1); setAntigo(valor); }, DURACAO_VIRADA + 120);
+    return () => { window.cancelAnimationFrame(quadro); window.clearTimeout(fim); };
   }, [valor]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* Os números têm de caber no cartão com qualquer fonte. Com a Oswald
@@ -86,35 +107,40 @@ function PlacaDeVirar({ valor, largura }) {
       fontVariantNumeric: "tabular-nums", transform: aperto < 1 ? `scaleX(${aperto})` : undefined,
     }}>{txt}</span>
   );
-  const metade = (txt, embaixo, extra) => (
+  /* sombra: escurece a metade enquanto a folha passa por cima dela */
+  const metade = (txt, embaixo, extra, sombra) => (
     <div style={{
       position: "absolute", left: 0, right: 0, height: altura / 2, overflow: "hidden",
       top: embaixo ? altura / 2 : 0, background: fundo,
       borderRadius: embaixo ? `0 0 ${raio}px ${raio}px` : `${raio}px ${raio}px 0 0`,
+      boxShadow: embaixo ? "0 12px 26px rgba(0,0,0,.32)" : "none",
       ...extra,
     }}>
       <div style={{ position: "absolute", left: 0, right: 0, top: embaixo ? -altura / 2 : 0, height: altura }}>{numero(txt)}</div>
+      {sombra ? <div style={{ position: "absolute", inset: 0, background: "#141b26", opacity: sombra }} /> : null}
     </div>
   );
+
+  /* As duas metades da virada. Primeira metade do tempo: a folha de cima
+     (o número VELHO) dobra para baixo até a dobradiça, e a parte de cima
+     do NOVO vai aparecendo atrás dela, saindo da sombra. Segunda metade:
+     o verso da folha (a parte de baixo do NOVO) desce e cobre o velho. */
+  const virando = antigo !== atual && !menosMovimento && prog < 1;
+  const q1 = Math.min(1, prog / 0.5), q2 = Math.max(0, (prog - 0.5) / 0.5);
+  const cai = 1 - q1 * q1;                 // acelera ao cair
+  const desce = 1 - (1 - q2) * (1 - q2);   // freia ao assentar
   return (
     <div role="img" aria-label={valor} data-teste="placa-virar"
-      style={{ position: "relative", width: largura, height: altura, perspective: altura * 3, flexShrink: 0,
-        filter: "drop-shadow(0 10px 24px rgba(0,0,0,.35))" }}>
-      {metade(atual, false)}
-      {metade(antigo, true)}
-      {antigo !== atual && !menosMovimento ? (
+      style={{ position: "relative", width: largura, height: altura, flexShrink: 0 }}>
+      {metade(atual, false, null, virando ? 0.55 * (1 - q1) : 0)}
+      {metade(antigo, true, null, virando ? 0.4 * q1 * (1 - q2) : 0)}
+      {virando ? (
         <>
-          {/* A folha que cai: a metade de cima do número VELHO, dobrando
-              para baixo na dobradiça do meio. Em 2D (scaleY), e não 3D:
-              o rotateX com face de trás escondida some no Safari do
-              iPhone, e aí a metade de cima trocava sozinha, de uma vez —
-              era o "muda a parte de cima primeiro". */}
           <div key={`c${virada}`} className="virar-cai" style={{ position: "absolute", inset: 0, zIndex: 2 }}>
-            {metade(antigo, false, { transformOrigin: "50% 100%" })}
+            {metade(antigo, false, { transform: `scaleY(${cai})`, transformOrigin: "50% 100%" }, 0.5 * q1)}
           </div>
-          {/* e o verso dela, que desce com a metade de baixo do NOVO */}
           <div key={`b${virada}`} className="virar-desce" style={{ position: "absolute", inset: 0, zIndex: 2 }}>
-            {metade(atual, true, { transformOrigin: "50% 0%" })}
+            {metade(atual, true, { transform: `scaleY(${q2 > 0 ? desce : 0})`, transformOrigin: "50% 0%" }, 0.5 * (1 - q2))}
           </div>
         </>
       ) : null}

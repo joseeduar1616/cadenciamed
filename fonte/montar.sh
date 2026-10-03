@@ -73,6 +73,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-bloco-iniciar.mjs
   node testar-caderno-erros.mjs
   node testar-folha-tela.mjs
+  node testar-importar-figuras.mjs
   node testar-relogio-virar.mjs
   node testar-nuvem.mjs
   node testar-lotes.mjs

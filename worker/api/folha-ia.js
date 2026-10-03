@@ -27,6 +27,7 @@ import { podeUsar, escolherProvedor, modeloAtual, chamarIA } from "./_ia.js";
 export const MAX_TEXTO_FOLHA = 60000;
 export const MAX_CAIXAS = 12;
 export const MAX_PONTOS = 16;
+export const MAX_FIGURAS = 24;
 const MAX_PONTO = 260;
 const MAX_ESCRITO = 4000;
 
@@ -48,7 +49,14 @@ Regras dos pontos:
 - Escreva em português do Brasil, sem travessão no meio das frases.
 
 Responda APENAS com JSON, sem texto antes ou depois, sem cercas de código:
-{"titulo":"o tema, curto","caixas":[{"titulo":"Fisiopatologia","pergunta":"...","pontos":[{"texto":"...","complemento":false}]}]}`;
+{"titulo":"o tema, curto","caixas":[{"titulo":"Fisiopatologia","pergunta":"...","pontos":[{"texto":"...","complemento":false}],"figuras":[]}],"legendas":{}}`;
+
+/* As figuras do arquivo não vão para a IA (só o texto em volta de cada
+   uma): a IA decide em que caixa cada uma entra e escreve a legenda, e a
+   imagem em si continua no aparelho de quem importou. */
+const FIGURAS = `
+
+FIGURAS DO MATERIAL: o arquivo tem as figuras listadas entre <figuras> e </figuras>, cada uma com um código (F1, F2...), a página e o texto que aparece em volta dela (legenda ou parágrafo vizinho). Coloque cada figura na caixa do assunto que ela ilustra, no campo "figuras" da caixa (ex.: ["F2","F5"]); cada figura em uma caixa só. Em "legendas", escreva para cada figura usada uma legenda curta e útil para prova (ex.: {"F2":"ECG: supra de ST em parede inferior"}), baseada no texto em volta; se o texto em volta não disser o que é, use uma legenda neutra ("Figura da página 3"). Figura que não ilustra nenhuma caixa (logotipo, decoração) fica de fora.`;
 
 const CONFERIR = `Você confere a FOLHA EM BRANCO de um estudante de medicina: ele escreveu de memória o que lembrava de um tópico, e você compara com o gabarito.
 
@@ -75,8 +83,10 @@ export function lerJsonFolha(t) {
 }
 
 /* O que a IA devolveu, do jeito que pode ir para a tela e para a conta. */
-export function caixasDaFolha(bruto) {
+export function caixasDaFolha(bruto, idsFiguras) {
   const j = bruto && typeof bruto === "object" ? bruto : {};
+  const validos = new Set(Array.isArray(idsFiguras) ? idsFiguras : []);
+  const usadas = new Set();
   const caixas = (Array.isArray(j.caixas) ? j.caixas : [])
     .map((c) => ({
       titulo: texto(c && c.titulo, 60),
@@ -86,10 +96,29 @@ export function caixasDaFolha(bruto) {
         .map((p) => ({ texto: texto(p && p.texto, MAX_PONTO), complemento: !!(p && p.complemento) }))
         .filter((p) => p.texto)
         .slice(0, MAX_PONTOS),
+      /* só código que a página mandou, e cada figura numa caixa só */
+      figuras: (Array.isArray(c && c.figuras) ? c.figuras : [])
+        .map((f) => String(f || "").trim())
+        .filter((f) => validos.has(f) && !usadas.has(f) && usadas.add(f))
+        .slice(0, 6),
     }))
     .filter((c) => c.titulo && c.pontos.length)
     .slice(0, MAX_CAIXAS);
-  return { titulo: texto(j.titulo, 120), caixas };
+  const legendas = {};
+  const l = j.legendas && typeof j.legendas === "object" && !Array.isArray(j.legendas) ? j.legendas : {};
+  for (const id of validos) if (l[id]) legendas[id] = texto(l[id], 140);
+  return { titulo: texto(j.titulo, 120), caixas, legendas };
+}
+
+/* A lista de figuras que a página mandou: código, página e o texto em
+   volta, podados. É dado de fora, como o material. */
+export function figurasPedidas(v) {
+  return (Array.isArray(v) ? v : []).slice(0, MAX_FIGURAS)
+    .map((f, i) => ({
+      id: /^F\d{1,3}$/.test(String(f && f.id)) ? String(f.id) : `F${i + 1}`,
+      pagina: Math.max(0, Math.round(Number(f && f.pagina) || 0)),
+      contexto: texto(f && f.contexto, 240),
+    }));
 }
 
 const STATUS = ["lembrou", "parcial", "faltou"];
@@ -130,16 +159,20 @@ export async function onRequest({ request, env }) {
     }
     const permissao = await podeUsar(pessoa, env, "folha-caixas");
     if (!permissao.ok) return json({ erro: permissao.erro }, 403);
+    const figuras = figurasPedidas(corpo.figuras);
+    const listaFiguras = figuras.length
+      ? `\n\n<figuras>\n${figuras.map((f) => `${f.id} (página ${f.pagina || "?"}): ${f.contexto || "sem texto em volta"}`).join("\n")}\n</figuras>`
+      : "";
     const r = await chamarIA(provedor, modeloAtual(provedor, env), {
-      sistema: CAIXAS,
+      sistema: CAIXAS + (figuras.length ? FIGURAS : ""),
       mensagens: [{
         role: "user",
-        content: `${tema ? `Tema da aula: ${tema}\n\n` : ""}<material>\n${material.slice(0, MAX_TEXTO_FOLHA)}\n</material>`,
+        content: `${tema ? `Tema da aula: ${tema}\n\n` : ""}<material>\n${material.slice(0, MAX_TEXTO_FOLHA)}\n</material>${listaFiguras}`,
       }],
       maxSaida: 9000,
     });
     if (r.erro) return json({ erro: r.erro }, 502);
-    const folha = caixasDaFolha(lerJsonFolha(r.texto));
+    const folha = caixasDaFolha(lerJsonFolha(r.texto), figuras.map((f) => f.id));
     if (!folha.caixas.length) return json({ erro: "A IA não conseguiu montar as caixas deste conteúdo. Tente de novo." }, 502);
     return json({ ok: true, ...folha, cortado: material.length > MAX_TEXTO_FOLHA || !!r.cortado });
   }

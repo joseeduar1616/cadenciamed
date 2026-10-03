@@ -80,6 +80,16 @@ const folhas = await pag.evaluate(() => ({
 /* as duas placas viram juntas aqui: 25→24 nos minutos, 00→59 nos segundos */
 if (folhas.cai.join() === '25,00' && folhas.desce.join() === '24,59') ok('a folha que cai leva o número velho (25, 00) e o verso que desce traz o novo (24, 59)');
 else falha('folhas da virada: ' + JSON.stringify(folhas));
+/* O que o Safari do iPhone não desenhava: animação dentro de elemento
+   com filter. A placa não pode ter filter, e a folha anda pelo transform
+   escrito nela mesma, quadro a quadro. */
+const semFiltro = await pag.evaluate(() => [...document.querySelectorAll('[data-teste="placa-virar"], [data-teste="placa-virar"] *')]
+  .every((e) => getComputedStyle(e).filter === 'none'));
+if (semFiltro) ok('a placa não usa filter (o que fazia a folha sumir no iPhone)');
+else falha('há filter dentro da placa');
+const folhaMovida = await pag.evaluate(() => /scaleY\(/.test(((document.querySelector('.virar-cai') || {}).firstElementChild || { style: {} }).style.transform || ''));
+if (folhaMovida) ok('a folha que cai anda pelo transform no próprio elemento, sem depender de animação de CSS');
+else falha('a folha não tem transform próprio');
 const em3d = await pag.evaluate(() => [...document.styleSheets].some((ss) => { try { return [...ss.cssRules].some((r) => /virar-(cai|desce)/.test(r.cssText) && /rotateX/.test(r.cssText)); } catch (e) { return false; } }));
 if (!em3d) ok('a virada é em 2D (no iPhone o 3D com face escondida sumia, e a parte de cima trocava sozinha)');
 else falha('a virada ainda usa rotateX');
