@@ -594,14 +594,16 @@ function TesteDeMemoria({ data, setData, notify }) {
         </div>
         <Mini style={{ marginTop: 10, lineHeight: 1.65 }}>
           A linha sobe a cada revisão e cai mais devagar depois de cada uma: é a
-          memória ficando mais estável. São {dias.length} revisões por assunto — e
+          memória ficando mais estável. São {dias.length} revisões por assunto, e
           a escada se ajusta sozinha a cada tópico depois, conforme o "como foi"
           de cada revisão.
         </Mini>
 
         <div className="mt-5 flex items-center gap-3 flex-wrap">
           <Btn tone="primary" disabled={!completo} onClick={usar}>
-            <Check size={15} /> Usar esta escada nas minhas revisões
+            {/* Curto de propósito: o nome inteiro ("nas minhas revisões")
+                passava da borda do card num celular de 390 px. */}
+            <Check size={15} /> Usar esta escada
           </Btn>
           {!completo ? <Mini>responda todas para poder usar</Mini> : null}
         </div>

@@ -13,6 +13,7 @@ import { chromium } from 'playwright';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
+import http from 'node:http';
 import { xlsx, FOLHAS } from './planilha-de-teste.mjs';
 
 const alvo = path.resolve(process.argv[2] || 'teste.html');
@@ -76,10 +77,32 @@ const PLANO_DO_PDF = {
 const arquivoFoto = path.join(tmp, 'prato.png');
 fs.writeFileSync(arquivoFoto, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'));
 
+/* O app é servido por http, e não aberto como file://. No Chromium sem
+   tela, uma página file:// às vezes reabre com o armazenamento local
+   inteiro vazio (até a chave do convite de notificações, que o app nunca
+   apaga), e o teste acusava "o plano sumiu" sem o app ter apagado nada. Num
+   endereço http o armazenamento é o de um site de verdade, como no ar. */
+const servidor = http.createServer((req, res) => {
+  if (req.url === '/' || req.url.startsWith('/?')) {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(fs.readFileSync(alvo));
+  } else { res.writeHead(404); res.end(); }
+});
+await new Promise((r) => servidor.listen(0, '127.0.0.1', r));
+const ENDERECO = `http://127.0.0.1:${servidor.address().port}/`;
+
 const CHROME = process.env.CHROME_BIN || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const navegador = await chromium.launch({ args: ['--no-sandbox'], ...(fs.existsSync(CHROME) ? { executablePath: CHROME } : {}) });
 const ctx = await navegador.newContext({ viewport: { width: 1280, height: 900 }, locale: 'pt-BR', timezoneId: 'America/Sao_Paulo' });
+/* Só na primeira abertura da aba, nunca no recarregar. No começo de um
+   recarregamento o Chromium às vezes mostra a chave vazia a este script por
+   um instante, e ele gravava os dados iniciais por cima do que o teste
+   tinha feito: o "recarregar: o plano sumiu" intermitente vinha daqui, e
+   não do app. O nome da janela sobrevive ao recarregar e serve de marca
+   sem tocar no armazenamento. */
 await ctx.addInitScript(() => {
+  if (location.protocol === 'about:' || window.name === 'semeado') return;
+  window.name = 'semeado';
   try {
     const k = 'cadencia:v3:convite-notificacoes-aparelho';
     if (!localStorage.getItem(k)) localStorage.setItem(k, 'teste');
@@ -109,10 +132,10 @@ await ctx.route('**/api/**', (r) => {
   return r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
 });
 
-const pag = await ctx.newPage();
+let pag = await ctx.newPage();
 pag.on('pageerror', (e) => erros.push('pageerror: ' + e.message));
 await pag.clock.setFixedTime(new Date('2025-11-03T10:00:00-03:00'));
-await pag.goto('file://' + alvo, { waitUntil: 'load' });
+await pag.goto(ENDERECO, { waitUntil: 'load' });
 await pag.waitForTimeout(1800);
 const semConta = pag.locator('button:has-text("usar sem conta")');
 if (await semConta.count() > 0 && await semConta.first().isVisible()) { await semConta.first().click(); await pag.waitForTimeout(400); }
@@ -255,7 +278,18 @@ try {
   await pag.getByRole('button', { name: 'descartar' }).click();
 
   /* ── recarregar ── */
-  await pag.reload({ waitUntil: 'load' });
+  /* Fechar o app e abrir de novo, e não page.reload(): no Chromium sem
+     tela, um recarregamento de página file:// às vezes encontra o
+     armazenamento local inteiro vazio (até chaves que o app nunca apaga,
+     como a do convite de notificações), e o teste acusava "o plano sumiu"
+     sem o app ter apagado nada. Com página nova, a mesma aba de antes já
+     foi fechada e o que ela gravou está no disco. */
+  await pag.waitForTimeout(400);
+  await pag.close();
+  pag = await ctx.newPage();
+  pag.on('pageerror', (e) => erros.push('pageerror: ' + e.message));
+  await pag.clock.setFixedTime(new Date('2025-11-03T10:00:00-03:00'));
+  await pag.goto(ENDERECO, { waitUntil: 'load' });
   await pag.waitForTimeout(1800);
   await irPara('Treino');
   await vista('Alimentação');
@@ -279,10 +313,17 @@ try {
     else falha(`celular: ${v} passou da largura da tela`);
   }
 } catch (e) {
-  falha('o teste parou: ' + e.message.split('\n')[0]);
+  /* a primeira linha diz só "Timeout"; a que diz QUAL elemento é a do "waiting for" */
+  const qual = (e.message.split('\n').find((l) => /waiting for/.test(l)) || '').trim();
+  falha('o teste parou: ' + e.message.split('\n')[0] + (qual ? ' · ' + qual : ''));
+  /* a tela na hora em que parou, para ver o que estava na frente */
+  const onde = path.join(os.tmpdir(), 'plano-mes-parou.png');
+  await pag.screenshot({ path: onde, fullPage: true }).catch(() => {});
+  passos.push('      tela de quando parou: ' + onde);
 }
 
 await navegador.close();
+servidor.close();
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(passos.join('\n'));
 if (erros.length) {
