@@ -391,7 +391,9 @@ function normalize(raw) {
       onboarded: pr.onboarded === undefined ? DEFAULTS.profile.onboarded : !!pr.onboarded,
     },
     theme: d.theme === "light" ? "light" : "dark",
-    layout: d.layout === "movel" ? "movel" : "auto",
+    /* o formato da tela é sempre automático; o "Celular" guardado de
+       antes não vale mais */
+    layout: "auto",
     sessions: arr(d.sessions, []).map((x) => (
       x && x.subjectId && ID_NOVO(x.subjectId) ? { ...x, subjectId: ID_NOVO(x.subjectId) } : x
     )),

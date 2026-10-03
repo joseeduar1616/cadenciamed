@@ -127,9 +127,11 @@ propósito. Classes de comportamento (`vidro`, `brilhar`, `aba`, `nota`,
 `aura`, `rise`, `marca`, `breathe`, `pulso`) são escritas no `<style>` do
 próprio app e ficam na lista `DO_APP`, no topo do script.
 
-O modo celular funciona escopando as regras `sm:` e `lg:` sob
-`html:not([data-layout="movel"])`, então forçar o celular desliga as regras de
-tela larga.
+As regras `sm:` e `lg:` ficam escopadas sob
+`html:not([data-layout="movel"])`, mas o site não oferece mais escolher
+"Celular" ou "Computador": `data-layout` é sempre `auto`, e o desenho segue a
+largura da tela (o tablet deitado ganha o layout largo, em pé o estreito). O
+`manifest.webmanifest` usa `"orientation": "any"`, para o app instalado girar.
 
 ## Aparência e revisão, escolhidas por quem usa
 
@@ -540,28 +542,12 @@ O `testar-cronograma-partes.mjs` monta um curso de 46 semanas do tamanho
 do que chegou (com o corte antigo, ele parava na 36) e cobra que tudo vá
 até a semana 46.
 
-## "Você está aí?" e o convite de notificações
+## O convite de notificações (e o fim do "Você está aí?")
 
-Cronômetro correndo com a pessoa longe infla as horas que a Constância, as
-metas e o ranking das salas somam. Por isso o **Foco** (pomodoro e tempo
-corrido) e o **relógio da sessão de cartões** perguntam "Você está aí?" a
-cada 30 minutos sem sinal de vida. A pergunta fica 1 minuto na tela; sem
-resposta, o tempo para **no instante da pergunta** — o minuto sem resposta
-não conta. Sinal de vida: começar, retomar, responder a pergunta, e nos
-cartões também responder um cartão.
-
-A regra é conta sobre instantes absolutos (`estadoDaPresenca`, no
-`base.jsx`), então vale igual com o site fechado: quem fecha o site com o
-tempo corrido ligado e volta 3 horas depois encontra 30 minutos contados, e
-não 3 horas. Com a aba fora de vista sai também um aviso do sistema com o
-botão "Estou aqui"; tocar nele responde sem recarregar a página (o
-`sw.js` só manda o recado `presenca-ok`).
-
-Ficaram de fora, de propósito: a gravação de aula (ela existe para rodar
-sem ninguém tocar na tela, e parar por falta de clique perderia a aula), o
-foco combinado das salas e das duplas (é uma marca da sala inteira; o tempo
-de cada um é o Foco dele, que já pergunta — e o "estudando agora" da sala
-apaga sozinho quando o Foco para) e o descanso entre séries (segundos).
+O Foco, os blocos da agenda e a sessão de cartões contam direto, sem
+pergunta no meio: o "Você está aí?" de 30 em 30 minutos foi tirado a
+pedido, junto com o aviso marcado no servidor e a batida de minuto em
+minuto do Worker. O tempo corrido continua valendo com o site fechado.
 
 Na primeira abertura de cada aparelho, depois das boas-vindas, o site
 convida a ligar as notificações (`ConviteNotificacoesAparelho`, em
@@ -570,7 +556,7 @@ pergunta mesmo que o computador já tenha ligado. No iPhone sem o site
 instalado, o convite ensina a instalar, porque lá notificação só existe
 para o site na tela de início. Os testes de navegador marcam o convite como
 já visto, para ele não cobrir a tela; quem o testa é o
-`testar-presenca-tela.mjs`.
+`testar-convite-tela.mjs`.
 
 ## O app (iPhone, Android, Mac e PC) e a página /app
 

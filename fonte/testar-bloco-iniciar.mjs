@@ -3,8 +3,8 @@
  * Relógio de mentira, parado numa terça às 9h, com dois blocos da
  * mentoria para hoje. Confere: o botão aparece em Hoje, na Agenda e no
  * plano da mentoria; o tempo corre e acompanha por todas as abas;
- * Concluir registra a sessão e marca o bloco cumprido; e o "Você está
- * aí?" vale aqui também — sem resposta, conta só até a pergunta.
+ * Concluir registra a sessão e marca o bloco cumprido; e Parar registra
+ * o tempo inteiro, sem pergunta nenhuma no meio.
  *
  *   node testar-bloco-iniciar.mjs [arquivo.html]
  */
@@ -128,33 +128,24 @@ else falha('sessão: ' + JSON.stringify(sessao));
 if (d.blocos && d.blocos[`m-cardio|${HOJE}`]) ok('e o bloco fica cumprido (não vai para os próximos dias)');
 else falha('o bloco não foi marcado como cumprido');
 
-/* ── 4. "Você está aí?" no bloco ─────────────────────────────────────── */
+/* ── 4. sem "Você está aí?": o bloco conta direto ───────────────────── */
 await ir('Agenda');
 await pag.locator('main [aria-label="Iniciar Questões do tema"]').first().click();
 await pag.waitForTimeout(300);
-await pag.clock.fastForward('30:05');
-await pag.waitForTimeout(600);
-const pergunta = pag.locator('[role="alertdialog"]:has-text("Você está aí?")');
-if (await pergunta.count() && /Questões do tema/.test(await pergunta.innerText())) ok('aos 30 minutos, o bloco pergunta "Você está aí?"');
-else falha('a pergunta de presença não apareceu no bloco');
-await pergunta.locator('button:has-text("Estou aqui")').click();
-await pag.waitForTimeout(400);
-if (!(await pergunta.count()) && await barra.count()) ok('"Estou aqui" fecha a pergunta e o bloco segue contando');
-else falha('responder não manteve o bloco correndo');
-
-await pag.clock.fastForward('30:00');
-await pag.waitForTimeout(300);
-await pag.clock.fastForward('01:10');
+await pag.clock.fastForward('01:01:10');
 await pag.waitForTimeout(800);
-if (!(await barra.count())) ok('sem resposta na segunda pergunta, o bloco para sozinho');
-else falha('o bloco continuou sem ninguém responder');
+if (!/Você está aí\?/.test(await pag.evaluate(() => document.body.innerText)) && await barra.count()) {
+  ok('passada uma hora, nada de "Você está aí?": o bloco segue contando');
+} else falha('o bloco perguntou ou parou sozinho');
+await barra.locator('button:has-text("Parar")').click();
+await pag.waitForTimeout(400);
 if (await pag.locator('button:has-text("deixar como")').count()) await pag.locator('button:has-text("deixar como")').first().click();
 await pag.waitForTimeout(1900);
 d = await dados();
 const s2 = (d.sessions || []).find((s) => s.topic === 'Questões do tema');
-if (s2 && s2.minutes === 60) ok('e conta só até a pergunta (60 min, não 61)');
-else falha('sessão sem resposta: ' + JSON.stringify(s2));
-if (!(d.blocos || {})[`m-quest|${HOJE}`]) ok('parado assim, o bloco não fica cumprido');
+if (s2 && s2.minutes === 61) ok('Parar registra o tempo inteiro (61 min)');
+else falha('sessão ao parar: ' + JSON.stringify(s2));
+if (!(d.blocos || {})[`m-quest|${HOJE}`]) ok('parado (sem concluir), o bloco não fica cumprido');
 else falha('marcou como cumprido sem a pessoa concluir');
 
 if (!errosDaPagina.length) ok('nenhum erro de JavaScript na página');

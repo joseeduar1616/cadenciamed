@@ -372,7 +372,7 @@ export default function Cadencia() {
     try {
       const raiz = document.documentElement;
       raiz.setAttribute("data-theme", data.theme);
-      raiz.setAttribute("data-layout", data.layout);
+      raiz.setAttribute("data-layout", "auto");
       /* O acento NÃO é gravado aqui direto. Ele sai do ambiente, que o
          calcula por tema — ver ambienteDoTema. Gravado cru, como era, ele
          virava um valor só para o claro e o escuro: no tema claro o
@@ -415,7 +415,9 @@ export default function Cadencia() {
     definir: (v) => setData((p) => ({ ...p, notaTema: v })),
   }), [data.theme, data.notaTema, setData]);
 
-  const LARGURA = data.layout === "movel" ? 470 : 1120;
+  /* O site decide sozinho pelo tamanho da tela: a escolha "Celular",
+     que forçava a coluna estreita, saiu. */
+  const LARGURA = 1120;
   const today = todayISO();
   const ativo = useMemo(() => montarCurriculo(data.cronogramaProprio), [data.cronogramaProprio]);
   const subjects = useMemo(() => ativo.lista.map((s) => subjectState(s, data.marks)), [ativo, data.marks]);
@@ -699,16 +701,6 @@ export default function Cadencia() {
   const pausarFoco = useCallback(() => { if (Pref.current.running) Pref.current.setRunning(false); }, []);
   const B = useBlocoEmAndamento({ setData, notify, registrar: registrarBloco, pausarFoco });
 
-  /* "Você está aí?" marcado no servidor, para chegar mesmo com o celular
-     em outro aplicativo (parte21, useAvisoPresencaNoServidor). Vale para
-     o que estiver correndo: o Foco ou o bloco. */
-  const avisoPresencaFora = useAvisoPresencaNoServidor({
-    nuvem,
-    perguntaEm: P.running ? P.presenca.perguntaEm : B.ativo ? B.presenca.perguntaEm : 0,
-    corpo: P.running || !B.ativo
-      ? "O cronômetro do Foco para em 1 minuto se ninguém responder. Toque em Estou aqui."
-      : `O bloco "${B.ativo.label}" para em 1 minuto se ninguém responder. Toque em Estou aqui.`,
-  });
   const gcal = useGoogleAgenda({ data, setData, notify, ladder, today, nuvem });
   const mentorInfo = useMentor(nuvem);
   const assinatura = useAssinatura(nuvem.sdk, nuvem.usuario);
@@ -740,7 +732,7 @@ export default function Cadencia() {
 
   /* Menu lateral: no celular é gaveta que abre por cima; no computador
      fica fixo e só encolhe para a largura dos ícones. */
-  const estreita = useTelaEstreita(data.layout === "movel");
+  const estreita = useTelaEstreita(false);
   const [menuAberto, setMenuAberto] = useState(false);
   const [menuFixo, setMenuFixo] = useState(true);
   useEffect(() => { if (!estreita) setMenuAberto(false); }, [estreita]);
@@ -1240,7 +1232,7 @@ export default function Cadencia() {
                 <h1 className="capa-t">{(TABS.find((t) => t.id === tab) || {}).label || ""}</h1>
               </div>
               {tab === "hoje" && <Hoje {...{ data, setData, today, minToday, minWeek, qWeek, streak, late, done, bonusDone, addSession, delSession, notify, go: setTab, blocosHoje, projecao: pro ? projecao : null, pro, verPlanos: () => setTab("planos"), cartoesHoje }} />}
-              {tab === "foco" && <Foco {...{ data, setData, today, P, subjectId: pomoSubject, setSubjectId: setPomoSubject, avisoPresencaFora }} />}
+              {tab === "foco" && <Foco {...{ data, setData, today, P, subjectId: pomoSubject, setSubjectId: setPomoSubject }} />}
               {tab === "materias" && <Materias {...{ sessions: data.sessions, reviews: data.reviews, today, addSession, marcarDificuldade, subjects: subjectsResidencia, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, folhas: data.folhas, salvarAnotacao, notify, setData, nuvem, pastas: data.pastas, vazioEm: subjectsClinico.length ? "clinico" : null, irPara: setTab }} />}
               {tab === "clinico" && <Materias {...{ sessions: data.sessions, reviews: data.reviews, today, addSession, marcarDificuldade, subjects: subjectsClinico, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, folhas: data.folhas, salvarAnotacao, notify, setData, nuvem, pastas: data.pastas, irPara: setTab }} />}
               {tab === "cronograma" && <AbaCronograma {...{ data, setData, notify, nuvem, pro, verPlanos: () => setTab("planos") }} />}
@@ -1284,17 +1276,6 @@ export default function Cadencia() {
 
           <footer className="px-6 pb-12 pt-2">
             <div className="mx-auto flex flex-col items-center gap-4" style={{ maxWidth: LARGURA }}>
-              <div className="flex items-center gap-2 rounded-full p-1" style={{ background: T.card, border: `1px solid ${T.line}` }}>
-                {[["auto", "Automático", <Monitor size={14} key="d" />], ["movel", "Celular", <Smartphone size={14} key="m" />]].map(([id, lb, ic]) => (
-                  <button key={id} type="button" onClick={() => setData((p) => ({ ...p, layout: id }))}
-                    className="inline-flex items-center gap-2 rounded-full px-4 py-2"
-                    style={{
-                      background: data.layout === id ? T.card3 : "transparent", border: "none",
-                      color: data.layout === id ? T.ink : T.dim, fontSize: 14,
-                      fontWeight: data.layout === id ? 700 : 500, cursor: "pointer",
-                    }}>{ic} {lb}</button>
-                ))}
-              </div>
               <button type="button" onClick={() => setShowKeys(true)} className="inline-flex items-center gap-2"
                 style={{ background: "none", border: "none", color: T.faint, fontSize: 13.5, cursor: "pointer" }}>
                 <Keyboard size={14} /> atalhos de teclado
@@ -1382,16 +1363,6 @@ export default function Cadencia() {
 
       {/* A aula que está gravando, visível em qualquer aba (ver parte24.jsx). */}
       <AvisoGravandoAula irPara={setTab} />
-
-      {/* "Você está aí?" do Foco, em qualquer aba: o cronômetro corre mesmo
-          com a pessoa em outra tela do site (ver usePomodoro, parte3.jsx). */}
-      {P.presenca.fase === "perguntando" ? (
-        <PerguntaPresenca restaMs={P.presenca.restaMs} oQue="o cronômetro do Foco"
-          aoConfirmar={P.confirmarPresenca} />
-      ) : B.ativo && B.presenca.fase === "perguntando" ? (
-        <PerguntaPresenca restaMs={B.presenca.restaMs} oQue={`o bloco "${B.ativo.label}"`}
-          aoConfirmar={B.estouAqui} />
-      ) : null}
 
       {/* O bloco da agenda que está contando, visível em qualquer aba. */}
       <BarraBlocoAtivo irPara={setTab} />

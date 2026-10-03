@@ -93,9 +93,8 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // avisosAgendados/{uid}_{origem}: o "Você está aí?" do Foco marcado
-    // para um instante. Só a rota /api/push e a batida de minuto em minuto,
-    // com a conta de serviço.
+    // avisosAgendados: sobra do antigo "Você está aí?" (já tirado do site).
+    // Ninguém lê nem grava; fica fechado.
     match /avisosAgendados/{id} {
       allow read, write: if false;
     }

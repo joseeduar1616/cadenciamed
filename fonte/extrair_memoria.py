@@ -25,7 +25,6 @@ def fatia(inicio, fim, nomes, saida, rotulo):
         '   Não edite aqui: edite o base.jsx. */\n' + corpo + '\n')
     print(f'{saida}: cópia de {rotulo} refeita')
 
-PRESENCA = '/* ── "você está aí?": o cronômetro não conta tempo de quem saiu'
 PERFIL = '/* ── o perfil de memória: de que escada ESTA pessoa precisa'
 CARTOES = '/* ── cartões: o quanto você sabe cada um, e a múltipla escolha'
 FICHA = '/* ── a ficha de cada tópico'
@@ -40,7 +39,3 @@ fatia(CARTOES, FICHA,
        'function notaDaEscolha', 'function pontosDaResposta', 'function diasEntreISO',
        'const SEGUNDOS_RESPOSTA_RAPIDA', 'const CORES_BARALHO', 'const corDoBaralho', 'function textoDaAlternativa'),
       '_cartoes.mjs', 'as contas dos cartões')
-fatia(PRESENCA, PERFIL,
-      ('const PRESENCA_INTERVALO_MS', 'const PRESENCA_ESPERA_MS', 'function estadoDaPresenca',
-       'function corridoAtePresenca', 'function restoAtePresenca'),
-      '_presenca.mjs', 'a regra do "você está aí?"')

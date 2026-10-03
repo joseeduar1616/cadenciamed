@@ -455,54 +455,6 @@ function limparDias(lista) {
   return dias;
 }
 
-/* ── "você está aí?": o cronômetro não conta tempo de quem saiu ─────────
- *
- * Cronômetro ligado com a pessoa longe da mesa infla as horas de estudo, e
- * as horas são o que a Constância, as metas e o ranking das salas somam.
- * A regra: a cada 30 minutos correndo sem sinal de vida, o site pergunta
- * "Você está aí?". A pergunta fica 1 minuto na tela; sem resposta, o
- * cronômetro para — e para no instante da PERGUNTA, não no fim do minuto,
- * porque o minuto sem resposta já é prova de que ninguém estava ali.
- *
- * Tudo aqui é conta sobre instantes absolutos, e não um relógio que soma:
- * com o site fechado ou a aba em segundo plano (onde o navegador segura os
- * timers), a resposta é a mesma ao voltar. Fechou o site com o cronômetro
- * correndo e voltou três horas depois? A pergunta "aconteceu" 30 minutos
- * depois do último sinal, ninguém respondeu, e o tempo parou ali.
- */
-const PRESENCA_INTERVALO_MS = 30 * 60 * 1000;
-const PRESENCA_ESPERA_MS = 60 * 1000;
-const PRESENCA_OK = { fase: "ok", perguntaEm: 0, restaMs: 0 };
-
-/* desde: o último sinal de vida (começar, retomar, responder, ou — nos
-   cartões — responder um cartão). 0 ou ausente: não há o que perguntar. */
-function estadoDaPresenca(desde, agora) {
-  const d = Number(desde) || 0;
-  if (!d) return { fase: "ok", perguntaEm: 0, restaMs: 0 };
-  const perguntaEm = d + PRESENCA_INTERVALO_MS;
-  if (agora < perguntaEm) return { fase: "ok", perguntaEm, restaMs: 0 };
-  const limite = perguntaEm + PRESENCA_ESPERA_MS;
-  if (agora < limite) return { fase: "perguntando", perguntaEm, restaMs: limite - agora };
-  return { fase: "sumiu", perguntaEm, restaMs: 0 };
-}
-
-/* Tempo corrido parado no instante da pergunta: soma só o trecho entre o
-   último começo e a pergunta. */
-function corridoAtePresenca(acumulado, inicio, paradoEm) {
-  const a = Math.max(0, Number(acumulado) || 0);
-  const i = Number(inicio) || 0;
-  if (!i) return a;
-  return a + Math.max(0, Math.round((paradoEm - i) / 1000));
-}
-
-/* Contagem regressiva parada no instante da pergunta: o que faltava
-   naquele momento, sem passar da duração da fase nem ficar negativo. */
-function restoAtePresenca(terminaEm, paradoEm, duracao) {
-  const d = Math.max(0, Number(duracao) || 0);
-  const resto = Math.round(((Number(terminaEm) || 0) - paradoEm) / 1000);
-  return Math.max(0, Math.min(d, resto));
-}
-
 /* ── o perfil de memória: de que escada ESTA pessoa precisa ───────────
  *
  * A escada de revisão costuma ser escolhida num cardápio — 1-7-30-90,

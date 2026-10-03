@@ -62,7 +62,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar.mjs index.html
   node testar-contraste.mjs
   node testar-atualizacao.mjs index.html
-  node testar-presenca-tela.mjs index.html
+  node testar-convite-tela.mjs index.html
   node testar-app.mjs
   node testar-celular-cartoes.mjs teste.html
   node testar-plano-mes-tela.mjs teste.html
@@ -85,7 +85,6 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-aula-ia.mjs
   node testar-ficha.mjs
   node testar-memoria.mjs
-  node testar-presenca.mjs
   node testar-cronograma-partes.mjs
   node testar-aula.mjs
   node testar-lembretes.mjs
@@ -100,7 +99,6 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-provas-ia.mjs
   node testar-mentoria.mjs
   node testar-pendentes.mjs
-  node testar-presenca-push.mjs
   node testar-folha.mjs
   node testar-duplas.mjs
   node testar-anexo.mjs

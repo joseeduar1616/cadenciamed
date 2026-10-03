@@ -40,7 +40,7 @@ const navegador = await chromium.launch({
 });
 const ctx = await navegador.newContext({ viewport: { width: 1440, height: 900 } });
 /* O convite de notificações do primeiro acesso cobriria a tela; quem o testa
-   é o testar-presenca-tela.mjs. Lê ANTES de gravar, e só grava se faltar:
+   é o testar-convite-tela.mjs. Lê ANTES de gravar, e só grava se faltar:
    gravar no localStorage logo no início de cada página, sem ler, fez o
    Chromium do teste perder de vez em quando o 'cadencia:v3' num reload —
    o app voltava para a página de entrada no meio do teste (1 a cada 3 ou 4
@@ -904,13 +904,17 @@ if (liberado) {
     const t = await texto();
     for (const [parte, oQue] of [
       ['Aparência', 'a aparência'],
-      ['Formato da tela', 'o formato da tela, que estava no rodapé'],
       ['Suas metas', 'as metas'],
       ['Baixar backup', 'o backup'],
     ]) {
       if (t.toLowerCase().includes(parte.toLowerCase())) ok(`configurações: ${oQue} está lá`);
       else falha(`configurações: faltou ${oQue}: ` + t.slice(0, 200));
     }
+    /* o formato da tela é automático: a escolha "Celular" saiu daqui e do
+       rodapé, e o site decide pelo tamanho do aparelho */
+    const rodape = await pag.evaluate(() => (document.querySelector('footer') || {}).innerText || '');
+    if (!/formato da tela/i.test(t) && !/\bCelular\b/.test(rodape)) ok('não há mais escolha de formato da tela: o site se ajusta sozinho');
+    else falha('a escolha de formato da tela continua aparecendo');
 
     /* a meta de questões é a barra do painel de Hoje: mexer aqui tem de
        chegar lá, senão são dois números com o mesmo nome */

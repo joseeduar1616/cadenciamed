@@ -1,15 +1,14 @@
-/* O "Você está aí?" e o convite de notificações, num Chromium de verdade.
+/* O convite de notificações e o Foco em tempo corrido, num Chromium de
+ * verdade.
  *
- * A regra em si (quando perguntar, onde parar) tem teste próprio, em
- * testar-presenca.mjs. Este confere o que só aparece com a página aberta:
- * a pergunta surgir na hora certa por cima do site, "Estou aqui" manter o
- * cronômetro correndo, o silêncio pará-lo com o tempo contado só até a
- * pergunta, o site fechado não inflar as horas, e o convite de
- * notificações aparecer uma vez só por aparelho.
+ * Confere o convite de notificações aparecer uma vez só por aparelho, a
+ * tela cheia do Foco cobrir a tela toda e o cronômetro correr direto, sem
+ * pergunta nenhuma no meio (o "Você está aí?" de 30 em 30 minutos saiu, a
+ * pedido), inclusive com o site fechado.
  *
- * O relógio da página é falso (page.clock): meia hora passa em um instante.
+ * O relógio da página é falso (page.clock): uma hora passa em um instante.
  *
- *   node testar-presenca-tela.mjs index.html
+ *   node testar-convite-tela.mjs index.html
  */
 import { chromium } from 'playwright';
 import path from 'node:path';
@@ -98,94 +97,51 @@ await pag.waitForTimeout(300);
 await pag.locator('main button:has-text("Começar")').first().click();
 await pag.waitForTimeout(300);
 
-const pergunta = pag.locator('[role="alertdialog"]:has-text("Você está aí?")');
 const emSegundos = (t) => String(t).split(':').map(Number).reduce((a, n) => a * 60 + n, 0);
 const relogio = async () => pag.evaluate(() => {
   const m = (document.querySelector('main')?.innerText || '').match(/\b\d{1,2}:\d{2}(?::\d{2})?\b/);
   return m ? m[0] : '';
 });
+const pergunta = () => pag.evaluate(() => /Você está aí\?|Estou aqui/.test(document.body.innerText));
 
-await pag.clock.fastForward('29:00');
+await pag.clock.fastForward('31:00');
 await pag.waitForTimeout(400);
-if (await pergunta.count() === 0) ok('aos 29 minutos, nada de pergunta');
-else falha('perguntou antes dos 30 minutos');
-
-await pag.clock.fastForward('01:05');
+if (!(await pergunta())) ok('aos 31 minutos, nada de "Você está aí?"');
+else falha('ainda pergunta "Você está aí?" aos 30 minutos');
+await pag.clock.fastForward('40:00');
 await pag.waitForTimeout(400);
-if (await pergunta.count() === 1) ok('aos 30 minutos, aparece "Você está aí?" por cima do site');
-else falha('a pergunta não apareceu aos 30 minutos');
-const textoPergunta = (await pergunta.innerText().catch(() => '')) || '';
-if (/para em \d+s/.test(textoPergunta)) ok('a pergunta mostra quantos segundos faltam');
-else falha('a pergunta não mostra a contagem: ' + textoPergunta);
+if (await pag.locator('main button:has-text("Pausar")').count() > 0 && !(await pergunta())) ok('passada mais de uma hora, o cronômetro segue correndo sem perguntar nada');
+else falha('o cronômetro parou ou perguntou depois de uma hora');
+const umaHora = emSegundos(await relogio());
+if (umaHora >= 71 * 60 && umaHora <= 71 * 60 + 8) ok(`o tempo conta tudo (${await relogio()})`);
+else falha('tempo contado: ' + (await relogio()) + ' (esperado perto de 1:11:00)');
 
-/* A pergunta é do site inteiro, não da tela do Foco: fica fora do <main>
-   (onde as abas trocam) e cobre tudo, inclusive o menu. */
-const foraDoMain = await pag.evaluate(() => {
-  const d = document.querySelector('[role="alertdialog"]');
-  return !!d && !d.closest('main') && getComputedStyle(d).position === 'fixed';
-});
-if (foraDoMain) ok('a pergunta cobre o site inteiro, e não só a aba do Foco');
-else falha('a pergunta ficou presa dentro da aba');
-
-await pergunta.locator('button:has-text("Estou aqui")').click();
-await pag.waitForTimeout(300);
-if (await pergunta.count() === 0) ok('"Estou aqui" fecha a pergunta');
-else falha('"Estou aqui" não fechou a pergunta');
-
-await pag.locator('nav button:has-text("Foco")').first().click();
-await pag.waitForTimeout(300);
-if (await pag.locator('main button:has-text("Pausar")').count() > 0) ok('depois de responder, o cronômetro continua correndo');
-else falha('o cronômetro parou mesmo com resposta');
-
-/* meia hora depois da resposta, pergunta de novo; sem resposta, para */
-await pag.clock.fastForward('30:00');
-await pag.waitForTimeout(400);
-if (await pergunta.count() === 1) ok('meia hora depois da resposta, pergunta de novo');
-else falha('não perguntou de novo meia hora depois da resposta');
-await pag.clock.fastForward('01:05');
-await pag.waitForTimeout(500);
-if (await pergunta.count() === 0) ok('passado o minuto, a pergunta sai da tela');
-else falha('a pergunta ficou na tela depois do minuto');
-if (await pag.locator('main button:has-text("Retomar")').count() > 0) ok('sem resposta, o cronômetro para');
-else falha('sem resposta, o cronômetro continuou');
-const parado = await relogio();
-/* Começou em 0, respondeu aos 30:05, a pergunta seguinte veio aos 60:05.
-   Alguns segundos de folga: o relógio falso também anda nas esperas de
-   verdade entre um passo e outro do teste. O que não pode é passar de
-   1:01:05, que seria contar o minuto sem resposta. */
-const sp = emSegundos(parado);
-if (sp >= 3605 && sp <= 3612) ok(`o tempo contou só até a pergunta (${parado}), não o minuto sem resposta`);
-else falha('tempo parado errado: ' + parado + ' (esperado perto de 1:00:05)');
-await pag.clock.fastForward('10:00');
-await pag.waitForTimeout(300);
-if ((await relogio()) === parado) ok('parado, o tempo não anda mais');
-else falha('o tempo continuou andando depois de parar: ' + (await relogio()));
-
-/* ── o site fechado não infla as horas ───────────────────────────────── */
-/* Zera, começa de novo, e imita o site fechado: o cronômetro "começou"
-   três horas atrás e ninguém voltou desde então. */
+/* ── o site fechado: o tempo corrido continua ────────────────────────── */
+await pag.locator('main button:has-text("Pausar")').first().click();
+await pag.waitForTimeout(200);
 await pag.locator('main button:has-text("Zerar")').first().click();
 await pag.waitForTimeout(200);
 await pag.evaluate(() => {
   const agora = Date.now();
-  const tresHoras = 3 * 60 * 60 * 1000;
+  const umaHora = 60 * 60 * 1000;
   const t = JSON.parse(localStorage.getItem('cadencia:v3:timer') || '{}');
   localStorage.setItem('cadencia:v3:timer', JSON.stringify({
-    ...t, modo: 'corrido', running: true, swAcum: 0,
-    swInicio: agora - tresHoras, presencaDesde: agora - tresHoras, em: agora - tresHoras,
+    ...t, modo: 'corrido', running: true, swAcum: 0, swInicio: agora - umaHora, em: agora - umaHora,
   }));
 });
+const guardado = await pag.evaluate(() => localStorage.getItem('cadencia:v3:timer'));
 await pag.reload({ waitUntil: 'load' });
+await pag.evaluate((g) => { if (!localStorage.getItem('cadencia:v3:timer')) { localStorage.setItem('cadencia:v3:timer', g); location.reload(); } }, guardado).catch(() => {});
 await pag.waitForTimeout(1200);
 await pag.clock.fastForward(1000);
 await pag.waitForTimeout(400);
 const foco = pag.locator('nav button:has-text("Foco")').first();
 if (await foco.count()) { await foco.click(); await pag.waitForTimeout(300); }
-if (await pag.locator('main button:has-text("Retomar")').count() > 0) ok('reabrindo 3 h depois, o cronômetro está parado');
-else falha('reabrindo 3 h depois, o cronômetro continuou correndo');
-const reaberto = await relogio();
-if (emSegundos(reaberto) >= 1800 && emSegundos(reaberto) <= 1803) ok(`e contou ${reaberto}, não 3 horas`);
-else falha('tempo contado com o site fechado: ' + reaberto + ' (esperado 30:00)');
+if (await pag.locator('main button:has-text("Pausar")').count() > 0) ok('reabrindo 1 h depois, o cronômetro segue correndo');
+else falha('reabrindo 1 h depois, o cronômetro parou');
+const reaberto = emSegundos(await relogio());
+if (reaberto >= 3600 && reaberto <= 3610) ok(`e contou a hora em que o site esteve fechado (${await relogio()})`);
+else falha('tempo contado com o site fechado: ' + (await relogio()) + ' (esperado 1:00:00)');
 
 await navegador.close();
 console.log(passos.join('\n'));

@@ -230,39 +230,6 @@ export function deveEnviar(aparelho, agora) {
   return true;
 }
 
-/* ── o aviso com hora marcada ("Você está aí?" do Foco) ───────────────
- *
- * O lembrete do dia sai numa hora cheia; este sai num INSTANTE: trinta
- * minutos depois do último sinal de vida no cronômetro. Ele existia só
- * dentro da página, e o celular congela a página quando a pessoa troca de
- * aplicativo — então, justamente quando ela estava "mexendo em outra
- * coisa", o aviso nunca saía e o cronômetro parava sem perguntar.
- *
- * A batida de minuto em minuto pega o que vence no próximo minuto e
- * espera o instante exato antes de mandar. A pergunta só vale por um
- * minuto (PRESENCA_ESPERA_MS, no base.jsx): mandar depois disso seria
- * perguntar o que já foi decidido, então o atrasado é descartado.
- */
-export const JANELA_AGENDADO_MS = 60 * 1000;
-export const MAX_ANTECEDENCIA_MS = 4 * 60 * 60 * 1000;
-
-/* "esperar": ainda não é a vez desta batida. "enviar": vence até o fim
-   do próximo minuto. "vencido": a pergunta já expirou, apagar e calar. */
-export function situacaoDoAgendado(ag, agora) {
-  const quando = Number(ag && ag.quando) || 0;
-  if (!quando) return "vencido";
-  if (agora >= quando + JANELA_AGENDADO_MS) return "vencido";
-  if (quando > agora + JANELA_AGENDADO_MS) return "esperar";
-  return "enviar";
-}
-
-/* O instante pedido pela página vale se estiver entre agora e daqui a
-   quatro horas: nada no passado, nada que vire lixo esquecido no banco. */
-export function quandoValido(quando, agora) {
-  const q = Number(quando);
-  return Number.isFinite(q) && q > agora - JANELA_AGENDADO_MS && q <= agora + MAX_ANTECEDENCIA_MS;
-}
-
 /* O endereço do aparelho vira o nome do documento: assinar de novo no
    mesmo aparelho substitui o registro em vez de criar um segundo, que
    mandaria a notificação duas vezes. */

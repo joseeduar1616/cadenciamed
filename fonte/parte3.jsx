@@ -1489,31 +1489,15 @@ function usePomodoro({ pomo, onFocusDone, notify, pronto }) {
   const [rest, setRest] = useState(typeof S.rest === "number" ? S.rest : pomo.focus * 60);
   const [swInicio, setSwInicio] = useState(S.swInicio || 0);
   const [swAcum, setSwAcum] = useState(S.swAcum || 0);
-  /* O último sinal de vida com o cronômetro correndo — ver "você está
-     aí?", no base.jsx. Quem já estava com o cronômetro correndo antes desta
-     regra existir começa a contar de agora, sem ser punido por ela. */
-  const [presencaDesde, setPresencaDesde] = useState(() => {
-    const base = S.presencaDesde || (S.running ? Date.now() : 0);
-    /* "Estou aqui" tocado no aviso do sistema com a página já descartada:
-       o site reabre com a hora da resposta. Se ela veio antes de a
-       pergunta expirar, é sinal de vida — e o efeito de reabertura, que
-       lê o guardado, tem de ver o mesmo. */
-    const resposta = respostaDePresencaNaUrl();
-    if (S.running && base && resposta && estadoDaPresenca(base, resposta).fase !== "sumiu") {
-      S.presencaDesde = resposta;
-      return resposta;
-    }
-    return base;
-  });
   const [, force] = useState(0);
   const cfg = useRef(pomo);
   cfg.current = pomo;
   const durAnterior = useRef(false);
   const avisado = useRef(false);
-  /* A reabertura já parou o cronômetro (bloco vencido ou pergunta sem
-     resposta com o site fechado): o efeito do "você está aí?" não pode
-     decidir de novo sobre o mesmo bloco e registrá-lo duas vezes. */
-  const paradoNaAbertura = useRef(false);
+  /* A reabertura já fechou o bloco vencido com o site fechado: o avanço
+     automático, logo abaixo, não pode fechar o mesmo bloco de novo e
+     registrá-lo duas vezes. Volta a valer quando a pessoa começa outro. */
+  const fechouNaAbertura = useRef(false);
 
   const modo = pomo.modo === "corrido" ? "corrido" : "pomodoro";
   const durOf = useCallback((ph) => {
@@ -1524,11 +1508,10 @@ function usePomodoro({ pomo, onFocusDone, notify, pronto }) {
   const left = running ? Math.max(0, Math.round((endsAt - Date.now()) / 1000)) : rest;
   const total = durOf(phase);
   const corrido = running ? swAcum + Math.max(0, Math.round((Date.now() - swInicio) / 1000)) : swAcum;
-  const presenca = running ? estadoDaPresenca(presencaDesde, Date.now()) : PRESENCA_OK;
 
   useEffect(() => {
-    gravarTimer({ modo, phase, round, running, endsAt, rest, swInicio, swAcum, presencaDesde, em: Date.now() });
-  }, [modo, phase, round, running, endsAt, rest, swInicio, swAcum, presencaDesde]);
+    gravarTimer({ modo, phase, round, running, endsAt, rest, swInicio, swAcum, em: Date.now() });
+  }, [modo, phase, round, running, endsAt, rest, swInicio, swAcum]);
 
   useEffect(() => {
     if (!running) return undefined;
@@ -1548,10 +1531,7 @@ function usePomodoro({ pomo, onFocusDone, notify, pronto }) {
   }, [pronto, pomo.focus, pomo.short, pomo.long]); // eslint-disable-line
 
   const setRunning = useCallback((v) => {
-    /* começar ou retomar é sinal de vida; pausar desliga a pergunta */
-    setPresencaDesde(v ? Date.now() : 0);
-    if (v) paradoNaAbertura.current = false;
-    fecharAvisoPresenca();
+    if (v) fechouNaAbertura.current = false;
     if (modo === "corrido") {
       if (v) { setSwInicio(Date.now()); setRunningRaw(true); }
       else {
@@ -1613,19 +1593,7 @@ function usePomodoro({ pomo, onFocusDone, notify, pronto }) {
     const s = guardado.current;
     if (!s || !s.running || !s.endsAt || Date.now() < s.endsAt) { avisado.current = true; return; }
     avisado.current = true;
-    /* A pergunta "aconteceu" com o site fechado antes de o bloco acabar e
-       ninguém respondeu: o bloco não foi estudado até o fim. Para no
-       instante da pergunta, com o que faltava, e não registra nada. */
-    const sumiu = estadoDaPresenca(s.presencaDesde, Date.now());
-    if (sumiu.fase === "sumiu" && sumiu.perguntaEm < s.endsAt) {
-      setRest(restoAtePresenca(s.endsAt, sumiu.perguntaEm, durOf(s.phase)));
-      setRunningRaw(false);
-      setPresencaDesde(0);
-      paradoNaAbertura.current = true;
-      notify("O cronômetro parou com o site fechado: ninguém respondeu \"Você está aí?\".");
-      return;
-    }
-    paradoNaAbertura.current = true;
+    fechouNaAbertura.current = true;
     const atraso = Math.round((Date.now() - s.endsAt) / 60000);
     if (s.phase === "foco") {
       const longa = round % cfg.current.cycle === 0;
@@ -1640,51 +1608,14 @@ function usePomodoro({ pomo, onFocusDone, notify, pronto }) {
     }
   }, [pronto, modo, durOf, onFocusDone, notify, round]);
 
-  /* Com a pergunta na tela, a fase não vira sozinha: se ninguém responder,
-     o bloco não terminou de verdade (ver o efeito logo abaixo). */
+  /* Fim da fase com o site aberto: vira sozinha. Espera a reabertura
+     (avisado) decidir antes, para não decidirem os dois sobre o mesmo
+     bloco. */
   useEffect(() => {
-    if (modo === "corrido") return;
-    if (running && left <= 0 && presenca.fase === "ok") advance(true);
-  }, [modo, running, left, advance, presenca.fase]);
+    if (modo === "corrido" || !pronto || !avisado.current || fechouNaAbertura.current) return;
+    if (running && left <= 0) advance(true);
+  }, [modo, running, left, advance, pronto]);
 
-  /* "Você está aí?" — a pergunta, e o que acontece sem resposta.
-     Espera o efeito de reabertura (avisado) para não decidirem os dois a
-     mesma coisa sobre o mesmo bloco. */
-  const perguntou = useRef(false);
-  useEffect(() => {
-    if (!running || presenca.fase === "ok") { perguntou.current = false; return; }
-    if (presenca.fase === "perguntando") {
-      if (perguntou.current) return;
-      perguntou.current = true;
-      if (cfg.current.sound) beep(2);
-      avisarPresenca("O cronômetro do Foco para em 1 minuto se ninguém responder.");
-      return;
-    }
-    if (!pronto || !avisado.current) return;
-    if (paradoNaAbertura.current) { paradoNaAbertura.current = false; return; }
-    /* sumiu */
-    const t = presenca.perguntaEm;
-    fecharAvisoPresenca();
-    setPresencaDesde(0);
-    if (modo === "corrido") {
-      setSwAcum((a) => corridoAtePresenca(a, swInicio, t));
-      setRunningRaw(false);
-    } else if (endsAt <= t) {
-      /* a fase acabou ANTES da pergunta (aba em segundo plano, com o timer
-         segurado): ela conta, e o cronômetro para na seguinte */
-      advance(false);
-    } else {
-      setRest(restoAtePresenca(endsAt, t, durOf(phase)));
-      setRunningRaw(false);
-    }
-    notify("Parei o cronômetro: ninguém respondeu \"Você está aí?\". Contou até a pergunta.");
-  }, [running, presenca.fase, pronto]); // eslint-disable-line
-
-  const confirmarPresenca = useCallback(() => {
-    if (running) setPresencaDesde(Date.now());
-    fecharAvisoPresenca();
-  }, [running]);
-  useOuvirAvisoPresenca(confirmarPresenca);
 
   const reset = useCallback(() => {
     if (modo === "corrido") { setRunningRaw(false); setSwAcum(0); setSwInicio(0); return; }
@@ -1695,7 +1626,6 @@ function usePomodoro({ pomo, onFocusDone, notify, pronto }) {
   return {
     modo, phase, left, running, round, total, corrido,
     setRunning, advance, reset, jumpTo, encerrarCorrido,
-    presenca, confirmarPresenca,
   };
 }
 

@@ -228,7 +228,7 @@ function Cronometro({ estilo, pct, color, name, relogio, corrido, cycle, round, 
   return <Ring pct={pct} color={color}>{rotulo}{digitos}{status}</Ring>;
 }
 
-function Foco({ data, setData, today, P, subjectId, setSubjectId, avisoPresencaFora }) {
+function Foco({ data, setData, today, P, subjectId, setSubjectId }) {
   const [cfg, setCfg] = useState(false);
   const [full, setFull] = useState(false);
   const pref = useRef(P);
@@ -395,19 +395,6 @@ function Foco({ data, setData, today, P, subjectId, setSubjectId, avisoPresencaF
               espaço inicia e pausa · F abre a tela cheia
               {corrido ? " · o tempo corre mesmo com o site fechado" : ""}
             </Mini>
-            {/* Se o "Você está aí?" vai chegar com a pessoa em outro app:
-                sem isso, o cronômetro para sem ela ter visto pergunta. */}
-            {avisoPresencaFora === "servidor" ? (
-              <Mini style={{ marginTop: 8, color: T.ok }} data-teste="aviso-presenca-fora">
-                aos 30 min, o "Você está aí?" chega como notificação mesmo se você estiver em outro aplicativo
-              </Mini>
-            ) : avisoPresencaFora === "sem-conta" || avisoPresencaFora === "sem-assinatura" ? (
-              <Mini style={{ marginTop: 8, color: T.warn, lineHeight: 1.6 }} data-teste="aviso-presenca-fora">
-                {avisoPresencaFora === "sem-conta"
-                  ? "Entre na sua conta para o \"Você está aí?\" chegar quando você estiver em outro aplicativo."
-                  : "Para o \"Você está aí?\" chegar quando você estiver em outro aplicativo, ligue os lembretes em Configurações (no iPhone, com o site instalado na tela de início)."}
-              </Mini>
-            ) : null}
           </div>
         </div>
 

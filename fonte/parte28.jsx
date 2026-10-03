@@ -12,9 +12,6 @@
    Igual ao Foco também no resto:
    · o estado mora no aparelho em instantes absolutos, então o tempo corre
      com o site fechado e continua certo ao voltar;
-   · aos 30 minutos sem sinal de vida vem o "Você está aí?" (na tela, e
-     pelo servidor quando o celular está em outro aplicativo); sem
-     resposta em um minuto, conta só até a pergunta;
    · um cronômetro de cada vez: iniciar um bloco pausa o Foco, e iniciar
      outro bloco encerra (registrando) o anterior.
    ═══════════════════════════════════════════════════════════════════ */
@@ -47,14 +44,7 @@ function fmtRelogioBloco(seg) {
 /* registrar(min, bloco): grava a sessão (mora no App, junto do Foco).
    pausarFoco(): para o pomodoro, se estiver correndo. */
 function useBlocoEmAndamento({ setData, notify, registrar, pausarFoco }) {
-  const [ativo, setAtivoRaw] = useState(() => {
-    const a = lerBlocoAtivo();
-    if (!a) return null;
-    /* Mesma regra do Foco: "Estou aqui" tocado no aviso com a página já
-       descartada reabre o site com a hora da resposta. */
-    const r = respostaDePresencaNaUrl();
-    return r && estadoDaPresenca(a.presencaDesde, r).fase !== "sumiu" ? { ...a, presencaDesde: r } : a;
-  });
+  const [ativo, setAtivoRaw] = useState(lerBlocoAtivo);
   const ref = useRef(ativo);
   const setAtivo = (v) => { ref.current = v; gravarBlocoAtivo(v); setAtivoRaw(v); };
   const [, tique] = useState(0);
@@ -65,16 +55,13 @@ function useBlocoEmAndamento({ setData, notify, registrar, pausarFoco }) {
   }, [ativo]);
 
   const agora = Date.now();
-  const presenca = ativo ? estadoDaPresenca(ativo.presencaDesde, agora) : PRESENCA_OK;
-  const segundos = ativo
-    ? Math.max(0, ((presenca.fase === "sumiu" ? presenca.perguntaEm : agora) - ativo.inicio) / 1000) : 0;
+  const segundos = ativo ? Math.max(0, (agora - ativo.inicio) / 1000) : 0;
 
-  const encerrar = useCallback((concluir, ate) => {
+  const encerrar = useCallback((concluir) => {
     const a = ref.current;
     if (!a) return;
-    const min = Math.round(((ate || Date.now()) - a.inicio) / 60000);
+    const min = Math.round((Date.now() - a.inicio) / 60000);
     setAtivo(null);
-    fecharAvisoPresenca();
     if (concluir) {
       setData((p) => ({ ...p, blocos: { ...(p.blocos || {}), [`${a.id}|${a.date}`]: Date.now() } }));
     }
@@ -96,33 +83,11 @@ function useBlocoEmAndamento({ setData, notify, registrar, pausarFoco }) {
     setAtivo({
       id: b.id, date: iso, label: b.label, type: b.type,
       planejado: Math.max(0, toMin(b.end) - toMin(b.start)),
-      inicio: t, presencaDesde: t,
+      inicio: t,
     });
   }, [encerrar, pausarFoco]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const estouAqui = useCallback(() => {
-    const a = ref.current;
-    if (!a) return;
-    setAtivo({ ...a, presencaDesde: Date.now() });
-    fecharAvisoPresenca();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  useOuvirAvisoPresenca(estouAqui);
-
-  /* "Você está aí?" — a pergunta e o que acontece sem resposta. */
-  const perguntou = useRef(false);
-  useEffect(() => {
-    if (!ativo || presenca.fase === "ok") { perguntou.current = false; return; }
-    if (presenca.fase === "perguntando") {
-      if (perguntou.current) return;
-      perguntou.current = true;
-      avisarPresenca(`O bloco "${ativo.label}" para em 1 minuto se ninguém responder.`);
-      return;
-    }
-    encerrar(false, presenca.perguntaEm);
-    notify("Parei o bloco: ninguém respondeu \"Você está aí?\". Contou até a pergunta.");
-  }, [ativo, presenca.fase]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  return { ativo, segundos, presenca, iniciar, encerrar, estouAqui };
+  return { ativo, segundos, iniciar, encerrar };
 }
 
 /* O botão, onde quer que o bloco apareça. Só para hoje: começar agora o

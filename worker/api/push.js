@@ -30,7 +30,6 @@ import {
 import {
   gerarChavesVapid, publicaDaPrivada, autorizacaoVapid, cifrarParaAparelho,
   deveEnviar, horaLocal, horaUtcDe, idDoAparelho, endpointValido,
-  situacaoDoAgendado, quandoValido, JANELA_AGENDADO_MS,
 } from "./_push.js";
 
 /* Quem assina as entregas, para o servidor de push ter a quem reclamar se
@@ -232,71 +231,6 @@ export async function enviarRodada(env, agora = Date.now()) {
   return { ok: true, candidatos: fila.length, enviados, mortos, falhas };
 }
 
-/* ── os avisos com hora marcada ───────────────────────────────────────
- *
- * Um documento por pessoa e por origem ("foco"), em avisosAgendados.
- * Coleção comum, e não subcoleção: a consulta "vence até daqui a um
- * minuto" usa o índice automático do campo, sem índice de grupo para
- * criar à mão. Remarcar substitui o mesmo documento.
- */
-const ORIGENS_AGENDADAS = ["foco"];
-const enderecoAgendado = (uid, origem) =>
-  `${BASE_FIRESTORE}/avisosAgendados/${encodeURIComponent(`${uid}_${origem}`)}`;
-const MAX_AGENDADOS_POR_BATIDA = 100;
-const esperarAte = (t) => new Promise((ok) => setTimeout(ok, Math.max(0, Math.min(JANELA_AGENDADO_MS, t - Date.now()))));
-
-export async function enviarAgendados(env, agora = Date.now(), { esperar = esperarAte } = {}) {
-  const conta = contaDeServico(env);
-  if (!conta) return { erro: "sem conta de serviço" };
-  const token = await tokenDeAcesso(conta);
-
-  const r = await fetch(`${BASE_FIRESTORE}:runQuery`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      structuredQuery: {
-        from: [{ collectionId: "avisosAgendados" }],
-        where: {
-          fieldFilter: {
-            field: { fieldPath: "quando" },
-            op: "LESS_THAN_OR_EQUAL",
-            value: { doubleValue: agora + JANELA_AGENDADO_MS },
-          },
-        },
-        limit: MAX_AGENDADOS_POR_BATIDA,
-      },
-    }),
-  });
-  if (!r.ok) return { erro: "não consegui listar os avisos marcados" };
-  const linhas = await r.json().catch(() => []);
-  const docs = (Array.isArray(linhas) ? linhas : []).map((l) => l && l.document).filter(Boolean);
-  if (!docs.length) return { ok: true, enviados: 0, vencidos: 0 };
-
-  const { privada } = await chavesDoSite(token);
-  let enviados = 0, vencidos = 0;
-  await Promise.all(docs.map(async (d) => {
-    const f = d.fields || {};
-    const ag = { uid: texto(f.uid), quando: numero(f.quando), corpo: texto(f.corpo), titulo: texto(f.titulo) };
-    /* Apaga ANTES de mandar: duas batidas que se cruzem não mandam o
-       mesmo aviso duas vezes. Perder um aviso numa falha é melhor do que
-       repetir uma pergunta que já foi respondida. */
-    await apagarDoc(token, `https://firestore.googleapis.com/v1/${d.name}`);
-    if (situacaoDoAgendado(ag, agora) !== "enviar" || !ag.uid) { vencidos += 1; return; }
-    await esperar(ag.quando);
-    for (const ap of await aparelhosDaPessoa(token, ag.uid)) {
-      const res = await entregar(privada, ap, {
-        titulo: ag.titulo || "Você está aí?",
-        corpo: ag.corpo,
-        etiqueta: "presenca",
-        tipo: "presenca",
-      }, { ttl: 60, urgencia: "high" });
-      if (res.morto) await apagarDoc(token, `https://firestore.googleapis.com/v1/${ap.nome}`);
-      if (res.ok) enviados += 1;
-    }
-  }));
-  return { ok: true, enviados, vencidos };
-}
-
 /* ── a rota ───────────────────────────────────────────────────────────── */
 export async function onRequest({ request, env }) {
   if (request.method !== "POST") return json({ erro: "Método não permitido." }, 405);
@@ -393,26 +327,6 @@ export async function onRequest({ request, env }) {
       await gravarDoc(servico, `https://firestore.googleapis.com/v1/${ap.nome}`, campos, apenas);
     }
     return json({ ok: true, aparelhos: aparelhos.length });
-  }
-
-  /* Marcar (ou remarcar) o "Você está aí?" para um instante. A página
-     manda a cada sinal de vida no cronômetro; pausar ou parar cancela. */
-  if (acao === "agendar" || acao === "cancelar") {
-    const origem = String(corpo.origem || "");
-    if (ORIGENS_AGENDADAS.indexOf(origem) < 0) return json({ erro: "Origem desconhecida." }, 400);
-    const url = enderecoAgendado(uid, origem);
-    if (acao === "cancelar") { await apagarDoc(servico, url); return json({ ok: true }); }
-    const quando = Number(corpo.quando);
-    if (!quandoValido(quando, Date.now())) return json({ erro: "Horário fora do intervalo aceito." }, 400);
-    const gravou = await gravarDoc(servico, url, {
-      uid: { stringValue: uid },
-      origem: { stringValue: origem },
-      quando: { doubleValue: quando },
-      titulo: { stringValue: String(corpo.titulo || "Você está aí?").trim().slice(0, MAX_TITULO) },
-      corpo: { stringValue: String(corpo.corpo || "").trim().slice(0, MAX_RESUMO) },
-    });
-    if (!gravou) return json({ erro: "Não consegui marcar o aviso." }, 502);
-    return json({ ok: true });
   }
 
   if (acao === "estado") {

@@ -648,66 +648,6 @@ function usePushDoDia({ nuvem, ligado, hora, atrasadas, cartoes, blocos }) {
   }, [nuvem, ligado, hora]);
 }
 
-/* ── o "Você está aí?" do Foco, pelo servidor ─────────────────────────
- *
- * A pergunta da página só sai se a página estiver viva. No celular, trocar
- * de aplicativo congela a aba em poucos minutos, e aos trinta ela não roda:
- * o aviso não aparecia e o cronômetro parava sem perguntar. Então, a cada
- * sinal de vida, a página marca no servidor o instante da pergunta, e o
- * servidor manda o push na hora (worker/api/push.js, enviarAgendados).
- * Pausar ou parar desmarca.
- *
- * Devolve se o aviso está chegando por fora ("servidor"), se falta algo
- * ("sem-conta", "sem-assinatura") ou nada a dizer (null, parado). */
-function useAvisoPresencaNoServidor({ nuvem, perguntaEm, corpo }) {
-  const [situacao, setSituacao] = useState(null);
-  const marcado = useRef(0);
-  useEffect(() => {
-    let vivo = true;
-    const t = window.setTimeout(async () => {
-      if (!temPush()) { if (vivo) setSituacao(perguntaEm ? "sem-assinatura" : null); return; }
-      const logado = !!(nuvem && nuvem.sdk && nuvem.sdk.auth && nuvem.sdk.auth.currentUser);
-      if (!perguntaEm) {
-        if (marcado.current && logado) {
-          marcado.current = 0;
-          await falarComPush(nuvem, { acao: "cancelar", origem: "foco" });
-        }
-        if (vivo) setSituacao(null);
-        return;
-      }
-      if (!logado) { if (vivo) setSituacao("sem-conta"); return; }
-      if (!(await assinaturaAtual())) { if (vivo) setSituacao("sem-assinatura"); return; }
-      if (marcado.current === perguntaEm) { if (vivo) setSituacao("servidor"); return; }
-      const r = await falarComPush(nuvem, { acao: "agendar", origem: "foco", quando: perguntaEm, corpo });
-      if (!r.erro) marcado.current = perguntaEm;
-      if (vivo) setSituacao(r.erro ? "sem-assinatura" : "servidor");
-    }, 800);
-    return () => { vivo = false; window.clearTimeout(t); };
-  }, [nuvem, perguntaEm, corpo]);
-  return situacao;
-}
-
-/* Tocar em "Estou aqui" com a página já descartada pelo celular abre o
-   site com ?presenca=<instante>. Lido uma vez só e tirado da barra. */
-let respostaPresencaLida = null;
-function respostaDePresencaNaUrl() {
-  /* lida uma vez e guardada: o Foco e o bloco em andamento perguntam os
-     dois, e o segundo acharia a barra já limpa */
-  if (respostaPresencaLida !== null) return respostaPresencaLida;
-  respostaPresencaLida = lerRespostaDePresencaNaUrl();
-  return respostaPresencaLida;
-}
-function lerRespostaDePresencaNaUrl() {
-  try {
-    const u = new URL(window.location.href);
-    const v = Number(u.searchParams.get("presenca"));
-    if (!u.searchParams.has("presenca")) return 0;
-    u.searchParams.delete("presenca");
-    window.history.replaceState(null, "", u.pathname + (u.search || "") + u.hash);
-    return Number.isFinite(v) && v > 0 && v <= Date.now() + 5000 ? v : 0;
-  } catch (e) { return 0; }
-}
-
 /* ── instalar o aplicativo ────────────────────────────────────────────
  *
  * Não existe aplicativo na Play Store nem na App Store, e dizer que existe
@@ -827,113 +767,6 @@ async function avisar(titulo, corpo, marca) {
   } catch (e) {
     return false;
   }
-}
-
-/* ── "você está aí?": o aviso do sistema e a pergunta na tela ──────────
- *
- * A regra mora no base.jsx (estadoDaPresenca); aqui fica só o que aparece.
- *
- * Com a aba à vista, basta a pergunta na tela. Com a pessoa em outra aba
- * ou outro programa, a pergunta na tela não seria vista — e o minuto
- * passaria sem chance de resposta. Por isso, fora de vista, sai também um
- * aviso do sistema, com o botão "Estou aqui". Tocar nele responde, sem
- * recarregar nada: o service worker só traz a aba para frente e manda o
- * recado (ver sw.js, "presenca-ok").
- */
-const MARCA_AVISO_PRESENCA = "presenca";
-const EVENTO_PRESENCA_OK = "cadencia:presenca-ok";
-
-async function avisarPresenca(corpo) {
-  try {
-    if (!podeNotificar() || Notification.permission !== "granted") return false;
-    if (document.visibilityState === "visible" && document.hasFocus()) return false;
-    const reg = navigator.serviceWorker ? await navigator.serviceWorker.getRegistration() : null;
-    if (!reg || !reg.showNotification) return false;
-    await reg.showNotification("Você está aí?", {
-      body: corpo,
-      icon: "/icone-192.png",
-      badge: "/icone-192.png",
-      tag: MARCA_AVISO_PRESENCA,
-      renotify: true,
-      requireInteraction: true,
-      data: { tipo: "presenca" },
-      actions: [{ action: "estou-aqui", title: "Estou aqui" }],
-    });
-    return true;
-  } catch (e) { return false; }
-}
-
-async function fecharAvisoPresenca() {
-  try {
-    const reg = navigator.serviceWorker ? await navigator.serviceWorker.getRegistration() : null;
-    if (!reg || !reg.getNotifications) return;
-    const avisos = await reg.getNotifications({ tag: MARCA_AVISO_PRESENCA });
-    avisos.forEach((n) => n.close());
-  } catch (e) { /* noop */ }
-}
-
-/* O recado do service worker vira um evento da janela, para quem quer que
-   esteja perguntando (o Foco, os cartões) responder por conta própria. */
-let presencaOuvindoSw = false;
-function ligarRecadoDePresenca() {
-  if (presencaOuvindoSw) return;
-  presencaOuvindoSw = true;
-  try {
-    if (!navigator.serviceWorker) return;
-    navigator.serviceWorker.addEventListener("message", (e) => {
-      if (e && e.data && e.data.tipo === "presenca-ok") {
-        window.dispatchEvent(new Event(EVENTO_PRESENCA_OK));
-      }
-    });
-  } catch (e) { /* noop */ }
-}
-
-function useOuvirAvisoPresenca(aoResponder) {
-  const ref = useRef(aoResponder);
-  ref.current = aoResponder;
-  useEffect(() => {
-    ligarRecadoDePresenca();
-    const h = () => ref.current && ref.current();
-    window.addEventListener(EVENTO_PRESENCA_OK, h);
-    return () => window.removeEventListener(EVENTO_PRESENCA_OK, h);
-  }, []);
-}
-
-/* A pergunta na tela. O minuto aparece descendo, em número e em barra,
-   para ninguém achar que o site travou. Enter ou espaço também respondem:
-   o botão recebe o foco assim que a pergunta aparece. */
-function PerguntaPresenca({ restaMs, oQue, aoConfirmar }) {
-  const caixa = useRef(null);
-  useEffect(() => {
-    const b = caixa.current && caixa.current.querySelector("button");
-    if (b) b.focus();
-  }, []);
-  const seg = Math.max(0, Math.ceil((Number(restaMs) || 0) / 1000));
-  const fracao = Math.max(0, Math.min(1, (Number(restaMs) || 0) / PRESENCA_ESPERA_MS));
-  return (
-    <div role="alertdialog" aria-modal="true" aria-labelledby="pergunta-presenca-titulo"
-      style={{
-        position: "fixed", inset: 0, zIndex: 95, display: "flex", alignItems: "center", justifyContent: "center",
-        padding: 16, background: "rgba(0,0,0,.45)",
-      }}>
-      <div style={{
-        width: "100%", maxWidth: 380, background: T.card, border: `1px solid ${soft("var(--neon)", 40)}`,
-        borderRadius: 22, padding: "26px 22px 22px", boxShadow: T.shadow, textAlign: "center",
-      }}>
-        <div id="pergunta-presenca-titulo" style={{ fontSize: 24, fontWeight: 700, color: T.ink }}>Você está aí?</div>
-        <Mini style={{ marginTop: 10, lineHeight: 1.6 }}>
-          Sem resposta, {oQue} para em <b style={{ fontFamily: F_MONO, color: T.ink }}>{seg}s</b> — e
-          conta só até agora.
-        </Mini>
-        <div style={{ marginTop: 14, height: 6, borderRadius: 99, background: T.card3, overflow: "hidden" }}>
-          <div style={{ width: `${fracao * 100}%`, height: "100%", background: "var(--neon)", transition: "width .25s linear" }} />
-        </div>
-        <div ref={caixa} style={{ marginTop: 18, display: "flex", justifyContent: "center" }}>
-          <Btn tone="primary" onClick={aoConfirmar}>Estou aqui</Btn>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 /* Roda com o site aberto e avisa uma vez por coisa por dia.
@@ -1059,8 +892,7 @@ function ConviteLembrete({ data, setData, notify, quantas }) {
  *
  * Aparece UMA vez por aparelho (a marca fica no próprio aparelho, e não na
  * conta: o celular novo precisa perguntar mesmo que o computador já tenha
- * ligado). Sem notificação, o "Você está aí?" do Foco só é visto com o
- * site na frente, e os lembretes não chegam.
+ * ligado). Sem notificação, os lembretes não chegam.
  *
  * O pedido de permissão só sai do clique no botão: pedido sem clique é
  * bloqueado pelos navegadores, e quem nega de primeira não é perguntado
@@ -1177,7 +1009,6 @@ function ConviteNotificacoesAparelho({ data, setData, nuvem, notify }) {
             <ul style={{ margin: "8px 0 0", paddingLeft: 20, fontSize: 14.5, lineHeight: 1.75, color: T.dim }}>
               <li>das revisões que vencem no dia;</li>
               <li>do bloco da agenda que vai começar;</li>
-              <li>do <b>"Você está aí?"</b> do Foco, mesmo com você em outra aba;</li>
               <li>de quando alguém chamar você para um duelo.</li>
             </ul>
             <div className="mt-5 flex items-center justify-end gap-2 flex-wrap">

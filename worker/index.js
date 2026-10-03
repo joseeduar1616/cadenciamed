@@ -28,7 +28,7 @@ import { onRequest as duplas } from "./api/duplas.js";
 import { onRequest as questoesIa } from "./api/questoes-ia.js";
 import { onRequest as provasIa } from "./api/provas-ia.js";
 import { onRequest as provas } from "./api/provas.js";
-import { onRequest as push, enviarRodada, enviarAgendados } from "./api/push.js";
+import { onRequest as push, enviarRodada } from "./api/push.js";
 import { onRequest as conversas } from "./api/conversas.js";
 import { onRequest as aulaIa } from "./api/aula-ia.js";
 import { onRequest as folhaIa } from "./api/folha-ia.js";
@@ -159,19 +159,6 @@ export default {
    * às três da tarde um lembrete de manhã.
    */
   async scheduled(evento, env, ctx) {
-    /* A batida de minuto em minuto é a do "Você está aí?" do Foco, que
-       tem hora exata (ver enviarAgendados, em api/push.js). */
-    if (evento.cron === "* * * * *") {
-      ctx.waitUntil((async () => {
-        try {
-          const r = await enviarAgendados(env, evento.scheduledTime || Date.now());
-          if (r.erro || r.enviados || r.vencidos) console.log("agendados", JSON.stringify(r));
-        } catch (e) {
-          console.error("agendados falharam", e && e.stack);
-        }
-      })());
-      return;
-    }
     ctx.waitUntil((async () => {
       try {
         const r = await enviarRodada(env, evento.scheduledTime || Date.now());

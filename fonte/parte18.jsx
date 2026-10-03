@@ -340,32 +340,6 @@ function Desempenho({ data, today, addSession, delSession, notify }) {
 
 /* ── configurações ───────────────────────────────────────────────────── */
 
-/* O layout saiu do rodapé e veio para cá. No rodapé ele ficava longe de
-   tudo que é ajuste, e quem procurava configuração não olhava lá embaixo. */
-function EscolhaLayout({ data, setData }) {
-  return (
-    <Card className="px-6 py-6">
-      <H size={18} color="var(--a-PE)" icon={<Smartphone size={16} />}>Formato da tela</H>
-      <Texto style={{ marginTop: 10 }}>
-        No automático o site se ajusta ao tamanho do aparelho. Em celular ele
-        usa o layout estreito mesmo numa tela grande, que é útil para quem
-        prefere a coluna única.
-      </Texto>
-      <div className="mt-5 flex items-center gap-2 rounded-full p-1" style={{ background: T.card2, border: `1px solid ${T.line}`, width: "fit-content" }}>
-        {[["auto", "Automático", <Monitor size={14} key="d" />], ["movel", "Celular", <Smartphone size={14} key="m" />]].map(([id, lb, ic]) => (
-          <button key={id} type="button" onClick={() => setData((p) => ({ ...p, layout: id }))}
-            className="inline-flex items-center gap-2 rounded-full px-4 py-2"
-            style={{
-              background: data.layout === id ? T.card3 : "transparent", border: "none",
-              color: data.layout === id ? T.ink : T.dim, fontSize: 14,
-              fontWeight: data.layout === id ? 700 : 500, cursor: "pointer",
-            }}>{ic} {lb}</button>
-        ))}
-      </div>
-    </Card>
-  );
-}
-
 function MetasDoEstudo({ data, setData }) {
   const metas = data.goals || DEFAULTS.goals;
   const mudar = (k, v) => setData((p) => ({
@@ -727,7 +701,6 @@ function Configuracoes({ data, setData, today, notify, nuvem, pro, aoLiberar, ir
       <BaixarApp notify={notify} />
       <Lembretes data={data} setData={setData} notify={notify} nuvem={nuvem} />
       <Aparencia data={data} setData={setData} />
-      <EscolhaLayout data={data} setData={setData} />
       <MetasDoEstudo data={data} setData={setData} />
 
       {/* O esquema de revisão e as conexões têm tela própria, com o

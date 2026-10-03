@@ -114,29 +114,6 @@ self.addEventListener("push", (e) => {
   const titulo = String(aviso.titulo || "Cadência Med").slice(0, 80);
   const corpo = String(aviso.corpo || "Você tem estudo marcado para hoje.").slice(0, 240);
 
-  /* "Você está aí?" do Foco, mandado pelo servidor na hora exata. Com o
-     site aberto e à frente, a própria página já pergunta: o aviso do
-     sistema seria repetido (e o navegador permite não mostrar quando a
-     página está em foco). Fora disso, aviso com o botão "Estou aqui". */
-  if (aviso.tipo === "presenca") {
-    e.waitUntil((async () => {
-      const abas = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-      if (abas.some((a) => a.visibilityState === "visible" && a.focused)) return;
-      await self.registration.showNotification(titulo, {
-        body: corpo,
-        icon: "/icone-192.png",
-        badge: "/icone-192.png",
-        lang: "pt-BR",
-        tag: "presenca",
-        renotify: true,
-        requireInteraction: true,
-        data: { tipo: "presenca" },
-        actions: [{ action: "estou-aqui", title: "Estou aqui" }],
-      });
-    })());
-    return;
-  }
-
   e.waitUntil(self.registration.showNotification(titulo, {
     body: corpo,
     icon: "/icone-192.png",
@@ -155,23 +132,6 @@ self.addEventListener("push", (e) => {
    pessoa estava fazendo na primeira. */
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
-  /* "Você está aí?": tocar no aviso (ou no botão "Estou aqui") É a
-     resposta. Traz a aba para frente e manda o recado, sem navegar: um
-     navigate recarregaria a página no meio do estudo. */
-  if (e.notification.data && e.notification.data.tipo === "presenca") {
-    e.waitUntil((async () => {
-      const abas = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-      const nossas = abas.filter((a) => new URL(a.url).origin === self.location.origin);
-      const em = Date.now();
-      nossas.forEach((a) => a.postMessage({ tipo: "presenca-ok", em }));
-      if (nossas.length) await nossas[0].focus().catch(() => {});
-      /* Sem aba viva (o celular descartou a página), abre o site levando
-         a hora da resposta: a página, ao abrir, conta como sinal de vida
-         em vez de achar que ninguém respondeu. */
-      else await self.clients.openWindow(`/?presenca=${em}`);
-    })());
-    return;
-  }
   const destino = new URL((e.notification.data && e.notification.data.url) || "/", self.location.origin);
   e.waitUntil((async () => {
     const abas = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
