@@ -1509,9 +1509,8 @@ const CAPITULOS = [
   {
     id: "cronograma", rotulo: "Cronograma", cor: "var(--a-GO)", x: "78%",
     titulo: "O cronograma inteiro, num lugar só.",
-    texto: `As ${CURRICULUM.length} aulas principais e ${TOTAL_BONUS} tópicos, divididos pelas cinco áreas da prova. Você marca o que fez, e o radar mostra onde está atrasado. Sem planilha, sem caderno de controle e sem montar cronograma do zero.`,
+    texto: `Todas as aulas e tópicos, divididos pelas cinco áreas da prova. Você marca o que fez, e o radar mostra onde está atrasado. Sem planilha, sem caderno de controle e sem montar cronograma do zero.`,
     figura: <FiguraGrade />,
-    numeros: [[String(CURRICULUM.length), "aulas"], [String(TOTAL_BONUS), "tópicos"], ["5", "áreas"]],
   },
   {
     id: "revisao", rotulo: "Revisão", cor: "var(--ok)", x: "74%",
@@ -1771,7 +1770,6 @@ function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar }) {
               <p className="pe-rev pe-p" data-rev style={{ transitionDelay: ".14s" }}>
                 O cronograma inteiro, a revisão que volta na hora certa e os seus
                 flashcards, no mesmo lugar, no computador e no celular.
-                {" "}{CURRICULUM.length} aulas e {TOTAL_BONUS} tópicos já prontos para marcar.
               </p>
               <div className="pe-rev mt-8 flex gap-3 flex-wrap" data-rev style={{ transitionDelay: ".2s" }}>
                 <button type="button" className="pe-cta pe-cheio" onClick={() => irPara("conta")}>
@@ -1784,13 +1782,13 @@ function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar }) {
               </div>
               <p className="pe-rev" data-rev data-teste="entrada-teste-gratis"
                 style={{ marginTop: 12, fontSize: 13.5, color: T.faint, transitionDelay: ".22s" }}>
-                Plano completo grátis por {DIAS_TESTE} dias, sem cartão. Depois você decide se assina.
+                {DIAS_TESTE} dias grátis com todas as funções liberadas, sem cartão. Depois você decide se assina.
               </p>
               <div className="pe-rev mt-10" data-rev style={{ transitionDelay: ".26s" }}>
                 <NumerosEntrada itens={[
-                  [String(CURRICULUM.length), "aulas"],
-                  [String(TOTAL_BONUS), "tópicos"],
                   ["5", "áreas da prova"],
+                  [String(DIAS_TESTE), "dias grátis"],
+                  ["100%", "das funções no teste"],
                 ]} />
               </div>
             </div>
@@ -1944,7 +1942,7 @@ function SecaoConta({
             <p className="pe-rev pe-p" data-rev style={{ transitionDelay: ".14s" }}>
               {semNuvem
                 ? "A sincronização não está disponível agora, mas nada disso trava: escreva seu nome e comece. Dá para criar a conta depois, e o que você já tiver anotado vai junto."
-                : `Criando a conta, você usa o plano completo por ${DIAS_TESTE} dias grátis, sem cartão e sem cobrança. Depois decide se assina. O cronograma com as ${CURRICULUM.length} aulas e ${TOTAL_BONUS} tópicos, o cronômetro e o registro das suas sessões continuam de graça, para sempre.`}
+                : `Criando a conta, você tem ${DIAS_TESTE} dias grátis com todas as funções liberadas, sem cartão e sem cobrança. Depois decide se assina. O cronograma com todas as aulas e tópicos, o cronômetro e o registro das suas sessões continuam de graça, para sempre.`}
             </p>
             {!semNuvem ? (
               <div className="pe-rev mt-7" data-rev style={{ transitionDelay: ".2s" }}>
@@ -2058,7 +2056,7 @@ function SecaoPlanos({ irPara }) {
           {DIAS_TESTE} dias grátis,<br />depois o preço de lançamento.
         </h2>
         <p className="pe-rev pe-p" data-rev style={{ transitionDelay: ".16s" }}>
-          Crie a conta e use tudo por {DIAS_TESTE} dias, sem cartão e sem cobrança.
+          Crie a conta e use todas as funções liberadas por {DIAS_TESTE} dias, sem cartão e sem cobrança.
           Depois, se quiser continuar, os valores abaixo são os de lançamento, e quem
           assinar mantém o preço enquanto a assinatura ficar ativa.
         </p>
@@ -2150,9 +2148,9 @@ function SecaoPlanos({ irPara }) {
           <Card className="px-6 py-5" flat>
             <Mini style={{ lineHeight: 1.7 }}>
               Crie sua conta antes de assinar e pague com o mesmo e-mail: é por ele
-              que a assinatura é reconhecida. E o cronograma completo com
-              as {CURRICULUM.length} aulas e {TOTAL_BONUS} tópicos, o cronômetro e o
-              registro das sessões continuam de graça, para sempre.
+              que a assinatura é reconhecida. E o cronograma completo com todas
+              as aulas e tópicos, o cronômetro e o registro das sessões continuam
+              de graça, para sempre.
             </Mini>
           </Card>
         </div>

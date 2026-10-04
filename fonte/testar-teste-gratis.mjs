@@ -188,15 +188,17 @@ const texto = (pag) => pag.evaluate(() => document.body.innerText);
 {
   const { ctx, pag } = await abrir({ logado: false, onboarded: false, largura: 390 });
   const t0 = await texto(pag);
-  if (/Criar conta · 3 dias grátis/.test(t0) && /grátis por 3 dias, sem cartão/.test(t0)) ok('a entrada já diz: 3 dias grátis, sem cartão');
+  if (/Criar conta · 3 dias grátis/.test(t0) && /3 dias grátis com todas as funções liberadas, sem cartão/.test(t0)) ok('a entrada já diz: 3 dias grátis, com todas as funções liberadas, sem cartão');
   else falha('entrada sem o teste grátis');
+  if (!/\b(90|213)\b/.test(t0)) ok('a entrada não fala em "90 aulas" nem "213 tópicos"');
+  else falha('a entrada ainda mostra a contagem de aulas/tópicos: ' + (t0.match(/.{0,40}\b(90|213)\b.{0,40}/) || [''])[0]);
   const criar = pag.locator('button:has-text("Criar conta · 3 dias grátis")').first();
   await criar.click();
   await pag.waitForTimeout(900);
   const aviso = pag.locator('[data-teste="aviso-teste-gratis"]:visible').first();
   if (await aviso.count()) {
     const ta = await aviso.innerText();
-    if (/3 dias grátis do plano completo/.test(ta) && /R\$ 39/.test(ta) && /R\$ 300/.test(ta) && /Nada é cobrado agora/.test(ta)) {
+    if (/3 dias grátis com todas as funções liberadas/.test(ta) && /todas as funções do site/.test(ta) && /R\$ 39/.test(ta) && /R\$ 300/.test(ta) && /Nada é cobrado agora/.test(ta)) {
       ok('no formulário de criar conta: os 3 dias grátis e os preços (R$ 39 e R$ 300), sem cobrar nada');
     } else falha('aviso do cadastro incompleto: ' + ta);
     const caixa = await aviso.boundingBox();
@@ -218,10 +220,16 @@ const texto = (pag) => pag.evaluate(() => document.body.innerText);
   const ate = Date.now() + 2.5 * DIA;
   const { ctx, pag } = await abrir({ logado: true, respostaPlano: { ok: true, pro: true, plano: 'teste', teste: true, validoAte: ate, recursos: RECURSOS(true) } });
   const banner = pag.locator('[data-teste="banner-teste"]');
-  if (await banner.count() && /faltam 3 dias/.test(await banner.innerText())) ok('Hoje mostra o teste grátis e quanto falta');
+  if (await banner.count() && /todas as funções liberadas · faltam 3 dias/.test(await banner.innerText())) ok('Hoje mostra o teste grátis (todas as funções liberadas) e quanto falta');
   else falha('banner do teste em Hoje: ' + (await banner.count() ? await banner.innerText() : 'não apareceu'));
   if (!/Você está na versão gratuita/.test(await texto(pag))) ok('e não chama a conta de "versão gratuita" durante o teste');
   else falha('durante o teste aparece "versão gratuita"');
+  const rodape = await pag.evaluate(() => (document.querySelector('footer') || {}).innerText || '');
+  if (rodape && !/atalhos/i.test(rodape)) ok('o rodapé do site não tem mais "atalhos de teclado"');
+  else falha('rodapé: ' + rodape);
+  const textoApp = await texto(pag);
+  if (!/\b(90|213) (aulas|tópicos)\b/.test(textoApp)) ok('dentro do app também não aparece "90 aulas" nem "213 tópicos"');
+  else falha('o app ainda fala a contagem: ' + (textoApp.match(/.{0,40}\b(90|213) (aulas|tópicos).{0,40}/) || [''])[0]);
   await pag.locator('nav button:has-text("Cartões")').first().click();
   await pag.waitForTimeout(500);
   if (!/Recurso do plano completo/.test(await texto(pag))) ok('Cartões (aba paga) abre durante o teste');

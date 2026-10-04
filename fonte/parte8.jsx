@@ -742,7 +742,7 @@ export default function Cadencia() {
      só com o título, que já basta. */
   const OLHOS = {
     hoje: "o dia de hoje", foco: "cronômetro e sessões",
-    materias: "as 90 aulas da residência", clinico: "o seu ciclo clínico",
+    materias: "as aulas da residência", clinico: "o seu ciclo clínico",
     cronograma: "de onde vêm as suas aulas", temas: "por especialidade",
     assistente: "pergunte sobre o seu progresso", cartoes: "repetição espaçada",
     revisoes: "a escada de revisão", rotina: "a semana e o Google Agenda",
@@ -1276,11 +1276,6 @@ export default function Cadencia() {
 
           <footer className="px-6 pb-12 pt-2">
             <div className="mx-auto flex flex-col items-center gap-4" style={{ maxWidth: LARGURA }}>
-              <button type="button" onClick={() => setShowKeys(true)} className="inline-flex items-center gap-2"
-                style={{ background: "none", border: "none", color: T.faint, fontSize: 13.5, cursor: "pointer" }}>
-                <Keyboard size={14} /> atalhos de teclado
-              </button>
-              <div style={{ width: 34, height: 1, background: T.line2 }} />
               <div className="text-center">
                 <div style={{ fontSize: 14.5, fontWeight: 700, color: T.dim }}>Cadência Med</div>
                 <Mini style={{ marginTop: 5, lineHeight: 1.6, maxWidth: 420 }}>

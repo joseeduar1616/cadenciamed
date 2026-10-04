@@ -623,10 +623,10 @@ function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, do
             </span>
             <div className="flex-1" style={{ minWidth: 200 }}>
               <div style={{ fontSize: 15.5, fontWeight: 700, color: T.ink }}>
-                Teste grátis do plano completo · {faltaDoTeste(plano.ate)}
+                Teste grátis com todas as funções liberadas · {faltaDoTeste(plano.ate)}
               </div>
               <Mini style={{ marginTop: 3, lineHeight: 1.55 }}>
-                Tudo liberado até {diaDoFim(plano.ate)}, sem cobrança. Depois você decide se assina.
+                Todas as funções do site estão abertas até {diaDoFim(plano.ate)}, sem cobrança. Depois você decide se assina.
               </Mini>
             </div>
             <Btn tone="quiet" onClick={verPlanos}>Ver planos</Btn>
@@ -644,7 +644,7 @@ function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, do
               </div>
               <Mini style={{ marginTop: 3, lineHeight: 1.55 }}>
                 {testeAcabou
-                  ? `Os ${DIAS_TESTE} dias do plano completo terminaram, e seus dados continuam aqui. Para voltar a usar tudo, escolha um plano.`
+                  ? `Os ${DIAS_TESTE} dias com todas as funções liberadas terminaram, e seus dados continuam aqui. Para voltar a usar tudo, escolha um plano.`
                   : "Especialidades, assistente, rotina e sincronização entram no plano completo."}
               </Mini>
             </div>

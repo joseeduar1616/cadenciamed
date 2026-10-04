@@ -315,4 +315,4 @@ def build(js, out, title, desc):
 if __name__ == '__main__':
     build('b-limpa.js', 'index.html', 'Cadência Med · Estudos para residência',
           'O cronograma inteiro, a revisão que volta na hora certa e os seus flashcards, no mesmo lugar. '
-          '90 aulas e 213 tópicos prontos para marcar.')
+          '3 dias grátis com todas as funções liberadas.')

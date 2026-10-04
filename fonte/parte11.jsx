@@ -76,10 +76,11 @@ function AvisoTesteGratis({ compacto }) {
     <div data-teste="aviso-teste-gratis" className="rounded-2xl px-4 py-4"
       style={{ background: soft("var(--ok)", 10), border: `1px solid ${soft("var(--ok)", 32)}` }}>
       <div className="flex items-center gap-2" style={{ color: T.ok, fontSize: 15, fontWeight: 700 }}>
-        <Sparkles size={15} /> {DIAS_TESTE} dias grátis do plano completo
+        <Sparkles size={15} /> {DIAS_TESTE} dias grátis com todas as funções liberadas
       </div>
       <Mini style={{ marginTop: 6, lineHeight: 1.6 }}>
-        Crie a conta e use tudo por {DIAS_TESTE} dias. Nada é cobrado agora e não
+        Crie a conta e use todas as funções do site, sem exceção, por {DIAS_TESTE} dias:
+        cartões, revisões, assistente, provas, agenda e o resto. Nada é cobrado agora e não
         pede cartão. Depois você decide se assina; se não assinar, a conta continua
         na versão gratuita, com tudo o que você anotou.
       </Mini>
@@ -338,8 +339,8 @@ function Precos({ compacto, onFechar, usuario, plano, aviso, testeAcabou }) {
             <span style={{ fontWeight: 500 }}>organizado num lugar só</span>
           </h2>
           <p style={{ color: T.dim, fontSize: 16, lineHeight: 1.7, marginTop: 22, maxWidth: 470 }}>
-            As {CURRICULUM.length} aulas e {TOTAL_BONUS} tópicos para marcar, revisão espaçada,
-            flashcards seus, cronômetro e acompanhamento por especialidade.
+            Todas as aulas e tópicos para marcar, revisão espaçada, flashcards
+            seus, cronômetro e acompanhamento por especialidade.
           </p>
         </div>
       ) : null}
@@ -350,7 +351,7 @@ function Precos({ compacto, onFechar, usuario, plano, aviso, testeAcabou }) {
             Teste grátis: {faltaDoTeste(plano.ate)}
           </H>
           <Texto style={{ marginTop: 10 }}>
-            Você está usando o plano completo de graça até {diaDoFim(plano.ate)}. Nada foi
+            Todas as funções estão liberadas de graça até {diaDoFim(plano.ate)}. Nada foi
             cobrado. Para continuar com tudo depois disso, escolha um plano abaixo; se não
             escolher, a conta volta para a versão gratuita, sem perder o que você anotou.
           </Texto>
@@ -359,7 +360,7 @@ function Precos({ compacto, onFechar, usuario, plano, aviso, testeAcabou }) {
         <div data-teste="planos-teste-acabou"><Card className="px-6 py-6" brilho="var(--warn)">
           <H size={18} color="var(--warn)" icon={<Sparkles size={16} />}>Seu teste grátis acabou</H>
           <Texto style={{ marginTop: 10 }}>
-            Os {DIAS_TESTE} dias do plano completo terminaram. Seus dados continuam
+            Os {DIAS_TESTE} dias com todas as funções liberadas terminaram. Seus dados continuam
             aqui, na versão gratuita. Para voltar a usar tudo, escolha um plano.
           </Texto>
         </Card></div>
@@ -445,8 +446,7 @@ function Precos({ compacto, onFechar, usuario, plano, aviso, testeAcabou }) {
         <div className="mt-5 pt-5" style={{ borderTop: `1px solid ${T.line}` }}>
           <Label>Continua de graça, para sempre</Label>
           <Mini style={{ marginTop: 8, lineHeight: 1.7 }}>
-            O cronograma completo com as {CURRICULUM.length} aulas e {TOTAL_BONUS} tópicos
-            para marcar, o cronômetro com pomodoro e tempo corrido, o registro de
+            O cronograma completo com todas as aulas e tópicos para marcar, o cronômetro com pomodoro e tempo corrido, o registro de
             sessões com questões e acertos, e o backup do seu arquivo. Nada do que
             você já anotou é perdido ou bloqueado.
           </Mini>
@@ -462,7 +462,7 @@ function Precos({ compacto, onFechar, usuario, plano, aviso, testeAcabou }) {
           <Mini style={{ lineHeight: 1.7 }}>
             Crie sua conta em Configurações antes de assinar, e use o mesmo e-mail
             na hora do pagamento. É assim que a assinatura é reconhecida. Conta
-            nova ganha {DIAS_TESTE} dias grátis do plano completo, sem cartão.
+            nova ganha {DIAS_TESTE} dias grátis com todas as funções liberadas, sem cartão.
           </Mini>
         </Card>
       ) : !plano || plano.tipo === PLANO_TESTE ? (
