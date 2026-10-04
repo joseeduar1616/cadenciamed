@@ -46,6 +46,67 @@ const GARANTIA_DIAS = 7;
    ter endereço nenhum, porque a pessoa acha que avisou. */
 const EMAIL_SUPORTE = "suporte@cadenciamed.com";
 
+/* O teste grátis. A conta nova tem o plano completo por 3 dias, sem
+   cartão e sem cobrança: quem conta os dias é o servidor (fimDoTeste, em
+   worker/api/_comum.js), a partir da criação da conta. Aqui é só o que a
+   tela diz. */
+const DIAS_TESTE = 3;
+const PLANO_TESTE = "teste";
+
+/* Quanto falta do teste, em palavras: "faltam 2 dias", "falta 1 dia",
+   "faltam 5 h", "falta menos de 1 hora". */
+function faltaDoTeste(ate, agora = Date.now()) {
+  const ms = Number(ate) - agora;
+  if (!(ms > 0)) return "acabou";
+  if (ms < 3600000) return "falta menos de 1 hora";
+  if (ms < 86400000) return `faltam ${Math.floor(ms / 3600000)} h`;
+  const dias = Math.ceil(ms / 86400000);
+  return dias === 1 ? "falta 1 dia" : `faltam ${dias} dias`;
+}
+const diaDoFim = (ate) => {
+  const d = new Date(Number(ate));
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
+
+/* Na hora de criar a conta: os 3 dias grátis e os preços, sem cobrar
+   nada. A pessoa sabe desde o começo quanto custa continuar, e que não
+   precisa de cartão para testar. */
+function AvisoTesteGratis({ compacto }) {
+  return (
+    <div data-teste="aviso-teste-gratis" className="rounded-2xl px-4 py-4"
+      style={{ background: soft("var(--ok)", 10), border: `1px solid ${soft("var(--ok)", 32)}` }}>
+      <div className="flex items-center gap-2" style={{ color: T.ok, fontSize: 15, fontWeight: 700 }}>
+        <Sparkles size={15} /> {DIAS_TESTE} dias grátis do plano completo
+      </div>
+      <Mini style={{ marginTop: 6, lineHeight: 1.6 }}>
+        Crie a conta e use tudo por {DIAS_TESTE} dias. Nada é cobrado agora e não
+        pede cartão. Depois você decide se assina; se não assinar, a conta continua
+        na versão gratuita, com tudo o que você anotou.
+      </Mini>
+      <div className={`mt-3 grid gap-2 ${compacto ? "grid-cols-1" : "grid-cols-2"}`}>
+        {["mensal", "anual"].map((k) => {
+          const p = PRECOS[k];
+          return (
+            <div key={k} className="rounded-xl px-3 py-2.5" style={{ background: T.card2, border: `1px solid ${T.line}` }}>
+              <div className="flex items-baseline justify-between gap-2 flex-wrap">
+                <span style={{ fontSize: 13, color: T.dim, fontWeight: 600 }}>{p.rotulo}</span>
+                <span>
+                  <span style={{ fontFamily: F_MONO, fontSize: 17, fontWeight: 700, color: k === "anual" ? "var(--neon2)" : T.ink }}>{p.valor}</span>
+                  <span style={{ fontSize: 12, color: T.faint }}> {p.periodo}</span>
+                </span>
+              </div>
+              {p.equivale ? <Mini style={{ marginTop: 2, fontSize: 12 }}>{p.equivale}</Mini> : null}
+            </div>
+          );
+        })}
+      </div>
+      <Mini style={{ marginTop: 8, fontSize: 12 }}>
+        Você só paga se decidir assinar depois do teste.
+      </Mini>
+    </div>
+  );
+}
+
 /* Links de checkout da Kiwify ou Hotmart. Trocar pelos seus. */
 const CHECKOUT = (typeof window !== "undefined" && window.CADENCIA_CHECKOUT) || {
   mensal: "", anual: "",
@@ -130,6 +191,8 @@ function useAssinatura(sdk, usuario) {
      isso que existia antes. Enquanto não chega é null — a barra espera,
      em vez de desenhar tudo e tirar abas na cara da pessoa. */
   const [recursos, setRecursos] = useState(null);
+  /* O teste grátis desta conta já acabou (e ela não assinou). */
+  const [testeAcabou, setTesteAcabou] = useState(false);
 
   const refSdk = useRef(sdk);
   refSdk.current = sdk;
@@ -138,7 +201,7 @@ function useAssinatura(sdk, usuario) {
 
   const perguntar = useCallback(async () => {
     const s = refSdk.current;
-    if (!s || !quem) { setPlano(null); setRecursos(null); setCarregando(false); return; }
+    if (!s || !quem) { setPlano(null); setRecursos(null); setTesteAcabou(false); setCarregando(false); return; }
 
     let token = "";
     try {
@@ -162,6 +225,7 @@ function useAssinatura(sdk, usuario) {
     setPlano(dados && dados.pro
       ? { tipo: dados.plano || "mensal", ate: Number(dados.validoAte) || Infinity }
       : null);
+    setTesteAcabou(!!(dados && !dados.pro && dados.plano === PLANO_TESTE));
     if (dados && dados.recursos) setRecursos(dados.recursos);
   }, [quem, dono]);
 
@@ -185,7 +249,20 @@ function useAssinatura(sdk, usuario) {
     });
   }, [sdk, quem, dono, perguntar]);
 
-  return { pro: !!plano, plano, carregando, aviso, recursos, recarregar: perguntar };
+  /* O teste vence com o site aberto: na hora do fim, pergunta de novo ao
+     servidor, para as abas pagas fecharem sem precisar recarregar. */
+  useEffect(() => {
+    if (!plano || plano.tipo !== PLANO_TESTE || !Number.isFinite(plano.ate)) return undefined;
+    const falta = plano.ate - Date.now();
+    if (falta > 2147483000) return undefined;
+    const t = window.setTimeout(perguntar, Math.max(1000, falta + 2000));
+    return () => window.clearTimeout(t);
+  }, [plano, perguntar]);
+
+  return {
+    pro: !!plano, plano, carregando, aviso, recursos, recarregar: perguntar,
+    emTeste: !!(plano && plano.tipo === PLANO_TESTE), testeAcabou,
+  };
 }
 
 function Cadeado({ tamanho = 15 }) {
@@ -225,7 +302,7 @@ function Garantia({ className = "px-6 py-6" }) {
   );
 }
 
-function Precos({ compacto, onFechar, usuario, plano, aviso }) {
+function Precos({ compacto, onFechar, usuario, plano, aviso, testeAcabou }) {
   const abrir = (tipo) => {
     const url = CHECKOUT[tipo];
     if (!url) return;
@@ -265,6 +342,27 @@ function Precos({ compacto, onFechar, usuario, plano, aviso }) {
             flashcards seus, cronômetro e acompanhamento por especialidade.
           </p>
         </div>
+      ) : null}
+
+      {plano && plano.tipo === PLANO_TESTE ? (
+        <div data-teste="planos-em-teste"><Card className="px-6 py-6" brilho="var(--ok)">
+          <H size={18} color="var(--ok)" icon={<Sparkles size={16} />}>
+            Teste grátis: {faltaDoTeste(plano.ate)}
+          </H>
+          <Texto style={{ marginTop: 10 }}>
+            Você está usando o plano completo de graça até {diaDoFim(plano.ate)}. Nada foi
+            cobrado. Para continuar com tudo depois disso, escolha um plano abaixo; se não
+            escolher, a conta volta para a versão gratuita, sem perder o que você anotou.
+          </Texto>
+        </Card></div>
+      ) : testeAcabou ? (
+        <div data-teste="planos-teste-acabou"><Card className="px-6 py-6" brilho="var(--warn)">
+          <H size={18} color="var(--warn)" icon={<Sparkles size={16} />}>Seu teste grátis acabou</H>
+          <Texto style={{ marginTop: 10 }}>
+            Os {DIAS_TESTE} dias do plano completo terminaram. Seus dados continuam
+            aqui, na versão gratuita. Para voltar a usar tudo, escolha um plano.
+          </Texto>
+        </Card></div>
       ) : null}
 
       {plano && plano.tipo === "dono" ? (
@@ -363,10 +461,11 @@ function Precos({ compacto, onFechar, usuario, plano, aviso }) {
         <Card className="px-6 py-5" flat>
           <Mini style={{ lineHeight: 1.7 }}>
             Crie sua conta em Configurações antes de assinar, e use o mesmo e-mail
-            na hora do pagamento. É assim que a assinatura é reconhecida.
+            na hora do pagamento. É assim que a assinatura é reconhecida. Conta
+            nova ganha {DIAS_TESTE} dias grátis do plano completo, sem cartão.
           </Mini>
         </Card>
-      ) : !plano ? (
+      ) : !plano || plano.tipo === PLANO_TESTE ? (
         <Card className="px-6 py-5" flat>
           <Mini style={{ lineHeight: 1.7 }}>
             Pague com <strong style={{ color: T.dim }}>{usuario.email}</strong>, o

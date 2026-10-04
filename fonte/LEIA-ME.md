@@ -542,6 +542,25 @@ O `testar-cronograma-partes.mjs` monta um curso de 46 semanas do tamanho
 do que chegou (com o corte antigo, ele parava na 36) e cobra que tudo vá
 até a semana 46.
 
+## O teste grátis de 3 dias
+
+Toda conta nova tem o plano completo por 3 dias (`DIAS_TESTE`), sem cartão e
+sem cobrança. Os dias contam da criação da conta, que vem do Google junto do
+token (`quemPede` devolve `criadaEm`), então ninguém adia mexendo no
+navegador. Na primeira vez que `/api/plano` vê a conta sem nada gravado, grava
+`assinaturas/{uid}` com `plano: "teste"` e `validoAte` no fim dos 3 dias,
+com `currentDocument.exists=false` para nunca passar por cima de um cupom
+gravado no mesmo instante. Como é o mesmo documento da assinatura, toda rota
+paga que confere `validoAte` já respeita o teste. Conta antiga não ganha
+teste retroativo. Durante o teste o cupom vale normalmente
+(`validoAte(..., { semTeste: true })` no `cupom.js`).
+
+Na tela: o cadastro (página de entrada e Configurações) mostra os 3 dias e os
+preços sem cobrar nada (`AvisoTesteGratis`); Hoje e Planos dizem quanto falta;
+vencido, avisam que acabou e as abas pagas fecham sozinhas (o app pergunta de
+novo ao servidor na hora do fim). Teste: `testar-teste-gratis.mjs index.html`
+(o `teste.html` libera o plano de propósito, então este roda no de produção).
+
 ## O convite de notificações (e o fim do "Você está aí?")
 
 O Foco, os blocos da agenda e a sessão de cartões contam direto, sem

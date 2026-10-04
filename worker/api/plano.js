@@ -19,7 +19,7 @@
  */
 import {
   json, corpoJson, quemPede, ehDono, contaDeServico, tokenDeAcesso,
-  BASE_FIRESTORE, regrasGravadas, recursosDe,
+  BASE_FIRESTORE, regrasGravadas, recursosDe, fimDoTeste, PLANO_TESTE,
 } from "./_comum.js";
 
 const texto = (v) => (v && v.stringValue) || "";
@@ -65,9 +65,34 @@ export async function onRequest({ request, env }) {
     });
   }
 
-  const r = await fetch(`${BASE_FIRESTORE}/assinaturas/${pessoa.uid}`, {
+  const ler = () => fetch(`${BASE_FIRESTORE}/assinaturas/${pessoa.uid}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
+  let r = await ler();
+
+  /* Conta nova, ainda sem nada gravado: começa o teste grátis. Grava só se
+     o documento continuar não existindo (currentDocument.exists=false): um
+     cupom resgatado no mesmo instante, logo depois de criar a conta, nunca
+     é atropelado pelo teste. Gravando ou não, lê de novo e segue. */
+  if (r.status === 404) {
+    const fim = fimDoTeste(pessoa.criadaEm);
+    if (fim > Date.now()) {
+      await fetch(`${BASE_FIRESTORE}/assinaturas/${pessoa.uid}?currentDocument.exists=false`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fields: {
+            plano: { stringValue: PLANO_TESTE },
+            email: { stringValue: pessoa.email },
+            validoAte: { doubleValue: fim },
+            cortesia: { booleanValue: false },
+            atualizadoEm: { doubleValue: Date.now() },
+          },
+        }),
+      }).catch(() => null);
+      r = await ler();
+    }
+  }
 
   /* 404 é conta sem assinatura, que é uma resposta legítima. Qualquer outro
      erro é problema do banco, e dizer "sem plano" nesse caso mandaria para
@@ -97,6 +122,8 @@ export async function onRequest({ request, env }) {
     pro,
     plano: texto(f.plano),
     validoAte,
+    /* teste: está nos 3 dias grátis (pro) ou eles já acabaram (!pro). */
+    teste: texto(f.plano) === PLANO_TESTE,
     cortesia: !!((f.cortesia || {}).booleanValue),
     recursos: recursosDe({ dono: false, pro, regras, liberados }),
   });

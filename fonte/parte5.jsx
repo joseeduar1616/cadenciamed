@@ -520,7 +520,7 @@ function LogForm({ today, addSession, notify, onDone }) {
   );
 }
 
-function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, done, bonusDone, addSession, delSession, notify, go, blocosHoje, projecao, pro, verPlanos, cartoesHoje }) {
+function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, done, bonusDone, addSession, delSession, notify, go, blocosHoje, projecao, pro, verPlanos, cartoesHoje, plano, emTeste, testeAcabou }) {
   const [openLog, setOpenLog] = useState(false);
   const [newTask, setNewTask] = useState("");
   const ativo = useAtivo();
@@ -615,16 +615,37 @@ function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, do
         </Card>
       ) : null}
 
-      {!pro ? (
+      {emTeste ? (
+        <div data-teste="banner-teste"><Card className="px-6 py-5" brilho="var(--ok)">
+          <div className="flex items-center gap-4 flex-wrap">
+            <span className="flex items-center justify-center rounded-full" style={{ width: 42, height: 42, background: soft("var(--ok)", 16), color: T.ok, flexShrink: 0 }}>
+              <Sparkles size={19} />
+            </span>
+            <div className="flex-1" style={{ minWidth: 200 }}>
+              <div style={{ fontSize: 15.5, fontWeight: 700, color: T.ink }}>
+                Teste grátis do plano completo · {faltaDoTeste(plano.ate)}
+              </div>
+              <Mini style={{ marginTop: 3, lineHeight: 1.55 }}>
+                Tudo liberado até {diaDoFim(plano.ate)}, sem cobrança. Depois você decide se assina.
+              </Mini>
+            </div>
+            <Btn tone="quiet" onClick={verPlanos}>Ver planos</Btn>
+          </div>
+        </Card></div>
+      ) : !pro ? (
         <Card className="px-6 py-5" brilho="var(--neon2)">
           <div className="flex items-center gap-4 flex-wrap">
             <span className="flex items-center justify-center rounded-full" style={{ width: 42, height: 42, background: soft("var(--neon2)", 16), color: "var(--neon2)", flexShrink: 0 }}>
               <Cadeado tamanho={19} />
             </span>
             <div className="flex-1" style={{ minWidth: 200 }}>
-              <div style={{ fontSize: 15.5, fontWeight: 700, color: T.ink }}>Você está na versão gratuita</div>
+              <div style={{ fontSize: 15.5, fontWeight: 700, color: T.ink }}>
+                {testeAcabou ? "Seu teste grátis acabou" : "Você está na versão gratuita"}
+              </div>
               <Mini style={{ marginTop: 3, lineHeight: 1.55 }}>
-                Especialidades, assistente, rotina e sincronização entram no plano completo.
+                {testeAcabou
+                  ? `Os ${DIAS_TESTE} dias do plano completo terminaram, e seus dados continuam aqui. Para voltar a usar tudo, escolha um plano.`
+                  : "Especialidades, assistente, rotina e sincronização entram no plano completo."}
               </Mini>
             </div>
             <Btn tone="primary" onClick={verPlanos}>Ver planos</Btn>

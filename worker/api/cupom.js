@@ -107,7 +107,7 @@ export async function onRequest({ request, env }) {
   }
 
   /* Já tem plano em dia? Então o cupom não é gasto à toa. */
-  if (await validoAte(token, pessoa.uid) > Date.now()) {
+  if (await validoAte(token, pessoa.uid, { semTeste: true }) > Date.now()) {
     return json({ ok: true, jaTinha: true, mensagem: "Seu acesso já está liberado." });
   }
 

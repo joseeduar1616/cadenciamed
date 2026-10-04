@@ -1231,7 +1231,7 @@ export default function Cadencia() {
                 {OLHOS[tab] ? <span className="capa-olho">{OLHOS[tab]}</span> : null}
                 <h1 className="capa-t">{(TABS.find((t) => t.id === tab) || {}).label || ""}</h1>
               </div>
-              {tab === "hoje" && <Hoje {...{ data, setData, today, minToday, minWeek, qWeek, streak, late, done, bonusDone, addSession, delSession, notify, go: setTab, blocosHoje, projecao: pro ? projecao : null, pro, verPlanos: () => setTab("planos"), cartoesHoje }} />}
+              {tab === "hoje" && <Hoje {...{ data, setData, today, minToday, minWeek, qWeek, streak, late, done, bonusDone, addSession, delSession, notify, go: setTab, blocosHoje, projecao: pro ? projecao : null, pro, verPlanos: () => setTab("planos"), cartoesHoje, plano: assinatura.plano, emTeste: assinatura.emTeste, testeAcabou: assinatura.testeAcabou }} />}
               {tab === "foco" && <Foco {...{ data, setData, today, P, subjectId: pomoSubject, setSubjectId: setPomoSubject }} />}
               {tab === "materias" && <Materias {...{ sessions: data.sessions, reviews: data.reviews, today, addSession, marcarDificuldade, subjects: subjectsResidencia, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, folhas: data.folhas, salvarAnotacao, notify, setData, nuvem, pastas: data.pastas, vazioEm: subjectsClinico.length ? "clinico" : null, irPara: setTab }} />}
               {tab === "clinico" && <Materias {...{ sessions: data.sessions, reviews: data.reviews, today, addSession, marcarDificuldade, subjects: subjectsClinico, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, folhas: data.folhas, salvarAnotacao, notify, setData, nuvem, pastas: data.pastas, irPara: setTab }} />}
@@ -1242,7 +1242,7 @@ export default function Cadencia() {
               {tab === "cartoes" && pro && <Cartoes {...{ data, setData, subjects, today, notify, nuvem, souDono }} />}
               {tab === "revisoes" && !pro && <Bloqueado recurso={RECURSOS_PRO.revisoes} onVerPlanos={() => setTab("planos")} />}
               {tab === "metas" && !pro && <Bloqueado recurso={RECURSOS_PRO.metas} onVerPlanos={() => setTab("planos")} />}
-              {tab === "planos" && <Precos usuario={nuvem.usuario} plano={assinatura.plano} aviso={assinatura.aviso} />}
+              {tab === "planos" && <Precos usuario={nuvem.usuario} plano={assinatura.plano} aviso={assinatura.aviso} testeAcabou={assinatura.testeAcabou} />}
               {tab === "temas" && pro && <Temas {...{ subjects, setMark, minutos: minutesBySubject, sessoes: data.sessions, today, pesos: data.pesos, setPeso }} />}
               {tab === "assistente" && ver.assistente && (
                 <div className="flex flex-col gap-5">

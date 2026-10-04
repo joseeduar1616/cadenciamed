@@ -23,6 +23,19 @@ export const DIAS = { semanal: 7, mensal: 31, anual: 366, vitalicio: 36500 };
    partir da compra. mensal e vitalício continuam contados a partir de
    agora, com DIAS acima. */
 const FIM_ANUAL = new Date("2028-01-01T00:00:00-03:00").getTime();
+/* O teste grátis: toda conta nova tem o plano completo por 3 dias,
+   contados da criação da conta (o instante vem do Google, junto do token,
+   então não dá para adiar mexendo no navegador). Nada é cobrado: depois
+   dos 3 dias a pessoa assina ou segue na versão gratuita. Quem grava o
+   teste é /api/plano, uma vez só, em assinaturas/{uid} com plano "teste";
+   assim toda rota que confere validoAte já o respeita sem mudar nada. */
+export const DIAS_TESTE = 3;
+export const PLANO_TESTE = "teste";
+export function fimDoTeste(criadaEm) {
+  const c = Number(criadaEm) || 0;
+  return c > 0 ? c + DIAS_TESTE * 86400000 : 0;
+}
+
 export function validadeDoPlano(plano) {
   if (plano === "anual") return FIM_ANUAL;
   return Date.now() + (DIAS[plano] || DIAS.mensal) * 86400000;
@@ -110,7 +123,11 @@ export async function quemPede(idToken, apiKey) {
     const j = await r.json();
     const u = (j.users || [])[0];
     if (!u || !u.localId) return null;
-    return { uid: u.localId, email: u.email ? String(u.email).toLowerCase() : "" };
+    return {
+      uid: u.localId,
+      email: u.email ? String(u.email).toLowerCase() : "",
+      criadaEm: Number(u.createdAt) || 0,
+    };
   } catch (e) { return null; }
 }
 
@@ -132,14 +149,18 @@ export async function gravarAssinatura(token, uid, campos) {
   return r.ok;
 }
 
-/* Até quando a assinatura de alguém vale. 0 quando não existe. */
-export async function validoAte(token, uid) {
+/* Até quando a assinatura de alguém vale. 0 quando não existe.
+   semTeste: o teste grátis não conta (o cupom não pode ser recusado com
+   "seu acesso já está liberado" só porque a conta está nos 3 dias). */
+export async function validoAte(token, uid, { semTeste = false } = {}) {
   const r = await fetch(`${BASE_FIRESTORE}/assinaturas/${uid}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!r.ok) return 0;
   const j = await r.json().catch(() => null);
-  return Number((((j || {}).fields || {}).validoAte || {}).doubleValue || 0);
+  const f = (j || {}).fields || {};
+  if (semTeste && (f.plano || {}).stringValue === PLANO_TESTE) return 0;
+  return Number((f.validoAte || {}).doubleValue || 0);
 }
 
 /* Lê mentores/{uid} sem estourar em quem nunca resgatou. Compartilhada

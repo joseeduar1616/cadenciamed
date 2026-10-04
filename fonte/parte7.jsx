@@ -550,6 +550,7 @@ function ContaNuvem({ nuvem, notify }) {
             }}>{lb}</button>
         ))}
       </div>
+      {modo === "criar" ? <div className="mt-5"><AvisoTesteGratis /></div> : null}
       <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
         {modo === "criar" ? (
           <Field label="Seu nome"><TextInput value={f.nome} placeholder="Como quer ser chamado" onChange={(e) => set("nome", e.target.value)} /></Field>
@@ -1674,6 +1675,7 @@ function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar }) {
      capítulo de criar conta, lá embaixo. */
   const campos = (
     <div className="flex flex-col gap-4">
+      {modo === "criar" ? <AvisoTesteGratis compacto /> : null}
       {modo === "criar" ? (
         <Field label="Seu nome">
           <TextInput value={f.nome} placeholder="Como quer ser chamado"
@@ -1773,13 +1775,17 @@ function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar }) {
               </p>
               <div className="pe-rev mt-8 flex gap-3 flex-wrap" data-rev style={{ transitionDelay: ".2s" }}>
                 <button type="button" className="pe-cta pe-cheio" onClick={() => irPara("conta")}>
-                  Criar minha conta <ArrowUpRight size={17} />
+                  Criar conta · {DIAS_TESTE} dias grátis <ArrowUpRight size={17} />
                 </button>
                 <button type="button" className="pe-cta pe-vazio"
                   onClick={() => (semNuvem ? irPara("conta") : abrirEntrar())}>
                   Já tenho conta
                 </button>
               </div>
+              <p className="pe-rev" data-rev data-teste="entrada-teste-gratis"
+                style={{ marginTop: 12, fontSize: 13.5, color: T.faint, transitionDelay: ".22s" }}>
+                Plano completo grátis por {DIAS_TESTE} dias, sem cartão. Depois você decide se assina.
+              </p>
               <div className="pe-rev mt-10" data-rev style={{ transitionDelay: ".26s" }}>
                 <NumerosEntrada itens={[
                   [String(CURRICULUM.length), "aulas"],
@@ -1938,7 +1944,7 @@ function SecaoConta({
             <p className="pe-rev pe-p" data-rev style={{ transitionDelay: ".14s" }}>
               {semNuvem
                 ? "A sincronização não está disponível agora, mas nada disso trava: escreva seu nome e comece. Dá para criar a conta depois, e o que você já tiver anotado vai junto."
-                : `O cronograma com as ${CURRICULUM.length} aulas e ${TOTAL_BONUS} tópicos, o cronômetro e o registro das suas sessões são de graça, para sempre. A conta é o que guarda tudo isso e leva de um aparelho para o outro.`}
+                : `Criando a conta, você usa o plano completo por ${DIAS_TESTE} dias grátis, sem cartão e sem cobrança. Depois decide se assina. O cronograma com as ${CURRICULUM.length} aulas e ${TOTAL_BONUS} tópicos, o cronômetro e o registro das suas sessões continuam de graça, para sempre.`}
             </p>
             {!semNuvem ? (
               <div className="pe-rev mt-7" data-rev style={{ transitionDelay: ".2s" }}>
@@ -2049,11 +2055,12 @@ function SecaoPlanos({ irPara }) {
           </span>
         </div>
         <h2 className="pe-rev pe-t pe-t2 mt-5" data-rev style={{ transitionDelay: ".12s", maxWidth: 780 }}>
-          Assine agora,<br />pelo preço de lançamento.
+          {DIAS_TESTE} dias grátis,<br />depois o preço de lançamento.
         </h2>
         <p className="pe-rev pe-p" data-rev style={{ transitionDelay: ".16s" }}>
-          Os valores abaixo são os de lançamento e valem para quem assina agora.
-          Quem assinar mantém o preço enquanto a assinatura ficar ativa.
+          Crie a conta e use tudo por {DIAS_TESTE} dias, sem cartão e sem cobrança.
+          Depois, se quiser continuar, os valores abaixo são os de lançamento, e quem
+          assinar mantém o preço enquanto a assinatura ficar ativa.
         </p>
 
         <div className="mt-10 grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -2113,7 +2120,7 @@ function SecaoPlanos({ irPara }) {
                     <button type="button"
                       className={`pe-cta w-full ${destaque ? "pe-cheio" : "pe-vazio"}`}
                       onClick={() => abrir(k)}>
-                      {CHECKOUT[k] ? `Assinar ${p.rotulo.toLowerCase()}` : "Criar conta e assinar"}
+                      {CHECKOUT[k] ? `Assinar ${p.rotulo.toLowerCase()}` : `Começar ${DIAS_TESTE} dias grátis`}
                       <ArrowUpRight size={16} />
                     </button>
                   </div>
