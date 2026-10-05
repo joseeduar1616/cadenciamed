@@ -19,7 +19,15 @@ const ERROS_AUTH = {
   "auth/network-request-failed": "Sem conexão com o servidor.",
   "auth/operation-not-allowed": "Falta ativar o login por e-mail e senha no console do Firebase.",
   "auth/unauthorized-domain": "Este endereço não está liberado no Firebase. Adicione em Authentication, Settings, Domínios autorizados.",
+  "auth/popup-closed-by-user": "A janela do Google foi fechada antes de terminar.",
+  "auth/cancelled-popup-request": "A janela do Google foi fechada antes de terminar.",
+  "auth/user-disabled": "Esta conta foi desativada.",
 };
+/* O mesmo erro quer dizer outra coisa no botão do Google: quem precisa
+   ser ligado no console é o provedor Google, não o e-mail e senha. */
+const traduzErroGoogle = (e) => (e && e.code === "auth/operation-not-allowed"
+  ? "Falta ativar o login com o Google no console do Firebase (Authentication, Sign-in method, Google)."
+  : traduzErro(e));
 const traduzErro = (e) => ERROS_AUTH[e && e.code] || "Não deu certo. Tente de novo.";
 
 function idDispositivo() {
@@ -101,6 +109,11 @@ function useNuvem(data, setData, notify, pronto, pro) {
         const auth = U.getAuth(app);
         const db = F.getFirestore(app);
         setSdk({ A, U, F, app, auth, db });
+        /* Quem entrou com o Google pelo redirecionamento (o caminho de
+           reserva quando o navegador barra a janela) volta aqui. */
+        if (U.getRedirectResult) {
+          U.getRedirectResult(auth).then((cred) => { if (vivo && cred) depoisDoGoogleRef.current(cred); }).catch(() => {});
+        }
         U.onAuthStateChanged(auth, (u) => {
           if (!vivo) return;
           setUsuario(u ? { uid: u.uid, email: u.email } : null);
@@ -259,6 +272,56 @@ function useNuvem(data, setData, notify, pronto, pro) {
     } catch (e) { return traduzErro(e); }
   }, [sdk, setData]);
 
+  /* Entrar ou criar conta com o Google: é o mesmo botão. Conta que ainda
+     não existia nasce aqui, com o nome do Google, e ganha o teste grátis
+     como qualquer conta nova (o servidor conta da criação da conta).
+     Janela primeiro; se o navegador barrar a janela (alguns celulares, o
+     app instalado no iPhone), vai pelo redirecionamento. */
+  const depoisDoGoogle = useCallback((cred) => {
+    const U = sdk && sdk.U;
+    let nova = false;
+    try {
+      const info = U && U.getAdditionalUserInfo ? U.getAdditionalUserInfo(cred) : null;
+      nova = !!((info && info.isNewUser) || (cred && cred._tokenResponse && cred._tokenResponse.isNewUser));
+    } catch (e) { /* segue como conta existente */ }
+    const nome = String((cred && cred.user && cred.user.displayName) || "").trim().slice(0, 40);
+    if (nova || nome) {
+      setData((p) => ({
+        ...p,
+        profile: {
+          ...p.profile,
+          name: (p.profile && p.profile.name && !nova) ? p.profile.name : (nome || (p.profile && p.profile.name) || "Estudante"),
+          onboarded: true,
+        },
+      }));
+    }
+    return { nova, nome };
+  }, [sdk, setData]);
+  const depoisDoGoogleRef = useRef(depoisDoGoogle);
+  depoisDoGoogleRef.current = depoisDoGoogle;
+
+  const comGoogle = useCallback(async (manter) => {
+    if (!sdk) return { erro: "Serviço indisponível." };
+    const U = sdk.U;
+    try {
+      const guardar = manter === false ? U.browserSessionPersistence : U.browserLocalPersistence;
+      if (guardar) await U.setPersistence(sdk.auth, guardar).catch(() => {});
+      const provedor = new U.GoogleAuthProvider();
+      if (provedor.setCustomParameters) provedor.setCustomParameters({ prompt: "select_account" });
+      let cred;
+      try {
+        cred = await U.signInWithPopup(sdk.auth, provedor);
+      } catch (e) {
+        if (e && (e.code === "auth/popup-blocked" || e.code === "auth/operation-not-supported-in-this-environment")) {
+          await U.signInWithRedirect(sdk.auth, provedor);
+          return { redirecionou: true };
+        }
+        throw e;
+      }
+      return depoisDoGoogle(cred);
+    } catch (e) { return { erro: traduzErroGoogle(e) }; }
+  }, [sdk, depoisDoGoogle]);
+
   const recuperar = useCallback(async (email) => {
     if (!sdk) return "Serviço indisponível.";
     try { await sdk.U.sendPasswordResetEmail(sdk.auth, email.trim()); return null; }
@@ -290,9 +353,9 @@ function useNuvem(data, setData, notify, pronto, pro) {
    * ao servidor. */
   return useMemo(() => ({
     ligado: !!NUVEM_CFG, estado, usuario, erro, ultima, temBackup, sdk, sincroniza: !!pro,
-    entrar, cadastrar, recuperar, sair, enviar, restaurarBackup,
+    entrar, cadastrar, comGoogle, recuperar, sair, enviar, restaurarBackup,
   }), [estado, usuario, erro, ultima, temBackup, sdk, pro,
-    entrar, cadastrar, recuperar, sair, enviar, restaurarBackup]);
+    entrar, cadastrar, comGoogle, recuperar, sair, enviar, restaurarBackup]);
 }
 
 /* ═══════════════════════════════════════════════════════════════════

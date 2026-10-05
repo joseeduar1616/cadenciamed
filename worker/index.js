@@ -23,6 +23,7 @@ import { onRequest as buscarImagem } from "./api/buscar-imagem.js";
 import { onRequest as google } from "./api/google.js";
 import { onRequest as treinoIa } from "./api/treino-ia.js";
 import { onRequest as refeicaoIa } from "./api/refeicao-ia.js";
+import { onRequest as financasIa } from "./api/financas-ia.js";
 import { onRequest as planoIa } from "./api/plano-ia.js";
 import { onRequest as duplas } from "./api/duplas.js";
 import { onRequest as questoesIa } from "./api/questoes-ia.js";
@@ -50,6 +51,7 @@ const ROTAS = {
   "/api/google": google,
   "/api/treino-ia": treinoIa,
   "/api/refeicao-ia": refeicaoIa,
+  "/api/financas-ia": financasIa,
   "/api/plano-ia": planoIa,
   "/api/duplas": duplas,
   "/api/questoes-ia": questoesIa,

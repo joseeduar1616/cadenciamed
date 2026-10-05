@@ -38,7 +38,7 @@ const GRUPOS_DE_ABAS = [
   { nome: "Fixar", abas: ["revisoes", "erros", "provas"] },
   { nome: "Acompanhar", abas: ["desempenho", "progresso", "metas", "simulados"] },
   { nome: "Com outras pessoas", abas: ["mentor"] },
-  { nome: "Você", abas: ["treino", "planos", "config"] },
+  { nome: "Você", abas: ["treino", "financeiro", "planos", "config"] },
 ];
 
 /* Devolve [{ nome, itens }] só com o que existe na barra desta pessoa: um
@@ -71,7 +71,7 @@ const ICONE_ABA = {
   cronograma: GraduationCap, temas: Stethoscope,
   assistente: Sparkles, cartoes: Layers, revisoes: RotateCcw,
   rotina: CalendarClock, amigos: Users, mentor: User,
-  metas: Flame, desempenho: BarChart3, treino: Dumbbell, simulados: Flag,
+  metas: Flame, desempenho: BarChart3, treino: Dumbbell, financeiro: Wallet, simulados: Flag,
   provas: FileText, erros: NotebookPen,
   progresso: TrendingUp, planos: Zap, config: Settings2,
 };
@@ -750,7 +750,7 @@ export default function Cadencia() {
     metas: "simulados, provas e hábitos", desempenho: "acerto por área e matéria",
     provas: "prova enviada vira gabarito comentado",
     erros: "o erro de hoje é o acerto da prova",
-    treino: "academia, fora da conta do estudo", simulados: "acerto contra os amigos",
+    treino: "academia, fora da conta do estudo", financeiro: "as suas contas, só para você", simulados: "acerto contra os amigos",
     progresso: "o caminho até aqui",
     planos: "assinatura", config: "tudo que dá para ajustar",
   };
@@ -808,6 +808,8 @@ export default function Cadencia() {
        recusa a montagem para quem não tem a aba, então deixá-la na barra
        seria prometer o que a rota não entrega. */
     ...(ver.treino ? [{ id: "treino", label: "Treino", acc: "var(--ok)" }] : []),
+    /* O financeiro pessoal do dono: só a conta dele vê (regra "dono"). */
+    ...(ver.financeiro ? [{ id: "financeiro", label: "Financeiro", acc: "var(--ok)" }] : []),
     { id: "simulados", label: "Simulados", acc: "var(--a-CI)" },
     { id: "progresso", label: "Progresso", acc: "var(--a-CI)" },
     { id: "planos", label: pro ? "Plano" : "Assinar", acc: "var(--neon2)" },
@@ -1267,6 +1269,7 @@ export default function Cadencia() {
               {tab === "provas" && ver.provas && <Provas {...{ nuvem, notify }} />}
               {tab === "erros" && <CadernoErros {...{ data, setData, today, notify, nuvem, subjects }} />}
               {tab === "treino" && ver.treino && <Treino {...{ data, setData, notify, today, nuvem }} />}
+              {tab === "financeiro" && ver.financeiro && <Financeiro {...{ data, setData, notify, nuvem, today }} />}
               {tab === "simulados" && pro && <Simulados {...{ nuvem, notify, irPara: setTab }} />}
               {tab === "simulados" && !pro && <Bloqueado recurso={RECURSOS_PRO.simulados} onVerPlanos={() => setTab("planos")} />}
               {tab === "progresso" && <Progresso {...{ data, byDay, today, totals, subjects }} />}

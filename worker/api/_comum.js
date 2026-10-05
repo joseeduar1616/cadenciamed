@@ -256,6 +256,10 @@ export const RECURSOS = [
   /* A academia não é estudo. Ela nasceu para uma pessoa só e é a única
      aba que não tem nada a ver com prova de residência. */
   { id: "treino", nome: "Treino", padrao: "dono" },
+  /* As finanças pessoais do dono. A rota /api/financas-ia confere o
+     e-mail do dono por conta própria: mesmo liberada para alguém pelo
+     painel, a aba abriria vazia e a IA recusaria. */
+  { id: "financeiro", nome: "Financeiro", padrao: "dono" },
 ];
 
 export const REGRAS = ["todos", "pro", "dono"];

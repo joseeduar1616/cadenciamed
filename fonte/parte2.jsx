@@ -36,6 +36,9 @@ const DEFAULTS = {
   /* Folha em branco por aula (parte30): as caixas, o que foi escrito e a
      conferência. A conversa com a IA não fica; o resultado fica. */
   folhas: {},
+  /* O financeiro do dono (parte31). Só a conta do dono vê a aba; para
+     todo mundo isto fica vazio. */
+  financas: { rendas: [], fixos: [], gastos: [], meta: 0, conversa: [] },
   goals: { daily: 120, weekly: 720, questions: 200 },
   pomo: {
     focus: 25, short: 5, long: 15, cycle: 4, modo: "pomodoro",
@@ -404,6 +407,7 @@ function normalize(raw) {
     blocos: obj(d.blocos),
     erros: limparErros(d.erros),
     folhas: limparFolhas(d.folhas),
+    financas: limparFinancas(d.financas),
     rolagem: {
       modo: ["mentoria", "estudo", "nao"].indexOf(obj(d.rolagem).modo) >= 0 ? d.rolagem.modo : "mentoria",
       ate: /^\d{4}-\d{2}-\d{2}$/.test(obj(d.rolagem).ate || "") ? d.rolagem.ate : "",

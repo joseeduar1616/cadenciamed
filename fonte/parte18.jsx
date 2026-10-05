@@ -693,7 +693,7 @@ function VersaoDoSite({ notify }) {
 function Configuracoes({ data, setData, today, notify, nuvem, pro, aoLiberar, irPara }) {
   return (
     <div className="flex flex-col gap-5">
-      <ContaNuvem nuvem={nuvem} notify={notify} />
+      <ContaNuvem nuvem={nuvem} notify={notify} aoLiberar={aoLiberar} />
       {nuvem.usuario && !pro ? <Cupom nuvem={nuvem} notify={notify} aoLiberar={aoLiberar} /> : null}
 
       <PerfilPublico data={data} setData={setData} notify={notify} />

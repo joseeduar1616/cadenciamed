@@ -128,7 +128,7 @@ const ABAS_PRO = ["cartoes", "revisoes", "temas", "rotina", "amigos", "metas", "
 
 /* Abas que só o administrador enxerga. O servidor faz a mesma checagem,
    então esconder aqui é conveniência, não é o que protege. */
-const ABAS_DONO = ["assistente", "treino"];
+const ABAS_DONO = ["assistente", "treino", "financeiro"];
 
 /* Conta do dono: acesso completo sem precisar assinar. O servidor faz a
    mesma verificação, então isso não é um atalho que outra pessoa consiga
@@ -166,7 +166,7 @@ const RECURSOS_PADRAO = {
   assistente: "pro", cartoes: "pro", revisoes: "pro", provas: "pro",
   cronograma: "todos", rotina: "todos", amigos: "todos", metas: "todos",
   desempenho: "todos", simulados: "todos", progresso: "todos",
-  treino: "dono",
+  treino: "dono", financeiro: "dono",
 };
 
 /* A reserva, aplicando as regras padrão ao que a tela já sabe.

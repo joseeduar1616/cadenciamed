@@ -428,7 +428,40 @@ function Cupom({ nuvem, notify, aoLiberar }) {
   );
 }
 
-function ContaNuvem({ nuvem, notify }) {
+/* "Continuar com o Google": entra numa conta que já existe ou cria uma
+   nova, com o mesmo botão. O G colorido é o que o Google pede para o
+   botão de login dele, e é o que as pessoas reconhecem. */
+function BotaoGoogle({ onClick, disabled, cheio }) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} data-teste="entrar-google"
+      className={`toque-larg rounded-full inline-flex items-center justify-center gap-2.5 ${cheio ? "w-full" : ""}`}
+      style={{
+        padding: "11px 20px", fontSize: 14.5, fontWeight: 600, cursor: disabled ? "not-allowed" : "pointer",
+        background: "#fff", color: "#1f1f1f", border: "1px solid #dadce0", opacity: disabled ? 0.55 : 1,
+      }}>
+      <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+      </svg>
+      Continuar com o Google
+    </button>
+  );
+}
+
+/* Linha "ou" entre o Google e o e-mail. */
+function OuSeparador() {
+  return (
+    <div className="flex items-center gap-3" aria-hidden="true">
+      <span style={{ flex: 1, height: 1, background: T.line }} />
+      <span style={{ fontSize: 12, color: T.faint, letterSpacing: "0.1em" }}>OU</span>
+      <span style={{ flex: 1, height: 1, background: T.line }} />
+    </div>
+  );
+}
+
+function ContaNuvem({ nuvem, notify, aoLiberar }) {
   const [modo, setModo] = useState("entrar");
   /* Marcado por padrão: é o que a maioria quer, e quem está num computador
      de todo mundo desmarca. */
@@ -513,9 +546,21 @@ function ContaNuvem({ nuvem, notify }) {
     }
     setOcupado(false);
     if (e) { setMsg(e); return; }
+    await resgatarCupomDoForm();
+  };
 
-    /* Conta criada. Se veio cupom junto, ele é resgatado agora, já com a
-       sessão aberta: o servidor precisa do token para saber de quem é. */
+  const entrarGoogle = async () => {
+    setMsg(""); setOcupado(true);
+    const r = await nuvem.comGoogle(manter);
+    setOcupado(false);
+    if (r.erro) { setMsg(r.erro); return; }
+    if (r.redirecionou) return;
+    if (r.nova) await resgatarCupomDoForm();
+  };
+
+  /* Conta criada. Se veio cupom junto, ele é resgatado agora, já com a
+     sessão aberta: o servidor precisa do token para saber de quem é. */
+  const resgatarCupomDoForm = async () => {
     const cod = f.cupom.trim();
     setF({ nome: "", email: "", senha: "", cupom: "" });
     if (!cod) return;
@@ -551,6 +596,12 @@ function ContaNuvem({ nuvem, notify }) {
         ))}
       </div>
       {modo === "criar" ? <div className="mt-5"><AvisoTesteGratis /></div> : null}
+      {modo !== "senha" ? (
+        <div className="mt-5 flex flex-col gap-4" style={{ maxWidth: 420 }}>
+          <BotaoGoogle onClick={entrarGoogle} disabled={ocupado} cheio />
+          <OuSeparador />
+        </div>
+      ) : null}
       <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
         {modo === "criar" ? (
           <Field label="Seu nome"><TextInput value={f.nome} placeholder="Como quer ser chamado" onChange={(e) => set("nome", e.target.value)} /></Field>
@@ -1583,6 +1634,26 @@ function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar }) {
        fecha esta página assim que a sessão abre. */
     if (modo === "criar") {
       onDone(f.nome.trim() || "Estudante");
+      await resgatarDoForm();
+    }
+  };
+
+  /* O Google cria a conta ou entra na que já existe. Conta nova fecha as
+     boas-vindas com o nome do Google (ou o digitado) e resgata o cupom do
+     campo, se tiver; conta que já existia é tratada no componente raiz,
+     como no entrar por e-mail. */
+  const entrarGoogle = async () => {
+    setMsg(""); setOcupado(true);
+    const r = await nuvem.comGoogle(manter);
+    setOcupado(false);
+    if (r.erro) { setMsg(r.erro); return; }
+    if (r.redirecionou || !r.nova) return;
+    onDone(r.nome || f.nome.trim() || "Estudante");
+    await resgatarDoForm();
+  };
+
+  const resgatarDoForm = async () => {
+    {
       const cod = f.cupom.trim();
       if (cod) {
         setOcupado(true);
@@ -1675,6 +1746,12 @@ function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar }) {
   const campos = (
     <div className="flex flex-col gap-4">
       {modo === "criar" ? <AvisoTesteGratis compacto /> : null}
+      {!conectando ? (
+        <>
+          <BotaoGoogle onClick={entrarGoogle} disabled={ocupado} cheio />
+          <OuSeparador />
+        </>
+      ) : null}
       {modo === "criar" ? (
         <Field label="Seu nome">
           <TextInput value={f.nome} placeholder="Como quer ser chamado"

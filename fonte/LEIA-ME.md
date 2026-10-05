@@ -542,6 +542,33 @@ O `testar-cronograma-partes.mjs` monta um curso de 46 semanas do tamanho
 do que chegou (com o corte antigo, ele parava na 36) e cobra que tudo vá
 até a semana 46.
 
+## Entrar e criar conta com o Google
+
+"Continuar com o Google" fica nos dois formulários de conta (página de
+entrada e Configurações) e serve para entrar e para criar: conta que ainda
+não existia nasce no clique, com o nome do Google, e ganha o teste grátis
+como qualquer conta nova. O caminho é `nuvem.comGoogle` (parte3): janela
+(`signInWithPopup`) primeiro e, se o navegador barrar a janela, o
+redirecionamento, recolhido por `getRedirectResult` ao abrir. O provedor
+Google já está ligado no projeto do Firebase; se um dia aparecer "Este
+endereço não está liberado", falta o domínio em Authentication › Settings ›
+Domínios autorizados. Teste: `testar-financas-tela.mjs` (parte do Google).
+
+## Financeiro (só do dono)
+
+Aba `financeiro` (parte31), com regra `dono` em `RECURSOS` (servidor) e em
+`RECURSOS_PADRAO`/`ABAS_DONO` (tela). A rota `/api/financas-ia` confere o
+e-mail do dono antes de chamar a IA, então liberar a aba para outra pessoa
+no painel não abre nada. Duas ações: `extrato` (o texto do PDF/CSV/OFX, lido
+no navegador, ou até 4 fotos; volta movimentos, fixos e rendas, podados no
+servidor) e `conversa` (o dono conta renda, gastos e meta; volta resposta e
+ações: renda, fixo, gasto, meta, remover). A tela aplica as ações com
+`aplicarAcoesFin` (renda e fixo com o mesmo nome substituem o antigo) e
+deixa desfazer o último registro. O resumo do mês é conta da tela: renda −
+fixos − gastos do mês − meta. Os dados ficam em `data.financas`, que
+sincroniza junto com o resto da conta do dono. Testes:
+`testar-financas.mjs` (rota) e `testar-financas-tela.mjs` (tela).
+
 ## O teste grátis de 3 dias
 
 Toda conta nova tem o plano completo por 3 dias (`DIAS_TESTE`), sem cartão e
