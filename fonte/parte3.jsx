@@ -25,9 +25,16 @@ const ERROS_AUTH = {
 };
 /* O mesmo erro quer dizer outra coisa no botão do Google: quem precisa
    ser ligado no console é o provedor Google, não o e-mail e senha. */
-const traduzErroGoogle = (e) => (e && e.code === "auth/operation-not-allowed"
-  ? "Falta ativar o login com o Google no console do Firebase (Authentication, Sign-in method, Google)."
-  : traduzErro(e));
+const traduzErroGoogle = (e) => {
+  const c = e && e.code;
+  if (c === "auth/operation-not-allowed" || c === "auth/unauthorized-domain") {
+    /* Para quem visita, a mensagem técnica do Firebase não diz nada: o
+       detalhe vai para o console, e a pessoa recebe a saída. */
+    console.error("login com o Google:", c);
+    return "O login com o Google não está disponível agora. Entre com e-mail e senha.";
+  }
+  return traduzErro(e);
+};
 const traduzErro = (e) => ERROS_AUTH[e && e.code] || "Não deu certo. Tente de novo.";
 
 function idDispositivo() {

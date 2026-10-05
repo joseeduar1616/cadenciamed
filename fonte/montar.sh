@@ -103,6 +103,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-pendentes.mjs
   node testar-folha.mjs
   node testar-financas.mjs
+  node testar-dominios.mjs
   node testar-duplas.mjs
   node testar-anexo.mjs
   node testar-recursos.mjs

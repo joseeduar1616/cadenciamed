@@ -24,6 +24,7 @@ import { onRequest as google } from "./api/google.js";
 import { onRequest as treinoIa } from "./api/treino-ia.js";
 import { onRequest as refeicaoIa } from "./api/refeicao-ia.js";
 import { onRequest as financasIa } from "./api/financas-ia.js";
+import { onRequest as dominios, garantirDominios } from "./api/dominios.js";
 import { onRequest as planoIa } from "./api/plano-ia.js";
 import { onRequest as duplas } from "./api/duplas.js";
 import { onRequest as questoesIa } from "./api/questoes-ia.js";
@@ -52,6 +53,7 @@ const ROTAS = {
   "/api/treino-ia": treinoIa,
   "/api/refeicao-ia": refeicaoIa,
   "/api/financas-ia": financasIa,
+  "/api/liberar-dominios": dominios,
   "/api/plano-ia": planoIa,
   "/api/duplas": duplas,
   "/api/questoes-ia": questoesIa,
@@ -161,6 +163,11 @@ export default {
    * às três da tarde um lembrete de manhã.
    */
   async scheduled(evento, env, ctx) {
+    /* A lista de endereços liberados para o login do Google (dominios.js):
+       confere de hora em hora e acrescenta o que faltar. */
+    ctx.waitUntil(garantirDominios(env).then((r) => {
+      if (!r.ok || (r.adicionados || []).length) console.log("dominios", JSON.stringify(r));
+    }).catch((e) => console.error("dominios falharam", e && e.message)));
     ctx.waitUntil((async () => {
       try {
         const r = await enviarRodada(env, evento.scheduledTime || Date.now());
