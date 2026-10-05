@@ -24,7 +24,7 @@ import { onRequest as google } from "./api/google.js";
 import { onRequest as treinoIa } from "./api/treino-ia.js";
 import { onRequest as refeicaoIa } from "./api/refeicao-ia.js";
 import { onRequest as financasIa } from "./api/financas-ia.js";
-import { onRequest as dominios, garantirDominios } from "./api/dominios.js";
+import { onRequest as dominios, garantirDominios } from "./api/liberar-dominios.js";
 import { onRequest as planoIa } from "./api/plano-ia.js";
 import { onRequest as duplas } from "./api/duplas.js";
 import { onRequest as questoesIa } from "./api/questoes-ia.js";
@@ -163,7 +163,7 @@ export default {
    * às três da tarde um lembrete de manhã.
    */
   async scheduled(evento, env, ctx) {
-    /* A lista de endereços liberados para o login do Google (dominios.js):
+    /* A lista de endereços liberados para o login do Google (liberar-dominios.js):
        confere de hora em hora e acrescenta o que faltar. */
     ctx.waitUntil(garantirDominios(env).then((r) => {
       if (!r.ok || (r.adicionados || []).length) console.log("dominios", JSON.stringify(r));

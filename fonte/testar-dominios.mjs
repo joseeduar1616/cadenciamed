@@ -1,4 +1,4 @@
-/* A lista de endereços liberados para o login do Google (worker/api/dominios.js).
+/* A lista de endereços liberados para o login do Google (worker/api/liberar-dominios.js).
  *
  * Acrescenta só o que falta, sem tirar o que já estava; na segunda vez não
  * grava nada; pede o token com o escopo da configuração (e não o do
@@ -41,7 +41,7 @@ globalThis.fetch = async (url, op = {}) => {
   throw new Error('chamada inesperada: ' + u);
 };
 const env = { FIREBASE_SERVICE_ACCOUNT: JSON.stringify(CONTA) };
-const D = await import('../worker/api/dominios.js');
+const D = await import('../worker/api/liberar-dominios.js');
 const pedir = async () => {
   const r = await D.onRequest({ request: new Request('http://x/api/liberar-dominios', { method: 'POST' }), env });
   return { status: r.status, corpo: await r.json() };

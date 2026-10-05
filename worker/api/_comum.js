@@ -71,7 +71,7 @@ function pemParaBytes(pem) {
 /* Troca a conta de serviço por um token de acesso ao Firestore.
    É esse token que permite escrever em assinaturas/{uid}, coleção que as
    regras do Firestore deixam o navegador apenas ler. "escopo" muda só
-   para quem precisa de outra API (dominios.js, a configuração do login). */
+   para quem precisa de outra API (liberar-dominios.js, a configuração do login). */
 export async function tokenDeAcesso(conta, escopo = "https://www.googleapis.com/auth/datastore") {
   const agora = Math.floor(Date.now() / 1000);
   const cabeca = base64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
