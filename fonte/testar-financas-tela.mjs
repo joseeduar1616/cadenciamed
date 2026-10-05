@@ -19,7 +19,7 @@ const ok = (m) => passos.push('ok   ' + m);
 const falha = (m) => { passos.push('FALHA ' + m); erros.push(m); };
 const DONO = 'joseeduardo1616@gmail.com';
 
-const FB_APP = 'export function initializeApp(c) { return { c }; }';
+const FB_APP = 'export function initializeApp(c) { window.__cfgFirebase = c; return { c }; }';
 /* Auth de mentira com estado: começa logado (ou não), e o popup do Google
    abre a sessão e avisa quem estiver ouvindo, como o de verdade. */
 const fbAuth = (email, nomeGoogle) => `
@@ -224,6 +224,39 @@ const dados = (pag) => pag.evaluate(() => JSON.parse(localStorage.getItem('caden
   if (n >= 1) ok('Configurações › Conta também tem "Continuar com o Google"');
   else falha('Configurações sem o botão do Google');
   await ctx.close();
+}
+
+/* ── 5. de onde abre o login do Google ───────────────────────────────── */
+{
+  const { ctx, pag } = await abrir({ email: '' });
+  const cfg = await pag.evaluate(() => window.__cfgFirebase || null);
+  if (cfg && cfg.authDomain === 'cadencia-7c1f1.firebaseapp.com') ok('fora do domínio do site, o login abre pelo domínio padrão do Firebase');
+  else falha('authDomain fora do site: ' + JSON.stringify(cfg && cfg.authDomain));
+  await ctx.close();
+}
+{
+  /* O mesmo app, mas aberto como cadenciamed.com.br (o nome aponta para o
+     servidor local do teste). */
+  const porta = servidor.address().port;
+  const nav2 = await chromium.launch({ args: ['--no-sandbox', `--host-resolver-rules=MAP cadenciamed.com.br 127.0.0.1:${porta}`], ...(fs.existsSync(CHROME) ? { executablePath: CHROME } : {}) });
+  const ctx = await nav2.newContext();
+  await ctx.route('https://www.gstatic.com/firebasejs/**', (r) => {
+    const u = r.request().url();
+    r.fulfill({ status: 200, contentType: 'text/javascript', body: u.endsWith('firebase-app.js') ? FB_APP : u.endsWith('firebase-auth.js') ? fbAuth('') : FB_STORE });
+  });
+  await ctx.route('**/api/**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }));
+  const pag = await ctx.newPage();
+  await pag.goto('http://cadenciamed.com.br/', { waitUntil: 'load' });
+  await pag.waitForTimeout(1800);
+  const cfg = await pag.evaluate(() => window.__cfgFirebase || null);
+  if (cfg && cfg.authDomain === 'cadenciamed.com.br') ok('em cadenciamed.com.br, o login do Google abre e volta pelo próprio domínio (sem bloqueio entre domínios no Safari)');
+  else falha('authDomain no site: ' + JSON.stringify(cfg && cfg.authDomain));
+  await nav2.close();
+}
+{
+  const sw = fs.readFileSync(new URL('./sw.js', import.meta.url), 'utf8');
+  if (/url\.pathname\.startsWith\("\/__\/"\)\) return;/.test(sw)) ok('o service worker não guarda nem intercepta as páginas do Firebase (/__/)');
+  else falha('o sw.js não deixa /__/ passar direto');
 }
 
 await navegador.close();

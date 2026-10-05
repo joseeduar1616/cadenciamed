@@ -52,6 +52,12 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;   // CDN e Google: passa direto
   if (url.pathname.startsWith("/api/")) return;      // resposta de conta, nunca guardar
+  /* As páginas do próprio Firebase (/__/auth/handler, o retorno do login
+     com o Google, e /__/firebase/init.json): sempre da rede, nunca
+     guardadas. Guardada como casca, a página de retorno do login virava o
+     site aberto sem internet; do cache, um ajudante velho do Firebase
+     quebraria o login sem ninguém ver por quê. */
+  if (url.pathname.startsWith("/__/")) return;
 
   if (ehNavegacao(req)) {
     /* Rede primeiro: publicar tem de aparecer na hora para quem está

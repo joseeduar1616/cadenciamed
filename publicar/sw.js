@@ -19,7 +19,7 @@
  * O que NUNCA entra em cache: /api/. São respostas por pessoa, com token,
  * e guardá-las seria mostrar dado de uma conta em outra.
  */
-const VERSAO = "cadencia-97f18d82e1";
+const VERSAO = "cadencia-919d1e71c9";
 const CASCA = "/";
 const PAGINAS_SOLTAS = /^\/(app|app\.html|privacidade\.html|termos\.html|recuperar\.html)$/;
 
@@ -52,6 +52,12 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;   // CDN e Google: passa direto
   if (url.pathname.startsWith("/api/")) return;      // resposta de conta, nunca guardar
+  /* As páginas do próprio Firebase (/__/auth/handler, o retorno do login
+     com o Google, e /__/firebase/init.json): sempre da rede, nunca
+     guardadas. Guardada como casca, a página de retorno do login virava o
+     site aberto sem internet; do cache, um ajudante velho do Firebase
+     quebraria o login sem ninguém ver por quê. */
+  if (url.pathname.startsWith("/__/")) return;
 
   if (ehNavegacao(req)) {
     /* Rede primeiro: publicar tem de aparecer na hora para quem está

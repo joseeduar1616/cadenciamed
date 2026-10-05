@@ -6,6 +6,27 @@ const NUVEM_CFG = (typeof window !== "undefined" && window.CADENCIA_FIREBASE) ||
 const FB_VERSAO = (typeof window !== "undefined" && window.CADENCIA_FIREBASE_VERSAO) || "10.12.2";
 const CHAVE_BACKUP = "cadencia:v3:antes-da-nuvem";
 
+/* De onde abre o login do Google.
+ *
+ * O padrão do Firebase é o domínio dele (cadencia-7c1f1.firebaseapp.com):
+ * a janela do Google volta para lá, e o site lê o resultado por um iframe
+ * desse outro domínio. O Safari, o iPhone e o app instalado bloqueiam esse
+ * armazenamento entre domínios, e o login com o Google simplesmente não
+ * terminava. Como cadenciamed.com.br é servido pelo Firebase Hosting, a
+ * página de retorno (/__/auth/handler) existe no próprio domínio, e o
+ * endereço dela está liberado no cliente OAuth do Google: o login abre e
+ * volta pelo mesmo domínio do site, sem nada entre domínios. Em qualquer
+ * outro endereço (o workers.dev, localhost) segue o padrão. */
+const DOMINIOS_LOGIN_PROPRIO = ["cadenciamed.com.br"];
+function configDaNuvem(cfg) {
+  if (!cfg) return cfg;
+  try {
+    const host = window.location.hostname;
+    if (DOMINIOS_LOGIN_PROPRIO.indexOf(host) >= 0) return { ...cfg, authDomain: host };
+  } catch (e) { /* fora do navegador */ }
+  return cfg;
+}
+
 const ERROS_AUTH = {
   "auth/invalid-email": "E-mail inválido.",
   "auth/missing-email": "Digite o e-mail.",
@@ -112,7 +133,7 @@ function useNuvem(data, setData, notify, pronto, pro) {
           importar(b + "firebase-firestore.js"),
         ]);
         if (!vivo) return;
-        const app = A.initializeApp(NUVEM_CFG);
+        const app = A.initializeApp(configDaNuvem(NUVEM_CFG));
         const auth = U.getAuth(app);
         const db = F.getFirestore(app);
         setSdk({ A, U, F, app, auth, db });
@@ -311,10 +332,25 @@ function useNuvem(data, setData, notify, pronto, pro) {
     if (!sdk) return { erro: "Serviço indisponível." };
     const U = sdk.U;
     try {
-      const guardar = manter === false ? U.browserSessionPersistence : U.browserLocalPersistence;
-      if (guardar) await U.setPersistence(sdk.auth, guardar).catch(() => {});
+      /* Nada de esperar antes de abrir a janela: o Safari só deixa abrir
+         janela colada no toque, e um await no meio faz ele barrar. A
+         persistência padrão já é a de ficar conectado; só quem desmarcou
+         "manter conectado" passa por aqui antes. */
+      if (manter === false && U.browserSessionPersistence) await U.setPersistence(sdk.auth, U.browserSessionPersistence).catch(() => {});
       const provedor = new U.GoogleAuthProvider();
       if (provedor.setCustomParameters) provedor.setCustomParameters({ prompt: "select_account" });
+      /* No app instalado (aberto pelo ícone) não existe janela de verdade:
+         no iPhone ela abre fora do app e não consegue devolver o login.
+         Ali o caminho é o redirecionamento, que volta pelo próprio domínio. */
+      let instalado = false;
+      try {
+        instalado = !!(window.navigator.standalone
+          || (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches));
+      } catch (e) { /* segue com a janela */ }
+      if (instalado && U.signInWithRedirect) {
+        await U.signInWithRedirect(sdk.auth, provedor);
+        return { redirecionou: true };
+      }
       let cred;
       try {
         cred = await U.signInWithPopup(sdk.auth, provedor);
