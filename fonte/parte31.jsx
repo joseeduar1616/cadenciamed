@@ -434,7 +434,7 @@ function ExtratoFin({ fin, gravar, nuvem, notify }) {
     <Card className="px-6 py-6">
       <H color="var(--a-GO)" icon={<Receipt size={16} />}>Último extrato</H>
       <Mini style={{ marginTop: 8, lineHeight: 1.6 }}>
-        Mande o extrato do banco (PDF, CSV ou OFX) ou até {MAX_FOTOS_EXTRATO} fotos dele. A IA separa os gastos
+        Mande o extrato do banco em PDF, CSV ou OFX, ou até {MAX_FOTOS_EXTRATO} fotos dele. A IA separa os gastos
         fixos, as rendas e os gastos avulsos; você confere antes de salvar.
         {fin.ultimoExtrato ? ` Último lido: ${fin.ultimoExtrato.nome}${fin.ultimoExtrato.inicio ? ` (${fin.ultimoExtrato.inicio.split("-").reverse().join("/")} a ${(fin.ultimoExtrato.fim || "").split("-").reverse().join("/")})` : ""}.` : ""}
       </Mini>
@@ -466,8 +466,8 @@ function ExtratoFin({ fin, gravar, nuvem, notify }) {
               <input type="checkbox" checked={lancarAvulsos} onChange={(e) => setLancarAvulsos(e.target.checked)} />
               <span style={{ fontSize: 14, color: T.dim }}>
                 {lido.avulsos.length === 1
-                  ? `Lançar também o gasto avulso do extrato (${reais(soma(lido.avulsos))}), no mês dele`
-                  : `Lançar também os ${lido.avulsos.length} gastos avulsos do extrato (${reais(soma(lido.avulsos))}), cada um no mês dele`}
+                  ? `Lançar também o gasto avulso do extrato, de ${reais(soma(lido.avulsos))}, no mês dele`
+                  : `Lançar também os ${lido.avulsos.length} gastos avulsos do extrato, somando ${reais(soma(lido.avulsos))}, cada um no mês dele`}
               </span>
             </label>
           ) : null}

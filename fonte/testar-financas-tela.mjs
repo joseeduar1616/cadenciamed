@@ -166,7 +166,7 @@ const dados = (pag) => pag.evaluate(() => JSON.parse(localStorage.getItem('caden
   if (pe.acao === 'extrato' && /ALUGUEL/.test(pe.texto || '')) ok('o CSV do extrato é lido no navegador e vai como texto para a IA');
   else falha('pedido do extrato: ' + JSON.stringify(pe).slice(0, 200));
   const rev = await pag.locator('[data-teste="revisao-extrato"]').innerText().catch(() => '');
-  if (/Gastos fixos encontrados \(2\)/i.test(rev) && /Internet Vivo/.test(rev) && /Rendas encontradas/i.test(rev) && /o gasto avulso do extrato \(R\$\s?85,50\)/.test(rev)) {
+  if (/Gastos fixos encontrados \(2\)/i.test(rev) && /Internet Vivo/.test(rev) && /Rendas encontradas/i.test(rev) && /o gasto avulso do extrato, de R\$\s?85,50/.test(rev)) {
     ok('a revisão mostra os fixos e a renda achados, e oferece lançar o gasto avulso (o que não é fixo)');
   } else falha('revisão do extrato: ' + rev);
   await pag.locator('button:has-text("Salvar no financeiro")').click();
