@@ -164,10 +164,10 @@ function PlacaDeVirar({ valor, largura }) {
       {virando ? (
         <>
           <div key={`c${virada}`} className="virar-cai" style={{ position: "absolute", inset: 0, zIndex: 2 }}>
-            {metade(antigo, false, { transform: `scaleY(${cai})`, transformOrigin: "50% 100%" }, 0.5 * q1)}
+            {metade(antigo, false, { transform: `scaleY(${cai})`, transformOrigin: "50% 100%", willChange: "transform" }, 0.5 * q1)}
           </div>
           <div key={`b${virada}`} className="virar-desce" style={{ position: "absolute", inset: 0, zIndex: 2 }}>
-            {metade(atual, true, { transform: `scaleY(${q2 > 0 ? desce : 0})`, transformOrigin: "50% 0%" }, 0.5 * (1 - q2))}
+            {metade(atual, true, { transform: `scaleY(${q2 > 0 ? desce : 0})`, transformOrigin: "50% 0%", willChange: "transform" }, 0.5 * (1 - q2))}
           </div>
         </>
       ) : null}

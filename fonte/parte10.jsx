@@ -111,8 +111,15 @@ function Cena({ cor1, cor2, chave, ativo = true }) {
 
     let anterior = 0;
 
+    /* 30 quadros por segundo bastam para um fundo que anda devagar, e
+       custam metade. A 60, num computador sem placa de vídeo boa, a cena
+       disputava o processador com a página e o relógio de placas do Foco
+       virava aos trancos. */
+    const INTERVALO = 1000 / 30 - 2;
+
     const pintar = (t) => {
       if (parar) return;
+      if (anterior && t - anterior < INTERVALO) { raf.current = window.requestAnimationFrame(pintar); return; }
       const dt = anterior ? Math.min(64, t - anterior) : 16;
       anterior = t;
 
@@ -232,23 +239,31 @@ function Cena({ cor1, cor2, chave, ativo = true }) {
         const a = proj[pu.par[0]], b = proj[pu.par[1]];
         const x = a.x + (b.x - a.x) * pu.t, y = a.y + (b.y - a.y) * pu.t;
         const forca = Math.sin(pu.t * Math.PI);
+        /* o brilho é um halo desenhado, não shadowBlur: o desfoque do
+           canvas é refeito ponto a ponto, a cada quadro, e era o mais caro
+           da cena */
+        ctx.beginPath();
+        ctx.arc(x, y, 4 + forca * 5, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${C1},${forca * 0.16 * F})`;
+        ctx.fill();
         ctx.beginPath();
         ctx.arc(x, y, 1.6 + forca * 1.4, 0, Math.PI * 2);
         ctx.fillStyle = `rgba(${C1},${forca * 0.85 * F})`;
-        ctx.shadowColor = `rgba(${C1},1)`;
-        ctx.shadowBlur = 10 * forca;
         ctx.fill();
-        ctx.shadowBlur = 0;
       }
 
       for (const q of proj) {
         const r = Math.max(0.6, q.p * 1.7);
+        if (q.z < -0.5) {
+          ctx.beginPath();
+          ctx.arc(q.x, q.y, r + 4.5, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(${C1},${0.13 * F})`;
+          ctx.fill();
+        }
         ctx.beginPath();
         ctx.arc(q.x, q.y, r, 0, Math.PI * 2);
         ctx.fillStyle = `rgba(${q.z < 0 ? C1 : C2},${Math.max(0.14, 0.78 - q.z * 0.4) * F})`;
-        if (q.z < -0.5) { ctx.shadowColor = `rgba(${C1},1)`; ctx.shadowBlur = 9; }
         ctx.fill();
-        ctx.shadowBlur = 0;
       }
 
       raf.current = window.requestAnimationFrame(pintar);

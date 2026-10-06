@@ -1003,22 +1003,29 @@ export default function Cadencia() {
         .rise > *:nth-child(4){animation-delay:.17s}
         .rise > *:nth-child(5){animation-delay:.22s}
         .rise > *:nth-child(n+6){animation-delay:.26s}
-        .aura{position:fixed;pointer-events:none;z-index:0;border-radius:50%;filter:blur(100px);will-change:transform,opacity}
-        [data-theme="light"] .aura{filter:blur(120px);opacity:.5}
+        /* Sem filter:blur. O desfoque de 100px em quatro círculos de até
+           880px, animados, era refeito a cada quadro: no computador sem
+           aceleração boa o site inteiro caía para poucos quadros por
+           segundo, e o relógio de placas do Foco virava aos trancos. O
+           degradê radial, com mais paradas até o transparente, dá a mesma
+           mancha macia sem custo, e a animação mexe só em transform e
+           opacity, que a placa de vídeo faz sozinha. */
+        .aura{position:fixed;pointer-events:none;z-index:0;border-radius:50%;will-change:transform,opacity}
+        [data-theme="light"] .aura{opacity:.5}
         .aura-a{top:-18%;left:4%;width:56vw;height:56vw;max-width:820px;max-height:820px;
-          background:radial-gradient(circle,color-mix(in srgb,var(--neon) 34%,transparent),transparent 66%);
+          background:radial-gradient(circle,color-mix(in srgb,var(--neon) 30%,transparent) 0%,color-mix(in srgb,var(--neon) 14%,transparent) 34%,color-mix(in srgb,var(--neon) 4%,transparent) 54%,transparent 70%);
           animation:vaga 22s ease-in-out infinite}
         .aura-b{top:2%;right:-12%;width:50vw;height:50vw;max-width:740px;max-height:740px;
-          background:radial-gradient(circle,color-mix(in srgb,var(--neon2) 42%,transparent),transparent 66%);
+          background:radial-gradient(circle,color-mix(in srgb,var(--neon2) 36%,transparent) 0%,color-mix(in srgb,var(--neon2) 17%,transparent) 34%,color-mix(in srgb,var(--neon2) 5%,transparent) 54%,transparent 70%);
           animation:vaga 27s ease-in-out infinite reverse}
         /* a terceira aura tem cor própria (--aura3) para o conjunto não ser
            só duas cores; ela acompanha o tema escolhido, senão sobrava um
            verde-água no meio de um site rosa */
         .aura-c{bottom:-24%;left:28%;width:60vw;height:60vw;max-width:880px;max-height:880px;
-          background:radial-gradient(circle,color-mix(in srgb,var(--aura3) 24%,transparent),transparent 68%);
+          background:radial-gradient(circle,color-mix(in srgb,var(--aura3) 21%,transparent) 0%,color-mix(in srgb,var(--aura3) 10%,transparent) 34%,color-mix(in srgb,var(--aura3) 3%,transparent) 55%,transparent 72%);
           animation:vaga 33s ease-in-out infinite}
         .aura-d{top:34%;left:38%;width:38vw;height:38vw;max-width:520px;max-height:520px;
-          background:radial-gradient(circle,color-mix(in srgb,var(--neon2) 26%,transparent),transparent 70%);
+          background:radial-gradient(circle,color-mix(in srgb,var(--neon2) 22%,transparent) 0%,color-mix(in srgb,var(--neon2) 10%,transparent) 36%,color-mix(in srgb,var(--neon2) 3%,transparent) 56%,transparent 72%);
           animation:vaga 41s ease-in-out infinite reverse}
         @keyframes vaga{
           0%,100%{transform:translate3d(0,0,0) scale(1);opacity:.55}
@@ -1124,10 +1131,9 @@ export default function Cadencia() {
         /* títulos grandes, finos e bem espaçados */
         h1,h2{text-rendering:geometricPrecision}
         ::selection{background:color-mix(in srgb,var(--neon) 35%,transparent);color:var(--ink)}
-        /* o cabeçalho da marca respira devagar */
-        @keyframes aceso{0%,100%{filter:drop-shadow(0 0 18px color-mix(in srgb,var(--neon2) 55%,transparent))}
-          50%{filter:drop-shadow(0 0 34px color-mix(in srgb,var(--neon2) 85%,transparent))}}
-        .marca{animation:aceso 5.5s ease-in-out infinite}
+        /* o brilho da marca é parado: um drop-shadow animado é refeito a
+           cada quadro, para sempre, mesmo com a página quieta */
+        .marca{filter:drop-shadow(0 0 24px color-mix(in srgb,var(--neon2) 65%,transparent))}
         ${LIMPO_CSS}
       `}</style>
 

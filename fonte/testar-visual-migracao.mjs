@@ -87,6 +87,17 @@ const ANTIGO = { profile: { name: 'Ana', onboarded: true, examDate: '2027-03-10'
   else falha('conta antiga abriu em ' + await visual(pag));
   if (await aviso(pag).count() === 1) ok('e vê o aviso de que o site ganhou um visual novo');
   else falha('o aviso do visual novo não apareceu');
+  /* O neon tem de ser leve: o desfoque nas auras animadas e o brilho
+     animado da marca derrubavam o computador para poucos quadros por
+     segundo, e o relógio de placas do Foco virava aos trancos. */
+  const peso = await pag.evaluate(() => ({
+    auras: [...document.querySelectorAll('.aura')].map((e) => getComputedStyle(e).filter),
+    marca: [...document.querySelectorAll('.marca')].map((e) => getComputedStyle(e).animationName),
+  }));
+  if (peso.auras.length && peso.auras.every((f) => f === 'none')) ok('no neon, as auras não usam desfoque (o que travava o computador)');
+  else falha('auras do neon: ' + JSON.stringify(peso.auras));
+  if (peso.marca.every((n) => n === 'none')) ok('e o brilho da marca é parado, sem redesenho a cada quadro');
+  else falha('a marca ainda anima o brilho: ' + JSON.stringify(peso.marca));
   const txt = await aviso(pag).innerText();
   if (/visual novo/i.test(txt) && /neon de sempre/i.test(txt)) ok('o aviso explica: continua no neon, e dá para experimentar');
   else falha('texto do aviso: ' + txt.slice(0, 160));
