@@ -141,9 +141,12 @@ await pag.route('**/site-de-fora/**', (rota) => rota.fulfill({
 }));
 await pag.route('**/site-fechado/**', (rota) => rota.fulfill({ status: 403, body: 'expirado' }));
 
-/* a marca aparece no cabeçalho */
-const marca = pag.locator('header img[alt="Cadência Med"]');
-if (await marca.count() === 0) falha('a marca não está no cabeçalho');
+/* a marca aparece no cabeçalho (neon) ou no menu lateral (limpo, o padrão) */
+const visualInicial = await pag.evaluate(() => document.documentElement.getAttribute('data-visual'));
+const marca = visualInicial === 'limpo'
+  ? pag.locator('[data-teste="marca-compacta"] img')
+  : pag.locator('header img[alt="Cadência Med"]');
+if (await marca.count() === 0) falha(`a marca não está no ${visualInicial === 'limpo' ? 'menu' : 'cabeçalho'}`);
 else {
   const larg = await marca.first().evaluate((el) => el.naturalWidth);
   if (!larg) falha('a marca do cabeçalho não carregou');
@@ -1025,9 +1028,27 @@ if (liberado) {
   if (depois && depois !== antes) ok(`cor de acento mudou de ${antes} para ${depois}`);
   else falha(`a cor de acento não mudou (antes ${antes}, depois ${depois})`);
 
-  /* A cor escolhida precisa pintar o site, não só os detalhes: fundo,
-     painéis e linhas seguem o matiz. Antes ficava tudo roxo com uns
-     detalhes na cor nova. */
+  /* No visual limpo (o padrão) a cor escolhida muda só o acento: fundo e
+     painéis ficam neutros, que é o que deixa a tela limpa. */
+  {
+    const neutro = await pag.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--bg').trim().toUpperCase());
+    await pag.locator('button[title="Rosa"]').first().click();
+    await pag.waitForTimeout(350);
+    const rosaLimpo = await pag.evaluate(() => ({
+      bg: getComputedStyle(document.documentElement).getPropertyValue('--bg').trim().toUpperCase(),
+      neon: getComputedStyle(document.documentElement).getPropertyValue('--neon').trim(),
+    }));
+    if (rosaLimpo.bg === neutro && rosaLimpo.neon && rosaLimpo.neon !== depois) ok(`visual limpo: a cor muda o acento (${depois} → ${rosaLimpo.neon}) e o fundo continua neutro (${neutro})`);
+    else falha('visual limpo com outra cor: ' + JSON.stringify({ neutro, rosaLimpo, depois }));
+    await pag.locator('button[title="Âmbar"]').first().click();
+    await pag.waitForTimeout(300);
+  }
+
+  /* No visual neon, a cor escolhida precisa pintar o site, não só os
+     detalhes: fundo, painéis e linhas seguem o matiz. Antes ficava tudo
+     roxo com uns detalhes na cor nova. */
+  await pag.locator('[data-teste="escolha-visual"] button:has-text("Neon")').click();
+  await pag.waitForTimeout(400);
   const ambiente = () => pag.evaluate(() => {
     const cs = getComputedStyle(document.documentElement);
     const ler = (n) => cs.getPropertyValue(n).trim();
@@ -1061,6 +1082,8 @@ if (liberado) {
   else falha('a cor de origem não voltou: ' + voltou);
   await pag.locator('button[title="Âmbar"]').first().click();
   await pag.waitForTimeout(300);
+  await pag.locator('[data-teste="escolha-visual"] button:has-text("Limpo")').click();
+  await pag.waitForTimeout(400);
 
   /* ── cor própria: ajustada para continuar legível, e a segunda combinando ── */
   await pag.locator('button:has-text("Escolher")').first().click();
@@ -1487,7 +1510,13 @@ if (liberado) {
     const cs = getComputedStyle(b);
     return { img: cs.backgroundImage, cor: cs.color };
   });
-  if (botao && /linear-gradient/.test(botao.img)) ok('design: o botão principal usa a gradiente da marca');
+  /* No limpo o botão principal é o roxo cheio, com letra branca nos dois
+     temas; no neon, a gradiente da marca. */
+  const visualAgora = await pag.evaluate(() => document.documentElement.getAttribute('data-visual'));
+  if (visualAgora === 'limpo') {
+    if (botao && botao.img === 'none' && botao.cor === 'rgb(255, 255, 255)') ok('design (limpo): o botão principal é cor cheia, com letra branca');
+    else falha('design (limpo): botão principal: ' + JSON.stringify(botao));
+  } else if (botao && /linear-gradient/.test(botao.img)) ok('design: o botão principal usa a gradiente da marca');
   else falha('design: o botão principal perdeu a gradiente: ' + JSON.stringify(botao));
 
   /* No tema claro as duas cores de acento são escuras, e a letra quase
@@ -1503,7 +1532,10 @@ if (liberado) {
     const b = document.querySelector('main .btn-neon');
     return b ? { tema: document.documentElement.getAttribute('data-theme'), cor: getComputedStyle(b).color } : null;
   });
-  if (noOutroTema && noOutroTema.cor !== botao.cor) {
+  if (visualAgora === 'limpo') {
+    if (noOutroTema && noOutroTema.cor === 'rgb(255, 255, 255)') ok(`design (limpo): a letra do botão continua branca no outro tema (${noOutroTema.tema})`);
+    else falha('design (limpo): letra do botão no outro tema: ' + JSON.stringify(noOutroTema));
+  } else if (noOutroTema && noOutroTema.cor !== botao.cor) {
     ok(`design: o botão principal troca a cor da letra entre os temas (${botao.cor} → ${noOutroTema.cor})`);
   } else falha('design: a letra do botão principal não mudou ao trocar de tema: ' + JSON.stringify(noOutroTema));
 
