@@ -650,7 +650,11 @@ o checkpoint gravavam juntos e um apagava o outro. Bloco concluído vira
 sessão de estudo (minutos), e o que a pessoa errou de primeira vira
 flashcard na pasta "Estudo interativo". Custos no teto diário:
 `estudo-plano` 3, `estudo-bloco` 5, `estudo-corrigir` 1,
-`estudo-simplificar` 1. Testes: `testar-estudo.mjs` (rota) e
+`estudo-simplificar` 1. "Tela cheia" põe o bloco num portal no `<body>` (como o
+Foco) e pede a tela cheia do navegador; Esc sai. Como trocar de modo remonta
+o slide, o que já se fez em cada slide (pontos revelados, quiz, caso, "não
+entendi") fica em `memoriaSlides`. As legendas das imagens dizem o que a
+imagem mostra, sem citar arquivo ou página. Testes: `testar-estudo.mjs` (rota) e
 `testar-estudo-tela.mjs` (tela).
 
 PowerPoint (.pptx) é lido no navegador (`lerPptxComFiguras`, parte30, com

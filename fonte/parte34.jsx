@@ -186,6 +186,7 @@ function EstudoInterativo({ data, setData, nuvem, notify }) {
   const [aberto, setAberto] = useState(null);       // id da aula
   const [bloco, setBloco] = useState(null);         // índice do bloco em estudo
   const [criando, setCriando] = useState(!estudos.length);
+  const [cheia, setCheia] = useState(false);
   const estudo = estudos.find((e) => e.id === aberto) || null;
 
   const atualizar = useCallback((id, mudar) => {
@@ -208,8 +209,8 @@ function EstudoInterativo({ data, setData, nuvem, notify }) {
   if (estudo && bloco !== null) {
     return (
       <EstudoDoBloco key={`${estudo.id}-${bloco}`} estudo={estudo} indice={bloco} nuvem={nuvem} notify={notify}
-        setData={setData} atualizar={atualizar}
-        onSair={() => setBloco(null)}
+        setData={setData} atualizar={atualizar} cheia={cheia} setCheia={setCheia}
+        onSair={() => { setCheia(false); setBloco(null); }}
         onProximo={() => setBloco(bloco + 1 < estudo.blocos.length ? bloco + 1 : null)} />
     );
   }
@@ -537,7 +538,7 @@ const ESTILO_ESTUDO = `
 
 const anima = (nome, atraso = 0, dur = 0.42) => ({ animation: `${nome} ${dur}s cubic-bezier(.2,.8,.2,1) ${atraso}s both` });
 
-function EstudoDoBloco({ estudo, indice, nuvem, notify, setData, atualizar, onSair, onProximo }) {
+function EstudoDoBloco({ estudo, indice, nuvem, notify, setData, atualizar, cheia, setCheia, onSair, onProximo }) {
   const b = estudo.blocos[indice];
   const [doc, setDoc] = useState(null);
   const [erro, setErro] = useState("");
@@ -546,6 +547,10 @@ function EstudoDoBloco({ estudo, indice, nuvem, notify, setData, atualizar, onSa
   const [direcao, setDirecao] = useState(1);
   const [concluido, setConcluido] = useState(false);
   const segundos = useRef(0);
+  /* o que já se fez em cada slide (pontos revelados, quiz respondido,
+     resposta do caso vista, "não entendi"): sobrevive a entrar e sair da
+     tela cheia e a voltar num slide já visto */
+  const memoriaSlides = useRef({});
   const docRef = useRef(null);
   docRef.current = doc;
 
@@ -652,8 +657,32 @@ function EstudoDoBloco({ estudo, indice, nuvem, notify, setData, atualizar, onSa
     }
   };
 
+  /* Tela cheia: a aula ocupa a tela toda (por portal, no <body>, como o
+     Foco), e o navegador entra em tela cheia de verdade quando deixa. No
+     iPhone, que não tem a tela cheia do navegador, fica a da página. Sair
+     da tela cheia do navegador (Esc) também sai daqui. */
+  useEffect(() => {
+    try {
+      if (cheia && document.documentElement.requestFullscreen && !document.fullscreenElement) {
+        const r = document.documentElement.requestFullscreen();
+        if (r && r.catch) r.catch(() => {});
+      } else if (!cheia && document.fullscreenElement && document.exitFullscreen) {
+        const r = document.exitFullscreen();
+        if (r && r.catch) r.catch(() => {});
+      }
+    } catch (e) { /* sem suporte: fica a tela cheia da página */ }
+  }, [cheia]);
+  useEffect(() => {
+    if (!cheia) return undefined;
+    const saiu = () => { if (!document.fullscreenElement) setCheia(false); };
+    const esc = (e) => { if (e.key === "Escape") setCheia(false); };
+    document.addEventListener("fullscreenchange", saiu);
+    window.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("fullscreenchange", saiu); window.removeEventListener("keydown", esc); };
+  }, [cheia, setCheia]);
+
   const ultimo = indice + 1 >= estudo.blocos.length;
-  return (
+  const corpo = (
     <div className="flex flex-col gap-4" data-teste="estudo-player">
       <style>{ESTILO_ESTUDO}</style>
       <div className="flex items-center gap-3">
@@ -665,6 +694,12 @@ function EstudoDoBloco({ estudo, indice, nuvem, notify, setData, atualizar, onSa
           <div style={{ fontSize: 12.5, color: T.faint, fontWeight: 600 }}>Bloco {indice + 1} de {estudo.blocos.length} · {b.minutos} min</div>
           <div style={{ fontSize: 17, fontWeight: 700, color: T.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.titulo}</div>
         </div>
+        <button type="button" onClick={() => setCheia(!cheia)} data-teste="estudo-tela-cheia"
+          aria-label={cheia ? "Sair da tela cheia" : "Tela cheia"} title={cheia ? "Sair da tela cheia" : "Tela cheia"}
+          style={{ height: 38, borderRadius: 99, flexShrink: 0, padding: "0 14px", border: `1px solid ${T.line}`, background: T.card2, color: T.dim, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 7, fontSize: 14, fontWeight: 600 }}>
+          {cheia ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          <span className="hidden sm:inline">{cheia ? "Sair" : "Tela cheia"}</span>
+        </button>
       </div>
 
       {/* a trilha: um traço por slide e o checkpoint no fim */}
@@ -689,7 +724,8 @@ function EstudoDoBloco({ estudo, indice, nuvem, notify, setData, atualizar, onSa
       ) : null}
 
       {!carregando && conteudo && !noCheckpoint ? (
-        <SlideDoEstudo key={passo} slide={slides[passo]} estudoId={estudo.id} figuras={doc.figuras || []} direcao={direcao}
+        <SlideDoEstudo key={passo} slide={slides[passo]} estudoId={estudo.id} direcao={direcao}
+          memoria={memoriaSlides.current[passo] || (memoriaSlides.current[passo] = {})}
           numero={passo + 1} total={slides.length} nuvem={nuvem} notify={notify}
           onVoltar={passo > 0 ? () => irPara(passo - 1) : null}
           onAvancar={() => irPara(passo + 1)} />
@@ -702,6 +738,16 @@ function EstudoDoBloco({ estudo, indice, nuvem, notify, setData, atualizar, onSa
       ) : null}
     </div>
   );
+
+  if (!cheia) return corpo;
+  return createPortal((
+    <div data-teste="estudo-cheia" className="fixed"
+      style={{ inset: 0, zIndex: 90, background: T.bg, overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
+      <div style={{ maxWidth: 1060, margin: "0 auto", padding: "calc(18px + env(safe-area-inset-top, 0px)) 16px 40px" }}>
+        {corpo}
+      </div>
+    </div>
+  ), document.body);
 }
 
 function MontandoBloco({ titulo }) {
@@ -725,7 +771,7 @@ function MontandoBloco({ titulo }) {
 }
 
 /* A figura do material, lida do aparelho; um toque abre grande. */
-function FiguraDoEstudo({ estudoId, id, legenda, figuras, alta }) {
+function FiguraDoEstudo({ estudoId, id, legenda, alta }) {
   const [src, setSrc] = useState("");
   const [grande, setGrande] = useState(false);
   useEffect(() => {
@@ -733,23 +779,22 @@ function FiguraDoEstudo({ estudoId, id, legenda, figuras, alta }) {
     lerMidia(chaveDaFigura(estudoId, id)).then((v) => { if (vivo && v && DADOS_FIGURA.test(v)) setSrc(v); });
     return () => { vivo = false; };
   }, [estudoId, id]);
-  const meta = (figuras || []).find((f) => f.id === id) || {};
-  const texto = legenda || meta.contexto || "Figura do material";
+  /* só a legenda que ensina; de onde a imagem saiu (arquivo, página) não
+     interessa a quem estuda */
+  const texto = legenda || "";
   if (!src) return <div style={{ height: alta ? 220 : 140, borderRadius: 14, background: T.card2, border: `1px dashed ${T.line2}` }} />;
   return (
     <figure style={{ margin: 0 }} data-teste="estudo-figura">
       <button type="button" onClick={() => setGrande(true)} aria-label="Ver a figura grande"
         style={{ display: "block", width: "100%", padding: 0, border: `1px solid ${T.line}`, borderRadius: 14, overflow: "hidden", cursor: "zoom-in", background: "#fff", position: "relative" }}>
-        <img src={src} alt={texto} style={{ display: "block", width: "100%", maxHeight: alta ? 420 : 300, objectFit: "contain" }} />
+        <img src={src} alt={texto || "Imagem da aula"} style={{ display: "block", width: "100%", maxHeight: alta ? 420 : 300, objectFit: "contain" }} />
         <span style={{ position: "absolute", right: 8, bottom: 8, width: 28, height: 28, borderRadius: 99, background: "rgba(0,0,0,.55)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}><ZoomIn size={14} /></span>
       </button>
-      <figcaption style={{ fontSize: 13, color: T.faint, marginTop: 6, lineHeight: 1.45 }}>
-        {texto}{meta.material && meta.pagina ? ` · ${meta.material}, p. ${meta.pagina}` : ""}
-      </figcaption>
+      {texto ? <figcaption style={{ fontSize: 13, color: T.faint, marginTop: 6, lineHeight: 1.45 }}>{texto}</figcaption> : null}
       {grande ? createPortal((
         <div role="dialog" aria-label="Figura" onClick={() => setGrande(false)}
           style={{ position: "fixed", inset: 0, zIndex: 120, background: "rgba(0,0,0,.86)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, cursor: "zoom-out" }}>
-          <img src={src} alt={texto} style={{ maxWidth: "100%", maxHeight: "100%", borderRadius: 10, background: "#fff" }} />
+          <img src={src} alt={texto || "Imagem da aula"} style={{ maxWidth: "100%", maxHeight: "100%", borderRadius: 10, background: "#fff" }} />
         </div>
       ), document.body) : null}
     </figure>
@@ -765,16 +810,23 @@ const COR_SLIDE = {
   caso: "#E08A2E", quiz: "#2E9E5B", pegadinha: "#D04848", resumo: "var(--neon2)",
 };
 
-function SlideDoEstudo({ slide, estudoId, figuras, direcao, numero, total, nuvem, notify, onVoltar, onAvancar }) {
+function SlideDoEstudo({ slide, estudoId, memoria, direcao, numero, total, nuvem, notify, onVoltar, onAvancar }) {
   const s = slide || {};
+  const m = memoria || {};
   const cor = COR_SLIDE[s.tipo] || "var(--neon)";
   /* pontos aparecem um a um; quiz e caso pedem uma ação antes de seguir */
-  const [mostrados, setMostrados] = useState(s.tipo === "pontos" ? 1 : (s.pontos || []).length);
-  const [escolha, setEscolha] = useState(null);
-  const [verCaso, setVerCaso] = useState(false);
-  const [palpite, setPalpite] = useState("");
-  const [ajuda, setAjuda] = useState(null);
+  const [mostrados, setMostrados] = useState(m.mostrados != null ? m.mostrados : s.tipo === "pontos" ? 1 : (s.pontos || []).length);
+  const [escolha, setEscolha] = useState(m.escolha != null ? m.escolha : null);
+  const [verCaso, setVerCaso] = useState(!!m.verCaso);
+  const [palpite, setPalpite] = useState(m.palpite || "");
+  const [ajuda, setAjuda] = useState(m.ajuda || null);
   const [pedindo, setPedindo] = useState(false);
+  /* a entrada animada é só na primeira vez que o slide aparece */
+  const [primeira] = useState(!m.visto);
+  useEffect(() => {
+    if (!memoria) return;
+    Object.assign(memoria, { mostrados, escolha, verCaso, palpite, ajuda, visto: true });
+  }, [memoria, mostrados, escolha, verCaso, palpite, ajuda]);
   const faltaPonto = s.tipo === "pontos" && mostrados < (s.pontos || []).length;
   const travado = (s.tipo === "quiz" && s.quiz && escolha === null) || (s.tipo === "caso" && s.caso && !verCaso);
 
@@ -811,14 +863,14 @@ function SlideDoEstudo({ slide, estudoId, figuras, direcao, numero, total, nuvem
 
   const comFigura = !!s.figura;
   const visual = comFigura
-    ? <FiguraDoEstudo estudoId={estudoId} id={s.figura} legenda={s.legenda} figuras={figuras} alta={s.tipo === "conceito" && !s.texto} />
+    ? <FiguraDoEstudo estudoId={estudoId} id={s.figura} legenda={s.legenda} alta={s.tipo === "conceito" && !s.texto} />
     : null;
 
   return (
     <div onTouchStart={aoTocar} onTouchEnd={aoSoltar}>
       <div data-estudo-anima="1" data-teste="estudo-slide" data-tipo={s.tipo}
         style={{
-          ...anima(direcao >= 0 ? "estudoEntraDir" : "estudoEntraEsq"),
+          ...(primeira || direcao < 0 ? anima(direcao >= 0 ? "estudoEntraDir" : "estudoEntraEsq") : {}),
           background: T.card, border: `1px solid ${T.line}`, borderRadius: 24, overflow: "hidden",
           boxShadow: "0 18px 40px -28px rgba(0,0,0,.45)",
         }}>

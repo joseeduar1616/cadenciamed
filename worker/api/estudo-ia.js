@@ -135,7 +135,7 @@ Como os slides devem ser:
 - Linguagem SUPER didática, conversando com o aluno ("repara que...", "pensa assim:"), frases curtas, analogias do dia a dia, o porquê de cada coisa. Nada de parágrafo de livro.
 - Prenda a atenção: abra com um gancho (uma pergunta, um caso, um dado que surpreende), varie os formatos, ponha interação a cada 2 ou 3 slides (quiz rápido, caso para pensar), feche com o resumo.
 - Entre 6 e 10 slides. O primeiro é "capa" (gancho + o que vem aí). O último é "resumo".
-- IMAGENS: todas as figuras listadas em <figuras> PRECISAM aparecer, cada uma num slide, no campo "figura" (código) com "legenda" curta e útil para prova. Slide sem figura do material tem de ter outro visual: um "esquema", uma "comparacao" ou um "emoji" que represente a ideia.
+- IMAGENS: todas as figuras listadas em <figuras> PRECISAM aparecer, cada uma num slide, no campo "figura" (código) com "legenda" curta e útil para prova, dizendo o que a imagem mostra, sem citar de onde ela veio (arquivo, página, slide). Slide sem figura do material tem de ter outro visual: um "esquema", uma "comparacao" ou um "emoji" que represente a ideia.
 - Destaque o que cai na prova: números, critérios, doses, drogas de escolha, exceções.
 
 Tipos de slide (campo "tipo") e campos de cada um:
@@ -239,7 +239,7 @@ export function limparBloco(bruto, idsFiguras) {
     if (livre) { livre.figura = id; usadas.add(id); continue; }
     if (slides.length < MAX_SLIDES + 4) {
       const fim = slides.length && slides[slides.length - 1].tipo === "resumo" ? slides.length - 1 : slides.length;
-      slides.splice(fim, 0, { tipo: "conceito", titulo: "Olha isso no material", texto: "", destaque: "", emoji: "", figura: id, legenda: "", pontos: [] });
+      slides.splice(fim, 0, { tipo: "conceito", titulo: "Repara nesta imagem", texto: "", destaque: "", emoji: "", figura: id, legenda: "", pontos: [] });
       usadas.add(id);
     }
   }
