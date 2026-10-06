@@ -71,16 +71,33 @@ for (const tema of ['light', 'dark']) {
     auras: document.querySelectorAll('.aura').length,
     titulo: getComputedStyle(document.querySelector('.capa-t')).textTransform,
   }));
-  const esperado = tema === 'light' ? 'rgb(245, 244, 248)' : 'rgb(18, 18, 18)';
+  const esperado = tema === 'light' ? 'rgb(245, 244, 248)' : 'rgb(5, 5, 7)';
   if (v.visual === 'limpo' && v.fundo === esperado) ok(`visual limpo é o padrão no tema ${tema === 'light' ? 'claro' : 'escuro'} (fundo ${esperado})`);
   else falha(`${tema}: ` + JSON.stringify(v));
   if (!v.canvas && !v.auras) ok(`sem constelação nem auras no limpo (${tema})`);
   else falha(`fundo vivo no limpo: ` + JSON.stringify(v));
   if (v.titulo === 'none') ok(`título da aba em frase normal, sem caixa alta (${tema})`);
   else falha('título em caixa alta: ' + v.titulo);
+  if (tema === 'dark') {
+    /* o escuro também pode ser azul-noite, em Configurações */
+    await ir(pag, 'Configurações');
+    await pag.locator('[data-teste="tom-escuro"] button:has-text("Azul-noite")').click();
+    await pag.waitForTimeout(500);
+    const azul = await pag.evaluate(() => ({ attr: document.documentElement.getAttribute('data-escuro'), fundo: getComputedStyle(document.body).backgroundColor }));
+    if (azul.attr === 'azul' && azul.fundo === 'rgb(11, 17, 32)') ok('o escuro pode ser azul-noite (Configurações › Aparência)');
+    else falha('tom azul do escuro: ' + JSON.stringify(azul));
+  }
   if (tema === 'light') {
-    if (await pag.locator('[data-teste="marca-compacta"]').count()) ok('a marca pequena mora no menu lateral');
-    else falha('sem a marca compacta no menu');
+    /* A logo é a do site, a mesma do visual neon: a onda colorida, sem
+       filtro, com o nome escrito embaixo. */
+    const logo = await pag.evaluate(() => {
+      const img = document.querySelector('header img[alt="Cadência Med"]');
+      return img ? { filtro: getComputedStyle(img).filter, carregou: img.naturalWidth > 0, nome: /cadência/i.test(img.closest('button').innerText) } : null;
+    });
+    /* O brilho de sempre da logo pode estar lá; o que não pode é a logo
+       virar outra (branca, invertida, dentro de um quadradinho). */
+    if (logo && logo.carregou && !/invert|brightness|grayscale/.test(logo.filtro) && logo.nome) ok('a logo original do site continua no topo, com o nome');
+    else falha('logo: ' + JSON.stringify(logo));
     await pag.evaluate(() => window.scrollTo(0, 1200));
     await pag.waitForTimeout(300);
     const topo = await pag.evaluate(() => document.querySelector('aside').getBoundingClientRect().top);

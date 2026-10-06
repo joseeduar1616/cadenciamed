@@ -545,8 +545,8 @@ até a semana 46.
 ## O visual limpo e as ideias da Easy Medicina
 
 O padrão é o visual **limpo** (`data-visual="limpo"` no `<html>`), no estilo
-da Easy Medicina com as cores da casa: fundo cinza bem claro (ou preto fosco
-neutro, #121212), cartões lisos com sombra curta, o roxo da marca de acento,
+da Easy Medicina com as cores da casa: fundo cinza bem claro (ou preto #050507 no
+escuro; azul-noite opcional em Aparência, `data.tema.escuro`), cartões lisos com sombra curta, o roxo da marca de acento,
 títulos em frase normal, sem constelação,
 auras nem brilho. Mora em `LIMPO_CSS` (base.jsx), por cima do `THEME_CSS`
 com seletor mais específico; as peças decorativas são apagadas por classe

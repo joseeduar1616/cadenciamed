@@ -92,7 +92,7 @@ const THEME_CSS = `
  *
  * O desenho padrão desde que o dono pediu "um site bom de usar e intuitivo",
  * no estilo da Easy Medicina, mas com as cores da casa: fundo cinza bem
- * claro (ou preto fosco, neutro, no escuro), cartões lisos com sombra
+ * claro (ou preto, ou azul-noite, no escuro), cartões lisos com sombra
  * curta, o roxo da marca de acento, títulos em
  * frase normal, e nada de partícula, aura, brilho ou fio de luz. O visual
  * de antes continua existindo como "neon", em Configurações › Aparência.
@@ -116,8 +116,8 @@ const LIMPO_CSS = `
   --btn:#7C3AED;
 }
 [data-visual="limpo"][data-theme="dark"]{
-  --bg:#121212; --bg2:#161616; --glow:transparent;
-  --card:#1A1A1A; --card2:#202020; --card3:#282828;
+  --bg:#050507; --bg2:#09080D; --glow:transparent;
+  --card:#0E0D13; --card2:#14121B; --card3:#1B1924;
   --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.17);
   --ink:#F4F4F5; --dim:#D4D4D8; --faint:#A8A8B0; --ghost:#9A9AA3;
   --neon:#B794F6; --neon2:#D08BF7;
@@ -127,6 +127,13 @@ const LIMPO_CSS = `
   --sombra-card:0 1px 2px rgba(0,0,0,.25);
   --vidro:none; --brilho-borda:transparent;
   --btn:#7C3AED;
+}
+/* O escuro também pode ser azul-noite, para quem preferir (Configurações ›
+   Aparência). Os tons de texto são os mesmos e passam de 5:1 aqui também. */
+[data-visual="limpo"][data-theme="dark"][data-escuro="azul"]{
+  --bg:#0B1120; --bg2:#0F172A;
+  --card:#111A2E; --card2:#162036; --card3:#1D2942;
+  --line:rgba(148,163,184,.16); --line2:rgba(148,163,184,.32);
 }
 /* número e rótulo na mesma letra do resto, como na Easy: a monoespaçada
    era parte do visual técnico */
@@ -153,7 +160,6 @@ const LIMPO_CSS = `
 [data-visual="limpo"] .capa-t{text-transform:none;font-weight:800;letter-spacing:-0.025em;
   font-size:clamp(26px,3.6vw,32px)}
 [data-visual="limpo"] .capa-t em{background:none;color:var(--neon)}
-[data-visual="limpo"] .marca{animation:none}
 [data-visual="limpo"] .aba::after{display:none}
 [data-visual="limpo"] ::selection{background:color-mix(in srgb,var(--neon) 22%,transparent)}
 `;
@@ -161,7 +167,9 @@ const LIMPO_CSS = `
 /* A cor de acento escolhida, no visual limpo. Lá o fundo e os painéis
    ficam neutros (é o que deixa a tela limpa), e só o acento muda: o tom
    escolhido, puxado o quanto for preciso para ler bem no tema. */
-const PISO_LIMPO = { light: "#EEECF3", dark: "#282828" };
+/* O pior painel de cada fundo: o acento escolhido tem de ler bem contra o
+   mais claro dos dois escuros (o azul-noite), e aí lê bem no preto também. */
+const PISO_LIMPO = { light: "#EEECF3", dark: "#1D2942" };
 function acentoLimpo(neon, neon2, claro) {
   const piso = PISO_LIMPO[claro ? "light" : "dark"];
   const saida = {};

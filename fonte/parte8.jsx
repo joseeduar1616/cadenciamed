@@ -91,28 +91,6 @@ function useTelaEstreita(forcado) {
   return forcado ? true : estreita;
 }
 
-/* A marca pequena do visual limpo: a onda num quadradinho e o nome ao
-   lado, como o "EZ Easy Medicina" das referências. */
-function MarcaCompacta({ onClick, soIcone }) {
-  return (
-    <button type="button" onClick={onClick} aria-label="Ir para Hoje"
-      className="flex items-center gap-2.5" data-teste="marca-compacta"
-      style={{ background: "none", border: "none", cursor: "pointer", padding: 0, minWidth: 0 }}>
-      <span className="flex items-center justify-center" style={{
-        width: 34, height: 34, borderRadius: 9, background: "var(--btn)", flexShrink: 0,
-      }}>
-        <img src={MARCA} alt="" width="30" height="15" style={{ width: 26, height: "auto", filter: "brightness(0) invert(1)" }} />
-      </span>
-      {!soIcone ? (
-        <span className="flex flex-col items-start" style={{ lineHeight: 1.15, minWidth: 0 }}>
-          <span style={{ fontSize: 15.5, fontWeight: 800, color: T.ink, letterSpacing: "-0.01em", whiteSpace: "nowrap" }}>Cadência Med</span>
-          <span style={{ fontSize: 11.5, fontWeight: 500, color: T.faint, whiteSpace: "nowrap" }}>Residência médica</span>
-        </span>
-      ) : null}
-    </button>
-  );
-}
-
 function BarraLateral({ abas, atual, onEscolher, estreita, aberta, onFechar, aberto, setAberto, pro, limpo }) {
   /* No celular a gaveta some do caminho quando fechada; no computador ela
      continua na tela, só encolhida para a largura dos ícones. */
@@ -143,9 +121,7 @@ function BarraLateral({ abas, atual, onEscolher, estreita, aberta, onFechar, abe
             <PanelLeft size={16} style={{ transform: aberto ? "none" : "scaleX(-1)", transition: "transform .2s" }} />
           </button>
         )}
-        {limpo && expandida ? (
-          <MarcaCompacta onClick={() => { onEscolher("hoje"); if (estreita) onFechar(); }} />
-        ) : expandida ? (
+        {expandida ? (
           <span style={{
             fontFamily: F_MONO, fontSize: 10, letterSpacing: "0.28em",
             textTransform: "uppercase", color: T.ghost, whiteSpace: "nowrap",
@@ -396,6 +372,7 @@ export default function Cadencia() {
       fonte: (FONTES.find((f) => f.id === tm.fonte) || FONTES[0]).ui,
       tamanho: Number(tm.tamanho) || 1,
       visual: tm.visual === "neon" ? "neon" : "limpo",
+      escuro: tm.escuro === "azul" ? "azul" : "preto",
       /* No visual limpo, a cor "Cadência" é o roxo do próprio visual. */
       corPropria: tm.cor !== "cadencia",
     };
@@ -418,6 +395,7 @@ export default function Cadencia() {
       const raiz = document.documentElement;
       raiz.setAttribute("data-theme", data.theme);
       raiz.setAttribute("data-visual", aparencia.visual);
+      raiz.setAttribute("data-escuro", aparencia.escuro);
       raiz.setAttribute("data-layout", "auto");
       /* O acento NÃO é gravado aqui direto. Ele sai do ambiente, que o
          calcula por tema — ver ambienteDoTema. Gravado cru, como era, ele
@@ -449,7 +427,7 @@ export default function Cadencia() {
       document.body.style.color = "var(--ink)";
       const barra = document.querySelector('meta[name="theme-color"]');
       const fundo = ambienteVars["--bg"] || (limpo
-        ? (data.theme === "light" ? "#F5F4F8" : "#121212")
+        ? (data.theme === "light" ? "#F5F4F8" : aparencia.escuro === "azul" ? "#0B1120" : "#050507")
         : (data.theme === "light" ? "#F1EFF8" : "#04030A"));
       if (barra) barra.setAttribute("content", fundo);
     } catch (e) { /* noop */ }
@@ -987,7 +965,7 @@ export default function Cadencia() {
         valor é o mais específico que existe e vale para tudo que está
         dentro. Foi por isso que os painéis continuavam roxos num tema
         rosa mesmo com a variável certa no <html>. */}
-    <div data-theme={data.theme} data-visual={aparencia.visual} style={{ background: T.bg, minHeight: "100vh", color: T.ink, fontFamily: F_UI, fontWeight: 500, "--acc": acc, ...ambienteVars }}>
+    <div data-theme={data.theme} data-visual={aparencia.visual} data-escuro={aparencia.escuro} style={{ background: T.bg, minHeight: "100vh", color: T.ink, fontFamily: F_UI, fontWeight: 500, "--acc": acc, ...ambienteVars }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Instrument+Serif&family=JetBrains+Mono:wght@400;500;600;700&family=Sora:wght@300;400;500;600;700&family=Manrope:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@300;400;500;600;700&family=Oswald:wght@600;700&display=swap');
         ${THEME_CSS}
@@ -1235,11 +1213,8 @@ export default function Cadencia() {
                    podia pegar a cópia invisível e travar esperando ela
                    aparecer. */}
                 {estreita ? (
-                  <div className="flex items-center justify-between gap-3" style={{ marginBottom: limpo ? 4 : 16 }}>
+                  <div className="flex items-center justify-between gap-3" style={{ marginBottom: 16 }}>
                     <div className="flex items-center gap-3">{controlesEsquerda}</div>
-                    {/* No limpo, a marca pequena vem no meio da fileira, como
-                        no app da Easy, em vez do logotipo grande abaixo. */}
-                    {limpo ? <MarcaCompacta onClick={() => setTab("hoje")} /> : null}
                     <div className="flex items-center gap-2">{controlesDireita}</div>
                   </div>
                 ) : (
@@ -1255,9 +1230,7 @@ export default function Cadencia() {
 
                 {/* A marca é só a onda: o nome vem escrito logo abaixo, então
                     repetir o texto que existe dentro da logo ficaria dobrado.
-                    No visual limpo ela mora no menu (ou na fileira de cima,
-                    no celular): aqui sobra só o espaço dos controles. */}
-                {limpo ? (!estreita ? <div style={{ height: 40 }} /> : null) : (
+                    É a logo do site, a mesma nos dois visuais. */}
                 <button type="button" onClick={() => setTab("hoje")} aria-label="Ir para Hoje"
                   className="flex flex-col items-center mx-auto"
                   style={{ background: "none", border: "none", cursor: "pointer", padding: "2px 0 0" }}>
@@ -1279,7 +1252,6 @@ export default function Cadencia() {
                     opacity: 0.8,
                   }} />
                 </button>
-                )}
               </div>
 
             </div>

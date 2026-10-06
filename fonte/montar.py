@@ -162,7 +162,8 @@ html[data-theme="light"],html[data-theme="light"] body{background:#F1EFF8}
 /* clip, e não hidden: hidden transforma o body numa caixa de rolagem, e o
    menu lateral (position: sticky) deixava de ficar parado ao rolar. Quem
    não conhece clip fica com o hidden da linha acima. */
-html[data-visual="limpo"],html[data-visual="limpo"] body{background:#121212}
+html[data-visual="limpo"],html[data-visual="limpo"] body{background:#050507}
+html[data-visual="limpo"][data-escuro="azul"],html[data-visual="limpo"][data-escuro="azul"] body{background:#0B1120}
 html[data-visual="limpo"][data-theme="light"],html[data-visual="limpo"][data-theme="light"] body{background:#F5F4F8}
 #root{min-height:100vh}
 *,*::before,*::after{box-sizing:border-box}

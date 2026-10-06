@@ -141,12 +141,9 @@ await pag.route('**/site-de-fora/**', (rota) => rota.fulfill({
 }));
 await pag.route('**/site-fechado/**', (rota) => rota.fulfill({ status: 403, body: 'expirado' }));
 
-/* a marca aparece no cabeçalho (neon) ou no menu lateral (limpo, o padrão) */
-const visualInicial = await pag.evaluate(() => document.documentElement.getAttribute('data-visual'));
-const marca = visualInicial === 'limpo'
-  ? pag.locator('[data-teste="marca-compacta"] img')
-  : pag.locator('header img[alt="Cadência Med"]');
-if (await marca.count() === 0) falha(`a marca não está no ${visualInicial === 'limpo' ? 'menu' : 'cabeçalho'}`);
+/* a marca aparece no cabeçalho, nos dois visuais */
+const marca = pag.locator('header img[alt="Cadência Med"]');
+if (await marca.count() === 0) falha('a marca não está no cabeçalho');
 else {
   const larg = await marca.first().evaluate((el) => el.naturalWidth);
   if (!larg) falha('a marca do cabeçalho não carregou');

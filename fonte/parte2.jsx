@@ -115,7 +115,7 @@ const DEFAULTS = {
   /* aparência: cor de acento, fonte e tamanho do texto */
   /* visual: "limpo" (o padrão, no estilo da Easy Medicina) ou "neon" (o
      desenho de antes, com partículas e brilho). */
-  tema: { cor: "cadencia", neon: "", neon2: "", fonte: "inter", tamanho: 1, visual: "limpo" },
+  tema: { cor: "cadencia", neon: "", neon2: "", fonte: "inter", tamanho: 1, visual: "limpo", escuro: "preto" },
   /* Claro e escuro da anotação, à parte do resto: "auto" segue o app. */
   notaTema: "auto",
 };
@@ -604,6 +604,8 @@ function normalize(raw) {
       fonte: FONTES.some((f) => f.id === tm.fonte) ? tm.fonte : "inter",
       tamanho: Number(tm.tamanho) >= 0.85 && Number(tm.tamanho) <= 1.3 ? Number(tm.tamanho) : 1,
       visual: tm.visual === "neon" ? "neon" : "limpo",
+      /* o tom do fundo escuro no visual limpo: preto (padrão) ou azul-noite */
+      escuro: tm.escuro === "azul" ? "azul" : "preto",
     },
   };
 }

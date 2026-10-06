@@ -715,6 +715,27 @@ function Aparencia({ data, setData }) {
               }}>{ic} {lb}</button>
           ))}
         </div>
+              {/* O tom do escuro, no visual limpo: preto ou azul-noite. */}
+        {data.theme === "dark" && (tema.visual || "limpo") === "limpo" ? (
+          <div className="flex gap-2 mt-3 flex-wrap items-center" data-teste="tom-escuro">
+            <Mini style={{ marginRight: 4 }}>Tom do escuro:</Mini>
+            {[["preto", "Preto", "#050507"], ["azul", "Azul-noite", "#0B1120"]].map(([id, lb, cor]) => {
+              const on = (tema.escuro || "preto") === id;
+              return (
+                <button key={id} type="button" onClick={() => mudar({ escuro: id })}
+                  className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 brilhar"
+                  style={{
+                    background: on ? T.card3 : "transparent",
+                    border: `1px solid ${on ? T.line2 : T.line}`,
+                    color: on ? T.ink : T.dim, fontSize: 13.5, fontWeight: on ? 700 : 500, cursor: "pointer",
+                  }}>
+                  <span style={{ width: 14, height: 14, borderRadius: 99, background: cor, border: `1px solid ${T.line2}` }} />
+                  {lb}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
       </div>
 
       {/* ── cor de acento ───────────────────────────────────────────── */}
