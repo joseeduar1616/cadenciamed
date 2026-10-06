@@ -37,7 +37,7 @@ const pag = await ctx.newPage();
 
 await pag.addInitScript(() => {
   try {
-    window.localStorage.setItem('cadencia:v3', JSON.stringify({ profile: { name: 'Teste' } }));
+    window.localStorage.setItem('cadencia:v3', JSON.stringify({ profile: { name: 'Teste' }, tema: { versaoVisual: 2 } }));
   } catch (e) { /* sem localStorage, o teste ainda abre */ }
 });
 

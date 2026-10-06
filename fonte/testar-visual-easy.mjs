@@ -46,7 +46,7 @@ async function abrir({ tema = 'light', largura = 1280, extra = {} } = {}) {
     window.name = 'semeado';
     try {
       localStorage.setItem('cadencia:v3:convite-notificacoes-aparelho', 'x');
-      localStorage.setItem('cadencia:v3', JSON.stringify({ profile: { name: 'José Eduardo', onboarded: true }, theme: tm, flash: fl, ...ex }));
+      localStorage.setItem('cadencia:v3', JSON.stringify({ profile: { name: 'José Eduardo', onboarded: true }, theme: tm, flash: fl, tema: { versaoVisual: 2 }, ...ex }));
     } catch (e) { /* noop */ }
   }, [tema, FLASH, extra]);
   await ctx.route('https://www.gstatic.com/**', (r) => r.abort());
