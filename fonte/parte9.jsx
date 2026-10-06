@@ -306,7 +306,7 @@ async function lerDocxSoTexto(arquivo, aviso) {
 /* Um arquivo qualquer virando texto. Os dois cartões da aba usam este
    mesmo caminho: o do ciclo clínico, que manda o texto para a IA separar em
    aulas, e o do calendário, que guarda o texto como referência. */
-const TIPOS_ARQUIVO = ".txt,.md,.csv,.tsv,.pdf,.docx,text/plain,application/pdf";
+const TIPOS_ARQUIVO = ".txt,.md,.csv,.tsv,.pdf,.docx,.pptx,text/plain,application/pdf";
 const TIPOS_FOTO = "image/png,image/jpeg,image/webp";
 
 async function lerArquivoParaTexto(f, aviso) {
@@ -315,8 +315,9 @@ async function lerArquivoParaTexto(f, aviso) {
   if (/\.xlsx?$/i.test(f.name)) {
     throw new Error(`${f.name} é uma planilha, e este campo lê texto. Se for o plano de treino e dieta, importe em Treino › Mês.`);
   }
-  if (/\.(docm?|pptx?)$/i.test(f.name)) {
-    throw new Error(`${f.name} é um formato fechado que ainda não leio. Abra, copie o texto e cole aqui.`);
+  if (/\.pptx$/i.test(f.name)) return (await lerPptxComFiguras(f, aviso, { semFiguras: true })).texto;
+  if (/\.(docm?|ppt)$/i.test(f.name)) {
+    throw new Error(`${f.name} é um formato antigo que ainda não leio. Salve como .docx ou .pptx e envie de novo.`);
   }
   if (/^image\//i.test(f.type)) {
     throw new Error("Isso é uma imagem. Use o botão de foto ao lado, que manda ela para a IA ler.");

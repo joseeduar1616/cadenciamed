@@ -653,6 +653,14 @@ flashcard na pasta "Estudo interativo". Custos no teto diário:
 `estudo-simplificar` 1. Testes: `testar-estudo.mjs` (rota) e
 `testar-estudo-tela.mjs` (tela).
 
+PowerPoint (.pptx) é lido no navegador (`lerPptxComFiguras`, parte30, com
+o JSZip do cdnjs): o texto de cada slide na ordem da apresentação
+(presentation.xml), as notas do apresentador e as imagens de cada slide,
+com o texto do slide como contexto. Imagem repetida em 3 slides ou mais
+(logotipo, fundo do modelo), ícone pequeno e EMF/WMF ficam de fora. Vale
+no Estudo interativo, na importação da anotação e, só o texto, em
+`lerArquivoParaTexto`. Teste: `testar-pptx.mjs`.
+
 ## O teste grátis de 3 dias
 
 Toda conta nova tem o plano completo por 3 dias (`DIAS_TESTE`), sem cartão e

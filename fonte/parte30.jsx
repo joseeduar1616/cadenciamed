@@ -237,6 +237,136 @@ async function lerDocxComFiguras(arquivo, aviso) {
   return { texto, figuras };
 }
 
+/* PowerPoint: o texto de cada slide (e as notas do apresentador, que é
+   onde muito professor escreve a explicação), na ordem da apresentação, e
+   as imagens de cada slide com o texto do próprio slide em volta. Tudo no
+   navegador: o arquivo não sai do aparelho. Imagem que se repete em três
+   slides ou mais é logotipo ou fundo do modelo, e fica de fora. */
+const TIPO_IMG_PPTX = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp" };
+
+function textoDoXmlPptx(xml) {
+  const doc = new DOMParser().parseFromString(xml, "application/xml");
+  return [...doc.getElementsByTagNameNS("*", "p")]
+    .map((p) => [...p.getElementsByTagNameNS("*", "t")].map((t) => t.textContent).join(""))
+    .map((t) => t.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+}
+
+function relacoesPptx(xml) {
+  const doc = new DOMParser().parseFromString(xml, "application/xml");
+  return [...doc.getElementsByTagNameNS("*", "Relationship")].map((r) => ({
+    id: r.getAttribute("Id"), tipo: r.getAttribute("Type") || "", alvo: r.getAttribute("Target") || "",
+  }));
+}
+
+/* "../media/image3.png" visto de "ppt/slides/" vira "ppt/media/image3.png" */
+function caminhoPptx(base, alvo) {
+  if (/^\//.test(alvo)) return alvo.slice(1);
+  const partes = base.split("/").slice(0, -1);
+  for (const pedaco of alvo.split("/")) {
+    if (pedaco === "..") partes.pop();
+    else if (pedaco && pedaco !== ".") partes.push(pedaco);
+  }
+  return partes.join("/");
+}
+
+function imagemReduzida(blob) {
+  return new Promise((ok) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const fator = Math.min(1, 1400 / Math.max(img.width, img.height));
+      const c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round(img.width * fator));
+      c.height = Math.max(1, Math.round(img.height * fator));
+      const g = c.getContext("2d");
+      g.fillStyle = "#fff";
+      g.fillRect(0, 0, c.width, c.height);
+      g.drawImage(img, 0, 0, c.width, c.height);
+      ok({ dados: c.toDataURL("image/jpeg", 0.85), largura: img.width, altura: img.height });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); ok(null); };
+    img.src = url;
+  });
+}
+
+async function lerPptxComFiguras(arquivo, aviso, opcoes) {
+  const semFiguras = !!(opcoes && opcoes.semFiguras);
+  aviso("carregando o leitor de PowerPoint");
+  const JSZip = await carregarJsZip();
+  aviso("abrindo a apresentação");
+  let zip;
+  try { zip = await JSZip.loadAsync(await arquivo.arrayBuffer()); }
+  catch (e) { throw new Error(`Não consegui abrir ${arquivo.name}. Confira se é um .pptx do PowerPoint.`); }
+  const ler = (k) => (zip.file(k) ? zip.file(k).async("string") : Promise.resolve(""));
+
+  /* a ordem é a da apresentação (presentation.xml), não a do nome do
+     arquivo: slide10 vem depois de slide9, e slide movido muda de lugar */
+  let slides = [];
+  try {
+    const relsPres = relacoesPptx(await ler("ppt/_rels/presentation.xml.rels"));
+    const pres = new DOMParser().parseFromString(await ler("ppt/presentation.xml"), "application/xml");
+    slides = [...pres.getElementsByTagNameNS("*", "sldId")]
+      .map((el) => el.getAttribute("r:id") || el.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id"))
+      .map((id) => relsPres.find((r) => r.id === id))
+      .filter(Boolean)
+      .map((r) => caminhoPptx("ppt/presentation.xml", r.alvo));
+  } catch (e) { slides = []; }
+  if (!slides.length) {
+    slides = Object.keys(zip.files).filter((k) => /^ppt\/slides\/slide\d+\.xml$/.test(k))
+      .sort((a, b) => Number(a.match(/(\d+)\.xml$/)[1]) - Number(b.match(/(\d+)\.xml$/)[1]));
+  }
+  if (!slides.length) throw new Error(`${arquivo.name} não tem slides que eu consiga ler.`);
+
+  const blocos = [];
+  const achadas = [];
+  for (let n = 0; n < slides.length; n++) {
+    aviso(`lendo o slide ${n + 1} de ${slides.length}`);
+    const caminho = slides[n];
+    const linhas = textoDoXmlPptx(await ler(caminho));
+    const nomeRels = caminho.replace(/([^/]+)$/, "_rels/$1.rels");
+    const rels = relacoesPptx(await ler(nomeRels));
+    const notasRel = rels.find((r) => /\/notesSlide$/.test(r.tipo));
+    let notas = [];
+    if (notasRel) {
+      notas = textoDoXmlPptx(await ler(caminhoPptx(caminho, notasRel.alvo)))
+        .filter((t) => !/^\d+$/.test(t));   // o número da página que o modelo põe nas notas
+    }
+    if (linhas.length || notas.length) {
+      blocos.push(`--- slide ${n + 1} ---\n${linhas.join("\n")}${notas.length ? `\nNotas do apresentador: ${notas.join(" ")}` : ""}`);
+    }
+    if (semFiguras) continue;
+    for (const r of rels.filter((x) => /\/image$/.test(x.tipo))) {
+      const alvo = caminhoPptx(caminho, r.alvo);
+      const ext = (alvo.match(/\.([a-z0-9]+)$/i) || [])[1];
+      const tipo = TIPO_IMG_PPTX[String(ext || "").toLowerCase()];
+      const arq = zip.file(alvo);
+      if (!tipo || !arq) continue;   // EMF, WMF, SVG: o navegador não desenha
+      achadas.push({ alvo, tipo, pagina: n + 1, contexto: (linhas[0] ? `${linhas[0]}. ${linhas.slice(1).join(" ")}` : `Slide ${n + 1}`).slice(0, 220) });
+    }
+  }
+
+  let figuras = [];
+  if (!semFiguras && achadas.length) {
+    const vezes = {};
+    for (const f of achadas) vezes[f.alvo] = (vezes[f.alvo] || 0) + 1;
+    const vistas = new Set();
+    for (const f of achadas) {
+      if (figuras.length >= MAX_FIGURAS_IMPORT) break;
+      if (vezes[f.alvo] >= 3 || vistas.has(f.alvo)) continue;
+      vistas.add(f.alvo);
+      aviso(`guardando a imagem ${figuras.length + 1}`);
+      const blob = new Blob([await zip.file(f.alvo).async("uint8array")], { type: f.tipo });
+      const img = await imagemReduzida(blob);
+      /* ícone e marcador pequenos não ensinam nada */
+      if (!img || img.largura * img.altura < 120 * 90) continue;
+      figuras.push({ id: `F${figuras.length + 1}`, dados: img.dados, pagina: f.pagina, contexto: f.contexto });
+    }
+  }
+  return { texto: blocos.join("\n\n"), figuras };
+}
+
 /* A folha feita, levada para a anotação: o que a pessoa escreveu na cor
    normal, e o que faltou na outra cor — o "completar em outra cor" do
    método. */
@@ -291,6 +421,8 @@ function ImportarParaAnotacao({ subjectId, titulo, nuvem, notify, inserirNaAnota
         ({ texto, figuras } = await lerPdfComFiguras(arquivos[0], setStatus));
       } else if (/\.docx$/i.test(arquivos[0].name)) {
         ({ texto, figuras } = await lerDocxComFiguras(arquivos[0], setStatus));
+      } else if (/\.pptx$/i.test(arquivos[0].name)) {
+        ({ texto, figuras } = await lerPptxComFiguras(arquivos[0], setStatus));
       } else {
         texto = await lerArquivoParaTexto(arquivos[0], setStatus);
       }
@@ -316,7 +448,7 @@ function ImportarParaAnotacao({ subjectId, titulo, nuvem, notify, inserirNaAnota
   return (
     <div className="flex items-center gap-2 flex-wrap">
       <Btn size="sm" tone="outline" disabled={!!status} onClick={() => ref.current && ref.current.click()}>
-        <Upload size={14} /> {status ? "Importando…" : "Importar PDF, Word ou foto"}
+        <Upload size={14} /> {status ? "Importando…" : "Importar PDF, Word, PowerPoint ou foto"}
       </Btn>
       <input ref={ref} type="file" multiple accept={`${TIPOS_ARQUIVO},${TIPOS_FOTO}`} onChange={escolher}
         style={{ display: "none" }} data-teste="importar-anotacao" />

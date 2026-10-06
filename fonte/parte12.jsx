@@ -458,6 +458,22 @@ function carregarPdfJs() {
   return pdfJsPromessa;
 }
 
+/* O leitor de PowerPoint: um .pptx é um zip de XML, e o JSZip abre. */
+const JSZIP_CDN = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
+let jszipPromessa = null;
+function carregarJsZip() {
+  if (jszipPromessa) return jszipPromessa;
+  jszipPromessa = (async () => {
+    if (!window.JSZip) {
+      try { await baixarScript(JSZIP_CDN); }
+      catch (e) { jszipPromessa = null; throw new Error("Não consegui carregar o leitor de PowerPoint. Confira sua conexão."); }
+    }
+    if (!window.JSZip) { jszipPromessa = null; throw new Error("O leitor de PowerPoint não iniciou."); }
+    return window.JSZip;
+  })();
+  return jszipPromessa;
+}
+
 let mammothPromessa = null;
 function carregarMammoth() {
   if (mammothPromessa) return mammothPromessa;

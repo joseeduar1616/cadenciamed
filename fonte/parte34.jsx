@@ -157,10 +157,10 @@ async function lerMaterial(arquivos, nuvem, aviso) {
   }
   const saida = [];
   for (const f of arquivos) {
-    if (/\.pptx?$/i.test(f.name)) throw new Error(`${f.name} é PowerPoint, que ainda não leio direto. Salve como PDF e envie de novo.`);
     let lido;
     if (/\.pdf$/i.test(f.name)) lido = await lerPdfComFiguras(f, aviso);
     else if (/\.docx$/i.test(f.name)) lido = await lerDocxComFiguras(f, aviso);
+    else if (/\.pptx$/i.test(f.name)) lido = await lerPptxComFiguras(f, aviso);
     else lido = { texto: await lerArquivoParaTexto(f, aviso), figuras: [] };
     saida.push({ nome: f.name, texto: String(lido.texto || ""), figuras: (lido.figuras || []).map(({ dados, pagina, contexto }) => ({ dados, pagina, contexto })) });
   }
@@ -362,9 +362,9 @@ function CriarEstudo({ nuvem, notify, setData, onPronto, onCancelar }) {
         <div className="flex flex-wrap items-center gap-2" style={{ marginTop: 18 }}>
           <button type="button" disabled={!!status} onClick={() => ref.current && ref.current.click()}
             style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 16px", borderRadius: 99, border: `1px solid ${T.line2}`, background: "transparent", color: T.ink, fontWeight: 600, fontSize: 14.5, cursor: status ? "default" : "pointer" }}>
-            <Upload size={15} /> Enviar PDF, Word, texto ou fotos
+            <Upload size={15} /> Enviar PDF, Word, PowerPoint, texto ou fotos
           </button>
-          <input ref={ref} type="file" multiple accept={`${TIPOS_ARQUIVO},${TIPOS_FOTO},.pptx`} onChange={adicionarArquivos}
+          <input ref={ref} type="file" multiple accept={`${TIPOS_ARQUIVO},${TIPOS_FOTO}`} onChange={adicionarArquivos}
             style={{ display: "none" }} data-teste="estudo-arquivo" />
           <Mini>dá para juntar mais de um material na mesma aula</Mini>
         </div>
@@ -411,7 +411,7 @@ function CriarEstudo({ nuvem, notify, setData, onPronto, onCancelar }) {
             <Sparkles size={16} /> {status ? "Montando…" : "Montar a aula"}
           </button>
           {onCancelar && !status ? <Btn size="sm" tone="outline" onClick={onCancelar}>Cancelar</Btn> : null}
-          <Mini>{status || (totalFiguras ? `${totalFiguras} ${totalFiguras === 1 ? "imagem vai" : "imagens vão"} para os slides` : "PDF e Word trazem as figuras junto")}</Mini>
+          <Mini>{status || (totalFiguras ? `${totalFiguras} ${totalFiguras === 1 ? "imagem vai" : "imagens vão"} para os slides` : "PDF, Word e PowerPoint trazem as imagens junto")}</Mini>
         </div>
       </div>
     </Card>
