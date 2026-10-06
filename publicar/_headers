@@ -17,6 +17,9 @@
 /lame.min.js
   Cache-Control: public, max-age=2592000
 
+/fzstd.min.js
+  Cache-Control: public, max-age=2592000
+
 /sw.js
   Cache-Control: no-cache
   Service-Worker-Allowed: /
