@@ -83,7 +83,8 @@ else {
     if (await troca.count()) { await troca.click(); await pag.waitForTimeout(400); }
   }
   const fonte = await pag.evaluate(() => {
-    const el = [...document.querySelectorAll('body > div *')].find((x) => /na fila/i.test(x.textContent || '') && x.children.length === 0);
+    /* o texto miúdo da barra de cima: os contadores (novos, revisão...) */
+    const el = document.querySelector('[data-teste="contadores-estudo"] span');
     return el ? getComputedStyle(el).fontFamily : '';
   });
   if (fonte && fonte === fonteDoSite) ok('a tela de estudo usa a fonte do site');
