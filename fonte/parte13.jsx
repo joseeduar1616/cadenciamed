@@ -170,26 +170,17 @@ async function lerApkg(arquivo, aviso) {
   try { zip = unzipSync(bytes); }
   catch (e) { throw new Error("Esse arquivo não parece um .apkg válido."); }
 
-  const nomes = Object.keys(zip);
-  const banco = nomes.find((n) => n === "collection.anki2")
-    || nomes.find((n) => n === "collection.anki21")
-    || nomes.find((n) => /collection\.anki2\d?$/.test(n));
-
-  if (!banco) {
-    if (nomes.some((n) => /collection\.anki21b$/.test(n))) {
-      throw new Error(
-        "Esse arquivo veio no formato novo e compactado do Anki, que o navegador não abre. "
-        + "Exporte de novo marcando a opção de compatibilidade com versões antigas do Anki."
-      );
-    }
-    throw new Error("Não achei a coleção dentro do arquivo.");
-  }
+  /* o formato novo (collection.anki21b) vem compactado com zstd; ali as
+     imagens também vêm compactadas e com outro índice, então entram só os
+     textos (parte35, bancoDoAnki) */
+  const banco = await bancoDoAnki(zip, aviso);
+  if (!banco) throw new Error("Não achei a coleção dentro do arquivo.");
 
   aviso("carregando o leitor de banco");
   const SQL = await carregarSQL();
 
   aviso("lendo as notas");
-  const db = new SQL.Database(zip[banco]);
+  const db = new SQL.Database(banco.bytes);
   let linhas = [];
   try {
     const r = db.exec("SELECT flds, tags FROM notes");
@@ -215,7 +206,7 @@ async function lerApkg(arquivo, aviso) {
 
   /* mapa dos arquivos de mídia: {"0":"figura.png"} */
   let mapa = {};
-  if (zip.media) {
+  if (zip.media && !banco.formatoNovo) {
     try { mapa = JSON.parse(strFromU8(zip.media)); } catch (e) { mapa = {}; }
   }
 

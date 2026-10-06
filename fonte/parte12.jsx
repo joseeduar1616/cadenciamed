@@ -2385,11 +2385,12 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
           <div className="mt-5 pt-5" style={{ borderTop: `1px solid ${T.line}` }}>
             <Label>Vindo do Anki</Label>
             <Mini style={{ marginTop: 8, lineHeight: 1.7 }}>
-              O arquivo .apkg entra direto, com as imagens junto. Na hora de
-              exportar no Anki, marque a opção de compatibilidade com versões
-              antigas, porque o formato mais novo vem compactado de um jeito que
-              o navegador não abre. Exportações em texto simples também servem.
+              O arquivo .apkg entra direto. Para vir com as imagens, na hora de
+              exportar no Anki marque a opção de compatibilidade com versões
+              antigas; no formato novo entram só os textos. Exportações em texto
+              simples também servem.
             </Mini>
+            <ImportarHistoricoAnki sessions={data.sessions} setData={setData} notify={notify} />
           </div>
         </Card>
       ) : null}

@@ -672,6 +672,21 @@ com o texto do slide como contexto. Imagem repetida em 3 slides ou mais
 no Estudo interativo, na importação da anotação e, só o texto, em
 `lerArquivoParaTexto`. Teste: `testar-pptx.mjs`.
 
+## O que foi estudado no Anki conta aqui
+
+Cartões › Trazer baralho › "Contar o que estudei no Anki" (parte35). A
+pessoa exporta a coleção do AnkiDroid ou do Anki (.colpkg, ou .apkg com
+agendamento) e importa. A tabela `revlog` vira, por dia (data local),
+quantos cartões e quanto tempo; cada dia vira UMA sessão de "Flashcards"
+com id `anki-AAAA-MM-DD`, que entra nas horas, no desempenho e no ranking da
+sala. Reimportar não duplica: o dia é atualizado só se o arquivo novo tiver
+mais tempo. Não contam: reagendamento manual (type 4), linha sem resposta
+(ease 0) e o que tem mais de 365 dias; cada resposta conta no máximo 5 min.
+O formato novo (`collection.anki21b`, compactado com zstd, o padrão do
+AnkiDroid) abre com o `fzstd.min.js` (MIT, publicado junto do site); com ele
+o "Trazer baralho" também abre esse formato, só sem as imagens. Teste:
+`testar-anki-historico.mjs`.
+
 ## O teste grátis de 3 dias
 
 Toda conta nova tem o plano completo por 3 dias (`DIAS_TESTE`), sem cartão e

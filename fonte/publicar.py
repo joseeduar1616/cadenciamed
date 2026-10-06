@@ -47,6 +47,11 @@ ARQUIVOS = [
     # substituível, com o texto dela ao lado.
     'lame.min.js',
     'lame.LICENSE.txt',
+    # O descompactador zstd (8 KB, MIT): abre a coleção que o Anki e o
+    # AnkiDroid exportam no formato novo (collection.anki21b). Só quem
+    # importa do Anki o baixa.
+    'fzstd.min.js',
+    'fzstd.LICENSE.txt',
     'favicon.ico',
     'icone-32.png',
     'icone-180.png',
@@ -135,6 +140,9 @@ CABECALHOS = """/index.html
   Cache-Control: public, max-age=2592000
 
 /lame.min.js
+  Cache-Control: public, max-age=2592000
+
+/fzstd.min.js
   Cache-Control: public, max-age=2592000
 
 /sw.js
