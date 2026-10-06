@@ -155,17 +155,32 @@ if (celCorrido && await numerosNoMeio()) ok('no celular, as três placas do temp
 else falha('no celular, o tempo corrido passa da tela ou tira os números do meio');
 await pag.setViewportSize({ width: 1280, height: 900 });
 
-/* ── 5. "reduzir movimento": troca sem folha parada no meio ───────────── */
+/* ── 5. "reduzir movimento": a placa vira mesmo assim, e termina ───────
+   Com "efeitos de animação" desligado no Windows o número só trocava seco,
+   e o relógio parecia travado. Agora vira sempre, sem folha parada. */
 await pag.emulateMedia({ reducedMotion: 'reduce' });
 await pag.reload({ waitUntil: 'load' });
 await pag.clock.runFor(1500);
 await pag.waitForTimeout(300);
 if (await pag.locator('nav button:has-text("Foco")').count()) {
   await pag.locator('nav button:has-text("Foco")').first().click();
-  await pag.clock.runFor(1200);
   await pag.waitForTimeout(200);
-  if (!(await pag.locator('.virar-cai, .virar-desce').count())) ok('com "reduzir movimento", o número só troca, sem folhas paradas mostrando meio número');
-  else falha('com movimento reduzido, apareceram folhas paradas');
+  let viu = false;
+  for (let i = 0; i < 14 && !viu; i++) {
+    await pag.clock.runFor(100);
+    if (await pag.locator('.virar-cai').count()) viu = true;
+  }
+  if (viu) ok('com "reduzir movimento" no sistema, a placa vira mesmo assim (antes trocava seco e parecia travado)');
+  else falha('com movimento reduzido, a placa não virou');
+  /* a cada segundo começa uma virada nova; entre uma e outra, nenhuma
+     folha pode sobrar na tela */
+  let livre = false;
+  for (let i = 0; i < 24 && !livre; i++) {
+    await pag.clock.runFor(50);
+    if (!(await pag.locator('.virar-cai, .virar-desce').count())) livre = true;
+  }
+  if (livre) ok('e a virada termina, sem folha parada mostrando meio número');
+  else falha('com movimento reduzido, sobrou folha parada');
 } else falha('não voltei ao Foco depois de recarregar');
 
 if (!errosDaPagina.length) ok('nenhum erro de JavaScript na página');

@@ -42,11 +42,13 @@ function PlacaDeVirar({ valor, largura }) {
   const [atual, setAtual] = useState(valor);
   const [antigo, setAntigo] = useState(valor);
   const [virada, setVirada] = useState(0);
-  /* Com "reduzir movimento" ligado no sistema, a regra global desliga as
-     animações; as folhas ficariam paradas, cada uma mostrando uma metade
-     de um número. Então ali o número só troca, sem folha. */
-  const menosMovimento = typeof window !== "undefined" && window.matchMedia
-    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  /* A virada acontece SEMPRE, inclusive com "reduzir movimento" ligado no
+     sistema (no Windows, "efeitos de animação" desligado). Antes, nesse
+     caso, o número só trocava seco, e no computador de quem tinha essa
+     opção desligada o relógio parecia travado. Como a virada é conduzida
+     aqui, quadro a quadro, a regra geral do site que desliga as animações
+     de CSS não a atinge, e não sobra folha parada no meio. */
+  const menosMovimento = false;
   /* A virada é conduzida aqui, quadro a quadro, com o transform escrito
      direto no elemento — e não por animação de CSS. No Safari do iPhone a
      animação de CSS da folha não aparecia (o cartão tinha um filter de

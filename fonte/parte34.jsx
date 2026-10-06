@@ -528,15 +528,40 @@ function PainelDaAula({ estudo, onVoltar, onBloco, onApagar, setData, notify }) 
 }
 
 /* ── estudar um bloco: os slides e o checkpoint ──────────────────────── */
+/* As transições do estudo valem SEMPRE, mesmo com "reduzir movimento" do
+   sistema (no Windows, "efeitos de animação" desligado): a regra geral do
+   site desliga toda animação nesse caso, e a aula ficava sem transição
+   nenhuma, que era justamente o que a pessoa pediu. A animação de cada
+   peça vai numa variável (--anim) e esta regra, mais específica que a
+   geral, aplica. A cópia do slide que está saindo não repete as entradas. */
 const ESTILO_ESTUDO = `
-@keyframes estudoEntraDir{from{opacity:0;transform:translateX(42px) scale(.985)}to{opacity:1;transform:none}}
-@keyframes estudoEntraEsq{from{opacity:0;transform:translateX(-42px) scale(.985)}to{opacity:1;transform:none}}
-@keyframes estudoSobe{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes estudoEntraDir{from{opacity:0;transform:translateX(90px) scale(.95)}to{opacity:1;transform:none}}
+@keyframes estudoEntraEsq{from{opacity:0;transform:translateX(-90px) scale(.95)}to{opacity:1;transform:none}}
+@keyframes estudoSaiEsq{from{opacity:1;transform:none}to{opacity:0;transform:translateX(-90px) scale(.95)}}
+@keyframes estudoSaiDir{from{opacity:1;transform:none}to{opacity:0;transform:translateX(90px) scale(.95)}}
+@keyframes estudoSobe{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
 @keyframes estudoPulsa{0%{transform:scale(1)}50%{transform:scale(1.06)}100%{transform:scale(1)}}
-@media (prefers-reduced-motion: reduce){[data-estudo-anima]{animation:none!important}}
+[data-estudo-anima][style*="--anim"]{animation:var(--anim)!important}
+[data-saindo] [data-estudo-anima][style*="--anim"]{animation:none!important}
 `;
 
-const anima = (nome, atraso = 0, dur = 0.42) => ({ animation: `${nome} ${dur}s cubic-bezier(.2,.8,.2,1) ${atraso}s both` });
+const anima = (nome, atraso = 0, dur = 0.42, vezes = 1) => ({ "--anim": `${nome} ${dur}s cubic-bezier(.2,.8,.2,1) ${atraso}s ${vezes} both` });
+const DURACAO_TROCA = 450;
+
+/* Na tela cheia o slide cresce junto com a tela, até 1,7 vez. */
+function useEscalaDaTela(ligada) {
+  const conta = () => (typeof window === "undefined" ? 1
+    : Math.max(1, Math.min(1.7, Math.min(window.innerWidth / 1100, window.innerHeight / 680))));
+  const [escala, setEscala] = useState(conta);
+  useEffect(() => {
+    if (!ligada) return undefined;
+    const r = () => setEscala(conta());
+    r();
+    window.addEventListener("resize", r);
+    return () => window.removeEventListener("resize", r);
+  }, [ligada]); // eslint-disable-line react-hooks/exhaustive-deps
+  return ligada ? escala : 1;
+}
 
 function EstudoDoBloco({ estudo, indice, nuvem, notify, setData, atualizar, cheia, setCheia, onSair, onProximo }) {
   const b = estudo.blocos[indice];
@@ -545,6 +570,13 @@ function EstudoDoBloco({ estudo, indice, nuvem, notify, setData, atualizar, chei
   const [carregando, setCarregando] = useState(true);
   const [passo, setPasso] = useState(0);            // índice do slide; slides.length = checkpoint
   const [direcao, setDirecao] = useState(1);
+  const [saindo, setSaindo] = useState(null);
+  const escala = useEscalaDaTela(cheia);
+  useEffect(() => {
+    if (!saindo) return undefined;
+    const t = window.setTimeout(() => setSaindo(null), DURACAO_TROCA);
+    return () => window.clearTimeout(t);
+  }, [saindo]);
   const [concluido, setConcluido] = useState(false);
   const segundos = useRef(0);
   /* o que já se fez em cada slide (pontos revelados, quiz respondido,
@@ -616,6 +648,16 @@ function EstudoDoBloco({ estudo, indice, nuvem, notify, setData, atualizar, chei
   const irPara = useCallback((n) => {
     if (!conteudo) return;
     const alvo = Math.max(0, Math.min(slides.length, n));
+    if (alvo === passo) return;
+    /* o slide que sai: uma cópia parada dele desliza para fora enquanto o
+       novo entra pelo outro lado */
+    try {
+      const el = document.querySelector('[data-teste="estudo-slide"]');
+      if (el) {
+        const r = el.getBoundingClientRect();
+        setSaindo({ html: el.outerHTML.replace(/ data-teste="[^"]*"/g, ""), dir: alvo >= passo ? 1 : -1, altura: r.height, chave: Date.now() });
+      }
+    } catch (e) { /* sem a saída, fica só a entrada */ }
     setDirecao(alvo >= passo ? 1 : -1);
     setPasso(alvo);
     salvar((d) => ({ ...d, progresso: { ...(d.progresso || {}), [indice]: { ...((d.progresso || {})[indice] || {}), passo: alvo, segundos: segundos.current } } }));
@@ -683,7 +725,8 @@ function EstudoDoBloco({ estudo, indice, nuvem, notify, setData, atualizar, chei
 
   const ultimo = indice + 1 >= estudo.blocos.length;
   const corpo = (
-    <div className="flex flex-col gap-4" data-teste="estudo-player">
+    <div className="flex flex-col gap-4" data-teste="estudo-player"
+      style={cheia ? { flex: 1, minHeight: 0, width: "100%", maxWidth: 1700, margin: "0 auto" } : undefined}>
       <style>{ESTILO_ESTUDO}</style>
       <div className="flex items-center gap-3">
         <button type="button" onClick={onSair} aria-label="Voltar aos blocos"
@@ -724,11 +767,18 @@ function EstudoDoBloco({ estudo, indice, nuvem, notify, setData, atualizar, chei
       ) : null}
 
       {!carregando && conteudo && !noCheckpoint ? (
-        <SlideDoEstudo key={passo} slide={slides[passo]} estudoId={estudo.id} direcao={direcao}
-          memoria={memoriaSlides.current[passo] || (memoriaSlides.current[passo] = {})}
-          numero={passo + 1} total={slides.length} nuvem={nuvem} notify={notify}
-          onVoltar={passo > 0 ? () => irPara(passo - 1) : null}
-          onAvancar={() => irPara(passo + 1)} />
+        <div style={{ position: "relative", ...(cheia ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" } : {}) }}>
+          {saindo ? (
+            <div key={saindo.chave} data-saindo="1" aria-hidden="true" data-estudo-anima="1"
+              style={{ ...anima(saindo.dir >= 0 ? "estudoSaiEsq" : "estudoSaiDir", 0, DURACAO_TROCA / 1000), position: "absolute", top: 0, left: 0, right: 0, zIndex: 2, pointerEvents: "none", height: saindo.altura, overflow: "hidden" }}
+              dangerouslySetInnerHTML={{ __html: saindo.html }} />
+          ) : null}
+          <SlideDoEstudo key={passo} slide={slides[passo]} estudoId={estudo.id} direcao={direcao} cheia={cheia} escala={escala}
+            memoria={memoriaSlides.current[passo] || (memoriaSlides.current[passo] = {})}
+            numero={passo + 1} total={slides.length} nuvem={nuvem} notify={notify}
+            onVoltar={passo > 0 ? () => irPara(passo - 1) : null}
+            onAvancar={() => irPara(passo + 1)} />
+        </div>
       ) : null}
 
       {!carregando && conteudo && noCheckpoint ? (
@@ -742,10 +792,12 @@ function EstudoDoBloco({ estudo, indice, nuvem, notify, setData, atualizar, chei
   if (!cheia) return corpo;
   return createPortal((
     <div data-teste="estudo-cheia" className="fixed"
-      style={{ inset: 0, zIndex: 90, background: T.bg, overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
-      <div style={{ maxWidth: 1060, margin: "0 auto", padding: "calc(18px + env(safe-area-inset-top, 0px)) 16px 40px" }}>
-        {corpo}
-      </div>
+      style={{
+        inset: 0, zIndex: 90, background: T.bg, overflowY: "auto", WebkitOverflowScrolling: "touch",
+        display: "flex", flexDirection: "column",
+        padding: "calc(2.2vh + env(safe-area-inset-top, 0px)) 3vw calc(2.2vh + env(safe-area-inset-bottom, 0px))",
+      }}>
+      {corpo}
     </div>
   ), document.body);
 }
@@ -760,7 +812,7 @@ function MontandoBloco({ titulo }) {
   return (
     <Card className="px-6 py-10">
       <div className="flex flex-col items-center" style={{ textAlign: "center" }} data-teste="estudo-montando">
-        <span data-estudo-anima="1" style={{ ...anima("estudoPulsa", 0, 1.6), animationIterationCount: "infinite", width: 58, height: 58, borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", background: soft("var(--neon)", 16), color: "var(--neon)" }}>
+        <span data-estudo-anima="1" style={{ ...anima("estudoPulsa", 0, 1.6, "infinite"), width: 58, height: 58, borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", background: soft("var(--neon)", 16), color: "var(--neon)" }}>
           <Sparkles size={26} />
         </span>
         <div style={{ fontSize: 18, fontWeight: 700, color: T.ink, marginTop: 16 }}>Preparando: {titulo}</div>
@@ -810,7 +862,7 @@ const COR_SLIDE = {
   caso: "#E08A2E", quiz: "#2E9E5B", pegadinha: "#D04848", resumo: "var(--neon2)",
 };
 
-function SlideDoEstudo({ slide, estudoId, memoria, direcao, numero, total, nuvem, notify, onVoltar, onAvancar }) {
+function SlideDoEstudo({ slide, estudoId, memoria, direcao, cheia, escala = 1, numero, total, nuvem, notify, onVoltar, onAvancar }) {
   const s = slide || {};
   const m = memoria || {};
   const cor = COR_SLIDE[s.tipo] || "var(--neon)";
@@ -867,15 +919,21 @@ function SlideDoEstudo({ slide, estudoId, memoria, direcao, numero, total, nuvem
     : null;
 
   return (
-    <div onTouchStart={aoTocar} onTouchEnd={aoSoltar}>
+    <div onTouchStart={aoTocar} onTouchEnd={aoSoltar}
+      style={cheia ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" } : undefined}>
       <div data-estudo-anima="1" data-teste="estudo-slide" data-tipo={s.tipo}
         style={{
-          ...(primeira || direcao < 0 ? anima(direcao >= 0 ? "estudoEntraDir" : "estudoEntraEsq") : {}),
+          ...(primeira || direcao < 0 ? anima(direcao >= 0 ? "estudoEntraDir" : "estudoEntraEsq", 0, DURACAO_TROCA / 1000) : {}),
           background: T.card, border: `1px solid ${T.line}`, borderRadius: 24, overflow: "hidden",
           boxShadow: "0 18px 40px -28px rgba(0,0,0,.45)",
+          ...(cheia ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" } : {}),
         }}>
-        <div style={{ height: 5, background: cor }} />
-        <div style={{ padding: "22px 22px 20px" }}>
+        <div style={{ height: 5, background: cor, flexShrink: 0 }} />
+        <div style={{
+          padding: "22px 22px 20px",
+          ...(cheia ? { flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", justifyContent: "center", padding: "2.5vh 2.6vw" } : {}),
+        }}>
+          <div style={cheia && escala > 1 ? { zoom: escala } : undefined}>
           <div className="flex items-center justify-between gap-3">
             <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", color: cor }}>{ROTULO_SLIDE[s.tipo] || "Slide"}</span>
             <span style={{ fontSize: 12.5, color: T.faint }}>{numero}/{total}</span>
@@ -981,10 +1039,11 @@ function SlideDoEstudo({ slide, estudoId, memoria, direcao, numero, total, nuvem
               {ajuda.lembrete ? <div style={{ fontSize: 15, fontWeight: 700, color: T.ink, marginTop: 8 }}>{ajuda.lembrete}</div> : null}
             </div>
           ) : null}
+          </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 flex-wrap" style={{ marginTop: 14 }}>
+      <div className="flex items-center gap-2 flex-wrap" style={{ marginTop: 14, flexShrink: 0 }}>
         <button type="button" onClick={onVoltar || undefined} disabled={!onVoltar} aria-label="Slide anterior"
           style={{ width: 44, height: 44, borderRadius: 99, border: `1px solid ${T.line}`, background: T.card2, color: T.dim, cursor: onVoltar ? "pointer" : "default", opacity: onVoltar ? 1 : 0.4, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <ChevronLeft size={18} />

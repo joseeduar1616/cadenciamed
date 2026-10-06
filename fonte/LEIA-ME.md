@@ -654,7 +654,14 @@ flashcard na pasta "Estudo interativo". Custos no teto diário:
 Foco) e pede a tela cheia do navegador; Esc sai. Como trocar de modo remonta
 o slide, o que já se fez em cada slide (pontos revelados, quiz, caso, "não
 entendi") fica em `memoriaSlides`. As legendas das imagens dizem o que a
-imagem mostra, sem citar arquivo ou página. Testes: `testar-estudo.mjs` (rota) e
+imagem mostra, sem citar arquivo ou página. Na tela cheia o slide estica pela
+tela e cresce com ela (`useEscalaDaTela`, zoom até 1,7). As transições valem
+mesmo com "reduzir movimento" no sistema (a regra geral do site desliga toda
+animação nesse caso): cada peça leva a animação na variável `--anim`, e a
+regra `[data-estudo-anima][style*="--anim"]` aplica. Ao trocar de slide, uma
+cópia parada do antigo (`data-saindo`) desliza para fora enquanto o novo
+entra. O relógio de placas do Foco também vira sempre: no Windows com
+"efeitos de animação" desligado, ele trocava seco e parecia travado. Testes: `testar-estudo.mjs` (rota) e
 `testar-estudo-tela.mjs` (tela).
 
 PowerPoint (.pptx) é lido no navegador (`lerPptxComFiguras`, parte30, com

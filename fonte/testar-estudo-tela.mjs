@@ -190,6 +190,12 @@ const cheia = await pag.evaluate(() => {
 await foto('7-tela-cheia');
 if (cheia && cheia.cobre && cheia.slide && cheia.noCorpo) ok('"Tela cheia" põe a aula ocupando a tela toda, com o slide');
 else falha('tela cheia: ' + JSON.stringify(cheia));
+const ocupa = await pag.evaluate(() => {
+  const r = document.querySelector('[data-teste="estudo-slide"]').getBoundingClientRect();
+  return { altura: r.height / innerHeight, largura: r.width / innerWidth };
+});
+if (ocupa.altura > 0.6 && ocupa.largura > 0.85) ok(`na tela cheia o slide estica pela tela (${Math.round(ocupa.altura * 100)}% da altura, ${Math.round(ocupa.largura * 100)}% da largura)`);
+else falha('slide na tela cheia: ' + JSON.stringify(ocupa));
 await pag.keyboard.press('Escape');
 await pag.waitForTimeout(400);
 if (!(await pag.locator('[data-teste="estudo-cheia"]').count()) && await pag.locator('[data-teste="estudo-slide"]').count()) ok('Esc sai da tela cheia, no mesmo slide');
@@ -285,7 +291,31 @@ const cartao = flash.find((c) => /PERGUNTA UM/.test(c.frente));
 if (cartao && /furosemida venosa/.test(cartao.verso) && cartao.pasta === 'Estudo interativo' && flash.length === 1) ok('o que errou de primeira vira flashcard, na pasta "Estudo interativo"');
 else falha('flashcards: ' + JSON.stringify(flash));
 
-/* ── 6. celular ──────────────────────────────────────────────────────── */
+/* ── 6. transição, mesmo com "reduzir movimento" no sistema ─────────── */
+await pag.emulateMedia({ reducedMotion: 'reduce' });
+await pag.locator('[data-teste="estudo-bloco"]').first().click();
+await pag.waitForSelector('[data-teste="estudo-slide"]', { timeout: 8000 }).catch(() => {});
+await pag.waitForTimeout(700);
+await pag.locator('[data-teste="estudo-avancar"]').click();
+await pag.waitForTimeout(60);
+const troca = await pag.evaluate(() => ({
+  saindo: !!document.querySelector('[data-saindo]'),
+  saida: (document.querySelector('[data-saindo]') && getComputedStyle(document.querySelector('[data-saindo]')).animationName) || '',
+  entrada: getComputedStyle(document.querySelector('[data-teste="estudo-slide"]')).animationName,
+  slides: document.querySelectorAll('[data-teste="estudo-slide"]').length,
+}));
+if (troca.saindo && /estudoSai/.test(troca.saida) && /estudoEntra/.test(troca.entrada)) ok('ao passar o slide, o antigo sai deslizando e o novo entra, mesmo com "reduzir movimento" ligado no sistema');
+else falha('transição: ' + JSON.stringify(troca));
+if (troca.slides === 1) ok('a cópia do slide que sai não conta como slide (nem duplica botões)');
+else falha('slides na tela durante a troca: ' + troca.slides);
+await pag.waitForTimeout(600);
+if (!(await pag.locator('[data-saindo]').count())) ok('a cópia some quando a transição termina');
+else falha('a cópia do slide antigo ficou na tela');
+await pag.emulateMedia({ reducedMotion: 'no-preference' });
+await pag.locator('button[aria-label="Voltar aos blocos"]').click();
+await pag.waitForTimeout(400);
+
+/* ── 7. celular ──────────────────────────────────────────────────────── */
 await pag.setViewportSize({ width: 390, height: 844 });
 await pag.locator('[data-teste="estudo-bloco"]').first().click();
 await pag.waitForSelector('[data-teste="estudo-slide"]', { timeout: 8000 }).catch(() => {});
