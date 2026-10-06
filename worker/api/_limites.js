@@ -50,6 +50,14 @@ export const CUSTO = {
      a aula gravada); conferir uma caixa é curto, como uma pergunta. */
   "folha-caixas": 5,
   "folha-conferir": 1,
+  /* O estudo interativo: o plano lê o material inteiro com saída curta;
+     cada bloco lê o material de novo e escreve os slides (saída longa);
+     corrigir uma resposta e reexplicar um slide são curtos. Uma aula de 5
+     blocos, com umas 25 correções, fica perto de 60 pontos. */
+  "estudo-plano": 3,
+  "estudo-bloco": 5,
+  "estudo-corrigir": 1,
+  "estudo-simplificar": 1,
 };
 
 export const CUSTO_PADRAO = 2;

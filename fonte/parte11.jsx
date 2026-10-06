@@ -115,6 +115,7 @@ const CHECKOUT = (typeof window !== "undefined" && window.CADENCIA_CHECKOUT) || 
 
 const RECURSOS_PRO = {
   cartoes: "Seus próprios flashcards, com repetição espaçada",
+  estudo: "Estudo interativo: seu material vira aula em slides, com perguntas que a IA corrige",
   revisoes: "A escada de revisão espaçada, com os prazos de cada aula",
   temas: "O cronograma por especialidade, com o radar das áreas",
   rotina: "Agenda da semana e do dia, com o Google Agenda junto",
@@ -124,7 +125,7 @@ const RECURSOS_PRO = {
   nuvem: "Seus dados sincronizados em todos os aparelhos",
   projecao: "Ritmo e projeção até a prova",
 };
-const ABAS_PRO = ["cartoes", "revisoes", "temas", "rotina", "amigos", "metas", "simulados"];
+const ABAS_PRO = ["cartoes", "estudo", "revisoes", "temas", "rotina", "amigos", "metas", "simulados"];
 
 /* Abas que só o administrador enxerga. O servidor faz a mesma checagem,
    então esconder aqui é conveniência, não é o que protege. */
@@ -166,7 +167,7 @@ const RECURSOS_PADRAO = {
   assistente: "pro", cartoes: "pro", revisoes: "pro", provas: "pro",
   cronograma: "todos", rotina: "todos", amigos: "todos", metas: "todos",
   desempenho: "todos", simulados: "todos", progresso: "todos",
-  treino: "dono", financeiro: "dono",
+  estudo: "pro", treino: "dono", financeiro: "dono",
 };
 
 /* A reserva, aplicando as regras padrão ao que a tela já sabe.

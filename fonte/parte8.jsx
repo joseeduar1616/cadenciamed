@@ -34,7 +34,7 @@
  */
 const GRUPOS_DE_ABAS = [
   { nome: "Todo dia", abas: ["foco", "cronograma", "cartoes", "assistente", "rotina", "amigos"] },
-  { nome: "Estudar", abas: ["hoje", "materias", "clinico", "temas"] },
+  { nome: "Estudar", abas: ["hoje", "estudo", "materias", "clinico", "temas"] },
   { nome: "Fixar", abas: ["revisoes", "erros", "provas"] },
   { nome: "Acompanhar", abas: ["desempenho", "progresso", "metas", "simulados"] },
   { nome: "Com outras pessoas", abas: ["mentor"] },
@@ -73,7 +73,7 @@ const ICONE_ABA = {
   rotina: CalendarClock, amigos: Users, mentor: User,
   metas: Flame, desempenho: BarChart3, treino: Dumbbell, financeiro: Wallet, simulados: Flag,
   provas: FileText, erros: NotebookPen,
-  progresso: TrendingUp, planos: Zap, config: Settings2,
+  progresso: TrendingUp, planos: Zap, config: Settings2, estudo: Presentation,
 };
 
 /* Diz se a tela é estreita. A escolha "forçar celular" no rodapé manda
@@ -767,7 +767,7 @@ export default function Cadencia() {
      conteúdo, como cada capítulo da página de entrada. Aba sem frase abre
      só com o título, que já basta. */
   const OLHOS = {
-    hoje: "o dia de hoje", foco: "cronômetro e sessões",
+    hoje: "o dia de hoje", foco: "cronômetro e sessões", estudo: "seu material vira aula interativa",
     materias: "as aulas da residência", clinico: "o seu ciclo clínico",
     cronograma: "de onde vêm as suas aulas", temas: "por especialidade",
     assistente: "pergunte sobre o seu progresso", cartoes: "repetição espaçada",
@@ -815,6 +815,7 @@ export default function Cadencia() {
   const TABS = [
     { id: "hoje", label: "Hoje", acc: "var(--a-CL)" },
     { id: "foco", label: "Foco", acc: "var(--a-PR)" },
+    { id: "estudo", label: "Estudo interativo", acc: "var(--neon)" },
     { id: "materias", label: "Matérias", acc: "var(--a-GO)" },
     ...(subjectsClinico.length ? [{ id: "clinico", label: "Ciclo clínico", acc: "var(--ok)" }] : []),
     { id: "cronograma", label: "Cronograma", acc: "var(--a-PE)" },
@@ -1288,6 +1289,8 @@ export default function Cadencia() {
               {tab === "cronograma" && <AbaCronograma {...{ data, setData, notify, nuvem, pro, verPlanos: () => setTab("planos") }} />}
               {tab === "temas" && !pro && <Bloqueado recurso={RECURSOS_PRO.temas} onVerPlanos={() => setTab("planos")} />}
               {tab === "rotina" && !pro && <Bloqueado recurso={RECURSOS_PRO.rotina} onVerPlanos={() => setTab("planos")} />}
+              {tab === "estudo" && !ver.estudo && <Bloqueado recurso={RECURSOS_PRO.estudo} onVerPlanos={() => setTab("planos")} />}
+              {tab === "estudo" && ver.estudo && <EstudoInterativo {...{ data, setData, nuvem, notify }} />}
               {tab === "cartoes" && !pro && <Bloqueado recurso={RECURSOS_PRO.cartoes} onVerPlanos={() => setTab("planos")} />}
               {tab === "cartoes" && pro && <Cartoes {...{ data, setData, subjects, today, notify, nuvem, souDono }} />}
               {tab === "revisoes" && !pro && <Bloqueado recurso={RECURSOS_PRO.revisoes} onVerPlanos={() => setTab("planos")} />}

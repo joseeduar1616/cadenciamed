@@ -140,7 +140,7 @@ const ROTAS_DO_SITE = [
   "/api/refeicao-ia", "/api/plano-ia",
   "/api/ler-foto", "/api/buscar-imagem", "/api/salas", "/api/baralhos",
   "/api/google", "/api/notion", "/api/mentor", "/api/plano", "/api/cupom",
-  "/api/acessos", "/api/compra",
+  "/api/acessos", "/api/compra", "/api/estudo-ia",
 ];
 
 function SaudeDoSite({ nuvem }) {

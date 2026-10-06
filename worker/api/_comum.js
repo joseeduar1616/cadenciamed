@@ -254,6 +254,9 @@ export const RECURSOS = [
   { id: "desempenho", nome: "Desempenho", padrao: "todos" },
   { id: "simulados", nome: "Simulados", padrao: "todos" },
   { id: "progresso", nome: "Progresso", padrao: "todos" },
+  /* O estudo interativo: material vira aula em blocos, com a IA montando
+     os slides e corrigindo as respostas. É IA do começo ao fim. */
+  { id: "estudo", nome: "Estudo interativo", padrao: "pro" },
   /* A academia não é estudo. Ela nasceu para uma pessoa só e é a única
      aba que não tem nada a ver com prova de residência. */
   { id: "treino", nome: "Treino", padrao: "dono" },

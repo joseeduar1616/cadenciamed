@@ -621,6 +621,38 @@ fixos − gastos do mês − meta. Os dados ficam em `data.financas`, que
 sincroniza junto com o resto da conta do dono. Testes:
 `testar-financas.mjs` (rota) e `testar-financas-tela.mjs` (tela).
 
+## Estudo interativo
+
+Aba `estudo` (parte34, regra `pro` em `RECURSOS`), rota `/api/estudo-ia`.
+A pessoa junta um ou mais materiais (PDF e Word com as figuras, texto,
+fotos, imagens coladas no campo de texto) e a IA monta a aula:
+
+- `plano`: divide em blocos (5 em média, de 1 a 9), com objetivo, tópicos,
+  minutos e as figuras de cada bloco. Figura que a IA esquece entra em algum
+  bloco (`limparPlano`): nenhuma imagem do material se perde.
+- `bloco`: os slides de UM bloco (capa, conceito, pontos revelados um a um,
+  esquema, comparação, caso, quiz, pegadinha, resumo) e as 3 perguntas do
+  checkpoint com gabarito. Um bloco por chamada, para a resposta não vir
+  cortada; o seguinte é montado em segundo plano enquanto a pessoa estuda.
+- `corrigir`: veredito (certo, parcial, errado), o que acertou, o que
+  faltou, explicação e, se não estiver certo, uma pergunta de reforço só
+  sobre o que faltou. A pergunta só fecha quando sai "certo"; o bloco
+  seguinte só abre com as três fechadas.
+- `simplificar`: o "Não entendi" de cada slide.
+
+As figuras nunca vão para a IA (só código e texto em volta). Foto do
+material vira texto (pela `/api/ler-foto`) e também figura dos slides.
+`data.estudos` guarda só o índice e o progresso; material, slides,
+andamento do checkpoint e figuras ficam no IndexedDB (`cadencia-midia`,
+chaves `estudo:<id>` e `estudo:<id>:F1`). Toda gravação do documento passa
+por `mudarDocEstudo`, uma fila: sem ela o bloco montado em segundo plano e
+o checkpoint gravavam juntos e um apagava o outro. Bloco concluído vira
+sessão de estudo (minutos), e o que a pessoa errou de primeira vira
+flashcard na pasta "Estudo interativo". Custos no teto diário:
+`estudo-plano` 3, `estudo-bloco` 5, `estudo-corrigir` 1,
+`estudo-simplificar` 1. Testes: `testar-estudo.mjs` (rota) e
+`testar-estudo-tela.mjs` (tela).
+
 ## O teste grátis de 3 dias
 
 Toda conta nova tem o plano completo por 3 dias (`DIAS_TESTE`), sem cartão e

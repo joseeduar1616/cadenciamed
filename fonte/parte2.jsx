@@ -42,6 +42,10 @@ const DEFAULTS = {
   /* Estudo de cartões por dia: { "2026-10-06": { respostas, acertos,
      segundos } }. Alimenta o "cartões revisados hoje" e o calendário. */
   cartoesDia: {},
+  /* Estudo interativo (parte34): o índice das aulas montadas, com o
+     progresso de cada bloco. O conteúdo (material, slides, figuras) fica
+     no aparelho, no IndexedDB: é grande demais para o documento da conta. */
+  estudos: [],
   goals: { daily: 120, weekly: 720, questions: 200 },
   pomo: {
     focus: 25, short: 5, long: 15, cycle: 4, modo: "pomodoro",
@@ -421,6 +425,7 @@ function normalize(raw) {
     erros: limparErros(d.erros),
     folhas: limparFolhas(d.folhas),
     financas: limparFinancas(d.financas),
+    estudos: limparEstudos(d.estudos),
     cartoesDia: (() => {
       /* Só dia de verdade, número de verdade, e no máximo 400 dias. */
       const fora = {};
