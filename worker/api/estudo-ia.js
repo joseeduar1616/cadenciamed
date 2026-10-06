@@ -378,7 +378,7 @@ export async function onRequest({ request, env }) {
         role: "user",
         content: `${corpo.tema ? `Tema: ${linha(corpo.tema, 160)}\n\n` : ""}<pergunta>\n${pergunta.enunciado}\n</pergunta>\n\n<gabarito>\n${pergunta.gabarito.map((g, k) => `${k + 1}. ${g}`).join("\n")}\n</gabarito>\n\n${antes ? `<antes>\n${antes}\n</antes>\n\n` : ""}<resposta>\n${resposta}\n</resposta>`,
       }],
-      maxSaida: 2500,
+      maxSaida: 4000,
     });
     if (r.erro) return json({ erro: r.erro }, 502);
     const bruto = lerJsonEstudo(r.texto);
@@ -395,7 +395,7 @@ export async function onRequest({ request, env }) {
     const r = await chamarIA(provedor, modelo, {
       sistema: SIMPLIFICAR,
       mensagens: [{ role: "user", content: `<slide>\n${slide}\n</slide>${duvida ? `\n\n<duvida>\n${duvida}\n</duvida>` : ""}` }],
-      maxSaida: 1500,
+      maxSaida: 4000,
     });
     if (r.erro) return json({ erro: r.erro }, 502);
     const s = limparSimplificacao(lerJsonEstudo(r.texto));

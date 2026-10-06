@@ -214,6 +214,11 @@ function EntrevistaMotivacao({ mot, mudar, nuvem, notify, nome, onPronto, onCanc
             </div>
           ) : null}
           {ocupado ? <Mini style={{ color: T.dim }} data-teste="motivacao-ocupado">{ocupado}</Mini> : null}
+          {!atual && !ocupado ? (
+            <div>
+              <Btn size="sm" onClick={() => perguntar(ent)}><RefreshCw size={14} /> Tentar de novo</Btn>
+            </div>
+          ) : null}
           <div ref={fim} />
         </div>
 

@@ -67,6 +67,23 @@ r = await pedir({ acao: 'pergunta', entrevista: Array.from({ length: 10 }, (_, i
 if (r.corpo.fim === true && !pedidosIA.length) ok('depois de 10 perguntas a entrevista fecha, sem gastar IA');
 else falha('fim da entrevista: ' + JSON.stringify(r.corpo) + ' / ' + pedidosIA.length);
 
+/* a IA que responde fora do formato, ou cortada no meio, ainda serve */
+respostaIA = 'Que bonito. E quem são as pessoas por quem você estuda?';
+r = await pedir({ acao: 'pergunta', entrevista: ENT });
+if (r.status === 200 && /pessoas por quem/.test(r.corpo.pergunta)) ok('resposta em texto puro (fora do JSON) vira a pergunta');
+else falha('texto puro: ' + JSON.stringify(r));
+respostaIA = '{"pergunta":"Você tem fé ou religião que te sustenta? Pode pular.","tema":"fe","sugestoes":["Sou cat';
+r = await pedir({ acao: 'pergunta', entrevista: ENT });
+if (r.status === 200 && /fé ou religião/.test(r.corpo.pergunta)) ok('JSON cortado no meio: a pergunta é aproveitada mesmo assim');
+else falha('JSON cortado: ' + JSON.stringify(r));
+respostaIA = '{"tema":"fe","sugestoes":[';
+r = await pedir({ acao: 'pergunta', entrevista: ENT });
+if (r.status === 502 && /Tente de novo/.test(r.corpo.erro)) ok('sem pergunta nenhuma aproveitável, erro explicado');
+else falha('sem pergunta: ' + JSON.stringify(r));
+const pedidoTeto = pedidosIA.length ? pedidosIA[pedidosIA.length - 1].generationConfig.maxOutputTokens : 0;
+if (pedidoTeto >= 3000) ok(`a pergunta tem espaço de resposta suficiente para o modelo que pensa antes (${pedidoTeto})`);
+else falha('teto da pergunta: ' + pedidoTeto);
+
 /* ── o painel ────────────────────────────────────────────────────────── */
 r = await pedir({ acao: 'painel', entrevista: ENT.slice(0, 2) });
 if (r.status === 400) ok('painel com menos de 3 respostas é recusado com explicação');

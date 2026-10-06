@@ -77,6 +77,18 @@ Regras:
 Responda APENAS com JSON, sem texto antes ou depois:
 {"pergunta":"...","tema":"pessoas","sugestoes":["..."],"fim":false}`;
 
+/* Quando a IA responde a pergunta fora do JSON (texto puro, ou o JSON
+   cortado no meio), ainda dá para aproveitar a pergunta em si. */
+export function perguntaSemJson(t) {
+  const s = String(t || "").replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+  const campo = s.match(/"pergunta"\s*:\s*"((?:[^"\\]|\\.){8,})"/);
+  if (campo) {
+    try { return { pergunta: JSON.parse(`"${campo[1]}"`) }; } catch (e) { return { pergunta: campo[1] }; }
+  }
+  if (s && !/[{}[\]]/.test(s) && s.length <= 400 && /\?/.test(s)) return { pergunta: s };
+  return null;
+}
+
 export function limparPergunta(bruto, respondidas) {
   const j = bruto && typeof bruto === "object" ? bruto : {};
   const fim = !!j.fim || respondidas >= MAX_PERGUNTAS;
@@ -168,11 +180,16 @@ export async function onRequest({ request, env }) {
     const r = await chamarIA(provedor, modelo, {
       sistema: PERGUNTA,
       mensagens: [{ role: "user", content: `${nome ? `Nome: ${nome}\n` : ""}Já respondeu ${respondidas} de no máximo ${MAX_PERGUNTAS} perguntas.\n\n<entrevista>\n${comoTexto(ent) || "(nada ainda: esta é a primeira pergunta)"}\n</entrevista>` }],
-      maxSaida: 800,
+      /* o modelo pensa antes de responder, e o pensamento conta no mesmo
+         teto: com 800 a resposta chegava cortada e ilegível */
+      maxSaida: 4000,
     });
     if (r.erro) return json({ erro: r.erro }, 502);
-    const p = limparPergunta(lerJsonMotivacao(r.texto), respondidas);
-    if (!p.pergunta) return json({ erro: "A IA não conseguiu formular a pergunta. Tente de novo." }, 502);
+    const p = limparPergunta(lerJsonMotivacao(r.texto) || perguntaSemJson(r.texto), respondidas);
+    if (!p.pergunta) {
+      console.error("motivacao pergunta ilegível", r.cortado ? "(cortada)" : "", String(r.texto || "").slice(0, 300));
+      return json({ erro: r.cortado ? "A resposta da IA veio cortada. Tente de novo." : "A IA não conseguiu formular a pergunta. Tente de novo." }, 502);
+    }
     return json({ ok: true, ...p });
   }
 
@@ -186,11 +203,11 @@ export async function onRequest({ request, env }) {
     const r = await chamarIA(provedor, modelo, {
       sistema: PAINEL,
       mensagens: [{ role: "user", content: `${nome ? `Nome: ${nome}\n\n` : ""}<entrevista>\n${comoTexto(ent)}\n</entrevista>` }],
-      maxSaida: 5000,
+      maxSaida: 12000,
     });
     if (r.erro) return json({ erro: r.erro }, 502);
     const painel = limparPainel(lerJsonMotivacao(r.texto));
-    if (painel.cartoes.length < 3) return json({ erro: "A IA não conseguiu montar o painel. Tente de novo." }, 502);
+    if (painel.cartoes.length < 3) return json({ erro: r.cortado ? "A resposta da IA veio cortada. Tente de novo." : "A IA não conseguiu montar o painel. Tente de novo." }, 502);
     return json({ ok: true, ...painel });
   }
 
@@ -213,10 +230,11 @@ export async function onRequest({ request, env }) {
         role: "user",
         content: `${nome ? `Nome: ${nome}\n\n` : ""}<painel>\n${linha(corpo.resumo, 240)}\n${cartoes.map((c) => `- [${c.categoria}] ${c.titulo}: ${c.texto}`).join("\n") || "(ainda sem painel)"}\n</painel>\n\n<momento>\n${momento || "sem dados"}\n</momento>\n\n<agora>\n${humor ? `Como está: ${humor}.` : ""}${desabafo ? `\nO que ele escreveu: ${desabafo}` : ""}\n</agora>`,
       }],
-      maxSaida: 1200,
+      maxSaida: 4000,
     });
     if (r.erro) return json({ erro: r.erro }, 502);
-    const resposta = limparAgora(lerJsonMotivacao(r.texto));
+    /* texto puro também serve: vira a mensagem, sem ação */
+    const resposta = limparAgora(lerJsonMotivacao(r.texto) || { mensagem: /[{}]/.test(r.texto || "") ? "" : r.texto });
     if (!resposta.mensagem) return json({ erro: "A IA não respondeu. Tente de novo." }, 502);
     return json({ ok: true, ...resposta, apoio: temRisco(desabafo) });
   }

@@ -84,7 +84,17 @@ await aba.click();
 await pag.waitForTimeout(500);
 if (await pag.locator('[data-teste="motivacao-inicio"]').count()) ok('sem painel ainda, a aba convida para a conversa');
 else falha('o convite não apareceu');
+let falharPrimeira = true;
+await ctx.route('**/api/motivacao-ia', async (r) => {
+  if (falharPrimeira) { falharPrimeira = false; return r.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ erro: 'A IA não conseguiu formular a pergunta. Tente de novo.' }) }); }
+  return r.fallback();
+});
 await pag.locator('[data-teste="motivacao-comecar"]').click();
+await pag.waitForTimeout(800);
+const tentar = pag.locator('[data-teste="motivacao-entrevista"] button:has-text("Tentar de novo")');
+if (await tentar.count()) ok('se a IA falhar, a conversa mostra "Tentar de novo" em vez de ficar vazia');
+else falha('sem botão de tentar de novo depois do erro');
+await tentar.click().catch(() => {});
 await pag.waitForSelector('[data-teste="motivacao-pergunta"]', { timeout: 6000 }).catch(() => {});
 const pergunta = () => pag.locator('[data-teste="motivacao-pergunta"]').innerText().catch(() => '');
 if (/Por que você escolheu medicina/.test(await pergunta())) ok('a IA faz a primeira pergunta');
