@@ -109,17 +109,19 @@ if (cabe) ok('e cabem na tela, sem cortar');
 else falha('as placas passaram da tela');
 /* sem a Oswald (o teste roda sem internet), a fonte de reserva é larga:
    os números têm de caber no cartão mesmo assim */
-const numerosCabem = await placas.evaluateAll((els) => els.every((e) => {
+/* Cabe E fica no meio: o defeito relatado era o número mais largo que a
+   caixa escorrendo para a direita. A régua invisível (aria-hidden) fica
+   de fora da conta. */
+const numerosNoMeio = () => placas.evaluateAll((els) => els.every((e) => {
   const c = e.getBoundingClientRect();
-  return [...e.querySelectorAll('span')].every((sp) => {
-    const faixa = document.createRange();
-    faixa.selectNodeContents(sp);
-    const r = faixa.getBoundingClientRect();   // o texto em si, já com o aperto aplicado
-    return r.width <= c.width + 1;
+  return [...e.querySelectorAll('span:not([aria-hidden])')].every((sp) => {
+    const r = sp.getBoundingClientRect();   // já com o aperto aplicado
+    const meio = Math.abs((r.left + r.right) / 2 - (c.left + c.right) / 2);
+    return r.width <= c.width + 1 && r.left >= c.left - 1 && r.right <= c.right + 1 && meio <= 2;
   });
 }));
-if (numerosCabem) ok('os números cabem dentro do cartão, com qualquer fonte');
-else falha('os números estouram o cartão');
+if (await numerosNoMeio()) ok('os números cabem dentro do cartão e ficam no meio, com qualquer fonte');
+else falha('os números estouram o cartão ou saem do meio');
 if (process.env.CAPTURA_VIRAR) await pag.screenshot({ path: process.env.CAPTURA_VIRAR });
 await pag.setViewportSize({ width: 390, height: 844 });
 await pag.clock.runFor(1000);
@@ -142,6 +144,16 @@ await pag.waitForTimeout(300);
 const v3 = await valores();
 if (v3.length === 3 && v3[0] === '01') ok('no tempo corrido, passando de uma hora aparece a terceira placa: ' + v3.join(':'));
 else falha('tempo corrido com hora: ' + JSON.stringify(v3));
+if (await numerosNoMeio()) ok('no tempo corrido, os números ficam no meio das placas');
+else falha('no tempo corrido, os números saem do meio das placas');
+/* o caso relatado: tempo corrido, no celular, fora da tela cheia */
+await pag.setViewportSize({ width: 390, height: 844 });
+await pag.clock.runFor(1000);
+await pag.waitForTimeout(300);
+const celCorrido = await placas.evaluateAll((els) => els.every((e) => { const r = e.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; }));
+if (celCorrido && await numerosNoMeio()) ok('no celular, as três placas do tempo corrido cabem e os números ficam no meio');
+else falha('no celular, o tempo corrido passa da tela ou tira os números do meio');
+await pag.setViewportSize({ width: 1280, height: 900 });
 
 /* ── 5. "reduzir movimento": troca sem folha parada no meio ───────────── */
 await pag.emulateMedia({ reducedMotion: 'reduce' });

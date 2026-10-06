@@ -43,18 +43,27 @@ const ERROS_AUTH = {
   "auth/popup-closed-by-user": "A janela do Google foi fechada antes de terminar.",
   "auth/cancelled-popup-request": "A janela do Google foi fechada antes de terminar.",
   "auth/user-disabled": "Esta conta foi desativada.",
+  "auth/account-exists-with-different-credential": "Esse e-mail já tem conta com senha. Entre com e-mail e senha.",
+  "auth/web-storage-unsupported": "O navegador está bloqueando os dados do site. Fora da aba anônima costuma funcionar.",
+  "auth/popup-blocked": "O navegador barrou a janela do Google. Libere janelas para este site e tente de novo.",
 };
 /* O mesmo erro quer dizer outra coisa no botão do Google: quem precisa
-   ser ligado no console é o provedor Google, não o e-mail e senha. */
+   ser ligado no console é o provedor Google, não o e-mail e senha.
+   Fora de cadenciamed.com.br o login passa por outro domínio, que o
+   Safari e o iPhone costumam barrar: aí a saída é abrir pelo endereço
+   principal. E o código vai junto na mensagem: sem ele, "não deu certo"
+   não dá pista nenhuma de onde o login parou. */
 const traduzErroGoogle = (e) => {
-  const c = e && e.code;
-  if (c === "auth/operation-not-allowed" || c === "auth/unauthorized-domain") {
-    /* Para quem visita, a mensagem técnica do Firebase não diz nada: o
-       detalhe vai para o console, e a pessoa recebe a saída. */
-    console.error("login com o Google:", c);
-    return "O login com o Google não está disponível agora. Entre com e-mail e senha.";
-  }
-  return traduzErro(e);
+  const c = (e && e.code) || "";
+  console.error("login com o Google:", c, e && e.message);
+  if (c === "auth/popup-closed-by-user" || c === "auth/cancelled-popup-request") return traduzErro(e);
+  let foraDoPrincipal = false;
+  try { foraDoPrincipal = DOMINIOS_LOGIN_PROPRIO.indexOf(window.location.hostname) < 0 && !/^(localhost|127\.)/.test(window.location.hostname); } catch (x) { /* fora do navegador */ }
+  const dica = foraDoPrincipal ? " Abra o site por cadenciamed.com.br e tente de novo." : "";
+  const base = ERROS_AUTH[c] && c !== "auth/operation-not-allowed" && c !== "auth/unauthorized-domain"
+    ? ERROS_AUTH[c]
+    : "O login com o Google não terminou.";
+  return base + dica + (c ? ` Código: ${c.replace(/^auth\//, "")}.` : "");
 };
 const traduzErro = (e) => ERROS_AUTH[e && e.code] || "Não deu certo. Tente de novo.";
 
@@ -115,6 +124,8 @@ function useNuvem(data, setData, notify, pronto, pro) {
   const tmr = useRef(null);
   const dataRef = useRef(data);
   dataRef.current = data;
+  const notifyRef = useRef(notify);
+  notifyRef.current = notify;
 
   useEffect(() => {
     try { setTemBackup(!!window.localStorage.getItem(CHAVE_BACKUP)); } catch (e) { /* noop */ }
@@ -140,7 +151,11 @@ function useNuvem(data, setData, notify, pronto, pro) {
         /* Quem entrou com o Google pelo redirecionamento (o caminho de
            reserva quando o navegador barra a janela) volta aqui. */
         if (U.getRedirectResult) {
-          U.getRedirectResult(auth).then((cred) => { if (vivo && cred) depoisDoGoogleRef.current(cred); }).catch(() => {});
+          /* Se a volta do Google falhar, a pessoa precisa saber: antes o erro
+             sumia aqui, e o site só voltava para a tela de entrar. */
+          U.getRedirectResult(auth)
+            .then((cred) => { if (vivo && cred) depoisDoGoogleRef.current(cred); })
+            .catch((e) => { if (vivo) notifyRef.current(traduzErroGoogle(e)); });
         }
         U.onAuthStateChanged(auth, (u) => {
           if (!vivo) return;
@@ -347,7 +362,15 @@ function useNuvem(data, setData, notify, pronto, pro) {
         instalado = !!(window.navigator.standalone
           || (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches));
       } catch (e) { /* segue com a janela */ }
-      if (instalado && U.signInWithRedirect) {
+      /* No celular, pelo endereço principal, o redirecionamento também é o
+         caminho mais firme: a "janela" vira outra aba, que às vezes não
+         consegue avisar a aba do site e deixa a pessoa parada no Google. */
+      let celular = false;
+      try {
+        celular = DOMINIOS_LOGIN_PROPRIO.indexOf(window.location.hostname) >= 0
+          && /iPhone|iPad|iPod|Android|Mobile/i.test(window.navigator.userAgent || "");
+      } catch (e) { /* segue com a janela */ }
+      if ((instalado || celular) && U.signInWithRedirect) {
         await U.signInWithRedirect(sdk.auth, provedor);
         return { redirecionou: true };
       }

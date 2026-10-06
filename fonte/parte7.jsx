@@ -1643,7 +1643,7 @@ const CAPITULOS = [
   },
 ];
 
-function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar }) {
+function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar, tema, mudarTema }) {
   /* A conta vem antes do nome.
    *
    * Pedir só o nome deixava a pessoa entrar, estudar, e descobrir depois
@@ -1823,6 +1823,16 @@ function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar }) {
             onChange={(e) => set("cupom", e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") enviar(); }} />
         </Field>
+      ) : null}
+      {modo === "criar" && mudarTema ? (
+        /* O visual do site, escolhido já na inscrição. Vale também para
+           quem cria a conta pelo botão do Google, lá em cima: a escolha fica
+           guardada assim que é tocada. */
+        <div data-teste="inscricao-visual" className="flex flex-col gap-2">
+          <Label>Visual do site</Label>
+          <EscolhaVisual tema={tema} theme={theme} mudarTema={mudarTema} compacto />
+          <div style={{ fontSize: 12.5, color: T.faint }}>Dá para trocar depois em Configurações, Aparência.</div>
+        </div>
       ) : null}
       {modo === "entrar" ? (
         <label className="flex items-center gap-2.5" style={{ cursor: "pointer" }}>

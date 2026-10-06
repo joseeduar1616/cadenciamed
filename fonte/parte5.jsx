@@ -80,32 +80,54 @@ function PlacaDeVirar({ valor, largura }) {
      chegar) a fonte de reserva é larga e estouraria o cartão. Mede "00"
      na fonte que estiver valendo e aperta na horizontal o que passar —
      o que também dá à reserva o jeito estreito do relógio de placas. */
+  /* Medido no próprio número da tela, e não num canvas à parte: o canvas
+     media às vezes com outra fonte (a Oswald ainda chegando, a reserva do
+     aparelho), o "00" saía mais largo que a conta, passava da placa e,
+     sendo mais largo que a caixa, escorria para a direita em vez de ficar
+     no meio. Agora a caixa do número é centralizada pelo meio (sobra para
+     os dois lados igual) e o aperto é refeito quando a fonte troca. */
   const tamanhoFonte = Math.round(altura * 0.84);
   const [aperto, setAperto] = useState(1);
+  const medida = useRef(null);
   useLayoutEffect(() => {
     let vivo = true;
     const medir = () => {
-      try {
-        const ctx = document.createElement("canvas").getContext("2d");
-        ctx.font = `700 ${tamanhoFonte}px ${FONTE_VIRAR}`;
-        const w = ctx.measureText("00").width;
-        if (vivo && w > 0) setAperto(Math.min(1, (largura * 0.9) / w));
-      } catch (e) { /* sem canvas: fica como está */ }
+      const el = medida.current;
+      const w = el ? el.offsetWidth : 0;   // offsetWidth ignora o scaleX
+      if (vivo && w > 0) setAperto(Math.min(1, (largura * 0.86) / w));
     };
     medir();
+    let obs = null;
+    if (typeof ResizeObserver !== "undefined" && medida.current) {
+      obs = new ResizeObserver(medir);
+      obs.observe(medida.current);
+    }
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(medir).catch(() => {});
-    return () => { vivo = false; };
+    if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener("loadingdone", medir);
+    return () => {
+      vivo = false;
+      if (obs) obs.disconnect();
+      if (document.fonts && document.fonts.removeEventListener) document.fonts.removeEventListener("loadingdone", medir);
+    };
   }, [largura, tamanhoFonte]);
 
   const raio = Math.round(largura * 0.08);
   const fundo = "linear-gradient(180deg, #b9c6d4 0%, #a4b2c2 100%)";
+  const estiloNumero = {
+    display: "inline-block", whiteSpace: "nowrap", fontFamily: FONTE_VIRAR, fontWeight: 700,
+    fontSize: tamanhoFonte, lineHeight: `${altura}px`, letterSpacing: "-0.02em",
+    fontVariantNumeric: "tabular-nums", fontFeatureSettings: "\"tnum\"",
+  };
   const numero = (txt) => (
-    <span style={{
-      position: "absolute", left: 0, right: 0, height: altura, lineHeight: `${altura}px`,
-      textAlign: "center", fontFamily: FONTE_VIRAR, fontWeight: 700, fontSize: tamanhoFonte,
-      letterSpacing: "-0.02em", color: "#ffffff", textShadow: "0 2px 6px rgba(20,30,45,.25)",
-      fontVariantNumeric: "tabular-nums", transform: aperto < 1 ? `scaleX(${aperto})` : undefined,
-    }}>{txt}</span>
+    <div style={{
+      position: "absolute", left: 0, right: 0, height: altura,
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }}>
+      <span style={{
+        ...estiloNumero, flexShrink: 0, color: "#ffffff", textShadow: "0 2px 6px rgba(20,30,45,.25)",
+        transform: aperto < 1 ? `scaleX(${aperto})` : undefined, transformOrigin: "50% 50%",
+      }}>{txt}</span>
+    </div>
   );
   /* sombra: escurece a metade enquanto a folha passa por cima dela */
   const metade = (txt, embaixo, extra, sombra) => (
@@ -132,6 +154,11 @@ function PlacaDeVirar({ valor, largura }) {
   return (
     <div role="img" aria-label={valor} data-teste="placa-virar"
       style={{ position: "relative", width: largura, height: altura, flexShrink: 0 }}>
+      {/* a régua: o número sem aperto, invisível, só para medir */}
+      <span ref={medida} aria-hidden="true"
+        style={{ ...estiloNumero, position: "absolute", left: 0, top: 0, visibility: "hidden", pointerEvents: "none" }}>
+        {"0".repeat(Math.max(2, String(valor).length))}
+      </span>
       {metade(atual, false, null, virando ? 0.55 * (1 - q1) : 0)}
       {metade(antigo, true, null, virando ? 0.4 * q1 * (1 - q2) : 0)}
       {virando ? (

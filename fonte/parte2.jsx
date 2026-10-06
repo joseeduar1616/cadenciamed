@@ -113,9 +113,11 @@ const DEFAULTS = {
      pergunta sem invalidar o perfil de quem já respondeu. */
   perfilMemoria: { respostas: {}, dias: [], aplicadoEm: "" },
   /* aparência: cor de acento, fonte e tamanho do texto */
-  /* visual: "limpo" (o padrão, no estilo da Easy Medicina) ou "neon" (o
-     desenho de antes, com partículas e brilho). */
-  tema: { cor: "cadencia", neon: "", neon2: "", fonte: "inter", tamanho: 1, visual: "limpo", escuro: "preto" },
+  /* visual: "limpo" (o padrão de conta nova, no estilo da Easy Medicina) ou
+     "neon" (o desenho de antes, com partículas e brilho). versaoVisual marca
+     o dado como de depois da chegada do visual limpo; avisoVisual é o
+     cartão "o site ganhou um visual novo", que fica até a pessoa decidir. */
+  tema: { cor: "cadencia", neon: "", neon2: "", fonte: "inter", tamanho: 1, visual: "limpo", escuro: "preto", versaoVisual: 2, avisoVisual: false },
   /* Claro e escuro da anotação, à parte do resto: "auto" segue o app. */
   notaTema: "auto",
 };
@@ -371,6 +373,12 @@ function normalize(raw) {
   const gc = obj(d.googleCal);
   const tr = obj(d.treino);
   const rv = obj(d.revisao), tm = obj(d.tema);
+  /* Dado guardado antes do visual limpo (sem versaoVisual): é de quem já
+     usava o site. Essa pessoa continua no neon que conhecia e recebe o
+     aviso do visual novo uma vez, para testar e decidir. Vale também para
+     quem abriu o site nas primeiras horas do limpo, quando ele virava o
+     padrão de todo mundo sem ninguém ter escolhido. */
+  const deAntes = !(Number(tm.versaoVisual) >= 2);
   const hex = (v) => (/^#[0-9a-fA-F]{6}$/.test(v) ? v : "");
 
   /* Até a reorganização do cronograma o identificador da aula era a posição
@@ -603,9 +611,11 @@ function normalize(raw) {
       neon2: hex(tm.neon2) ? corLegivel(hex(tm.neon2)) : "",
       fonte: FONTES.some((f) => f.id === tm.fonte) ? tm.fonte : "inter",
       tamanho: Number(tm.tamanho) >= 0.85 && Number(tm.tamanho) <= 1.3 ? Number(tm.tamanho) : 1,
-      visual: tm.visual === "neon" ? "neon" : "limpo",
+      visual: deAntes || tm.visual === "neon" ? "neon" : "limpo",
       /* o tom do fundo escuro no visual limpo: preto (padrão) ou azul-noite */
       escuro: tm.escuro === "azul" ? "azul" : "preto",
+      versaoVisual: 2,
+      avisoVisual: deAntes ? true : tm.avisoVisual === true,
     },
   };
 }

@@ -569,6 +569,20 @@ Também da Easy:
 
 Teste: `testar-visual-easy.mjs`.
 
+### Quem já usava fica no neon, com o aviso do visual novo
+
+O limpo é o padrão só de **conta nova**. Em `normalize` (parte2), dado sem
+`tema.versaoVisual` é de antes do limpo: vira `visual: "neon"`,
+`versaoVisual: 2` e `avisoVisual: true`. Isso vale também para quem abriu o
+site nas primeiras horas do limpo (o dado já dizia "limpo", mas ninguém
+tinha escolhido). Com `avisoVisual`, o topo da página mostra
+`AvisoVisualNovo` (parte33): explica a novidade, e as opções de visual,
+fundo e tom trocam o site na hora; "Ficar com este visual" grava
+`avisoVisual: false`. O aviso não cobre a página. Na inscrição, o
+formulário de criar conta tem a mesma escolha (`EscolhaVisual`, compacta),
+gravada no toque, e por isso vale também para quem cria pelo Google.
+Teste: `testar-visual-migracao.mjs`.
+
 ## Entrar e criar conta com o Google
 
 "Continuar com o Google" fica nos dois formulários de conta (página de
@@ -580,6 +594,17 @@ redirecionamento, recolhido por `getRedirectResult` ao abrir. O provedor
 Google já está ligado no projeto do Firebase; se um dia aparecer "Este
 endereço não está liberado", falta o domínio em Authentication › Settings ›
 Domínios autorizados. Teste: `testar-financas-tela.mjs` (parte do Google).
+
+Em cadenciamed.com.br o login abre e volta pelo próprio domínio
+(`/__/auth/handler`, servido pelo Firebase Hosting); a página de retorno
+leva direto ao "Fazer login com o Google, prosseguir para
+cadenciamed.com.br". No celular e no app instalado vai pelo
+redirecionamento (a "janela" vira outra aba, que nem sempre consegue avisar
+a aba do site). Erro do Google aparece com o código no fim ("Código:
+internal-error"), inclusive o da volta do redirecionamento, que antes era
+engolido; fora do endereço principal (o workers.dev) a mensagem sugere abrir
+por cadenciamed.com.br, porque ali o login passa por outro domínio, e o
+Safari barra.
 
 ## Financeiro (só do dono)
 

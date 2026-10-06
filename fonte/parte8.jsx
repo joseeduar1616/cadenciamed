@@ -1179,7 +1179,8 @@ export default function Cadencia() {
       {needsOnboarding ? (
         <Onboarding nuvem={nuvem} aoLiberar={assinatura.recarregar}
           onDone={(name) => setData((p) => ({ ...p, profile: { ...p.profile, name, onboarded: true } }))}
-          theme={data.theme} toggleTheme={() => setData((p) => ({ ...p, theme: p.theme === "dark" ? "light" : "dark" }))} />
+          theme={data.theme} toggleTheme={() => setData((p) => ({ ...p, theme: p.theme === "dark" ? "light" : "dark" }))}
+          tema={data.tema} mudarTema={(m) => setData((p) => ({ ...p, tema: { ...p.tema, ...m, avisoVisual: false } }))} />
       ) : (
         /* O tamanho do texto escolhido em Progresso é aplicado com zoom só
            no conteúdo: as camadas de fundo ficam de fora, porque elas são
@@ -1258,6 +1259,13 @@ export default function Cadencia() {
           </header>
 
           <main className="px-5 sm:px-8 pb-16">
+            {/* Quem já usava o site antes do visual limpo: o aviso de que ele
+                existe, com as opções para testar ali mesmo (parte33). */}
+            {ready && data.tema && data.tema.avisoVisual ? (
+              <div className="mx-auto" style={{ maxWidth: LARGURA, marginBottom: 22 }}>
+                <AvisoVisualNovo data={data} setData={setData} />
+              </div>
+            ) : null}
             <div className="mx-auto rise surge" style={{ maxWidth: LARGURA }} key={tab}>
               {/* Cabeçalho da aba, na tipografia da página de entrada. Antes
                   o conteúdo começava direto no primeiro painel, e em telas
