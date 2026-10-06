@@ -257,6 +257,8 @@ export const RECURSOS = [
   /* O estudo interativo: material vira aula em blocos, com a IA montando
      os slides e corrigindo as respostas. É IA do começo ao fim. */
   { id: "estudo", nome: "Estudo interativo", padrao: "pro" },
+  /* O painel de motivação: entrevista e cartões feitos pela IA. */
+  { id: "motivacao", nome: "Motivação", padrao: "pro" },
   /* A academia não é estudo. Ela nasceu para uma pessoa só e é a única
      aba que não tem nada a ver com prova de residência. */
   { id: "treino", nome: "Treino", padrao: "dono" },

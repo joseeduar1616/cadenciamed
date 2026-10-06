@@ -38,7 +38,7 @@ const GRUPOS_DE_ABAS = [
   { nome: "Fixar", abas: ["revisoes", "erros", "provas"] },
   { nome: "Acompanhar", abas: ["desempenho", "progresso", "metas", "simulados"] },
   { nome: "Com outras pessoas", abas: ["mentor"] },
-  { nome: "Você", abas: ["treino", "financeiro", "planos", "config"] },
+  { nome: "Você", abas: ["motivacao", "treino", "financeiro", "planos", "config"] },
 ];
 
 /* Devolve [{ nome, itens }] só com o que existe na barra desta pessoa: um
@@ -73,7 +73,7 @@ const ICONE_ABA = {
   rotina: CalendarClock, amigos: Users, mentor: User,
   metas: Flame, desempenho: BarChart3, treino: Dumbbell, financeiro: Wallet, simulados: Flag,
   provas: FileText, erros: NotebookPen,
-  progresso: TrendingUp, planos: Zap, config: Settings2, estudo: Presentation,
+  progresso: TrendingUp, planos: Zap, config: Settings2, estudo: Presentation, motivacao: Heart,
 };
 
 /* Diz se a tela é estreita. A escolha "forçar celular" no rodapé manda
@@ -767,7 +767,7 @@ export default function Cadencia() {
      conteúdo, como cada capítulo da página de entrada. Aba sem frase abre
      só com o título, que já basta. */
   const OLHOS = {
-    hoje: "o dia de hoje", foco: "cronômetro e sessões", estudo: "seu material vira aula interativa",
+    hoje: "o dia de hoje", foco: "cronômetro e sessões", estudo: "seu material vira aula interativa", motivacao: "para os dias em que estudar pesa",
     materias: "as aulas da residência", clinico: "o seu ciclo clínico",
     cronograma: "de onde vêm as suas aulas", temas: "por especialidade",
     assistente: "pergunte sobre o seu progresso", cartoes: "repetição espaçada",
@@ -837,6 +837,7 @@ export default function Cadencia() {
     ...(ver.treino ? [{ id: "treino", label: "Treino", acc: "var(--ok)" }] : []),
     /* O financeiro pessoal do dono: só a conta dele vê (regra "dono"). */
     ...(ver.financeiro ? [{ id: "financeiro", label: "Financeiro", acc: "var(--ok)" }] : []),
+    { id: "motivacao", label: "Motivação", acc: "var(--neon2)" },
     { id: "simulados", label: "Simulados", acc: "var(--a-CI)" },
     { id: "progresso", label: "Progresso", acc: "var(--a-CI)" },
     { id: "planos", label: pro ? "Plano" : "Assinar", acc: "var(--neon2)" },
@@ -1289,6 +1290,8 @@ export default function Cadencia() {
               {tab === "cronograma" && <AbaCronograma {...{ data, setData, notify, nuvem, pro, verPlanos: () => setTab("planos") }} />}
               {tab === "temas" && !pro && <Bloqueado recurso={RECURSOS_PRO.temas} onVerPlanos={() => setTab("planos")} />}
               {tab === "rotina" && !pro && <Bloqueado recurso={RECURSOS_PRO.rotina} onVerPlanos={() => setTab("planos")} />}
+              {tab === "motivacao" && !ver.motivacao && <Bloqueado recurso={RECURSOS_PRO.motivacao} onVerPlanos={() => setTab("planos")} />}
+              {tab === "motivacao" && ver.motivacao && <Motivacao {...{ data, setData, nuvem, notify, today }} irPara={setTab} />}
               {tab === "estudo" && !ver.estudo && <Bloqueado recurso={RECURSOS_PRO.estudo} onVerPlanos={() => setTab("planos")} />}
               {tab === "estudo" && ver.estudo && <EstudoInterativo {...{ data, setData, nuvem, notify }} />}
               {tab === "cartoes" && !pro && <Bloqueado recurso={RECURSOS_PRO.cartoes} onVerPlanos={() => setTab("planos")} />}

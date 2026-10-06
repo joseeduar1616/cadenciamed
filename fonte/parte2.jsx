@@ -46,6 +46,9 @@ const DEFAULTS = {
      progresso de cada bloco. O conteúdo (material, slides, figuras) fica
      no aparelho, no IndexedDB: é grande demais para o documento da conta. */
   estudos: [],
+  /* Painel de motivação (parte36): a entrevista, os cartões e os motivos
+     que a pessoa escreveu. Texto curto, vai junto com a conta. */
+  motivacao: { entrevista: [], painel: null, meus: [] },
   goals: { daily: 120, weekly: 720, questions: 200 },
   pomo: {
     focus: 25, short: 5, long: 15, cycle: 4, modo: "pomodoro",
@@ -426,6 +429,7 @@ function normalize(raw) {
     folhas: limparFolhas(d.folhas),
     financas: limparFinancas(d.financas),
     estudos: limparEstudos(d.estudos),
+    motivacao: limparMotivacao(d.motivacao),
     cartoesDia: (() => {
       /* Só dia de verdade, número de verdade, e no máximo 400 dias. */
       const fora = {};

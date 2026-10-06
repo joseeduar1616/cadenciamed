@@ -580,6 +580,8 @@ function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, do
       {/* O dia em uma olhada, como a "Visão geral" da Easy: a saudação, o
           quanto já foi, e as atividades com o botão para ir fazer. */}
       <PainelDoDia {...{ data, today, minToday, late, blocosHoje, cartoesHoje, go }} />
+      {/* um motivo do painel de motivação por dia, para lembrar por quê */}
+      <MotivoDoDia data={data} today={today} go={go} />
 
       <Card className="px-6 sm:px-8 py-7" brilho="var(--neon)" tilt>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-7">

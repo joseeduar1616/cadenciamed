@@ -687,6 +687,26 @@ AnkiDroid) abre com o `fzstd.min.js` (MIT, publicado junto do site); com ele
 o "Trazer baralho" também abre esse formato, só sem as imagens. Teste:
 `testar-anki-historico.mjs`.
 
+## Painel de motivação
+
+Aba `motivacao` (parte36, regra `pro`), rota `/api/motivacao-ia`.
+- `pergunta`: a entrevista, uma pergunta por vez (até 10): por que
+  medicina, sonho de especialidade, por quem estuda, fé (pode pular), o que
+  já superou, a cena de quando passar, metas, medos e o que a faz voltar.
+  Com 3 respostas já dá para montar o painel.
+- `painel`: cartões por categoria (propósito, pessoas, fé, metas, futuro,
+  conquistas, lembretes para os medos, frases), nas palavras da pessoa.
+  Fé só entra se ela trouxe.
+- `agora`: "Preciso de motivação agora". Humor e desabafo, com o painel e
+  o momento (dias para a prova, minutos de hoje, dias seguidos), viram uma
+  mensagem curta e uma ação (Foco, revisões, cartões, pausa). Desabafo com
+  sinal de risco traz o aviso do CVV (188) mesmo que a IA esqueça
+  (`temRisco`).
+Tudo em `data.motivacao` (entrevista, painel com favoritos, motivos da
+pessoa). No Hoje, `MotivoDoDia` mostra um cartão por dia. Custos:
+`motivacao-pergunta` 1, `motivacao-painel` 3, `motivacao-agora` 1.
+Testes: `testar-motivacao.mjs` e `testar-motivacao-tela.mjs`.
+
 ## O teste grátis de 3 dias
 
 Toda conta nova tem o plano completo por 3 dias (`DIAS_TESTE`), sem cartão e
