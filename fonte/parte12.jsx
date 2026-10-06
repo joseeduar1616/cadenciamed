@@ -20,7 +20,7 @@ const BOTOES_RESPOSTA = [
   { id: "errei", rotulo: "De novo", cor: "#DC2626" },
   { id: "dificil", rotulo: "Difícil", cor: "#C2570C" },
   { id: "bom", rotulo: "Bom", cor: "#15803D" },
-  { id: "facil", rotulo: "Fácil", cor: "#2563EB" },
+  { id: "facil", rotulo: "Fácil", cor: "#7C3AED" },
 ];
 
 /* Quanto falta para o cartão voltar, se a resposta for esta: "<10m" quando
@@ -1632,7 +1632,7 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
                 for (const id of fila) { const c = porId.get(id); if (c) conta[situacaoDoCartao(c)] += 1; }
                 return (
                   <div className="flex items-center gap-x-4 gap-y-1 flex-wrap" data-teste="contadores-estudo">
-                    {[["novo", "Novos", "#2563EB"], ["aprendendo", "Aprendendo", "#D97706"], ["revisao", "Revisão", "#16A34A"], ["reaprendendo", "Reaprend.", "#DC2626"]].map(([k, rot, cor]) => (
+                    {[["novo", "Novos", "#7C3AED"], ["aprendendo", "Aprendendo", "#D97706"], ["revisao", "Revisão", "#16A34A"], ["reaprendendo", "Reaprend.", "#DC2626"]].map(([k, rot, cor]) => (
                       <span key={k} className="inline-flex items-center gap-1.5" style={{ fontSize: 13.5, color: T.faint }}>
                         <span style={{ width: 8, height: 8, borderRadius: 99, background: cor }} />
                         <b style={{ color: T.ink, fontWeight: 700 }}>{conta[k]}</b> {rot}

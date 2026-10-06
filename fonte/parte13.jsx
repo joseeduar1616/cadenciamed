@@ -302,7 +302,7 @@ function comNegrito(texto, chave) {
   return partes.map((t, i) => (
     /^\*\*[^*]+\*\*$/.test(t)
       /* O termo-chave em negrito ganha a cor de destaque, como na Easy:
-         "quais os **três pilares**" sai com "três pilares" em azul. */
+         "quais os **três pilares**" sai com "três pilares" no roxo. */
       ? <strong key={`${chave}-${i}`} style={{ fontWeight: 800, color: "var(--neon)" }}>{t.slice(2, -2)}</strong>
       : <span key={`${chave}-${i}`}>{t}</span>
   ));

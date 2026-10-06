@@ -71,7 +71,7 @@ for (const tema of ['light', 'dark']) {
     auras: document.querySelectorAll('.aura').length,
     titulo: getComputedStyle(document.querySelector('.capa-t')).textTransform,
   }));
-  const esperado = tema === 'light' ? 'rgb(243, 245, 249)' : 'rgb(11, 17, 32)';
+  const esperado = tema === 'light' ? 'rgb(245, 244, 248)' : 'rgb(18, 18, 18)';
   if (v.visual === 'limpo' && v.fundo === esperado) ok(`visual limpo é o padrão no tema ${tema === 'light' ? 'claro' : 'escuro'} (fundo ${esperado})`);
   else falha(`${tema}: ` + JSON.stringify(v));
   if (!v.canvas && !v.auras) ok(`sem constelação nem auras no limpo (${tema})`);

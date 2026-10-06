@@ -70,7 +70,7 @@ function PainelDoDia({ data, today, minToday, late, blocosHoje, cartoesHoje, go 
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-5" data-teste="painel-do-dia">
-      {/* A faixa azul com a saudação e, dentro, o cartão branco das
+      {/* A faixa roxa com a saudação e, dentro, o cartão branco das
           atividades: o "Olá, Gabriela. Pronto para revisar?" da Easy. */}
       <div className="lg:col-span-2 rounded-2xl" style={{ background: "var(--btn)", padding: "18px 16px 16px", boxShadow: "var(--sombra-card, none)" }}>
         <div style={{ color: "#FFFFFF", padding: "0 6px" }}>

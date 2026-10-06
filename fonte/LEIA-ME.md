@@ -545,8 +545,9 @@ até a semana 46.
 ## O visual limpo e as ideias da Easy Medicina
 
 O padrão é o visual **limpo** (`data-visual="limpo"` no `<html>`), no estilo
-da Easy Medicina: fundo cinza bem claro (ou azul-noite), cartões lisos com
-sombra curta, azul de acento, títulos em frase normal, sem constelação,
+da Easy Medicina com as cores da casa: fundo cinza bem claro (ou preto fosco
+neutro, #121212), cartões lisos com sombra curta, o roxo da marca de acento,
+títulos em frase normal, sem constelação,
 auras nem brilho. Mora em `LIMPO_CSS` (base.jsx), por cima do `THEME_CSS`
 com seletor mais específico; as peças decorativas são apagadas por classe
 (`canto-card`, `brilho-card`, `fio-h`, `brilho-svg`). No limpo a cor de
@@ -560,7 +561,7 @@ Também da Easy:
   (novos, aprendendo, revisão, reaprendendo), PERGUNTA e RESPOSTA num
   cartão branco, "Mostrar resposta", e De novo / Difícil / Bom / Fácil com o
   próximo intervalo em cima (`rotuloDoIntervalo`). Negrito na pergunta sai
-  no azul de destaque.
+  no roxo de destaque.
 - **Praticar:** rever o baralho inteiro sem mexer nas datas de revisão.
 - **Hoje:** `PainelDoDia` (parte32): saudação, % da rotina, atividades do
   dia e os cartões revisados hoje (tempo e s/cartão, de `data.cartoesDia`).

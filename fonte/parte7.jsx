@@ -678,7 +678,7 @@ function Aparencia({ data, setData }) {
         <Label>Visual</Label>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
           {[
-            ["limpo", "Limpo", "Fundo liso, cartões brancos e azul de destaque. O padrão."],
+            ["limpo", "Limpo", "Fundo liso, cartões brancos e o roxo da marca de destaque. O padrão."],
             ["neon", "Neon", "O visual de antes: partículas, brilho e cores vivas."],
           ].map(([id, nome, desc]) => {
             const on = (tema.visual || "limpo") === id;

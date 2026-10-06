@@ -204,8 +204,8 @@ const temaAplicado = async (queroClaro) => {
     const alvo = document.querySelector('main') || document.body;
     const cor = getComputedStyle(alvo).getPropertyValue('--ink').trim().toUpperCase();
     /* A tinta de cada tema: #140E24 (claro) e #F5F2FF (escuro) no neon;
-       #0F172A e #F1F5F9 no limpo. */
-    return claro ? /^#(14|0F)/.test(cor) : /^#(F5|F1)/.test(cor);
+       #16131F e #F4F4F5 no limpo. */
+    return claro ? /^#(14|16)/.test(cor) : /^#(F5|F4)/.test(cor);
   }, queroClaro);
   if (!certo) return false;
   const antes = await coresDaTela();

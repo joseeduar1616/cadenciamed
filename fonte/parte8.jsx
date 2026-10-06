@@ -186,7 +186,7 @@ function BarraLateral({ abas, atual, onEscolher, estreita, aberta, onFechar, abe
               data-on={on ? "1" : "0"}
               style={limpo ? {
                 /* Limpo: item em frase normal; o escolhido ganha um fundo
-                   azul bem leve e a letra no azul, como na Easy. */
+                   roxo bem leve e a letra no roxo da marca. */
                 minHeight: 40, flexShrink: 0, borderRadius: 10,
                 background: on ? soft("var(--neon)", 12) : "transparent",
                 border: "1px solid transparent",
@@ -396,7 +396,7 @@ export default function Cadencia() {
       fonte: (FONTES.find((f) => f.id === tm.fonte) || FONTES[0]).ui,
       tamanho: Number(tm.tamanho) || 1,
       visual: tm.visual === "neon" ? "neon" : "limpo",
-      /* No visual limpo, a cor "Cadência" é o azul do próprio visual. */
+      /* No visual limpo, a cor "Cadência" é o roxo do próprio visual. */
       corPropria: tm.cor !== "cadencia",
     };
   }, [data.tema]);
@@ -449,7 +449,7 @@ export default function Cadencia() {
       document.body.style.color = "var(--ink)";
       const barra = document.querySelector('meta[name="theme-color"]');
       const fundo = ambienteVars["--bg"] || (limpo
-        ? (data.theme === "light" ? "#F3F5F9" : "#0B1120")
+        ? (data.theme === "light" ? "#F5F4F8" : "#121212")
         : (data.theme === "light" ? "#F1EFF8" : "#04030A"));
       if (barra) barra.setAttribute("content", fundo);
     } catch (e) { /* noop */ }

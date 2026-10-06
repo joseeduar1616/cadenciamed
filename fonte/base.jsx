@@ -91,8 +91,9 @@ const THEME_CSS = `
 /* ── o visual limpo ────────────────────────────────────────────────────
  *
  * O desenho padrão desde que o dono pediu "um site bom de usar e intuitivo",
- * no estilo da Easy Medicina: fundo cinza bem claro (ou azul-noite no
- * escuro), cartões lisos com sombra curta, um azul de acento, títulos em
+ * no estilo da Easy Medicina, mas com as cores da casa: fundo cinza bem
+ * claro (ou preto fosco, neutro, no escuro), cartões lisos com sombra
+ * curta, o roxo da marca de acento, títulos em
  * frase normal, e nada de partícula, aura, brilho ou fio de luz. O visual
  * de antes continua existindo como "neon", em Configurações › Aparência.
  *
@@ -102,30 +103,30 @@ const THEME_CSS = `
  * painel (o --card3), conferido pelo testar-contraste.mjs. */
 const LIMPO_CSS = `
 [data-visual="limpo"][data-theme="light"]{
-  --bg:#F3F5F9; --bg2:#FFFFFF; --glow:transparent;
-  --card:#FFFFFF; --card2:#F6F8FB; --card3:#ECF0F6;
-  --line:#E3E8EF; --line2:#CBD3DF;
-  --ink:#0F172A; --dim:#334155; --faint:#4A5568; --ghost:#56627A;
-  --neon:#0A62C9; --neon2:#4A3FD1;
+  --bg:#F5F4F8; --bg2:#FFFFFF; --glow:transparent;
+  --card:#FFFFFF; --card2:#F7F6FA; --card3:#EEECF3;
+  --line:#E6E3EC; --line2:#CFCADB;
+  --ink:#16131F; --dim:#3B3648; --faint:#4F4A5E; --ghost:#5C566C;
+  --neon:#6D28D9; --neon2:#8B2FC9;
   --ok:#0F7159; --warn:#8F5600; --bad:#B53249; --aura3:#0F7159;
   --a-CL:#A14814; --a-CI:#0F7159; --a-GO:#2A5EC2; --a-PE:#AA376C; --a-PR:#6C42BE;
   --shadow:0 1px 2px rgba(16,24,40,.05), 0 10px 28px rgba(16,24,40,.07);
   --sombra-card:0 1px 2px rgba(16,24,40,.04), 0 4px 14px rgba(16,24,40,.05);
   --vidro:none; --brilho-borda:transparent;
-  --btn:var(--neon);
+  --btn:#7C3AED;
 }
 [data-visual="limpo"][data-theme="dark"]{
-  --bg:#0B1120; --bg2:#0F172A; --glow:transparent;
-  --card:#111A2E; --card2:#162036; --card3:#1D2942;
-  --line:rgba(148,163,184,.16); --line2:rgba(148,163,184,.32);
-  --ink:#F1F5F9; --dim:#CBD5E1; --faint:#A9B5C7; --ghost:#97A3B6;
-  --neon:#5AA2FF; --neon2:#9AA4FF;
+  --bg:#121212; --bg2:#161616; --glow:transparent;
+  --card:#1A1A1A; --card2:#202020; --card3:#282828;
+  --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.17);
+  --ink:#F4F4F5; --dim:#D4D4D8; --faint:#A8A8B0; --ghost:#9A9AA3;
+  --neon:#B794F6; --neon2:#D08BF7;
   --ok:#3EE0B0; --warn:#FFB648; --bad:#FF7A90; --aura3:#3EE0B0;
   --a-CL:#FF9450; --a-CI:#3EE0B0; --a-GO:#6FB4FF; --a-PE:#FF7DB8; --a-PR:#B49BFF;
   --shadow:0 18px 50px rgba(0,0,0,.45);
   --sombra-card:0 1px 2px rgba(0,0,0,.25);
   --vidro:none; --brilho-borda:transparent;
-  --btn:color-mix(in srgb,var(--neon) 62%,#000);
+  --btn:#7C3AED;
 }
 /* número e rótulo na mesma letra do resto, como na Easy: a monoespaçada
    era parte do visual técnico */
@@ -160,7 +161,7 @@ const LIMPO_CSS = `
 /* A cor de acento escolhida, no visual limpo. Lá o fundo e os painéis
    ficam neutros (é o que deixa a tela limpa), e só o acento muda: o tom
    escolhido, puxado o quanto for preciso para ler bem no tema. */
-const PISO_LIMPO = { light: "#ECF0F6", dark: "#1D2942" };
+const PISO_LIMPO = { light: "#EEECF3", dark: "#282828" };
 function acentoLimpo(neon, neon2, claro) {
   const piso = PISO_LIMPO[claro ? "light" : "dark"];
   const saida = {};
