@@ -548,6 +548,10 @@ function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, do
 
   return (
     <div className="flex flex-col gap-5">
+      {/* O dia em uma olhada, como a "Visão geral" da Easy: a saudação, o
+          quanto já foi, e as atividades com o botão para ir fazer. */}
+      <PainelDoDia {...{ data, today, minToday, late, blocosHoje, cartoesHoje, go }} />
+
       <Card className="px-6 sm:px-8 py-7" brilho="var(--neon)" tilt>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-7">
           {stats.map((s, i) => (

@@ -542,6 +542,32 @@ O `testar-cronograma-partes.mjs` monta um curso de 46 semanas do tamanho
 do que chegou (com o corte antigo, ele parava na 36) e cobra que tudo vá
 até a semana 46.
 
+## O visual limpo e as ideias da Easy Medicina
+
+O padrão é o visual **limpo** (`data-visual="limpo"` no `<html>`), no estilo
+da Easy Medicina: fundo cinza bem claro (ou azul-noite), cartões lisos com
+sombra curta, azul de acento, títulos em frase normal, sem constelação,
+auras nem brilho. Mora em `LIMPO_CSS` (base.jsx), por cima do `THEME_CSS`
+com seletor mais específico; as peças decorativas são apagadas por classe
+(`canto-card`, `brilho-card`, `fio-h`, `brilho-svg`). No limpo a cor de
+acento escolhida só muda o acento (`acentoLimpo`), e fundo e painéis ficam
+neutros. O visual de antes continua como **neon**, em Configurações ›
+Aparência (`data.tema.visual`). O `testar-contraste.mjs` mede os dois
+visuais nos dois temas.
+
+Também da Easy:
+- **Estudo de cartões:** nome do baralho e n/total, barra, contadores
+  (novos, aprendendo, revisão, reaprendendo), PERGUNTA e RESPOSTA num
+  cartão branco, "Mostrar resposta", e De novo / Difícil / Bom / Fácil com o
+  próximo intervalo em cima (`rotuloDoIntervalo`). Negrito na pergunta sai
+  no azul de destaque.
+- **Praticar:** rever o baralho inteiro sem mexer nas datas de revisão.
+- **Hoje:** `PainelDoDia` (parte32): saudação, % da rotina, atividades do
+  dia e os cartões revisados hoje (tempo e s/cartão, de `data.cartoesDia`).
+- **Cartões:** previsão dos próximos 30 dias e calendário de constância.
+
+Teste: `testar-visual-easy.mjs`.
+
 ## Entrar e criar conta com o Google
 
 "Continuar com o Google" fica nos dois formulários de conta (página de

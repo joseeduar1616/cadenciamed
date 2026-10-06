@@ -13,6 +13,34 @@ const NOTAS = [
   { id: "facil", rotulo: "Fácil", atalho: "4", cor: "var(--ok)", dica: "demora mais a voltar" },
 ];
 
+/* Os botões de resposta no estilo da Easy Medicina (e do Anki): cor cheia,
+   letra branca, e o próximo intervalo escrito em cima de cada um. As cores
+   são fixas, iguais nos dois temas, e todas passam de 4.5:1 com o branco. */
+const BOTOES_RESPOSTA = [
+  { id: "errei", rotulo: "De novo", cor: "#DC2626" },
+  { id: "dificil", rotulo: "Difícil", cor: "#C2570C" },
+  { id: "bom", rotulo: "Bom", cor: "#15803D" },
+  { id: "facil", rotulo: "Fácil", cor: "#2563EB" },
+];
+
+/* Quanto falta para o cartão voltar, se a resposta for esta: "<10m" quando
+   ele volta nesta mesma sessão, "3d", "10d", "1 mês". */
+function rotuloDoIntervalo(c, nota) {
+  const d = reagendar(c, nota).inter;
+  if (!d) return "<10m";
+  if (d < 30) return `${d}d`;
+  if (d < 365) { const m = Math.round(d / 30); return m <= 1 ? "1 mês" : `${m} meses`; }
+  return "1 ano";
+}
+
+/* Em que pé está cada cartão da fila, como os quatro contadores da Easy:
+   nunca visto, ainda aprendendo, voltando por ter errado, ou revisão. */
+function situacaoDoCartao(c) {
+  if (!(c.revisoes > 0)) return "novo";
+  if (!(c.inter > 0)) return c.lapsos > 0 ? "reaprendendo" : "aprendendo";
+  return "revisao";
+}
+
 const BARALHO_PADRAO = "Geral";
 const PASTA_SOLTA = "Sem pasta";
 
@@ -320,6 +348,8 @@ function reagendar(c, nota) {
   }
 
   inter = Math.min(365, inter);
+  /* O dia da última resposta: é o que conta "cartões revisados hoje". */
+  n.ultima = todayISO();
   n.facilidade = Math.round(f * 100) / 100;
   n.inter = inter;
   n.prox = addDays(todayISO(), inter);
@@ -1039,6 +1069,8 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
   const ativo = useAtivo();
   const [modo, setModo] = useState("painel");   // painel | estudo | criar
   const [fila, setFila] = useState([]);
+  /* Praticar: rever o baralho inteiro sem mexer nas revisões (ver comecar). */
+  const [praticando, setPraticando] = useState(false);
   const [virado, setVirado] = useState(false);
   const [feitos, setFeitos] = useState(0);
   const [jeito, setJeito] = useState(() => {
@@ -1311,17 +1343,24 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
 
   /* Sem escopo, estuda o que estiver filtrado na tela; com escopo, estuda um
      baralho só — que é o botão de play na linha de cada baralho. */
-  const comecar = (escopo) => {
+  /* praticar: todos os cartões do baralho, vencidos ou não, sem mexer nas
+     datas de revisão. É o "rever até acertar" da véspera: errou, o cartão
+     volta para o fim da fila; acertou, sai. A esteira de revisão continua
+     exatamente como estava. */
+  const comecar = (escopo, praticar) => {
     const lista = escopo
       ? cartoes.filter((c) => (c.pasta || PASTA_SOLTA) === escopo.pasta
         && (c.baralho || BARALHO_PADRAO) === escopo.baralho)
       : doBaralho;
 
-    const nova = filaDeVarios(lista, today, data.baralhoCfg);
+    const nova = praticar ? baralhar(lista) : filaDeVarios(lista, today, data.baralhoCfg);
+    setPraticando(!!praticar);
     if (nova.length === 0) {
-      return notify(escopo
-        ? `Nada para hoje em "${escopo.baralho}".`
-        : "Nenhum cartão para hoje.");
+      return notify(praticar
+        ? "Este baralho ainda não tem cartões."
+        : escopo
+          ? `Nada para hoje em "${escopo.baralho}".`
+          : "Nenhum cartão para hoje.");
     }
     if (escopo) { setPastaAtiva(escopo.pasta); setBaralhoAtivo(escopo.baralho); }
     setFila(nova.map((c) => c.id));
@@ -1400,11 +1439,30 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
 
   const responder = useCallback((nota) => {
     if (!atual) return;
-    const atualizado = reagendar(atual, nota);
-    setData((p) => ({
-      ...p,
-      flash: (p.flash || []).map((c) => (c.id === atual.id ? atualizado : c)),
-    }));
+    /* Quanto se estudou de cartão hoje: respostas, acertos e tempo. É o
+       que alimenta o "cartões revisados hoje" e o calendário de
+       constância. O tempo de um cartão para em 2 minutos: deixar a tela
+       aberta e sair não pode virar meia hora de estudo. */
+    const seg = Math.min(120, Math.max(0, Math.round((Date.now() - inicioCartao) / 1000)));
+    const dia = todayISO();
+    const somarDia = (cd) => {
+      const d = (cd || {})[dia] || { respostas: 0, acertos: 0, segundos: 0 };
+      return {
+        ...(cd || {}),
+        [dia]: { respostas: d.respostas + 1, acertos: d.acertos + (nota === "errei" ? 0 : 1), segundos: d.segundos + seg },
+      };
+    };
+    /* Praticando, a resposta não reagenda nada: a esteira fica como está. */
+    if (!praticando) {
+      const atualizado = reagendar(atual, nota);
+      setData((p) => ({
+        ...p,
+        flash: (p.flash || []).map((c) => (c.id === atual.id ? atualizado : c)),
+        cartoesDia: somarDia(p.cartoesDia),
+      }));
+    } else {
+      setData((p) => ({ ...p, cartoesDia: somarDia(p.cartoesDia) }));
+    }
     setVirado(false);
     setFeitos((n) => n + 1);
     /* Os pontos contam a sequência de ANTES desta resposta: errar zera
@@ -1419,7 +1477,7 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
       /* errou volta para o fim da fila, para ser visto de novo hoje */
       return nota === "errei" ? [...resto, atual.id] : resto;
     });
-  }, [atual, setData, sequencia]);
+  }, [atual, setData, sequencia, praticando, inicioCartao]);
 
   useEffect(() => {
     estudandoCartoes = modo === "estudo";
@@ -1497,7 +1555,6 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
     }
 
     const aula = atual.subjectId ? ativo.byId[atual.subjectId] : null;
-    const corAtual = corDoBaralho(lerCfg(data.baralhoCfg, chaveBaralho(atual.pasta, atual.baralho)).cor);
 
     /* Tela cheia de verdade: por cima de tudo, sem o cabeçalho, o menu e o
        rodapé disputando espaço com o cartão. Era isso que deixava uma coisa
@@ -1534,167 +1591,186 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
            esconde nada que alguém fosse preencher. */
         caretColor: "transparent",
       }}>
-        {/* ── barra de cima ─────────────────────────────────────────── */}
-        <div style={{ flexShrink: 0, borderBottom: `1px solid ${T.line}` }}>
-          <div className="flex items-center justify-between gap-3 px-4 sm:px-6"
-            style={{ height: 56 }}>
-            <div className="flex items-center gap-2.5 min-w-0" style={{ overflow: "hidden" }}>
-              <Num size={19} weight={700} color="var(--neon)">{fila.length}</Num>
-              <Label>na fila</Label>
-              <span style={{ width: 1, height: 16, background: T.line, flexShrink: 0 }} />
-              <Num size={19} weight={700} color={T.dim}>{feitos}</Num>
-              <Label>feitos</Label>
-              {/* O relógio e os pontos. O relógio é da sessão inteira, e
-                  não do cartão: cronômetro por cartão vira pressa, e
-                  pressa vira chute. */}
-              <span className="hidden sm:inline" style={{ width: 1, height: 16, background: T.line, flexShrink: 0 }} />
-              <span className="hidden sm:inline" style={{ fontFamily: F_MONO, fontSize: 13, color: T.faint }}>
-                {fmtRelogio(tempoSessao)}
-              </span>
+        {/* ── barra de cima, no estilo da Easy ──────────────────────────
+            O nome do baralho e quanto já foi, a barra de progresso, e os
+            quatro contadores do que falta (novos, aprendendo, revisão,
+            reaprendendo). O relógio, os pontos e a troca de jeito ficam
+            numa linha discreta à direita. */}
+        <div style={{ flexShrink: 0, background: T.bg2, borderBottom: `1px solid ${T.line}` }}>
+          <div className="px-4 sm:px-6" style={{ maxWidth: 980, margin: "0 auto", paddingTop: 12, paddingBottom: 12 }}>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0" style={{ fontSize: 15.5, fontWeight: 800, color: T.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                data-teste="titulo-estudo">
+                {(atual.pasta && atual.pasta !== PASTA_SOLTA ? `${atual.pasta} · ` : "") + (atual.baralho || BARALHO_PADRAO)}
+              </div>
+              <div className="flex items-center gap-2" style={{ flexShrink: 0 }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: T.faint, fontVariantNumeric: "tabular-nums" }}
+                  data-teste="contagem-estudo">
+                  {feitos}/{feitos + fila.length}
+                </span>
+                <button type="button" aria-label="Encerrar o estudo"
+                  onClick={() => setModo("painel")}
+                  className="flex items-center justify-center rounded-full"
+                  style={{
+                    width: 34, height: 34, background: "transparent",
+                    border: `1px solid ${T.line}`, color: T.dim, cursor: "pointer",
+                  }}>
+                  <X size={16} />
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-2" style={{ flexShrink: 0 }}>
-              <span title="Pontos da sessão · a sequência de acertos dá bônus"
-                style={{
-                  fontFamily: F_MONO, fontSize: 12.5, color: "var(--warn)", whiteSpace: "nowrap",
-                  background: soft("var(--warn)", 12), borderRadius: 99, padding: "4px 10px",
-                }}>
-                {pontos} pts{sequencia >= 2 ? ` · ${sequencia} seguidas` : ""}
-              </span>
-              <button type="button" onClick={trocarJeito}
-                title={jeito === "escolha" ? "Trocar para virar o cartão" : "Trocar para múltipla escolha"}
-                className="rounded-full brilhar"
-                style={{
-                  fontSize: 12.5, padding: "6px 11px", cursor: "pointer", whiteSpace: "nowrap",
-                  background: T.card2, border: `1px solid ${T.line}`, color: T.dim,
-                }}>
-                {/* No celular a barra não tem os ~385 px que o nome inteiro pede:
-                    "0 feitos" encavalava nos pontos. Lá vai a forma curta. */}
-                <span className="sm:hidden">{jeito === "escolha" ? "escolha" : "virar"}</span>
-                <span className="hidden sm:inline">{jeito === "escolha" ? "múltipla escolha" : "virar cartão"}</span>
-              </button>
-              <Mini style={{ display: "none" }} className="sm:inline">
-                {baralhoAtivo === "todos" ? "" : baralhoAtivo}
-              </Mini>
-              <button type="button" aria-label="Encerrar o estudo"
-                onClick={() => setModo("painel")}
-                className="flex items-center justify-center rounded-full brilhar"
-                style={{
-                  width: 38, height: 38, background: T.card2,
-                  border: `1px solid ${T.line}`, color: T.dim, cursor: "pointer",
-                }}>
-                <X size={17} />
-              </button>
+            <div style={{ marginTop: 10, height: 6, borderRadius: 99, background: T.card3, overflow: "hidden" }}>
+              <div style={{
+                width: `${(feitos / Math.max(1, feitos + fila.length)) * 100}%`, height: "100%",
+                background: "var(--neon)", borderRadius: 99, transition: "width .3s",
+              }} />
+            </div>
+            <div className="flex items-center justify-between gap-3 flex-wrap" style={{ marginTop: 10 }}>
+              {(() => {
+                const porId = new Map(cartoes.map((c) => [c.id, c]));
+                const conta = { novo: 0, aprendendo: 0, revisao: 0, reaprendendo: 0 };
+                for (const id of fila) { const c = porId.get(id); if (c) conta[situacaoDoCartao(c)] += 1; }
+                return (
+                  <div className="flex items-center gap-x-4 gap-y-1 flex-wrap" data-teste="contadores-estudo">
+                    {[["novo", "Novos", "#2563EB"], ["aprendendo", "Aprendendo", "#D97706"], ["revisao", "Revisão", "#16A34A"], ["reaprendendo", "Reaprend.", "#DC2626"]].map(([k, rot, cor]) => (
+                      <span key={k} className="inline-flex items-center gap-1.5" style={{ fontSize: 13.5, color: T.faint }}>
+                        <span style={{ width: 8, height: 8, borderRadius: 99, background: cor }} />
+                        <b style={{ color: T.ink, fontWeight: 700 }}>{conta[k]}</b> {rot}
+                      </span>
+                    ))}
+                  </div>
+                );
+              })()}
+              <div className="flex items-center gap-2">
+                {praticando ? (
+                  <span title="Praticando: as respostas não mexem nas datas de revisão"
+                    style={{ fontSize: 12, fontWeight: 700, color: "var(--neon)", background: soft("var(--neon)", 12), borderRadius: 99, padding: "3px 9px", whiteSpace: "nowrap" }}>
+                    praticando
+                  </span>
+                ) : null}
+                {/* O relógio é da sessão inteira, e não do cartão: cronômetro
+                    por cartão vira pressa, e pressa vira chute. */}
+                <span className="hidden sm:inline" style={{ fontSize: 12.5, color: T.faint, fontVariantNumeric: "tabular-nums" }}>
+                  {fmtRelogio(tempoSessao)}
+                </span>
+                <span title="Pontos da sessão · a sequência de acertos dá bônus"
+                  style={{ fontSize: 12, fontWeight: 600, color: "var(--warn)", whiteSpace: "nowrap" }}>
+                  {pontos} pts{sequencia >= 2 ? ` · ${sequencia} seguidas` : ""}
+                </span>
+                <button type="button" onClick={trocarJeito}
+                  title={jeito === "escolha" ? "Trocar para virar o cartão" : "Trocar para múltipla escolha"}
+                  className="rounded-full"
+                  style={{
+                    fontSize: 12, padding: "4px 10px", cursor: "pointer", whiteSpace: "nowrap",
+                    background: "transparent", border: `1px solid ${T.line}`, color: T.dim,
+                  }}>
+                  {/* No celular a barra não tem os ~385 px que o nome inteiro pede. */}
+                  <span className="sm:hidden">{jeito === "escolha" ? "escolha" : "virar"}</span>
+                  <span className="hidden sm:inline">{jeito === "escolha" ? "múltipla escolha" : "virar cartão"}</span>
+                </button>
+              </div>
             </div>
           </div>
-          <Track pct={(feitos / Math.max(1, feitos + fila.length)) * 100} color="var(--neon)" height={3} />
         </div>
 
-        {/* ── o cartão ──────────────────────────────────────────────── *
-         * Centralizado na vertical, a pergunta ficava boiando no meio de um
-         * vazio enorme numa tela alta de celular — muito espaço morto acima
-         * e o botão "ver a resposta" perdido lá embaixo. Começando do topo,
-         * a pergunta some para logo abaixo da barra, e sobra espaço embaixo
-         * para a resposta aparecer quando o cartão for virado. */}
-        <div onClick={() => { if (!emEscolha) setVirado((v) => !v); }}
-          style={{
-            flex: 1, minHeight: 0, overflowY: "auto", cursor: emEscolha ? "default" : "pointer",
-            display: "flex", flexDirection: "column",
-            alignItems: "center", justifyContent: "flex-start",
-            padding: "28px 20px",
-            fontFamily: fonteDoEstilo(estilo),
-            ...arteDoEstilo(estilo),
-          }}>
-          <div style={{
-            width: "100%", maxWidth: 760,
-            textAlign: estilo.alinhar === "esquerda" ? "left" : "center",
-          }}>
-            {/* A cor do baralho, numa faixa no alto. Com vários baralhos na
-                mesma sessão, é o que diz de onde vem o cartão sem ler. */}
-            <div style={{ height: 3, borderRadius: 99, background: corAtual, maxWidth: 120, margin: "0 auto 16px", opacity: 0.85 }} />
-            <div style={{
-              fontFamily: F_MONO, fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase",
-              color: virado ? "var(--ok)" : corAtual, marginBottom: 14,
+        {/* ── o cartão: PERGUNTA em cima, RESPOSTA embaixo ──────────────
+            Um cartão branco de bordas suaves, como o da Easy. Tocar nele
+            mostra a resposta; a pergunta continua à vista. */}
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "22px 16px", background: T.bg }}>
+          <div onClick={() => { if (!emEscolha) setVirado((v) => !v); }}
+            data-teste="cartao-estudo"
+            style={{
+              width: "100%", maxWidth: 820, margin: "0 auto",
+              background: T.card, border: `1px solid ${T.line}`, borderRadius: 16,
+              boxShadow: "var(--sombra-card, none)", overflow: "hidden",
+              cursor: emEscolha ? "default" : "pointer",
+              fontFamily: fonteDoEstilo(estilo),
+              ...arteDoEstilo(estilo),
+              textAlign: estilo.alinhar === "esquerda" ? "left" : "center",
             }}>
-              {atual.baralho || BARALHO_PADRAO}
+            <div style={{ padding: "26px 22px 28px" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.16em", color: T.faint, textTransform: "uppercase", fontFamily: F_UI }}>
+                Pergunta
+              </div>
+              {aula ? (
+                <div className="flex items-center justify-center gap-2" style={{ marginTop: 8 }}>
+                  <Chip area={aula.area} small />
+                  <Mini>{aula.esp}</Mini>
+                </div>
+              ) : null}
+              <div style={{ marginTop: 16 }}>
+                <LadoDoCartao
+                  texto={atual.frente}
+                  imagens={atual.imgFrente}
+                  tamanho={escalarClamp("clamp(21px, 4vw, 30px)", fatorCartao)}
+                  peso={pesoDoEstilo(estilo).frente}
+                  entrelinha={alturaDoEstilo(estilo)}
+                  altura={virado ? 220 : 320} />
+              </div>
+
+              {/* ── múltipla escolha ──────────────────────────────────────
+                  As erradas vêm das respostas de outros cartões do mesmo
+                  baralho (ver alternativasDoCartao), então não gasta IA e
+                  funciona sem internet. Depois de escolher, a certa fica
+                  verde, a escolhida errada fica vermelha, e a resposta
+                  completa aparece embaixo: errar sem ver o porquê não
+                  ensina nada. */}
+              {emEscolha ? (
+                <div className="flex flex-col gap-2.5" style={{ marginTop: 22, textAlign: "left", fontFamily: F_UI }}>
+                  {alternativas.opcoes.map((op, i) => {
+                    if (escondidas.has(i)) return null;
+                    const feito = !!escolha;
+                    const minha = escolha && escolha.idx === i;
+                    const cor = feito && op.certa ? "var(--ok)" : minha ? "var(--bad)" : null;
+                    return (
+                      <button key={i} type="button" disabled={feito}
+                        onClick={(e) => { e.stopPropagation(); escolher(i); }}
+                        className="rounded-xl px-4 py-3 flex items-start gap-3"
+                        style={{
+                          cursor: feito ? "default" : "pointer", textAlign: "left",
+                          background: cor ? soft(cor, 12) : T.card2,
+                          border: `1px solid ${cor ? soft(cor, 55) : T.line}`,
+                          color: cor || T.ink, opacity: feito && !cor ? 0.55 : 1,
+                          fontSize: 15.5, lineHeight: 1.5,
+                        }}>
+                        <span style={{
+                          fontSize: 12, fontWeight: 700, flexShrink: 0, marginTop: 2,
+                          width: 22, height: 22, borderRadius: 99, display: "inline-flex",
+                          alignItems: "center", justifyContent: "center",
+                          background: cor ? soft(cor, 25) : T.card3, color: cor || T.faint,
+                        }}>{i + 1}</span>
+                        <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                          {op.texto.slice(0, 400)}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+
+              {jeito === "escolha" && !alternativas.possivel && !virado ? (
+                <Mini style={{ marginTop: 18 }}>
+                  Este baralho ainda tem poucos cartões para montar alternativas.
+                  Este vai no modo de virar.
+                </Mini>
+              ) : null}
             </div>
-            {aula ? (
-              <div className="flex items-center justify-center gap-2" style={{ marginBottom: 22 }}>
-                <Chip area={aula.area} small />
-                <Mini>{aula.esp}</Mini>
-              </div>
-            ) : null}
-
-            {/* A pergunta continua visível junto da resposta: some ela e a
-                pessoa responde sem lembrar o que foi perguntado. */}
-            <LadoDoCartao
-              texto={atual.frente}
-              imagens={atual.imgFrente}
-              tamanho={escalarClamp(virado ? "clamp(17px, 3vw, 21px)" : "clamp(22px, 4.4vw, 34px)", fatorCartao)}
-              peso={virado ? pesoDoEstilo(estilo).verso : pesoDoEstilo(estilo).frente}
-              entrelinha={alturaDoEstilo(estilo)}
-              altura={virado ? 200 : 320} />
-
-            {/* ── múltipla escolha ──────────────────────────────────────
-                As erradas vêm das respostas de outros cartões do mesmo
-                baralho (ver alternativasDoCartao), então não gasta IA e
-                funciona sem internet. Depois de escolher, a certa fica
-                verde, a escolhida errada fica vermelha, e a resposta
-                completa aparece embaixo — errar sem ver o porquê não
-                ensina nada. */}
-            {emEscolha ? (
-              <div className="flex flex-col gap-2.5" style={{ marginTop: 24, textAlign: "left" }}>
-                {alternativas.opcoes.map((op, i) => {
-                  if (escondidas.has(i)) return null;
-                  const feito = !!escolha;
-                  const minha = escolha && escolha.idx === i;
-                  const cor = feito && op.certa ? "var(--ok)" : minha ? "var(--bad)" : null;
-                  return (
-                    <button key={i} type="button" disabled={feito}
-                      onClick={(e) => { e.stopPropagation(); escolher(i); }}
-                      className="rounded-2xl px-4 py-3 flex items-start gap-3 brilhar"
-                      style={{
-                        cursor: feito ? "default" : "pointer", textAlign: "left",
-                        background: cor ? soft(cor, 14) : T.card2,
-                        border: `1px solid ${cor ? soft(cor, 55) : T.line}`,
-                        color: cor || T.ink, opacity: feito && !cor ? 0.55 : 1,
-                        fontSize: 15.5, lineHeight: 1.5,
-                      }}>
-                      <span style={{
-                        fontFamily: F_MONO, fontSize: 12, flexShrink: 0, marginTop: 2,
-                        width: 22, height: 22, borderRadius: 99, display: "inline-flex",
-                        alignItems: "center", justifyContent: "center",
-                        background: cor ? soft(cor, 25) : T.card3, color: cor || T.faint,
-                      }}>{i + 1}</span>
-                      <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                        {op.texto.slice(0, 400)}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
-
-            {jeito === "escolha" && !alternativas.possivel && !virado ? (
-              <Mini style={{ marginTop: 18 }}>
-                Este baralho ainda tem poucos cartões para montar alternativas —
-                este vai no modo de virar.
-              </Mini>
-            ) : null}
 
             {virado ? (
-              <>
-                <div style={{
-                  height: 1, background: T.line, margin: "26px auto",
-                  maxWidth: 220,
-                }} />
-                <LadoDoCartao
-                  texto={atual.verso}
-                  imagens={atual.imgVerso}
-                  tamanho={escalarClamp("clamp(19px, 3.6vw, 27px)", fatorCartao)}
-                  peso={pesoDoEstilo(estilo).verso}
-                  entrelinha={alturaDoEstilo(estilo)}
-                  altura={340} />
-              </>
+              <div style={{ padding: "24px 22px 30px", borderTop: `1px dashed ${T.line2}` }} data-teste="resposta-estudo">
+                <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.16em", color: T.faint, textTransform: "uppercase", fontFamily: F_UI }}>
+                  Resposta
+                </div>
+                <div style={{ marginTop: 16 }}>
+                  <LadoDoCartao
+                    texto={atual.verso}
+                    imagens={atual.imgVerso}
+                    tamanho={escalarClamp("clamp(19px, 3.4vw, 26px)", fatorCartao)}
+                    peso={pesoDoEstilo(estilo).verso}
+                    entrelinha={alturaDoEstilo(estilo)}
+                    altura={340} />
+                </div>
+              </div>
             ) : null}
           </div>
         </div>
@@ -1702,7 +1778,7 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
         {/* ── as respostas ──────────────────────────────────────────── */}
         <div style={{
           flexShrink: 0, borderTop: `1px solid ${T.line}`,
-          padding: "14px 16px 18px", background: T.bg2,
+          padding: "12px 16px 16px", background: T.bg2,
         }}>
           {emEscolha ? (
             /* Na múltipla escolha a nota sai da escolha (ver notaDaEscolha):
@@ -1714,8 +1790,8 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
                   fontSize: 14.5, fontWeight: 700,
                   color: escolha.nota === "errei" ? "var(--bad)" : "var(--ok)",
                 }}>
-                  {escolha.idx === -1 ? "Resposta revelada — volta ainda hoje"
-                    : escolha.nota === "errei" ? "Não foi dessa vez — volta ainda hoje"
+                  {escolha.idx === -1 ? "Resposta revelada: volta ainda hoje"
+                    : escolha.nota === "errei" ? "Não foi dessa vez: volta ainda hoje"
                       : escolha.nota === "facil" ? `Certo, e rápido · +${pontosDaResposta("facil", sequencia)} pts`
                         : escolha.nota === "dificil" ? `Certo, com dica · +${pontosDaResposta("dificil", sequencia)} pts`
                           : `Certo · +${pontosDaResposta("bom", sequencia)} pts`}
@@ -1734,23 +1810,34 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
               </div>
             )
           ) : virado ? (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5"
-              style={{ maxWidth: 760, margin: "0 auto" }}>
-              {NOTAS.map((n) => (
-                <button key={n.id} type="button" onClick={() => responder(n.id)}
-                  className="rounded-2xl px-3 py-3 flex flex-col items-center gap-0.5 nota"
-                  style={{
-                    background: soft(n.cor, 12), border: `1px solid ${soft(n.cor, 36)}`,
-                    color: n.cor, cursor: "pointer", "--c": n.cor,
-                  }}>
-                  <span style={{ fontSize: 16, fontWeight: 700 }}>{n.rotulo}</span>
-                  <span style={{ fontSize: 11.5, color: T.faint }}>{n.dica}</span>
-                </button>
+            /* O intervalo em cima de cada botão, como na Easy e no Anki:
+               dá para saber, antes de responder, quando o cartão volta. */
+            <div className="grid grid-cols-4 gap-2 sm:gap-3" data-teste="botoes-resposta"
+              style={{ maxWidth: 560, margin: "0 auto" }}>
+              {BOTOES_RESPOSTA.map((n) => (
+                <div key={n.id} className="flex flex-col items-center gap-1.5">
+                  <span style={{ fontSize: 13, fontWeight: 700, color: T.dim, fontVariantNumeric: "tabular-nums" }}>
+                    {praticando ? "\u00a0" : rotuloDoIntervalo(atual, n.id)}
+                  </span>
+                  <button type="button" onClick={() => responder(n.id)}
+                    className="w-full rounded-lg"
+                    style={{
+                      background: n.cor, color: "#FFFFFF", border: "none", cursor: "pointer",
+                      fontSize: 15.5, fontWeight: 700, padding: "12px 6px",
+                      boxShadow: "0 1px 2px rgba(16,24,40,.15)",
+                    }}>
+                    {n.rotulo}
+                  </button>
+                </div>
               ))}
             </div>
           ) : (
-            <div className="flex justify-center">
-              <Btn tone="primary" onClick={() => setVirado(true)}>Ver a resposta</Btn>
+            <div style={{ maxWidth: 560, margin: "0 auto" }}>
+              <button type="button" onClick={() => setVirado(true)}
+                className="w-full rounded-lg btn-neon"
+                style={{ fontSize: 16, fontWeight: 700, padding: "13px 16px", border: "none", cursor: "pointer" }}>
+                Mostrar resposta
+              </button>
             </div>
           )}
         </div>
@@ -1867,10 +1954,18 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
 
                         <div className="mt-3 flex items-center justify-between gap-2">
                           <Mini>{b.hoje ? "" : proxima ? `próximo em ${brDate(proxima)}` : ""}</Mini>
-                          <Btn size="sm" tone={b.hoje ? "primary" : "quiet"}
-                            onClick={() => comecar({ pasta: b.pasta, baralho: b.nome })}>
-                            <Play size={13} /> Estudar
-                          </Btn>
+                          <div className="flex items-center gap-1.5">
+                            {/* Rever o baralho inteiro, sem mexer nas revisões:
+                                o "praticar tema" da Easy. */}
+                            <Btn size="sm" tone="outline" title="Rever todos os cartões deste baralho sem mexer nas datas de revisão"
+                              onClick={() => comecar({ pasta: b.pasta, baralho: b.nome }, true)}>
+                              Praticar
+                            </Btn>
+                            <Btn size="sm" tone={b.hoje ? "primary" : "quiet"}
+                              onClick={() => comecar({ pasta: b.pasta, baralho: b.nome })}>
+                              <Play size={13} /> Estudar
+                            </Btn>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -2041,6 +2136,17 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
                                   </span>
                                 </button>
 
+                                <button type="button" aria-label={`Praticar ${b.nome}`}
+                                  title="Praticar: rever todos os cartões deste baralho sem mexer nas datas de revisão"
+                                  onClick={() => comecar({ pasta: p.nome, baralho: b.nome }, true)}
+                                  className="toque flex items-center justify-center rounded-full brilhar"
+                                  style={{
+                                    width: 30, height: 30, flexShrink: 0, cursor: "pointer",
+                                    background: "transparent", border: `1px solid ${T.line}`, color: T.ghost,
+                                  }}>
+                                  <RotateCcw size={13} />
+                                </button>
+
                                 <button type="button" aria-label={`Estudar ${b.nome}`} title="Estudar só este baralho"
                                   onClick={() => comecar({ pasta: p.nome, baralho: b.nome })}
                                   className="toque flex items-center justify-center rounded-full brilhar"
@@ -2187,6 +2293,18 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
           </div>
         ) : null}
       </Card>
+
+      {/* Os números dos cartões, como o painel de estatísticas da Easy: o que
+          vem pela frente e a constância dos últimos meses. */}
+      {cartoes.length ? (
+        <Card className="px-6 py-6">
+          <H color="var(--neon)" icon={<BarChart3 size={16} />}>Previsão e constância</H>
+          <div className="mt-5 grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <PrevisaoCartoes flash={cartoes} today={today} />
+            <CalendarioConstancia data={data} today={today} />
+          </div>
+        </Card>
+      ) : null}
 
       <Card className="px-6 py-6" brilho="var(--neon2)">
         <H size={18} color="var(--neon2)" icon={<Sparkles size={16} />}>Montar flashcards com IA</H>

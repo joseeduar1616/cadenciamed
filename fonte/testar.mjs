@@ -758,7 +758,7 @@ if (liberado) {
     const aviso = /imagem indisponível/.test(await pag.evaluate(() => document.body.innerText));
     const frente = await pag.evaluate(() => document.body.innerText.match(/Com imagem (um|dois)/)?.[1] || '');
     if (frente) { vistas.add(frente); if (src && !aviso) comImagem += 1; }
-    await pag.locator('button:has-text("Ver a resposta")').first().click().catch(() => {});
+    await pag.locator('button:has-text("Mostrar resposta")').first().click().catch(() => {});
     await pag.waitForTimeout(250);
     await pag.getByRole('button', { name: /^Fácil/ }).first().click().catch(() => {});
     await pag.waitForTimeout(450);

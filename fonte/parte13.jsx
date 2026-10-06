@@ -301,7 +301,9 @@ function comNegrito(texto, chave) {
   const partes = String(texto).split(/(\*\*[^*]+\*\*)/g);
   return partes.map((t, i) => (
     /^\*\*[^*]+\*\*$/.test(t)
-      ? <strong key={`${chave}-${i}`} style={{ fontWeight: 800 }}>{t.slice(2, -2)}</strong>
+      /* O termo-chave em negrito ganha a cor de destaque, como na Easy:
+         "quais os **três pilares**" sai com "três pilares" em azul. */
+      ? <strong key={`${chave}-${i}`} style={{ fontWeight: 800, color: "var(--neon)" }}>{t.slice(2, -2)}</strong>
       : <span key={`${chave}-${i}`}>{t}</span>
   ));
 }

@@ -203,8 +203,9 @@ const temaAplicado = async (queroClaro) => {
     if ((document.documentElement.getAttribute('data-theme') === 'light') !== claro) return false;
     const alvo = document.querySelector('main') || document.body;
     const cor = getComputedStyle(alvo).getPropertyValue('--ink').trim().toUpperCase();
-    /* #140E24 é a tinta do tema claro; #F5F2FF a do escuro. */
-    return claro ? cor.startsWith('#14') : cor.startsWith('#F5');
+    /* A tinta de cada tema: #140E24 (claro) e #F5F2FF (escuro) no neon;
+       #0F172A e #F1F5F9 no limpo. */
+    return claro ? /^#(14|0F)/.test(cor) : /^#(F5|F1)/.test(cor);
   }, queroClaro);
   if (!certo) return false;
   const antes = await coresDaTela();
@@ -212,9 +213,20 @@ const temaAplicado = async (queroClaro) => {
   return (await coresDaTela()) === antes;
 };
 
+/* Os dois visuais (o limpo, padrão, e o neon), cada um nos dois temas. O
+   visual é trocado por Configurações, como a pessoa faria. */
+for (const visual of ['limpo', 'neon']) {
+  if (visual === 'neon') {
+    await pag.locator('nav button:has-text("Configurações")').first().click();
+    await pag.waitForTimeout(400);
+    await pag.locator('[data-teste="escolha-visual"] button:has-text("Neon")').click();
+    await pag.waitForTimeout(600);
+    const v = await pag.evaluate(() => document.documentElement.getAttribute('data-visual'));
+    if (v !== 'neon') { falha('não consegui trocar para o visual neon'); break; }
+  }
 for (const tema of ['dark', 'light']) {
   if (!await trocarTema(tema === 'light')) {
-    falha(`não consegui pôr o site no tema ${tema}`);
+    falha(`não consegui pôr o site no tema ${tema} (visual ${visual})`);
     continue;
   }
 
@@ -227,7 +239,7 @@ for (const tema of ['dark', 'light']) {
     for (const x of await pag.evaluate(MEDIR)) ruins.push({ ...x, aba });
   }
 
-  const nome = tema === 'light' ? 'claro' : 'escuro';
+  const nome = `${tema === 'light' ? 'claro' : 'escuro'} (visual ${visual})`;
   if (!ruins.length) {
     ok(`tema ${nome}: todo texto visível passa no contraste mínimo`);
   } else {
@@ -235,6 +247,7 @@ for (const tema of ['dark', 'light']) {
       `[${x.aba}] "${x.texto}" ${x.cor} sobre ${x.fundo} = ${x.razao}:1 (precisa ${x.alvo})\n            em ${x.onde}`).join('\n        ');
     falha(`tema ${nome}: ${ruins.length} trecho(s) abaixo do mínimo:\n        ${lista}`);
   }
+}
 }
 
 await navegador.close();

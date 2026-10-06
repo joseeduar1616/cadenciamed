@@ -39,6 +39,9 @@ const DEFAULTS = {
   /* O financeiro do dono (parte31). Só a conta do dono vê a aba; para
      todo mundo isto fica vazio. */
   financas: { rendas: [], fixos: [], gastos: [], meta: 0, conversa: [] },
+  /* Estudo de cartões por dia: { "2026-10-06": { respostas, acertos,
+     segundos } }. Alimenta o "cartões revisados hoje" e o calendário. */
+  cartoesDia: {},
   goals: { daily: 120, weekly: 720, questions: 200 },
   pomo: {
     focus: 25, short: 5, long: 15, cycle: 4, modo: "pomodoro",
@@ -110,7 +113,9 @@ const DEFAULTS = {
      pergunta sem invalidar o perfil de quem já respondeu. */
   perfilMemoria: { respostas: {}, dias: [], aplicadoEm: "" },
   /* aparência: cor de acento, fonte e tamanho do texto */
-  tema: { cor: "cadencia", neon: "", neon2: "", fonte: "inter", tamanho: 1 },
+  /* visual: "limpo" (o padrão, no estilo da Easy Medicina) ou "neon" (o
+     desenho de antes, com partículas e brilho). */
+  tema: { cor: "cadencia", neon: "", neon2: "", fonte: "inter", tamanho: 1, visual: "limpo" },
   /* Claro e escuro da anotação, à parte do resto: "auto" segue o app. */
   notaTema: "auto",
 };
@@ -408,6 +413,17 @@ function normalize(raw) {
     erros: limparErros(d.erros),
     folhas: limparFolhas(d.folhas),
     financas: limparFinancas(d.financas),
+    cartoesDia: (() => {
+      /* Só dia de verdade, número de verdade, e no máximo 400 dias. */
+      const fora = {};
+      const dias = Object.keys(obj(d.cartoesDia)).filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k)).sort().slice(-400);
+      for (const k of dias) {
+        const v = obj(d.cartoesDia[k]);
+        const n = (x) => Math.max(0, Math.min(1e6, Math.round(Number(x) || 0)));
+        fora[k] = { respostas: n(v.respostas), acertos: Math.min(n(v.acertos), n(v.respostas)), segundos: n(v.segundos) };
+      }
+      return fora;
+    })(),
     rolagem: {
       modo: ["mentoria", "estudo", "nao"].indexOf(obj(d.rolagem).modo) >= 0 ? d.rolagem.modo : "mentoria",
       ate: /^\d{4}-\d{2}-\d{2}$/.test(obj(d.rolagem).ate || "") ? d.rolagem.ate : "",
@@ -587,6 +603,7 @@ function normalize(raw) {
       neon2: hex(tm.neon2) ? corLegivel(hex(tm.neon2)) : "",
       fonte: FONTES.some((f) => f.id === tm.fonte) ? tm.fonte : "inter",
       tamanho: Number(tm.tamanho) >= 0.85 && Number(tm.tamanho) <= 1.3 ? Number(tm.tamanho) : 1,
+      visual: tm.visual === "neon" ? "neon" : "limpo",
     },
   };
 }
@@ -893,6 +910,8 @@ function Card({ children, className = "", style, flat, brilho, tilt, marca }) {
 
   const mover = (e) => {
     if (!tilt || !ref.current) return;
+    /* O visual limpo não inclina: o painel fica parado, como papel. */
+    if (document.documentElement.getAttribute("data-visual") === "limpo") return;
     const r = ref.current.getBoundingClientRect();
     const px = (e.clientX - r.left) / r.width - 0.5;
     const py = (e.clientY - r.top) / r.height - 0.5;
@@ -904,7 +923,7 @@ function Card({ children, className = "", style, flat, brilho, tilt, marca }) {
   };
 
   const canto = (pos) => (
-    <span aria-hidden="true" style={{
+    <span aria-hidden="true" className="canto-card" style={{
       position: "absolute", width: 9, height: 9, pointerEvents: "none",
       borderColor: T.line2, borderStyle: "solid", borderWidth: 0,
       ...(pos === "tl" ? { top: -1, left: -1, borderTopWidth: 1, borderLeftWidth: 1 }
@@ -935,7 +954,7 @@ function Card({ children, className = "", style, flat, brilho, tilt, marca }) {
         }}>{marca}</span>
       ) : null}
       {brilho ? (
-        <span aria-hidden="true" style={{
+        <span aria-hidden="true" className="brilho-card" style={{
           position: "absolute", top: -1, left: "8%", right: "8%", height: 1,
           background: `linear-gradient(90deg, transparent, ${brilho}, transparent)`,
           opacity: 0.9, pointerEvents: "none", boxShadow: `0 0 10px ${brilho}`,
@@ -971,12 +990,12 @@ function Texto({ children, style }) {
    deixaria o título com duas aberturas. */
 function H({ children, size = 20, color, icon }) {
   return (
-    <h2 className="flex items-center gap-2.5" style={{
+    <h2 className="titulo-h flex items-center gap-2.5" style={{
       fontFamily: F_UI, fontSize: Math.max(13, size - 5), fontWeight: 700, margin: 0,
       letterSpacing: "0.16em", textTransform: "uppercase", color: color || T.ink,
     }}>
       {icon ? (
-        <span className="flex items-center justify-center" style={{
+        <span className="icone-h flex items-center justify-center" style={{
           width: 26, height: 26, borderRadius: 4, flexShrink: 0,
           border: `1px solid ${soft(color || "var(--ink)", 40)}`,
           background: soft(color || "var(--ink)", 10), color: color || T.ink,
@@ -990,7 +1009,7 @@ function H({ children, size = 20, color, icon }) {
 
 function Num({ children, size = 34, color = T.ink, weight = 600 }) {
   return (
-    <span style={{
+    <span className="num" style={{
       fontFamily: F_MONO, fontSize: size, fontWeight: weight, color,
       letterSpacing: "-0.04em", fontVariantNumeric: "tabular-nums", lineHeight: 1.05,
     }}>{children}</span>

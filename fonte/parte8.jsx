@@ -91,7 +91,29 @@ function useTelaEstreita(forcado) {
   return forcado ? true : estreita;
 }
 
-function BarraLateral({ abas, atual, onEscolher, estreita, aberta, onFechar, aberto, setAberto, pro }) {
+/* A marca pequena do visual limpo: a onda num quadradinho e o nome ao
+   lado, como o "EZ Easy Medicina" das referências. */
+function MarcaCompacta({ onClick, soIcone }) {
+  return (
+    <button type="button" onClick={onClick} aria-label="Ir para Hoje"
+      className="flex items-center gap-2.5" data-teste="marca-compacta"
+      style={{ background: "none", border: "none", cursor: "pointer", padding: 0, minWidth: 0 }}>
+      <span className="flex items-center justify-center" style={{
+        width: 34, height: 34, borderRadius: 9, background: "var(--btn)", flexShrink: 0,
+      }}>
+        <img src={MARCA} alt="" width="30" height="15" style={{ width: 26, height: "auto", filter: "brightness(0) invert(1)" }} />
+      </span>
+      {!soIcone ? (
+        <span className="flex flex-col items-start" style={{ lineHeight: 1.15, minWidth: 0 }}>
+          <span style={{ fontSize: 15.5, fontWeight: 800, color: T.ink, letterSpacing: "-0.01em", whiteSpace: "nowrap" }}>Cadência Med</span>
+          <span style={{ fontSize: 11.5, fontWeight: 500, color: T.faint, whiteSpace: "nowrap" }}>Residência médica</span>
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+function BarraLateral({ abas, atual, onEscolher, estreita, aberta, onFechar, aberto, setAberto, pro, limpo }) {
   /* No celular a gaveta some do caminho quando fechada; no computador ela
      continua na tela, só encolhida para a largura dos ícones. */
   const expandida = estreita ? true : aberto;
@@ -121,7 +143,9 @@ function BarraLateral({ abas, atual, onEscolher, estreita, aberta, onFechar, abe
             <PanelLeft size={16} style={{ transform: aberto ? "none" : "scaleX(-1)", transition: "transform .2s" }} />
           </button>
         )}
-        {expandida ? (
+        {limpo && expandida ? (
+          <MarcaCompacta onClick={() => { onEscolher("hoje"); if (estreita) onFechar(); }} />
+        ) : expandida ? (
           <span style={{
             fontFamily: F_MONO, fontSize: 10, letterSpacing: "0.28em",
             textTransform: "uppercase", color: T.ghost, whiteSpace: "nowrap",
@@ -136,7 +160,11 @@ function BarraLateral({ abas, atual, onEscolher, estreita, aberta, onFechar, abe
                 ela é uma coluna de ícones, e um rótulo em caixa alta ali
                 viraria um borrão; um risco separa os grupos igual. */}
             {expandida ? (
-              <span style={{
+              <span style={limpo ? {
+                fontSize: 11, fontWeight: 700, letterSpacing: "0.08em",
+                textTransform: "uppercase", color: T.ghost, whiteSpace: "nowrap",
+                padding: "0 12px", marginTop: iGrupo ? 16 : 6, marginBottom: 4,
+              } : {
                 fontFamily: F_MONO, fontSize: 9.5, letterSpacing: "0.24em",
                 textTransform: "uppercase", color: T.ghost, whiteSpace: "nowrap",
                 padding: "0 12px", marginTop: iGrupo ? 14 : 4, marginBottom: 4,
@@ -156,7 +184,16 @@ function BarraLateral({ abas, atual, onEscolher, estreita, aberta, onFechar, abe
               onClick={() => { onEscolher(t.id); if (estreita) onFechar(); }}
               className="aba flex items-center gap-3 rounded-2xl px-3 whitespace-nowrap"
               data-on={on ? "1" : "0"}
-              style={{
+              style={limpo ? {
+                /* Limpo: item em frase normal; o escolhido ganha um fundo
+                   azul bem leve e a letra no azul, como na Easy. */
+                minHeight: 40, flexShrink: 0, borderRadius: 10,
+                background: on ? soft("var(--neon)", 12) : "transparent",
+                border: "1px solid transparent",
+                color: on ? "var(--neon)" : T.dim,
+                fontSize: 14.5, fontWeight: on ? 700 : 500,
+                cursor: "pointer", justifyContent: expandida ? "flex-start" : "center",
+              } : {
                 minHeight: 44, flexShrink: 0,
                 background: on
                   ? `linear-gradient(100deg, ${soft(t.acc, 26)}, ${soft(t.acc, 8)})`
@@ -175,7 +212,7 @@ function BarraLateral({ abas, atual, onEscolher, estreita, aberta, onFechar, abe
               ) : null}
               {t.badge ? (
                 <span style={{
-                  fontFamily: F_MONO, fontSize: 10, background: T.warn, color: "var(--bg)",
+                  fontFamily: F_MONO, fontSize: 10, background: limpo ? "var(--btn)" : T.warn, color: limpo ? "#FFFFFF" : "var(--bg)",
                   borderRadius: 99, padding: "1px 6px", fontWeight: 700,
                   position: expandida ? "static" : "absolute", marginLeft: expandida ? 0 : 22,
                   marginTop: expandida ? 0 : -18,
@@ -197,8 +234,9 @@ function BarraLateral({ abas, atual, onEscolher, estreita, aberta, onFechar, abe
           style={{
             minHeight: 42, flexShrink: 0, margin: "0 12px 14px", textDecoration: "none",
             border: `1px solid ${soft("var(--neon)", 30)}`, background: soft("var(--neon)", 8),
-            color: "var(--neon)", fontSize: 12.5, fontWeight: 700, letterSpacing: "0.06em",
-            textTransform: "uppercase", justifyContent: expandida ? "flex-start" : "center",
+            color: "var(--neon)", fontSize: limpo ? 14 : 12.5, fontWeight: 700, letterSpacing: limpo ? 0 : "0.06em",
+            textTransform: limpo ? "none" : "uppercase", justifyContent: expandida ? "flex-start" : "center",
+            borderRadius: limpo ? 10 : undefined,
           }}>
           <Download size={16} style={{ flexShrink: 0 }} />
           {expandida ? <span className="flex-1 text-left">Baixar o app</span> : null}
@@ -240,7 +278,7 @@ function BarraLateral({ abas, atual, onEscolher, estreita, aberta, onFechar, abe
       style={{
         width: largura, flexShrink: 0, position: "sticky", top: 0,
         height: "100vh", borderRight: `1px solid ${T.line}`,
-        background: soft("var(--bg2)", 55),
+        background: limpo ? T.card : soft("var(--bg2)", 55),
         backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
         transition: "width .25s cubic-bezier(.2,.8,.2,1)",
       }}>
@@ -357,21 +395,29 @@ export default function Cadencia() {
       ambiente: tm.cor === "cadencia" || !neon2 ? null : neon2,
       fonte: (FONTES.find((f) => f.id === tm.fonte) || FONTES[0]).ui,
       tamanho: Number(tm.tamanho) || 1,
+      visual: tm.visual === "neon" ? "neon" : "limpo",
+      /* No visual limpo, a cor "Cadência" é o azul do próprio visual. */
+      corPropria: tm.cor !== "cadencia",
     };
   }, [data.tema]);
 
   /* Sem cor escolhida o objeto é vazio, e aí nada é sobrescrito: vale o
      THEME_CSS, que é o desenho de origem. */
-  const ambienteVars = useMemo(() => (
-    aparencia.ambiente
+  const limpo = aparencia.visual === "limpo";
+  const ambienteVars = useMemo(() => {
+    /* No limpo, fundo e painéis ficam neutros e só o acento acompanha a
+       cor escolhida (acentoLimpo, em base.jsx). */
+    if (limpo) return aparencia.corPropria ? acentoLimpo(aparencia.neon, aparencia.neon2, data.theme === "light") : {};
+    return aparencia.ambiente
       ? ambienteDoTema(aparencia.ambiente, data.theme === "light", aparencia.neon, aparencia.neon2)
-      : {}
-  ), [aparencia.ambiente, aparencia.neon, aparencia.neon2, data.theme]);
+      : {};
+  }, [limpo, aparencia.corPropria, aparencia.ambiente, aparencia.neon, aparencia.neon2, data.theme]);
 
   useEffect(() => {
     try {
       const raiz = document.documentElement;
       raiz.setAttribute("data-theme", data.theme);
+      raiz.setAttribute("data-visual", aparencia.visual);
       raiz.setAttribute("data-layout", "auto");
       /* O acento NÃO é gravado aqui direto. Ele sai do ambiente, que o
          calcula por tema — ver ambienteDoTema. Gravado cru, como era, ele
@@ -402,7 +448,9 @@ export default function Cadencia() {
       document.body.style.fontWeight = "500";
       document.body.style.color = "var(--ink)";
       const barra = document.querySelector('meta[name="theme-color"]');
-      const fundo = ambienteVars["--bg"] || (data.theme === "light" ? "#F1EFF8" : "#04030A");
+      const fundo = ambienteVars["--bg"] || (limpo
+        ? (data.theme === "light" ? "#F3F5F9" : "#0B1120")
+        : (data.theme === "light" ? "#F1EFF8" : "#04030A"));
       if (barra) barra.setAttribute("content", fundo);
     } catch (e) { /* noop */ }
   }, [data.theme, data.layout, aparencia, ambienteVars]);
@@ -939,7 +987,7 @@ export default function Cadencia() {
         valor é o mais específico que existe e vale para tudo que está
         dentro. Foi por isso que os painéis continuavam roxos num tema
         rosa mesmo com a variável certa no <html>. */}
-    <div data-theme={data.theme} style={{ background: T.bg, minHeight: "100vh", color: T.ink, fontFamily: F_UI, fontWeight: 500, "--acc": acc, ...ambienteVars }}>
+    <div data-theme={data.theme} data-visual={aparencia.visual} style={{ background: T.bg, minHeight: "100vh", color: T.ink, fontFamily: F_UI, fontWeight: 500, "--acc": acc, ...ambienteVars }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Instrument+Serif&family=JetBrains+Mono:wght@400;500;600;700&family=Sora:wght@300;400;500;600;700&family=Manrope:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@300;400;500;600;700&family=Oswald:wght@600;700&display=swap');
         ${THEME_CSS}
@@ -1102,6 +1150,7 @@ export default function Cadencia() {
         @keyframes aceso{0%,100%{filter:drop-shadow(0 0 18px color-mix(in srgb,var(--neon2) 55%,transparent))}
           50%{filter:drop-shadow(0 0 34px color-mix(in srgb,var(--neon2) 85%,transparent))}}
         .marca{animation:aceso 5.5s ease-in-out infinite}
+        ${LIMPO_CSS}
       `}</style>
 
       {/* A cor vai resolvida, e não como var(--neon): o canvas lê a variável
@@ -1109,24 +1158,30 @@ export default function Cadencia() {
           efeito da Cena (filho antes de pai). Lendo var(), ela pintava
           sempre com a cor anterior — foi por isso que a constelação
           continuava ciano depois de escolher rosa. */}
-      <Cena cor1={aparencia.neon || "#35E4FF"} cor2={aparencia.neon2 || "#A855F7"}
-        chave={`${data.theme}|${aparencia.neon}|${aparencia.neon2}`} />
+      {/* O fundo vivo (constelação, auras, fios de luz) é do visual neon.
+          O limpo é papel liso. */}
+      {!limpo ? (
+        <>
+          <Cena cor1={aparencia.neon || "#35E4FF"} cor2={aparencia.neon2 || "#A855F7"}
+            chave={`${data.theme}|${aparencia.neon}|${aparencia.neon2}`} />
 
-      {/* auras de luz que respiram, em ciano, verde e roxo */}
-      <div aria-hidden="true" className="aura aura-a" />
-      <div aria-hidden="true" className="aura aura-b" />
-      <div aria-hidden="true" className="aura aura-c" />
-      <div aria-hidden="true" className="aura aura-d" />
-      <div aria-hidden="true" style={{
-        position: "fixed", top: 0, left: 0, right: 0, height: 1, pointerEvents: "none", zIndex: 3,
-        background: "linear-gradient(90deg, transparent, var(--neon), transparent)", opacity: 0.5,
-      }} />
-      {/* clarão na base, como o das referências */}
-      <div aria-hidden="true" style={{
-        position: "fixed", bottom: -180, left: "50%", transform: "translateX(-50%)",
-        width: "120%", height: 340, pointerEvents: "none", zIndex: 0,
-        background: "radial-gradient(50% 100% at 50% 100%, color-mix(in srgb, var(--neon) 16%, transparent), transparent 70%)",
-      }} />
+          {/* auras de luz que respiram, em ciano, verde e roxo */}
+          <div aria-hidden="true" className="aura aura-a" />
+          <div aria-hidden="true" className="aura aura-b" />
+          <div aria-hidden="true" className="aura aura-c" />
+          <div aria-hidden="true" className="aura aura-d" />
+          <div aria-hidden="true" style={{
+            position: "fixed", top: 0, left: 0, right: 0, height: 1, pointerEvents: "none", zIndex: 3,
+            background: "linear-gradient(90deg, transparent, var(--neon), transparent)", opacity: 0.5,
+          }} />
+          {/* clarão na base, como o das referências */}
+          <div aria-hidden="true" style={{
+            position: "fixed", bottom: -180, left: "50%", transform: "translateX(-50%)",
+            width: "120%", height: 340, pointerEvents: "none", zIndex: 0,
+            background: "radial-gradient(50% 100% at 50% 100%, color-mix(in srgb, var(--neon) 16%, transparent), transparent 70%)",
+          }} />
+        </>
+      ) : null}
 
       {avisoDisco ? (
         <div className="px-5 sm:px-8 pt-4" style={{ position: "relative", zIndex: 2 }}>
@@ -1152,7 +1207,7 @@ export default function Cadencia() {
            no conteúdo: as camadas de fundo ficam de fora, porque elas são
            fixas na tela e escalar junto deslocaria as auras. */
         <div className="flex" style={{ position: "relative", zIndex: 1, alignItems: "flex-start", zoom: aparencia.tamanho !== 1 ? aparencia.tamanho : undefined }}>
-          <BarraLateral abas={TABS} atual={tab} onEscolher={setTab} pro={pro}
+          <BarraLateral abas={TABS} atual={tab} onEscolher={setTab} pro={pro} limpo={limpo}
             estreita={estreita} aberta={menuAberto} onFechar={() => setMenuAberto(false)}
             aberto={menuFixo} setAberto={setMenuFixo} />
 
@@ -1180,8 +1235,11 @@ export default function Cadencia() {
                    podia pegar a cópia invisível e travar esperando ela
                    aparecer. */}
                 {estreita ? (
-                  <div className="flex items-center justify-between" style={{ marginBottom: 16 }}>
+                  <div className="flex items-center justify-between gap-3" style={{ marginBottom: limpo ? 4 : 16 }}>
                     <div className="flex items-center gap-3">{controlesEsquerda}</div>
+                    {/* No limpo, a marca pequena vem no meio da fileira, como
+                        no app da Easy, em vez do logotipo grande abaixo. */}
+                    {limpo ? <MarcaCompacta onClick={() => setTab("hoje")} /> : null}
                     <div className="flex items-center gap-2">{controlesDireita}</div>
                   </div>
                 ) : (
@@ -1196,7 +1254,10 @@ export default function Cadencia() {
                 )}
 
                 {/* A marca é só a onda: o nome vem escrito logo abaixo, então
-                    repetir o texto que existe dentro da logo ficaria dobrado. */}
+                    repetir o texto que existe dentro da logo ficaria dobrado.
+                    No visual limpo ela mora no menu (ou na fileira de cima,
+                    no celular): aqui sobra só o espaço dos controles. */}
+                {limpo ? (!estreita ? <div style={{ height: 40 }} /> : null) : (
                 <button type="button" onClick={() => setTab("hoje")} aria-label="Ir para Hoje"
                   className="flex flex-col items-center mx-auto"
                   style={{ background: "none", border: "none", cursor: "pointer", padding: "2px 0 0" }}>
@@ -1218,6 +1279,7 @@ export default function Cadencia() {
                     opacity: 0.8,
                   }} />
                 </button>
+                )}
               </div>
 
             </div>

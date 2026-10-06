@@ -56,6 +56,7 @@ const THEME_CSS = `
   --shadow:0 30px 80px rgba(2,0,12,.82), 0 2px 0 rgba(255,255,255,.03) inset;
   --vidro:linear-gradient(158deg,rgba(190,170,255,.09),rgba(190,170,255,0) 48%);
   --brilho-borda:rgba(255,255,255,.10);
+  --btn:color-mix(in srgb,var(--neon2) 72%,#000);
   color-scheme:dark;
 }
 [data-theme="light"]{
@@ -78,6 +79,7 @@ const THEME_CSS = `
   --shadow:0 18px 44px rgba(50,30,100,.13);
   --vidro:linear-gradient(158deg,rgba(255,255,255,.85),rgba(255,255,255,0) 48%);
   --brilho-borda:rgba(255,255,255,.65);
+  --btn:var(--neon2);
   color-scheme:light;
 }
 :root{
@@ -85,6 +87,87 @@ const THEME_CSS = `
   --f-serif:"Instrument Serif",Georgia,"Times New Roman",serif;
   --f-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
 }`;
+
+/* ── o visual limpo ────────────────────────────────────────────────────
+ *
+ * O desenho padrão desde que o dono pediu "um site bom de usar e intuitivo",
+ * no estilo da Easy Medicina: fundo cinza bem claro (ou azul-noite no
+ * escuro), cartões lisos com sombra curta, um azul de acento, títulos em
+ * frase normal, e nada de partícula, aura, brilho ou fio de luz. O visual
+ * de antes continua existindo como "neon", em Configurações › Aparência.
+ *
+ * Funciona por cima do THEME_CSS: o mesmo nome de variável, num seletor
+ * mais específico ([data-visual][data-theme]), e as peças decorativas
+ * apagadas por classe. Cada tom de texto passa de 4.5:1 contra o pior
+ * painel (o --card3), conferido pelo testar-contraste.mjs. */
+const LIMPO_CSS = `
+[data-visual="limpo"][data-theme="light"]{
+  --bg:#F3F5F9; --bg2:#FFFFFF; --glow:transparent;
+  --card:#FFFFFF; --card2:#F6F8FB; --card3:#ECF0F6;
+  --line:#E3E8EF; --line2:#CBD3DF;
+  --ink:#0F172A; --dim:#334155; --faint:#4A5568; --ghost:#56627A;
+  --neon:#0A62C9; --neon2:#4A3FD1;
+  --ok:#0F7159; --warn:#8F5600; --bad:#B53249; --aura3:#0F7159;
+  --a-CL:#A14814; --a-CI:#0F7159; --a-GO:#2A5EC2; --a-PE:#AA376C; --a-PR:#6C42BE;
+  --shadow:0 1px 2px rgba(16,24,40,.05), 0 10px 28px rgba(16,24,40,.07);
+  --sombra-card:0 1px 2px rgba(16,24,40,.04), 0 4px 14px rgba(16,24,40,.05);
+  --vidro:none; --brilho-borda:transparent;
+  --btn:var(--neon);
+}
+[data-visual="limpo"][data-theme="dark"]{
+  --bg:#0B1120; --bg2:#0F172A; --glow:transparent;
+  --card:#111A2E; --card2:#162036; --card3:#1D2942;
+  --line:rgba(148,163,184,.16); --line2:rgba(148,163,184,.32);
+  --ink:#F1F5F9; --dim:#CBD5E1; --faint:#A9B5C7; --ghost:#97A3B6;
+  --neon:#5AA2FF; --neon2:#9AA4FF;
+  --ok:#3EE0B0; --warn:#FFB648; --bad:#FF7A90; --aura3:#3EE0B0;
+  --a-CL:#FF9450; --a-CI:#3EE0B0; --a-GO:#6FB4FF; --a-PE:#FF7DB8; --a-PR:#B49BFF;
+  --shadow:0 18px 50px rgba(0,0,0,.45);
+  --sombra-card:0 1px 2px rgba(0,0,0,.25);
+  --vidro:none; --brilho-borda:transparent;
+  --btn:color-mix(in srgb,var(--neon) 62%,#000);
+}
+/* número e rótulo na mesma letra do resto, como na Easy: a monoespaçada
+   era parte do visual técnico */
+[data-visual="limpo"]{--f-mono:var(--f-ui);--f-serif:var(--f-ui)}
+[data-visual="limpo"] .brilho-svg{filter:none!important}
+[data-visual="limpo"] .vidro{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+  box-shadow:var(--sombra-card)}
+[data-visual="limpo"] .vidro.rounded-3xl{border-radius:16px}
+[data-visual="limpo"] .vidro::before,[data-visual="limpo"] .vidro::after{display:none}
+[data-visual="limpo"] .vidro:hover{box-shadow:var(--sombra-card);border-color:var(--line)}
+[data-visual="limpo"] .canto-card,[data-visual="limpo"] .brilho-card,[data-visual="limpo"] .fio-h{display:none!important}
+[data-visual="limpo"] .titulo-h{text-transform:none!important;letter-spacing:-0.01em!important;
+  color:var(--ink)!important;font-size:17px!important}
+[data-visual="limpo"] .titulo-h > .icone-h{border-radius:8px!important;border-color:transparent!important}
+[data-visual="limpo"] .num{letter-spacing:-0.02em!important;font-weight:700!important}
+[data-visual="limpo"] .btn-neon{background-image:none!important;background-color:var(--btn)!important;
+  color:#FFFFFF!important;box-shadow:0 1px 2px rgba(16,24,40,.12)}
+[data-visual="limpo"] .btn-neon:hover:not(:disabled){transform:none;filter:brightness(1.06);
+  box-shadow:0 4px 12px -4px var(--btn)}
+[data-visual="limpo"] .brilhar:hover{transform:none;box-shadow:none;border-color:var(--line2)}
+[data-visual="limpo"] .capa-olho{font-family:var(--f-ui);font-weight:700;font-size:11.5px;
+  letter-spacing:.12em;color:var(--neon)}
+[data-visual="limpo"] .capa-olho::before{display:none}
+[data-visual="limpo"] .capa-t{text-transform:none;font-weight:800;letter-spacing:-0.025em;
+  font-size:clamp(26px,3.6vw,32px)}
+[data-visual="limpo"] .capa-t em{background:none;color:var(--neon)}
+[data-visual="limpo"] .marca{animation:none}
+[data-visual="limpo"] .aba::after{display:none}
+[data-visual="limpo"] ::selection{background:color-mix(in srgb,var(--neon) 22%,transparent)}
+`;
+
+/* A cor de acento escolhida, no visual limpo. Lá o fundo e os painéis
+   ficam neutros (é o que deixa a tela limpa), e só o acento muda: o tom
+   escolhido, puxado o quanto for preciso para ler bem no tema. */
+const PISO_LIMPO = { light: "#ECF0F6", dark: "#1D2942" };
+function acentoLimpo(neon, neon2, claro) {
+  const piso = PISO_LIMPO[claro ? "light" : "dark"];
+  const saida = {};
+  if (neon) saida["--neon"] = ateContrastar(neon, piso, 4.5, claro);
+  if (neon2) saida["--neon2"] = ateContrastar(neon2, piso, 4.5, claro);
+  return saida;
+}
 
 /* As fontes que a pessoa pode escolher. A primeira de cada par é o que vai
    para --f-ui; a serifada e a monoespaçada acompanham, para o conjunto não

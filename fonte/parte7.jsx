@@ -673,8 +673,35 @@ function Aparencia({ data, setData }) {
         Clínica, do verde da Cirurgia e assim por diante.
       </Texto>
 
+      {/* ── o visual: limpo ou neon ──────────────────────────────────── */}
+      <div className="mt-6" data-teste="escolha-visual">
+        <Label>Visual</Label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+          {[
+            ["limpo", "Limpo", "Fundo liso, cartões brancos e azul de destaque. O padrão."],
+            ["neon", "Neon", "O visual de antes: partículas, brilho e cores vivas."],
+          ].map(([id, nome, desc]) => {
+            const on = (tema.visual || "limpo") === id;
+            return (
+              <button key={id} type="button" onClick={() => mudar({ visual: id })}
+                className="text-left rounded-2xl px-4 py-3.5 brilhar"
+                style={{
+                  background: on ? soft("var(--neon)", 10) : "transparent",
+                  border: `1px solid ${on ? soft("var(--neon)", 50) : T.line}`,
+                  cursor: "pointer", color: T.ink,
+                }}>
+                <div className="flex items-center gap-2" style={{ fontSize: 15, fontWeight: 700 }}>
+                  {on ? <Check size={15} style={{ color: "var(--neon)" }} /> : null}{nome}
+                </div>
+                <Mini style={{ marginTop: 4, lineHeight: 1.5 }}>{desc}</Mini>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* ── claro ou escuro ─────────────────────────────────────────── */}
-      <div className="mt-6">
+      <div className="mt-6 pt-5" style={{ borderTop: `1px solid ${T.line}` }}>
         <Label>Fundo</Label>
         <div className="flex gap-2 mt-3 flex-wrap">
           {[["dark", "Escuro", <Moon size={14} key="e" />], ["light", "Claro", <Sun size={14} key="c" />]].map(([id, lb, ic]) => (

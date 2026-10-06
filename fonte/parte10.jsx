@@ -319,7 +319,7 @@ function Medidor({ pct, cor, tamanho = 92, largura = 7, children, atraso = 0 }) 
         <circle cx={tamanho / 2} cy={tamanho / 2} r={r} fill="none" stroke="var(--card3)" strokeWidth={largura} />
         <circle cx={tamanho / 2} cy={tamanho / 2} r={r} fill="none" stroke={cor}
           strokeWidth={largura} strokeLinecap="round" strokeDasharray={circ}
-          strokeDashoffset={circ * (1 - (mostrar ? p : 0))}
+          strokeDashoffset={circ * (1 - (mostrar ? p : 0))} className="brilho-svg"
           style={{ transition: "stroke-dashoffset 1.1s cubic-bezier(.2,.8,.2,1)", filter: `drop-shadow(0 0 6px ${cor})` }} />
       </svg>
       <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
@@ -362,7 +362,7 @@ function Radar({ dados, tamanho = 300 }) {
         const [x, y] = ponto(i, 1);
         return <line key={i} x1={c} y1={c} x2={x} y2={y} stroke="var(--line)" strokeWidth="1" />;
       })}
-      <polygon points={caminho} fill="var(--neon)" fillOpacity="0.16" stroke="var(--neon)" strokeWidth="2"
+      <polygon points={caminho} fill="var(--neon)" fillOpacity="0.16" stroke="var(--neon)" strokeWidth="2" className="brilho-svg"
         style={{ transition: "all 1.2s cubic-bezier(.2,.8,.2,1)", filter: "drop-shadow(0 0 8px var(--neon))" }} />
       {dados.map((d, i) => {
         const [x, y] = ponto(i, entrou ? Math.max(0.04, d.pct / 100) : 0.04);
