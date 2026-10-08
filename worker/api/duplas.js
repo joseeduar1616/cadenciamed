@@ -21,6 +21,9 @@ import {
 } from "./_comum.js";
 
 const MAX_AMIGOS = 60;
+/* Quantos colegas da mesma faculdade a lista mostra de uma vez. */
+const MAX_COLEGAS = 40;
+const FACULDADE_VALIDA = /^[a-z0-9-]{2,60}$/;
 const MAX_QUESTOES = 30;
 const MIN_SEG = 30;
 const MAX_SEG = 60;
@@ -399,6 +402,78 @@ export async function onRequest({ request, env }) {
     }));
     if (!gravou) return json({ erro: "Não consegui enviar o convite." }, 502);
     return json({ ok: true, mensagem: "Convite enviado." });
+  }
+
+  /* ── colegas da mesma faculdade ──────────────────────────────────────
+   *
+   * Só entra na busca quem escolheu aparecer: o app grava a faculdade no
+   * perfil público apenas nesse caso (vazio no contrário). E só vê os
+   * colegas quem também aparece, para ninguém olhar sem ser visto.
+   * Volta nome, foto e especialidades; e-mail nunca.
+   */
+  if (acao === "colegas") {
+    const meu = await lerDoc(token, `perfis/${pessoa.uid}`);
+    const faculdade = meu && booleano(meu.mostrarFaculdade) ? texto(meu.faculdade) : "";
+    if (!FACULDADE_VALIDA.test(faculdade)) {
+      return json({ ok: true, colegas: [], aviso: "Escolha a sua faculdade e marque que quer achar colegas." });
+    }
+    const r = await fetch(`${BASE_FIRESTORE}:runQuery`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId: "perfis" }],
+          where: {
+            fieldFilter: { field: { fieldPath: "faculdade" }, op: "EQUAL", value: { stringValue: faculdade } },
+          },
+          limit: MAX_COLEGAS + 1,
+        },
+      }),
+    });
+    if (!r.ok) return json({ erro: "Não consegui procurar os colegas agora." }, 502);
+    const j = await r.json().catch(() => null);
+    const duplas = await duplasDe(token, pessoa.uid);
+    const ligados = new Set(duplas.flatMap((d) => d.gente));
+    const minhas = new Set(lista(meu.especialidades).map(texto));
+    const colegas = (j || []).filter((x) => x.document).map((x) => {
+      const f = x.document.fields || {};
+      const especialidades = lista(f.especialidades).map(texto).filter(Boolean).slice(0, 8);
+      return {
+        uid: x.document.name.split("/").pop(),
+        nome: texto(f.nome) || "Alguém",
+        foto: texto(f.foto),
+        especialidades,
+        mostrar: booleano(f.mostrarFaculdade),
+        iguais: especialidades.filter((e) => minhas.has(e) && e !== "Ainda não decidi").length,
+      };
+    })
+      .filter((c) => c.mostrar && c.uid !== pessoa.uid && !ligados.has(c.uid))
+      .sort((a, b) => b.iguais - a.iguais || a.nome.localeCompare(b.nome))
+      .slice(0, MAX_COLEGAS)
+      .map(({ mostrar, iguais, ...c }) => c);
+    return json({ ok: true, colegas });
+  }
+
+  /* Convite para um colega da lista acima, sem precisar do e-mail. Só vale
+     entre duas pessoas que escolheram aparecer na mesma faculdade: sem
+     esta conferência, qualquer uid viraria um jeito de chamar qualquer um. */
+  if (acao === "convidar-colega") {
+    const outro = String(corpo.uid || "");
+    if (!/^[A-Za-z0-9_-]{6,128}$/.test(outro) || outro === pessoa.uid) return json({ erro: "Pessoa inválida." }, 400);
+    const [meu, dele] = await Promise.all([lerDoc(token, `perfis/${pessoa.uid}`), lerDoc(token, `perfis/${outro}`)]);
+    const fac = (f) => (f && booleano(f.mostrarFaculdade) ? texto(f.faculdade) : "");
+    if (!FACULDADE_VALIDA.test(fac(meu)) || fac(meu) !== fac(dele)) {
+      return json({ erro: "Só dá para chamar assim quem é da sua faculdade e escolheu aparecer." }, 403);
+    }
+    const id = idDaDupla(pessoa.uid, outro);
+    if (await lerDoc(token, `duplas/${id}`)) return json({ ok: true, mensagem: "Vocês já estão ligados, ou o convite já foi enviado." });
+    const minhasDuplas = await duplasDe(token, pessoa.uid);
+    if (minhasDuplas.length >= MAX_AMIGOS) return json({ erro: `Você já tem ${MAX_AMIGOS} amigos, que é o limite.` }, 409);
+    const gravou = await gravarDoc(token, `duplas/${id}`, camposDaDupla({
+      gente: [pessoa.uid, outro], quemConvidou: pessoa.uid, aceita: false, em: Date.now(),
+    }));
+    if (!gravou) return json({ erro: "Não consegui enviar o convite." }, 502);
+    return json({ ok: true, mensagem: "Convite enviado. Aparece para a pessoa na aba Amigos." });
   }
 
   if (acao === "aceitar" || acao === "remover") {

@@ -755,6 +755,7 @@ export default function Cadencia() {
 
   usePerfilPublico(nuvem, data.profile.name, data.sessions, today, data.mostrarDesempenho, aoVivo,
     data.profile.apelido, data.profile.foto);
+  usePerfilFaculdade(nuvem, data.profile);
 
   /* Menu lateral: no celular é gaveta que abre por cima; no computador
      fica fixo e só encolhe para a largura dos ícones. */
@@ -1269,6 +1270,10 @@ export default function Cadencia() {
           <main className="px-5 sm:px-8 pb-16">
             {/* Quem já usava o site antes do visual limpo: o aviso de que ele
                 existe, com as opções para testar ali mesmo (parte33). */}
+            {/* A pergunta da faculdade e da especialidade, uma vez só (parte37). */}
+            {ready && data.profile.onboarded && !data.profile.perguntouFaculdade && perguntaFaculdadeLigada() ? (
+              <PerguntaFaculdade data={data} setData={setData} nuvem={nuvem} notify={notify} irPara={setTab} />
+            ) : null}
             {ready && data.tema && data.tema.avisoVisual ? (
               <div className="mx-auto" style={{ maxWidth: LARGURA, marginBottom: 22 }}>
                 <AvisoVisualNovo data={data} setData={setData} />

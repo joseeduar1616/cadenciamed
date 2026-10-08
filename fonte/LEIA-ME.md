@@ -1715,6 +1715,43 @@ consentimento do aluno para ser adicionado: quem resgata o cupom e sabe o
 e-mail de alguém já consegue montar a rotina e o currículo dessa pessoa. Se
 isso for um problema no seu uso, vale avisar quem for adicionado antes.
 
+## Faculdade, especialidade e simulados abertos
+
+**A pergunta, uma vez só (`parte37.jsx`).** Na primeira entrada depois desta
+versão, quem já passou do cadastro vê uma janela pedindo a faculdade e a
+especialidade pretendida. As duas listas já vêm prontas e filtram enquanto a
+pessoa digita, sem ligar para acento: a faculdade acha por sigla ou por nome
+("ufg" ou "universidade federal de goias"), e quem não achar a sua usa o nome
+que escreveu. As especialidades são as 55 do CFM mais "Ainda não decidi", e dá
+para marcar até 8. "Salvar" ou "Agora não" marcam `profile.perguntouFaculdade`,
+e a janela não volta. Depois, muda-se em Configurações, Seu perfil, ou no
+cartão "Da sua faculdade" da aba Amigos.
+
+Guardado em `profile`: `faculdade` (id da lista, como `ufg-go`, ou
+`outra-<nome>`), `faculdadeNome`, `especialidades`, `mostrarFaculdade` e
+`perguntouFaculdade`, todos passando pelo `limparPerfilFaculdade` no
+`normalize()`.
+
+**Colegas da faculdade.** `usePerfilFaculdade` grava a faculdade em
+`perfis/{uid}` só para quem marcou "Quero achar colegas"; quem não marcou
+grava vazio. A rota `/api/duplas` ganhou `colegas` (busca em `perfis` pela
+mesma faculdade, só de quem marcou, tirando quem já é amigo ou já foi
+convidado) e `convidar-colega` (convite pelo uid, aceito só entre duas pessoas
+que marcaram a mesma faculdade). Quem não marcou também não vê ninguém. O
+colega aparece com apelido, foto e especialidades; e-mail nunca.
+
+**Simulados abertos (`parte20.jsx`, `/api/salas`).** As salas de simulado
+deixaram de ter senha: `sim-abertas` lista todas, com os simulados postados
+(nome, data, questões e quantas pessoas lançaram, sem nota), e
+`sim-participar` entra com um toque. Criar sala de simulado pede só o nome. O
+placar continua com a regra de sempre: a nota dos outros só depois de lançar
+a sua. As salas de estudo e de treino continuam com senha.
+
+No `teste.html` a janela só aparece com `cm-teste-faculdade` no localStorage
+(troca feita no `montar_teste.py`), para não ficar na frente dos outros testes.
+Testes: `testar-colegas.mjs`, o trecho novo do `testar-salas.mjs` e
+`testar-faculdade-tela.mjs`.
+
 ## Domínio
 
 Ao acrescentar ou trocar de domínio, três lugares precisam saber, não só a

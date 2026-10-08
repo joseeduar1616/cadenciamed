@@ -17,7 +17,7 @@ import {
   Dumbbell, Timer, Ruler, TrendingUp, Youtube, Calculator, Music,
   Brain, Mic, Lightbulb, History, MessageSquarePlus, CircleStop, AudioLines, Phone, PhoneOff, MicOff,
   Utensils, Droplets, Footprints, Scale, FileSpreadsheet, Salad, BedDouble, Beef,
-  Wallet, PiggyBank, Receipt, Presentation, CircleHelp, PartyPopper, PencilLine, ZoomIn, Heart,
+  Wallet, PiggyBank, Receipt, Presentation, CircleHelp, PartyPopper, PencilLine, ZoomIn, Heart, UserPlus,
 } from "lucide-react";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip,

@@ -412,6 +412,8 @@ function normalize(raw) {
       foto: typeof pr.foto === "string" && /^data:image\//.test(pr.foto) ? pr.foto : "",
       examDate: typeof pr.examDate === "string" ? pr.examDate : "",
       onboarded: pr.onboarded === undefined ? DEFAULTS.profile.onboarded : !!pr.onboarded,
+      /* faculdade e especialidade pretendida (parte37) */
+      ...limparPerfilFaculdade(pr),
     },
     theme: d.theme === "light" ? "light" : "dark",
     /* o formato da tela é sempre automático; o "Celular" guardado de

@@ -895,6 +895,8 @@ function Amigos({ nuvem, notify, data, setData, irPara }) {
       <MeuDia data={data} hoje={hoje} minhaLinha={minhaLinha}
         rotuloSala={cabecalho && cabecalho.rotulo ? `na sala, ${cabecalho.rotulo}` : "na sala"} />
 
+      <ColegasDaFaculdade nuvem={nuvem} notify={notify} data={data} setData={setData} />
+
       <Card className="px-6 py-6" brilho="var(--neon2)">
         <H color="var(--neon2)" icon={<Users size={16} />}>Salas de amigos</H>
         <Texto style={{ marginTop: 10 }}>

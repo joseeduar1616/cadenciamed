@@ -22,6 +22,15 @@ patch, n = re.subn(r'const souDono = ehDono\(nuvem\.usuario\);',
 if n != 1:
     raise SystemExit('não achei a linha do souDono em app.jsx')
 
+# A pergunta da faculdade aparece uma vez para todo mundo, por cima da
+# tela. Nos testes ela ficaria na frente de tudo; aqui só aparece quando o
+# teste dela pede, com a marca no localStorage.
+patch, n = re.subn(r'const perguntaFaculdadeLigada = \(\) => true;',
+                   'const perguntaFaculdadeLigada = () => { try { return localStorage.getItem("cm-teste-faculdade") === "1"; } catch (e) { return false; } };',
+                   patch)
+if n != 1:
+    raise SystemExit('não achei a pergunta da faculdade em app.jsx')
+
 os.makedirs('_teste', exist_ok=True)
 open('_teste/app.jsx', 'w', encoding='utf-8').write(patch)
 for f in ('main.jsx', 'curriculo.js'):

@@ -155,76 +155,120 @@ function NovoSimulado({ aoCriar, hoje }) {
   );
 }
 
-/* Criar ou entrar numa sala DE SIMULADO.
+/* Salas de simulado abertas.
  *
- * Sala própria, com nome e senha próprios. Quem faz os mesmos simulados
- * que você não é necessariamente quem estuda com você nem quem treina com
- * você: costuma ser quem faz o mesmo cursinho, ou quem presta a mesma
- * prova. Juntar tudo numa sala só obrigaria cada grupo a ver o placar dos
- * outros dois.
+ * Toda sala de simulado aparece aqui para todo mundo, com os simulados que
+ * já postaram (nome, data, quantas questões e quantas pessoas lançaram). Para
+ * participar basta tocar em "Entrar": não tem senha. O placar continua com a
+ * regra de sempre, só vê a nota dos outros quem lança a própria.
  *
- * A tela é a mesma das outras duas de propósito: quem já entrou numa sala
- * não precisa aprender um segundo jeito de fazer a mesma coisa. */
-function SalaDeSimulado({ nuvem, notify, aoEntrar, erro: erroDeFora }) {
-  const [form, setForm] = useState({ nome: "", senha: "" });
-  const [modo, setModo] = useState("entrar");
-  const [ocupado, setOcupado] = useState(false);
+ * Criar uma sala nova pede só o nome. */
+function SimuladosAbertos({ nuvem, notify, aoEntrar, versao }) {
+  const [salas, setSalas] = useState(null);
   const [erro, setErro] = useState("");
+  const [entrando, setEntrando] = useState("");
+  const [nome, setNome] = useState("");
+  const [criando, setCriando] = useState(false);
+  const [busca, setBusca] = useState("");
 
-  const enviar = async () => {
-    if (!form.nome.trim()) { setErro("Escreva o nome da sala."); return; }
-    if (form.senha.length < 4) { setErro("A senha precisa ter pelo menos 4 caracteres."); return; }
-    setOcupado(true); setErro("");
-    const j = await falarComSalas(nuvem, {
-      tipo: "simulado", acao: modo, nome: form.nome.trim(), senha: form.senha,
-    });
-    setOcupado(false);
+  const carregar = useCallback(async () => {
+    const j = await falarComSalas(nuvem, { tipo: "simulado", acao: "sim-abertas" });
+    if (j.erro) { setErro(j.erro); setSalas([]); return; }
+    setErro("");
+    setSalas(j.salas || []);
+  }, [nuvem]);
+  useEffect(() => { carregar(); }, [carregar, versao]);
+
+  const entrar = async (slug) => {
+    setEntrando(slug);
+    const j = await falarComSalas(nuvem, { tipo: "simulado", acao: "sim-participar", nome: slug });
+    setEntrando("");
     if (j.erro) { setErro(j.erro); return; }
     notify(j.mensagem || "Pronto.");
-    setForm({ nome: "", senha: "" });
     aoEntrar(j.slug);
+    carregar();
   };
 
+  const criar = async () => {
+    if (nome.trim().length < 2) { setErro("Escreva um nome com pelo menos 2 letras."); return; }
+    setCriando(true);
+    const j = await falarComSalas(nuvem, { tipo: "simulado", acao: "criar", nome: nome.trim() });
+    setCriando(false);
+    if (j.erro) { setErro(j.erro); return; }
+    notify(j.mensagem || "Sala criada.");
+    setNome("");
+    aoEntrar(j.slug);
+    carregar();
+  };
+
+  const termo = semAcento(busca.trim().toLowerCase());
+  const visiveis = (salas || []).filter((s) => !termo
+    || semAcento(s.nome.toLowerCase()).includes(termo)
+    || s.simulados.some((x) => semAcento(x.nome.toLowerCase()).includes(termo)));
+
   return (
-    <Card className="px-6 py-6" brilho="var(--a-CI)">
-      <H color="var(--a-CI)" icon={<Flag size={16} />}>Sala de simulados</H>
+    <div data-teste="simulados-abertos"><Card className="px-6 py-6" brilho="var(--a-CI)">
+      <H color="var(--a-CI)" icon={<Flag size={16} />}>Simulados abertos</H>
       <Texto style={{ marginTop: 10 }}>
-        Combine um nome e uma senha com quem faz os mesmos simulados que você. É
-        uma sala só de simulado, separada das salas de estudo e das de treino.
+        Todas as salas de simulado ficam abertas: veja o que já foi postado e entre
+        na que quiser, sem senha. Você só vê a nota dos outros depois de lançar a sua.
       </Texto>
 
-      <div className="mt-5 flex gap-2">
-        {[["entrar", "Entrar numa sala"], ["criar", "Criar uma sala"]].map(([id, rotulo]) => (
-          <Btn key={id} size="sm" tone={modo === id ? "primary" : "quiet"} onClick={() => setModo(id)}>
-            {rotulo}
-          </Btn>
+      {salas && salas.length > 3 ? (
+        <TextInput style={{ marginTop: 14 }} value={busca} placeholder="Procurar sala ou simulado"
+          onChange={(e) => setBusca(e.target.value)} />
+      ) : null}
+
+      <div className="mt-4 flex flex-col gap-3">
+        {salas === null ? <Mini>carregando as salas…</Mini> : null}
+        {salas && !salas.length ? <Mini>Ainda não tem nenhuma sala. Crie a primeira aí embaixo.</Mini> : null}
+        {visiveis.map((s) => (
+          <div key={s.slug} data-teste="sala-aberta" className="rounded-xl px-4 py-3"
+            style={{ border: `1px solid ${T.line}`, background: T.card2 }}>
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <div style={{ color: T.ink, fontWeight: 600, fontSize: 15 }}>{s.nome}</div>
+                <Mini>
+                  {s.pessoas} {s.pessoas === 1 ? "pessoa" : "pessoas"} · {s.totalSimulados}{" "}
+                  {s.totalSimulados === 1 ? "simulado" : "simulados"}
+                </Mini>
+              </div>
+              {s.souMembro ? (
+                <Btn size="sm" tone="outline" onClick={() => aoEntrar(s.slug)}>Abrir</Btn>
+              ) : (
+                <Btn size="sm" tone="primary" disabled={entrando === s.slug} onClick={() => entrar(s.slug)}>
+                  {entrando === s.slug ? "Entrando…" : "Entrar"}
+                </Btn>
+              )}
+            </div>
+            {s.simulados.length ? (
+              <div className="mt-2 flex flex-col gap-1">
+                {s.simulados.map((x) => (
+                  <div key={x.id} className="flex items-center justify-between gap-2" style={{ fontSize: 13.5, color: T.dim }}>
+                    <span style={{ color: T.ink }}>{x.nome}</span>
+                    <span>
+                      {x.data ? x.data.split("-").reverse().join("/") : ""} · {x.total} questões · {x.quantos}{" "}
+                      {x.quantos === 1 ? "lançou" : "lançaram"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
         ))}
       </div>
 
-      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <Label>Nome da sala</Label>
-          <TextInput style={{ marginTop: 6 }} value={form.nome} placeholder="Ex.: turma do Medcurso"
-            onChange={(e) => setForm((p) => ({ ...p, nome: e.target.value }))} />
+      <div className="mt-5 flex gap-2 flex-wrap items-end">
+        <div style={{ flex: "1 1 220px" }}>
+          <Label>Criar uma sala nova</Label>
+          <TextInput style={{ marginTop: 6 }} value={nome} placeholder="Ex.: R1 clínica 2027"
+            onChange={(e) => setNome(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") criar(); }} />
         </div>
-        <div>
-          <Label>Senha</Label>
-          <TextInput style={{ marginTop: 6 }} type="password" value={form.senha}
-            placeholder="pelo menos 4 caracteres"
-            onChange={(e) => setForm((p) => ({ ...p, senha: e.target.value }))}
-            onKeyDown={(e) => { if (e.key === "Enter") enviar(); }} />
-        </div>
+        <Btn tone="outline" disabled={criando} onClick={criar}>{criando ? "Criando…" : "Criar sala"}</Btn>
       </div>
-
-      <div className="mt-5">
-        <Btn tone="primary" disabled={ocupado} onClick={enviar}>
-          {ocupado ? "Um instante…" : modo === "criar" ? "Criar a sala" : "Entrar na sala"}
-        </Btn>
-      </div>
-      {erro || erroDeFora ? (
-        <Label style={{ marginTop: 12, color: T.bad }}>{erro || erroDeFora}</Label>
-      ) : null}
-    </Card>
+      {erro ? <Label style={{ marginTop: 12, color: T.bad }}>{erro}</Label> : null}
+    </Card></div>
   );
 }
 
@@ -285,7 +329,12 @@ function Simulados({ nuvem, notify, irPara }) {
 
   if (salas === null) return <Card className="px-6 py-6"><Mini>carregando as suas salas…</Mini></Card>;
 
-  if (!salas.length) return <SalaDeSimulado {...{ nuvem, notify, aoEntrar: recarregarSalas, erro }} />;
+  const abertos = (
+    <SimuladosAbertos nuvem={nuvem} notify={notify} versao={salas.length}
+      aoEntrar={(qual) => { if (qual === slug) carregar(qual); else recarregarSalas(qual); }} />
+  );
+
+  if (!salas.length) return abertos;
 
   const mandar = async (corpo) => {
     const j = await falarComSalas(refNuvem.current, { tipo: "simulado", ...corpo, nome: slug });
@@ -332,6 +381,8 @@ function Simulados({ nuvem, notify, irPara }) {
             if (await mandar({ acao: "sim-apagar", id: sim.id })) notify("Simulado apagado.");
           }} />
       ))}
+
+      {abertos}
     </div>
   );
 }

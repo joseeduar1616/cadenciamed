@@ -22,6 +22,8 @@ import {
 } from "./_comum.js";
 
 const MAX_MEMBROS = 60;
+/* Quantas salas de simulado a lista aberta mostra. */
+const MAX_ABERTAS = 40;
 const ITERACOES = 100000;
 
 /* Quantas mensagens a sala guarda e o tamanho de cada uma. O recado é para
@@ -720,6 +722,50 @@ export async function onRequest({ request, env }) {
     return json({ salas });
   }
 
+  /* ── simulados abertos ─────────────────────────────────────────────
+   *
+   * As salas de simulado são abertas: todo mundo vê as salas e os
+   * simulados postados nelas (nome, data, quantas questões e quantas
+   * pessoas já lançaram), e entra com um toque, sem senha. O resultado de
+   * cada um continua com a regra de sempre: só vê os números dos outros
+   * quem lançou o próprio, e isso só depois de entrar.
+   */
+  if (acao === "sim-abertas") {
+    if (col !== "salasSimulado") return json({ erro: "Só para salas de simulado." }, 400);
+    const r = await fetch(`${BASE_FIRESTORE}:runQuery`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ structuredQuery: { from: [{ collectionId: col }], limit: MAX_ABERTAS } }),
+    });
+    if (!r.ok) return json({ erro: "Não consegui ler as salas de simulado." }, 500);
+    const j = await r.json().catch(() => null);
+    const docs = (j || []).filter((x) => x.document);
+    const salas = await Promise.all(docs.map(async (x) => {
+      const f = x.document.fields || {};
+      const slugAberta = x.document.name.split("/").pop();
+      const membros = lista(f.membros);
+      const sims = await lerSimulados(token, col, slugAberta);
+      return {
+        slug: slugAberta,
+        nome: texto(f.nome) || slugAberta,
+        pessoas: membros.length,
+        souMembro: membros.indexOf(pessoa.uid) >= 0,
+        criadaEm: numero(f.criadaEm),
+        simulados: sims
+          .sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : b.criadoEm - a.criadoEm))
+          .slice(0, 6)
+          .map((s) => ({ id: s.id, nome: s.nome, data: s.data, total: s.total, quantos: Object.keys(s.resultados).length })),
+        totalSimulados: sims.length,
+      };
+    }));
+    /* as com simulado mais recente primeiro; sala sem simulado vai para o fim */
+    salas.sort((a, b) => {
+      const da = (a.simulados[0] || {}).data || "", db = (b.simulados[0] || {}).data || "";
+      return (da < db ? 1 : da > db ? -1 : 0) || b.pessoas - a.pessoas;
+    });
+    return json({ ok: true, salas });
+  }
+
   const slug = apelido(corpo.nome);
   if (!slug || slug.length < 2) {
     return json({ erro: "O nome da sala precisa ter pelo menos 2 letras ou números." }, 400);
@@ -727,7 +773,12 @@ export async function onRequest({ request, env }) {
 
   /* ── cria ──────────────────────────────────────────────────────────── */
   if (acao === "criar") {
-    const senha = String(corpo.senha || "");
+    /* Sala de simulado é aberta (entra quem quiser, pela lista), então não
+       pede senha: fica uma aleatória só para o documento ter o formato de
+       sempre. As outras salas continuam com senha. */
+    const senha = col === "salasSimulado" && !corpo.senha
+      ? paraB64(crypto.getRandomValues(new Uint8Array(12)))
+      : String(corpo.senha || "");
     if (senha.length < 4) return json({ erro: "A senha precisa ter pelo menos 4 caracteres." }, 400);
 
     if (await lerSala(token, col, slug)) {
@@ -750,6 +801,19 @@ export async function onRequest({ request, env }) {
 
   const sala = await lerSala(token, col, slug);
   if (!sala) return json({ erro: "Não achei sala com esse nome." }, 404);
+
+  /* ── entra numa sala de simulado aberta, sem senha ─────────────────── */
+  if (acao === "sim-participar" || (acao === "entrar" && col === "salasSimulado")) {
+    if (col !== "salasSimulado") return json({ erro: "Só salas de simulado são abertas." }, 403);
+    if (sala.membros.indexOf(pessoa.uid) < 0) {
+      if (sala.membros.length >= MAX_MEMBROS) {
+        return json({ erro: `Esta sala já tem ${MAX_MEMBROS} pessoas, que é o limite.` }, 409);
+      }
+      sala.membros = [...sala.membros, pessoa.uid];
+      if (!await gravarSala(token, col, sala)) return json({ erro: "Não consegui entrar." }, 500);
+    }
+    return json({ ok: true, slug, nome: sala.nome, mensagem: `Você está em "${sala.nome}".` });
+  }
 
   /* ── entra ─────────────────────────────────────────────────────────── */
   if (acao === "entrar") {

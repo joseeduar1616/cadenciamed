@@ -566,7 +566,7 @@ function encolherFoto(arquivo) {
   });
 }
 
-function PerfilPublico({ data, setData, notify }) {
+function PerfilPublico({ data, setData, notify, nuvem }) {
   const [ocupado, setOcupado] = useState(false);
   const arquivoRef = useRef(null);
   const p = data.profile || {};
@@ -624,6 +624,8 @@ function PerfilPublico({ data, setData, notify }) {
             onChange={(e) => trocar("apelido", e.target.value.slice(0, 24))} />
         </Field>
       </div>
+
+      <FaculdadeNoPerfil data={data} setData={setData} nuvem={nuvem} />
     </Card>
   );
 }
@@ -696,7 +698,7 @@ function Configuracoes({ data, setData, today, notify, nuvem, pro, aoLiberar, ir
       <ContaNuvem nuvem={nuvem} notify={notify} aoLiberar={aoLiberar} />
       {nuvem.usuario && !pro ? <Cupom nuvem={nuvem} notify={notify} aoLiberar={aoLiberar} /> : null}
 
-      <PerfilPublico data={data} setData={setData} notify={notify} />
+      <PerfilPublico data={data} setData={setData} notify={notify} nuvem={nuvem} />
 
       <BaixarApp notify={notify} />
       <Lembretes data={data} setData={setData} notify={notify} nuvem={nuvem} />
