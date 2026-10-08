@@ -98,6 +98,19 @@ Regras da divisão:
 Responda APENAS com JSON, sem texto antes ou depois, sem cercas de código:
 {"titulo":"...","resumo":"...","blocos":[{"titulo":"...","objetivo":"...","minutos":12,"topicos":["..."],"figuras":["F1"]}]}`;
 
+/* O estudo RÁPIDO: para quando falta tempo (véspera, intervalo do plantão).
+   Menos blocos, slides só do essencial e 2 perguntas no checkpoint, com a
+   mesma regra de só seguir com o conteúdo consolidado. */
+export const MODOS = ["completo", "rapido"];
+export const modoDoPedido = (v) => (v === "rapido" ? "rapido" : "completo");
+export const PERGUNTAS_POR_MODO = { completo: 3, rapido: 2 };
+const PLANO_RAPIDO = `
+
+MODO RÁPIDO: a pessoa tem pouco tempo. Divida em 2 ou 3 blocos (no máximo 4 se o material for muito longo), cada um de 5 a 10 minutos, só com o que mais cai na prova. Deixe de fora detalhe raro, histórico e curiosidade.`;
+const BLOCO_RAPIDO = `
+
+MODO RÁPIDO: a pessoa tem pouco tempo. Faça só de 4 a 6 slides: a capa (gancho curto), o essencial (pontos ou esquema, com as figuras), UMA interação (quiz ou caso) e o resumo. Frases ainda mais curtas, só o que mais cai na prova. No fim, 2 perguntas (não 3), objetivas, cobrindo o principal do bloco.`;
+
 export function limparPlano(bruto, idsFiguras) {
   const j = bruto && typeof bruto === "object" ? bruto : {};
   const validos = new Set(idsFiguras || []);
@@ -223,7 +236,7 @@ export function limparPergunta(p) {
   return { tipo: p.tipo === "caso" ? "caso" : "conceito", enunciado, gabarito };
 }
 
-export function limparBloco(bruto, idsFiguras) {
+export function limparBloco(bruto, idsFiguras, modo) {
   const j = bruto && typeof bruto === "object" ? bruto : {};
   const validos = new Set(idsFiguras || []);
   const usadas = new Set();
@@ -243,7 +256,8 @@ export function limparBloco(bruto, idsFiguras) {
       usadas.add(id);
     }
   }
-  const perguntas = (Array.isArray(j.perguntas) ? j.perguntas : []).map(limparPergunta).filter(Boolean).slice(0, 3);
+  const perguntas = (Array.isArray(j.perguntas) ? j.perguntas : []).map(limparPergunta).filter(Boolean)
+    .slice(0, PERGUNTAS_POR_MODO[modoDoPedido(modo)]);
   return { slides, perguntas };
 }
 
@@ -324,15 +338,20 @@ export async function onRequest({ request, env }) {
     const permissao = await podeUsar(pessoa, env, "estudo-plano");
     if (!permissao.ok) return json({ erro: permissao.erro }, 403);
     const figuras = figurasDoPedido(corpo.figuras);
+    const modo = modoDoPedido(corpo.modo);
     const r = await chamarIA(provedor, modelo, {
-      sistema: PLANO,
+      sistema: PLANO + (modo === "rapido" ? PLANO_RAPIDO : ""),
       mensagens: [{ role: "user", content: `<material>\n${material.slice(0, MAX_TEXTO_ESTUDO)}\n</material>${listaDeFiguras(figuras)}` }],
       maxSaida: 4000,
     });
     if (r.erro) return json({ erro: r.erro }, 502);
     const plano = limparPlano(lerJsonEstudo(r.texto), figuras.map((f) => f.id));
     if (plano.blocos.length < 1) return json({ erro: "A IA não conseguiu dividir este material em blocos. Tente de novo." }, 502);
-    return json({ ok: true, ...plano, cortado: material.length > MAX_TEXTO_ESTUDO });
+    if (modo === "rapido") {
+      /* teto do rápido, mesmo que a IA exagere */
+      plano.blocos = plano.blocos.slice(0, 4).map((b) => ({ ...b, minutos: Math.min(b.minutos, 12) }));
+    }
+    return json({ ok: true, ...plano, modo, cortado: material.length > MAX_TEXTO_ESTUDO });
   }
 
   if (acao === "bloco") {
@@ -346,8 +365,9 @@ export async function onRequest({ request, env }) {
     const figuras = figurasDoPedido(corpo.figuras);
     const b = plano.blocos[i];
     const roteiro = plano.blocos.map((x, k) => `${k + 1}. ${x.titulo}${k === i ? "  <== ESTE BLOCO" : ""}`).join("\n");
+    const modoBloco = modoDoPedido(corpo.modo);
     const r = await chamarIA(provedor, modelo, {
-      sistema: BLOCO,
+      sistema: BLOCO + (modoBloco === "rapido" ? BLOCO_RAPIDO : ""),
       mensagens: [{
         role: "user",
         content: `Aula: ${plano.titulo || "sem título"}\nRoteiro da aula (monte SÓ o bloco marcado, sem repetir o que é dos outros):\n${roteiro}\n\nBloco ${i + 1}: ${b.titulo}\nObjetivo: ${b.objetivo}\nTópicos: ${b.topicos.join("; ")}\n\n<material>\n${material.slice(0, MAX_TEXTO_ESTUDO)}\n</material>${listaDeFiguras(figuras)}`,
@@ -357,7 +377,7 @@ export async function onRequest({ request, env }) {
     if (r.erro) return json({ erro: r.erro }, 502);
     const bruto = lerJsonEstudo(r.texto);
     if (!bruto) return json({ erro: r.cortado ? "A resposta da IA veio cortada. Tente de novo." : "A IA não devolveu o bloco num formato legível. Tente de novo." }, 502);
-    const bloco = limparBloco(bruto, figuras.map((f) => f.id));
+    const bloco = limparBloco(bruto, figuras.map((f) => f.id), modoBloco);
     if (bloco.slides.length < 2 || !bloco.perguntas.length) return json({ erro: "A IA montou o bloco incompleto. Tente de novo." }, 502);
     return json({ ok: true, ...bloco });
   }

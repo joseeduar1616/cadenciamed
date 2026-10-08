@@ -46,6 +46,7 @@ function limparEstudos(v) {
       criadoEm: Number(e.criadoEm) || 0,
       abertoEm: Number(e.abertoEm) || 0,
       materiais: (Array.isArray(e.materiais) ? e.materiais : []).map((m) => lim(m, 80)).slice(0, MAX_MATERIAIS),
+      modo: e.modo === "rapido" ? "rapido" : "completo",
       blocos: (Array.isArray(e.blocos) ? e.blocos : []).slice(0, 9).map((b) => ({
         titulo: lim(b && b.titulo, 90),
         objetivo: lim(b && b.objetivo, 220),
@@ -54,6 +55,7 @@ function limparEstudos(v) {
         figuras: (Array.isArray(b && b.figuras) ? b.figuras : []).filter((f) => /^F\d{1,3}$/.test(String(f))).slice(0, 10),
         feito: !!(b && b.feito),
         dePrimeira: Math.max(0, Math.min(3, Math.round(Number(b && b.dePrimeira) || 0))),
+        perguntas: Math.max(1, Math.min(3, Math.round(Number(b && b.perguntas) || (e.modo === "rapido" ? 2 : 3)))),
         segundos: Math.max(0, Math.round(Number(b && b.segundos) || 0)),
       })),
     }));
@@ -245,7 +247,7 @@ function EstudoInterativo({ data, setData, nuvem, notify }) {
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ fontSize: 16, fontWeight: 700 }}>{e.titulo}</div>
                     <div style={{ fontSize: 13, color: T.faint, marginTop: 2 }}>
-                      {e.blocos.length} blocos · cerca de {fmtMin(minutosDaAula(e))} · {feitos === e.blocos.length && feitos ? "concluída" : `${feitos} de ${e.blocos.length} feitos`}
+                      {e.modo === "rapido" ? "rápido · " : ""}{e.blocos.length} blocos · cerca de {fmtMin(minutosDaAula(e))} · {feitos === e.blocos.length && feitos ? "concluída" : `${feitos} de ${e.blocos.length} feitos`}
                     </div>
                   </div>
                   <ChevronRight size={18} style={{ color: T.faint }} />
@@ -268,6 +270,7 @@ function CriarEstudo({ nuvem, notify, setData, onPronto, onCancelar }) {
   const [colado, setColado] = useState("");
   const [imagensColadas, setImagensColadas] = useState([]);   // data URLs
   const [status, setStatus] = useState("");
+  const [modo, setModo] = useState("completo");
   const ref = useRef(null);
 
   const adicionarArquivos = async (ev) => {
@@ -318,7 +321,7 @@ function CriarEstudo({ nuvem, notify, setData, onPronto, onCancelar }) {
     setStatus("a IA está lendo o material e dividindo em blocos…");
     try {
       const r = await falarComEstudo(nuvem, {
-        acao: "plano", texto,
+        acao: "plano", texto, modo,
         figuras: figuras.map(({ id, material, pagina, contexto }) => ({ id, material, pagina, contexto })),
       });
       if (r.erro) { notify(r.erro); return; }
@@ -326,13 +329,13 @@ function CriarEstudo({ nuvem, notify, setData, onPronto, onCancelar }) {
       setStatus("guardando as figuras…");
       for (const f of figuras) await guardarMidia(chaveDaFigura(id, f.id), f.dados);
       await gravarDocEstudo(id, {
-        texto, plano: { titulo: r.titulo, resumo: r.resumo, blocos: r.blocos },
+        texto, modo, plano: { titulo: r.titulo, resumo: r.resumo, blocos: r.blocos },
         figuras: figuras.map(({ id: fid, material, pagina, contexto }) => ({ id: fid, material, pagina, contexto })),
         conteudo: {}, progresso: {}, fracos: [],
       });
       const novo = limparEstudos([{
         id, titulo: r.titulo, resumo: r.resumo, criadoEm: Date.now(), abertoEm: Date.now(),
-        materiais: lista.map((m) => m.nome), blocos: r.blocos,
+        materiais: lista.map((m) => m.nome), blocos: r.blocos, modo,
       }])[0];
       setData((p) => ({ ...p, estudos: [novo, ...(p.estudos || [])].slice(0, MAX_ESTUDOS) }));
       notify(`Aula pronta: ${novo.blocos.length} blocos, cerca de ${fmtMin(minutosDaAula(novo))}.${r.cortado ? " O material era grande e foi lido até um ponto." : ""}`);
@@ -406,6 +409,25 @@ function CriarEstudo({ nuvem, notify, setData, onPronto, onCancelar }) {
           ) : null}
         </div>
 
+        <div style={{ marginTop: 16 }} data-teste="estudo-modo">
+          <Label>Como você quer estudar</Label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" style={{ marginTop: 8 }}>
+            {[
+              ["completo", "Completo", "Em média 5 blocos, slides com tudo que importa e 3 perguntas por bloco."],
+              ["rapido", "Rápido", "2 a 3 blocos curtos, só o que mais cai, e 2 perguntas por bloco. Para quando falta tempo."],
+            ].map(([id, nome, desc]) => (
+              <button key={id} type="button" onClick={() => setModo(id)} aria-pressed={modo === id ? "true" : "false"} data-teste={`estudo-modo-${id}`}
+                style={{ textAlign: "left", padding: "12px 14px", borderRadius: 14, cursor: "pointer", color: T.ink,
+                  border: `${modo === id ? 2 : 1}px solid ${modo === id ? "var(--neon)" : T.line}`, background: modo === id ? soft("var(--neon)", 10) : "transparent" }}>
+                <div className="flex items-center gap-2" style={{ fontSize: 15, fontWeight: 700 }}>
+                  {id === "rapido" ? <Zap size={15} style={{ color: "var(--neon)" }} /> : <Layers size={15} style={{ color: "var(--neon)" }} />}{nome}
+                </div>
+                <div style={{ fontSize: 13, lineHeight: 1.5, color: T.faint, marginTop: 4 }}>{desc}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="flex flex-wrap items-center gap-3" style={{ marginTop: 18 }}>
           <button type="button" onClick={montar} disabled={!!status} data-teste="estudo-montar"
             className="btn-neon" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "11px 20px", borderRadius: 99, fontWeight: 700, fontSize: 15, cursor: status ? "default" : "pointer", opacity: status ? 0.7 : 1 }}>
@@ -450,7 +472,7 @@ function PainelDaAula({ estudo, onVoltar, onBloco, onApagar, setData, notify }) 
         <ChevronLeft size={16} /> Suas aulas
       </button>
       <Card className="px-5 sm:px-7 py-6">
-        <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--neon)" }}>Aula interativa</div>
+        <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--neon)" }}>{estudo.modo === "rapido" ? "Estudo rápido" : "Aula interativa"}</div>
         <div style={{ fontSize: 24, fontWeight: 800, color: T.ink, marginTop: 4, lineHeight: 1.2 }}>{estudo.titulo}</div>
         {estudo.resumo ? <div style={{ fontSize: 15, lineHeight: 1.55, color: T.dim, marginTop: 8 }}>{estudo.resumo}</div> : null}
         <div className="flex flex-wrap gap-2" style={{ marginTop: 14 }}>
@@ -472,7 +494,7 @@ function PainelDaAula({ estudo, onVoltar, onBloco, onApagar, setData, notify }) 
           <div style={{ marginTop: 16, padding: "14px 16px", borderRadius: 14, background: soft("var(--ok)", 12), border: `1px solid ${soft("var(--ok)", 40)}`, color: T.ink }}>
             <div className="flex items-center gap-2" style={{ fontWeight: 700 }}><PartyPopper size={17} style={{ color: "var(--ok)" }} /> Aula concluída!</div>
             <div style={{ fontSize: 14, color: T.dim, marginTop: 4 }}>
-              {estudo.blocos.reduce((t, b) => t + b.dePrimeira, 0)} de {estudo.blocos.length * 3} perguntas certas de primeira. Dá para rever qualquer bloco quando quiser.
+              {estudo.blocos.reduce((t, b) => t + b.dePrimeira, 0)} de {estudo.blocos.reduce((t, b) => t + b.perguntas, 0)} perguntas certas de primeira. Dá para rever qualquer bloco quando quiser.
             </div>
           </div>
         ) : null}
@@ -507,7 +529,7 @@ function PainelDaAula({ estudo, onVoltar, onBloco, onApagar, setData, notify }) 
                       {b.topicos.map((t, k) => <span key={k} style={{ fontSize: 12, padding: "3px 9px", borderRadius: 99, background: T.card2, color: T.faint, border: `1px solid ${T.line}` }}>{t}</span>)}
                     </div>
                   ) : null}
-                  {b.feito ? <div style={{ fontSize: 12.5, color: "var(--ok)", marginTop: 8 }}>Consolidado · {b.dePrimeira} de 3 de primeira{b.segundos ? ` · ${fmtMin(Math.max(1, Math.round(b.segundos / 60)))}` : ""}</div> : null}
+                  {b.feito ? <div style={{ fontSize: 12.5, color: "var(--ok)", marginTop: 8 }}>Consolidado · {b.dePrimeira} de {b.perguntas} de primeira{b.segundos ? ` · ${fmtMin(Math.max(1, Math.round(b.segundos / 60)))}` : ""}</div> : null}
                   {!livre ? <div style={{ fontSize: 12.5, color: T.faint, marginTop: 8 }}>Abre quando o bloco anterior estiver consolidado.</div> : null}
                 </div>
               </div>
@@ -597,7 +619,7 @@ function EstudoDoBloco({ estudo, indice, nuvem, notify, setData, atualizar, chei
   const gerar = useCallback(async (d, i) => {
     const bl = d.plano.blocos[i];
     const figs = (d.figuras || []).filter((f) => (bl.figuras || []).indexOf(f.id) >= 0);
-    return falarComEstudo(nuvem, { acao: "bloco", texto: d.texto, plano: d.plano, indice: i, figuras: figs });
+    return falarComEstudo(nuvem, { acao: "bloco", texto: d.texto, plano: d.plano, indice: i, figuras: figs, modo: d.modo || "completo" });
   }, [nuvem]);
 
   const carregar = useCallback(async () => {
@@ -684,7 +706,7 @@ function EstudoDoBloco({ estudo, indice, nuvem, notify, setData, atualizar, chei
       progresso: { ...(d.progresso || {}), [indice]: { ...((d.progresso || {})[indice] || {}), passo: slides.length, segundos: seg, feito: true } },
     }));
     atualizar(estudo.id, (e) => ({
-      ...e, blocos: e.blocos.map((x, k) => (k === indice ? { ...x, feito: true, dePrimeira, segundos: (x.feito ? x.segundos : 0) + seg } : x)),
+      ...e, blocos: e.blocos.map((x, k) => (k === indice ? { ...x, feito: true, dePrimeira, perguntas: (conteudo && conteudo.perguntas.length) || x.perguntas, segundos: (x.feito ? x.segundos : 0) + seg } : x)),
     }));
     const minutos = Math.round(seg / 60);
     if (minutos >= 1 && !b.feito) {
@@ -693,7 +715,7 @@ function EstudoDoBloco({ estudo, indice, nuvem, notify, setData, atualizar, chei
         sessions: [{
           id: uid(), date: todayISO(), subjectId: null, area: null,
           topic: `${estudo.titulo}: ${b.titulo}`.slice(0, 120), kind: "Aula", minutes: minutos,
-          questions: 3, correct: dePrimeira, notes: "estudo interativo", createdAt: Date.now(),
+          questions: (conteudo && conteudo.perguntas.length) || 3, correct: dePrimeira, notes: "estudo interativo", createdAt: Date.now(),
         }, ...(p.sessions || [])],
       }));
     }
@@ -1177,7 +1199,7 @@ function Checkpoint({ estudo, indice, perguntas, doc, salvar, nuvem, notify, con
           <div data-estudo-anima="1" style={{ ...anima("estudoPulsa", 0, 0.9), fontSize: 58, lineHeight: 1 }}>🎉</div>
           <div style={{ fontSize: 22, fontWeight: 800, color: T.ink, marginTop: 12 }}>Bloco consolidado!</div>
           <div style={{ fontSize: 15.5, color: T.dim, marginTop: 6, lineHeight: 1.55 }}>
-            {dePrimeira === 3 ? "As três certas de primeira. Mandou bem." : `${dePrimeira} de 3 certas de primeira, e o resto você fixou no reforço.`}
+            {dePrimeira === estado.length ? "Todas certas de primeira. Mandou bem." : `${dePrimeira} de ${estado.length} certas de primeira, e o resto você fixou no reforço.`}
             {ultimo ? " Era o último bloco: a aula está completa." : " O próximo bloco já está liberado."}
           </div>
           <div className="flex flex-wrap justify-center gap-3" style={{ marginTop: 18 }}>

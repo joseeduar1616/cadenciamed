@@ -147,6 +147,23 @@ r = await pedir({ acao: 'bloco', texto: MATERIAL, plano: PLANO, indice: 1 });
 if (r.status === 502 && /formato legível/.test(r.corpo.erro)) ok('resposta ilegível da IA vira erro explicado, não tela quebrada');
 else falha('ilegível: ' + JSON.stringify(r));
 
+/* ── modo rápido ─────────────────────────────────────────────────────── */
+respostaIA = JSON.stringify({ titulo: 'IC', resumo: 'r', blocos: Array.from({ length: 6 }, (_, i) => ({ titulo: 'B' + i, objetivo: 'o', minutos: 25, topicos: ['t'] })) });
+pedidosIA = [];
+r = await pedir({ acao: 'plano', texto: MATERIAL, modo: 'rapido' });
+if (/MODO RÁPIDO/.test(JSON.stringify(pedidosIA[0] || {})) && r.corpo.modo === 'rapido') ok('no modo rápido, a IA recebe o pedido de poucos blocos curtos');
+else falha('plano rápido: ' + JSON.stringify(r.corpo).slice(0, 200));
+if ((r.corpo.blocos || []).length === 4 && r.corpo.blocos.every((b) => b.minutos <= 12)) ok('o plano rápido tem no máximo 4 blocos de até 12 minutos, mesmo se a IA exagerar');
+else falha('teto do rápido: ' + JSON.stringify((r.corpo.blocos || []).map((b) => b.minutos)));
+respostaIA = JSON.stringify({ slides: [{ tipo: 'capa', titulo: 'C' }, { tipo: 'resumo', titulo: 'R', pontos: ['a'] }], perguntas: [1, 2, 3].map((n) => ({ enunciado: 'P' + n, gabarito: ['g'] })) });
+pedidosIA = [];
+r = await pedir({ acao: 'bloco', texto: MATERIAL, plano: PLANO, indice: 0, modo: 'rapido' });
+if (/MODO RÁPIDO/.test(JSON.stringify(pedidosIA[0] || {})) && (r.corpo.perguntas || []).length === 2) ok('o bloco rápido sai com 2 perguntas no checkpoint');
+else falha('bloco rápido: ' + JSON.stringify(r.corpo).slice(0, 200));
+r = await pedir({ acao: 'bloco', texto: MATERIAL, plano: PLANO, indice: 0 });
+if ((r.corpo.perguntas || []).length === 3) ok('sem modo (aula completa ou antiga), continuam 3 perguntas');
+else falha('bloco completo: ' + (r.corpo.perguntas || []).length);
+
 /* ── corrigir ────────────────────────────────────────────────────────── */
 const PERG = { tipo: 'caso', enunciado: 'Paciente de 70 anos com dispneia e edema. Conduta?', gabarito: ['IC descompensada', 'furosemida venosa'] };
 respostaIA = JSON.stringify({ veredito: 'parcial', acertou: ['reconheceu a IC'], faltou: ['diurético venoso'], explicacao: 'Faltou a conduta.', reforco: { enunciado: 'Qual o diurético e a via?', gabarito: ['furosemida', 'venosa'] } });

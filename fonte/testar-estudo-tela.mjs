@@ -98,6 +98,7 @@ await ctx.route('**/api/**', async (rr) => {
   if (!u.includes('/api/estudo-ia')) return responder({ ok: true });
   pedidos.push({ rota: 'estudo', ...corpo });
   if (corpo.acao === 'plano') return responder(PLANO);
+  if (corpo.acao === 'bloco' && corpo.modo === 'rapido') return responder({ ...BLOCO, slides: BLOCO.slides.slice(0, 2), perguntas: BLOCO.perguntas.slice(1) });
   if (corpo.acao === 'bloco') return responder(corpo.indice === 1 ? { ...BLOCO, slides: [{ tipo: 'capa', titulo: 'Bloco dois', texto: 'oi', pontos: [] }, { tipo: 'resumo', titulo: 'Fim', pontos: ['x'] }] } : BLOCO);
   if (corpo.acao === 'simplificar') return responder({ ok: true, explicacao: 'EXPLICAÇÃO MAIS SIMPLES.', analogia: 'Uma mangueira.', lembrete: 'Guarde isto.' });
   if (corpo.acao === 'corrigir') {
@@ -323,6 +324,36 @@ const larg = await pag.evaluate(() => document.documentElement.scrollWidth);
 if (larg <= 392) ok('no celular, os slides cabem na largura');
 else falha('o slide passa da tela no celular: ' + larg);
 if (process.env.CAPTURA_ESTUDO) await pag.screenshot({ path: process.env.CAPTURA_ESTUDO });
+
+/* ── 8. estudo rápido ────────────────────────────────────────────────── */
+await pag.setViewportSize({ width: 1280, height: 900 });
+await pag.locator('nav button:has-text("Estudo interativo")').first().click();
+await pag.waitForTimeout(500);
+if (await pag.locator('button[aria-label="Voltar aos blocos"]').count()) { await pag.locator('button[aria-label="Voltar aos blocos"]').click(); await pag.waitForTimeout(300); }
+if (await pag.locator('button:has-text("Suas aulas")').count()) { await pag.locator('button:has-text("Suas aulas")').click(); await pag.waitForTimeout(300); }
+await pag.locator('[data-teste="estudo-novo"]').click();
+await pag.waitForTimeout(300);
+if (await pag.locator('[data-teste="estudo-modo-rapido"]').count()) ok('na criação dá para escolher entre estudo completo e rápido');
+else falha('sem a escolha do modo');
+await pag.locator('[data-teste="estudo-modo-rapido"]').click();
+await pag.locator('[data-teste="estudo-texto"]').fill('Hipertensão arterial sistêmica, diagnóstico e tratamento. '.repeat(10));
+await pag.locator('[data-teste="estudo-montar"]').click();
+await pag.waitForSelector('[data-teste="estudo-painel"]', { timeout: 8000 }).catch(() => {});
+const planoRapido = pedidos.filter((p) => p.acao === 'plano').pop() || {};
+if (planoRapido.modo === 'rapido') ok('o pedido da aula vai com o modo rápido');
+else falha('modo do plano: ' + planoRapido.modo);
+if (/Estudo rápido/i.test(await pag.locator('[data-teste="estudo-painel"]').innerText().catch(() => ''))) ok('o painel mostra que é um estudo rápido');
+else falha('painel sem a marca de rápido');
+await pag.locator('[data-teste="estudo-continuar"]').click();
+await pag.waitForSelector('[data-teste="estudo-slide"]', { timeout: 8000 }).catch(() => {});
+const blocoRapido = pedidos.filter((p) => p.acao === 'bloco').pop() || {};
+if (blocoRapido.modo === 'rapido') ok('cada bloco é pedido no modo rápido');
+else falha('modo do bloco: ' + blocoRapido.modo);
+await pag.locator('[data-teste="estudo-avancar"]').click(); await pag.waitForTimeout(400);
+for (let k = 0; k < 4; k++) { await pag.locator('[data-teste="estudo-avancar"]').click().catch(() => {}); await pag.waitForTimeout(250); }
+const titulo = await pag.locator('[data-teste="estudo-checkpoint"]').innerText().catch(() => '');
+if (/pergunta 1 de 2/i.test(titulo)) ok('o checkpoint do rápido tem 2 perguntas');
+else falha('checkpoint rápido: ' + titulo.slice(0, 120));
 
 if (!errosDaPagina.length) ok('nenhum erro de JavaScript na página');
 else falha('erros: ' + errosDaPagina.slice(0, 3).join(' | '));

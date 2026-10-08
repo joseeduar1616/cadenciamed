@@ -640,6 +640,13 @@ fotos, imagens coladas no campo de texto) e a IA monta a aula:
   seguinte só abre com as três fechadas.
 - `simplificar`: o "Não entendi" de cada slide.
 
+Na criação a pessoa escolhe **Completo** ou **Rápido** (`modo`, guardado no
+índice e no documento da aula, e mandado em `plano` e `bloco`). O rápido
+pede 2 ou 3 blocos de 5 a 10 minutos (teto de 4 blocos e 12 min no
+servidor), de 4 a 6 slides só com o essencial e 2 perguntas no checkpoint
+(`PERGUNTAS_POR_MODO`), com a mesma regra de só seguir com tudo
+consolidado. Aula sem modo (as antigas) é completa.
+
 As figuras nunca vão para a IA (só código e texto em volta). Foto do
 material vira texto (pela `/api/ler-foto`) e também figura dos slides.
 `data.estudos` guarda só o índice e o progresso; material, slides,
