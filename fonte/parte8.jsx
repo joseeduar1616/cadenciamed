@@ -1298,7 +1298,7 @@ export default function Cadencia() {
               {tab === "motivacao" && !ver.motivacao && <Bloqueado recurso={RECURSOS_PRO.motivacao} onVerPlanos={() => setTab("planos")} />}
               {tab === "motivacao" && ver.motivacao && <Motivacao {...{ data, setData, nuvem, notify, today }} irPara={setTab} />}
               {tab === "estudo" && !ver.estudo && <Bloqueado recurso={RECURSOS_PRO.estudo} onVerPlanos={() => setTab("planos")} />}
-              {tab === "estudo" && ver.estudo && <EstudoInterativo {...{ data, setData, nuvem, notify }} />}
+              {tab === "estudo" && ver.estudo && <EstudoInterativo {...{ data, setData, nuvem, notify }} focoAtivo={aoVivo.ativo} />}
               {tab === "cartoes" && !pro && <Bloqueado recurso={RECURSOS_PRO.cartoes} onVerPlanos={() => setTab("planos")} />}
               {tab === "cartoes" && pro && <Cartoes {...{ data, setData, subjects, today, notify, nuvem, souDono }} />}
               {tab === "revisoes" && !pro && <Bloqueado recurso={RECURSOS_PRO.revisoes} onVerPlanos={() => setTab("planos")} />}

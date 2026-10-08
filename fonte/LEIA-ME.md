@@ -1715,6 +1715,15 @@ consentimento do aluno para ser adicionado: quem resgata o cupom e sabe o
 e-mail de alguém já consegue montar a rotina e o currículo dessa pessoa. Se
 isso for um problema no seu uso, vale avisar quem for adicionado antes.
 
+## Estudo interativo com o Foco ligado
+
+O bloco do estudo interativo lança as horas estudadas ao terminar, e o Foco
+lança as dele. Com os dois ao mesmo tempo, a mesma meia hora entrava duas
+vezes. Agora o bloco conta à parte os segundos com o Foco parado (`semFoco`,
+guardado no progresso do bloco), e só esses viram minutos; as questões do
+checkpoint entram sempre. O app passa `focoAtivo` (o mesmo `aoVivo.ativo`
+dos amigos) para o `EstudoInterativo`. Teste: `testar-estudo-foco.mjs`.
+
 ## Faculdade, especialidade e simulados abertos
 
 **A pergunta, uma vez só (`parte37.jsx`).** Na primeira entrada depois desta

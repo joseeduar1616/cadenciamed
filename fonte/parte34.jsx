@@ -183,7 +183,7 @@ function juntarMateriais(materiais) {
 }
 
 /* ── a aba ───────────────────────────────────────────────────────────── */
-function EstudoInterativo({ data, setData, nuvem, notify }) {
+function EstudoInterativo({ data, setData, nuvem, notify, focoAtivo }) {
   const estudos = data.estudos || [];
   const [aberto, setAberto] = useState(null);       // id da aula
   const [bloco, setBloco] = useState(null);         // índice do bloco em estudo
@@ -210,7 +210,7 @@ function EstudoInterativo({ data, setData, nuvem, notify }) {
 
   if (estudo && bloco !== null) {
     return (
-      <EstudoDoBloco key={`${estudo.id}-${bloco}`} estudo={estudo} indice={bloco} nuvem={nuvem} notify={notify}
+      <EstudoDoBloco key={`${estudo.id}-${bloco}`} estudo={estudo} indice={bloco} nuvem={nuvem} notify={notify} focoAtivo={!!focoAtivo}
         setData={setData} atualizar={atualizar} cheia={cheia} setCheia={setCheia}
         onSair={() => { setCheia(false); setBloco(null); }}
         onProximo={() => setBloco(bloco + 1 < estudo.blocos.length ? bloco + 1 : null)} />
@@ -585,8 +585,14 @@ function useEscalaDaTela(ligada) {
   return ligada ? escala : 1;
 }
 
-function EstudoDoBloco({ estudo, indice, nuvem, notify, setData, atualizar, cheia, setCheia, onSair, onProximo }) {
+function EstudoDoBloco({ estudo, indice, nuvem, notify, setData, atualizar, cheia, setCheia, onSair, onProximo, focoAtivo }) {
   const b = estudo.blocos[indice];
+  /* Com o Foco rodando ao mesmo tempo, o Foco já lança esse tempo. O bloco
+     conta à parte só os segundos fora do Foco, e é só isso que vira horas
+     estudadas; senão a mesma meia hora entrava duas vezes. */
+  const refFoco = useRef(focoAtivo);
+  refFoco.current = focoAtivo;
+  const semFoco = useRef(0);
   const [doc, setDoc] = useState(null);
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(true);
@@ -638,6 +644,7 @@ function EstudoDoBloco({ estudo, indice, nuvem, notify, setData, atualizar, chei
     }
     const prog = (atual.progresso && atual.progresso[indice]) || {};
     segundos.current = Number(prog.segundos) || 0;
+    semFoco.current = prog.semFoco != null ? Number(prog.semFoco) || 0 : segundos.current;
     /* bloco já consolidado reabre do começo: é revisão */
     setPasso(prog.feito ? 0 : Math.min(Number(prog.passo) || 0, conteudo.slides.length));
     setDoc(atual);
@@ -659,7 +666,11 @@ function EstudoDoBloco({ estudo, indice, nuvem, notify, setData, atualizar, chei
   /* o tempo no bloco conta só com a aba à vista */
   useEffect(() => {
     if (carregando || concluido) return undefined;
-    const t = window.setInterval(() => { if (!document.hidden) segundos.current += 1; }, 1000);
+    const t = window.setInterval(() => {
+      if (document.hidden) return;
+      segundos.current += 1;
+      if (!refFoco.current) semFoco.current += 1;
+    }, 1000);
     return () => window.clearInterval(t);
   }, [carregando, concluido]);
 
@@ -682,7 +693,7 @@ function EstudoDoBloco({ estudo, indice, nuvem, notify, setData, atualizar, chei
     } catch (e) { /* sem a saída, fica só a entrada */ }
     setDirecao(alvo >= passo ? 1 : -1);
     setPasso(alvo);
-    salvar((d) => ({ ...d, progresso: { ...(d.progresso || {}), [indice]: { ...((d.progresso || {})[indice] || {}), passo: alvo, segundos: segundos.current } } }));
+    salvar((d) => ({ ...d, progresso: { ...(d.progresso || {}), [indice]: { ...((d.progresso || {})[indice] || {}), passo: alvo, segundos: segundos.current, semFoco: semFoco.current } } }));
   }, [conteudo, slides.length, passo, indice, salvar]);
 
   /* setas do teclado, fora de campo de texto */
@@ -703,13 +714,14 @@ function EstudoDoBloco({ estudo, indice, nuvem, notify, setData, atualizar, chei
     await salvar((d) => ({
       ...d,
       fracos: [...(d.fracos || []), ...fracos].slice(-60),
-      progresso: { ...(d.progresso || {}), [indice]: { ...((d.progresso || {})[indice] || {}), passo: slides.length, segundos: seg, feito: true } },
+      progresso: { ...(d.progresso || {}), [indice]: { ...((d.progresso || {})[indice] || {}), passo: slides.length, segundos: seg, semFoco: semFoco.current, feito: true } },
     }));
     atualizar(estudo.id, (e) => ({
       ...e, blocos: e.blocos.map((x, k) => (k === indice ? { ...x, feito: true, dePrimeira, perguntas: (conteudo && conteudo.perguntas.length) || x.perguntas, segundos: (x.feito ? x.segundos : 0) + seg } : x)),
     }));
-    const minutos = Math.round(seg / 60);
-    if (minutos >= 1 && !b.feito) {
+    /* As questões do bloco entram sempre; os minutos, só os de fora do Foco. */
+    const minutos = Math.round(semFoco.current / 60);
+    if (seg >= 60 && !b.feito) {
       setData((p) => ({
         ...p,
         sessions: [{
