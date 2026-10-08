@@ -5,7 +5,7 @@
  * pelo nome sem acento; a lista de especialidades já vem inteira e filtra
  * ao digitar, com mais de uma escolhida; salvar guarda no perfil e grava a
  * faculdade no perfil público; recarregar não mostra a janela de novo;
- * "Agora não" também fecha para sempre; a aba Amigos mostra os colegas da
+ * "Agora não" adia só até a próxima entrada; a aba Amigos mostra os colegas da
  * faculdade e convida com um toque; e a aba Simulados mostra as salas
  * abertas, com os simulados postados, e entra sem senha.
  *
@@ -22,7 +22,7 @@ const ok = (m) => console.log('ok   ' + m);
 const falha = (m) => { console.log('FALHA ' + m); erros.push(m); };
 
 const FB_AUTH = `
-const user = { uid: 'u', email: 't@e.com', getIdToken: async () => 'tk' };
+const user = { uid: 'u', email: localStorage.getItem('teste-email') || 't@e.com', getIdToken: async () => 'tk' };
 export function getAuth() { return { currentUser: user }; }
 export function onAuthStateChanged(a, cb) { setTimeout(() => cb(user), 30); return () => {}; }
 export async function setPersistence() {}
@@ -34,7 +34,8 @@ export async function getRedirectResult() { return null; }`;
 const FB_STORE = `export function getFirestore() { return {}; }
 export function doc(db, ...partes) { return { caminho: partes.join('/') }; }
 export async function setDoc(ref, dados) { (window.__gravados = window.__gravados || []).push({ caminho: ref.caminho, dados: JSON.parse(JSON.stringify(dados)) }); }
-export function onSnapshot() { return () => {}; }`;
+/* a conta ainda não tem nada na nuvem: a janela espera esta resposta */
+export function onSnapshot(ref, op, cb) { setTimeout(() => cb({ exists: () => false, metadata: { fromCache: false }, data: () => null }), 300); return () => {}; }`;
 
 const pedidos = [];
 let membro = false;
@@ -100,6 +101,13 @@ const janela = pag.locator('[data-teste="pergunta-faculdade"]');
 if (await janela.isVisible().catch(() => false)) ok('na próxima entrada aparece a pergunta da faculdade e da especialidade');
 else falha('a janela não apareceu');
 await foto('faculdade-1-janela');
+const centro = await pag.evaluate(() => {
+  const el = document.querySelector('[data-teste="pergunta-faculdade"]');
+  const caixa = el.firstElementChild.getBoundingClientRect();
+  return { noCorpo: el.parentElement === document.body, dx: Math.abs(caixa.left + caixa.width / 2 - innerWidth / 2), dy: Math.abs(caixa.top + caixa.height / 2 - innerHeight / 2) };
+});
+if (centro.noCorpo && centro.dx < 4 && centro.dy < 4) ok('a janela fica no meio da tela, por cima de tudo');
+else falha('posição da janela: ' + JSON.stringify(centro));
 
 const opcoesFac = pag.locator('[data-teste="faculdade-opcao"]');
 const nFac = await opcoesFac.count();
@@ -196,27 +204,77 @@ else falha('entrar na sala aberta: ' + JSON.stringify(part));
 if (await pag.locator('[data-teste="simulados-abertos"]').isVisible()) ok('depois de entrar, a lista das outras salas continua embaixo');
 else falha('a lista aberta sumiu depois de entrar');
 
-/* ── 5. "Agora não" também fecha para sempre ────────────────────────── */
-await pag.evaluate(() => {
+/* ── 5. "Agora não" adia até a próxima entrada ──────────────────────── */
+const zerar = () => pag.evaluate(() => {
   const x = JSON.parse(localStorage.getItem('cadencia:v3'));
   x.profile.perguntouFaculdade = false; x.profile.faculdade = ''; x.profile.faculdadeNome = ''; x.profile.especialidades = [];
   localStorage.setItem('cadencia:v3', JSON.stringify(x));
+  sessionStorage.removeItem('cm-faculdade-depois');
 });
+await zerar();
 await pag.reload({ waitUntil: 'load' });
 await pag.waitForTimeout(1500);
 if (await janela.isVisible().catch(() => false)) {
   await pag.locator('[data-teste="faculdade-depois"]').click();
-  await pag.waitForFunction(() => { try { return JSON.parse(localStorage.getItem('cadencia:v3')).profile.perguntouFaculdade === true; } catch (e) { return false; } }, null, { timeout: 8000 }).catch(() => {});
-  d = await dados();
-  if (d.profile.perguntouFaculdade === true && !d.profile.faculdade) ok('"Agora não" fecha e não pergunta de novo');
-  else falha('agora não: ' + JSON.stringify(d.profile));
+  await pag.waitForTimeout(300);
+  if (!(await janela.isVisible().catch(() => false))) ok('"Agora não" fecha a janela');
+  else falha('"Agora não" não fechou');
+  await pag.reload({ waitUntil: 'load' });
+  await pag.waitForTimeout(1500);
+  if (!(await janela.isVisible().catch(() => false))) ok('na mesma entrada, recarregando, não pergunta de novo');
+  else falha('voltou na mesma entrada');
+  /* uma entrada nova (a sessão do navegador zera) */
+  await pag.evaluate(() => sessionStorage.removeItem('cm-faculdade-depois'));
+  await pag.reload({ waitUntil: 'load' });
+  await pag.waitForTimeout(1500);
+  if (await janela.isVisible().catch(() => false)) ok('quem ainda não preencheu vê a janela de novo na próxima entrada');
+  else falha('não perguntou de novo para quem não preencheu');
+  await pag.locator('[data-teste="faculdade-depois"]').click();
 } else falha('a janela não voltou para testar "Agora não"');
+
+/* quem só pôs a especialidade já preencheu: não pergunta */
+await pag.evaluate(() => {
+  const x = JSON.parse(localStorage.getItem('cadencia:v3'));
+  x.profile.especialidades = ['Pediatria'];
+  localStorage.setItem('cadencia:v3', JSON.stringify(x));
+  sessionStorage.removeItem('cm-faculdade-depois');
+});
+await pag.reload({ waitUntil: 'load' });
+await pag.waitForTimeout(1500);
+if (!(await janela.isVisible().catch(() => false))) ok('quem já pôs alguma coisa não vê a janela');
+else falha('perguntou para quem já tinha preenchido');
 
 /* ── 6. dá para mudar depois em Configurações ───────────────────────── */
 await pag.locator('nav button:has-text("Configurações")').first().click();
 await pag.waitForTimeout(500);
 if (await pag.locator('[data-teste="faculdade-perfil"] [data-teste="faculdade-busca"]').isVisible()) ok('Configurações, Seu perfil, tem os mesmos campos para mudar depois');
 else falha('faculdade não aparece em Configurações');
+
+/* ── 7. a conta do dono é zerada uma vez, para testar a janela ─────── */
+await pag.evaluate(() => {
+  localStorage.setItem('teste-email', 'joseeduardo1616@gmail.com');
+  const x = JSON.parse(localStorage.getItem('cadencia:v3'));
+  x.profile.faculdade = 'ufg-go'; x.profile.faculdadeNome = 'UFG · Universidade Federal de Goiás'; x.profile.especialidades = ['Cardiologia'];
+  localStorage.setItem('cadencia:v3', JSON.stringify(x));
+  sessionStorage.removeItem('cm-faculdade-depois');
+});
+await pag.reload({ waitUntil: 'load' });
+await pag.waitForTimeout(2000);
+d = await dados();
+if (await janela.isVisible().catch(() => false) && !d.profile.faculdade && !d.profile.especialidades.length && d.profile.faculdadeZerada === 1) {
+  ok('na conta do dono, a faculdade é apagada uma vez e a janela aparece');
+} else falha('zerar do dono: ' + JSON.stringify(d.profile));
+await pag.locator('[data-teste="faculdade-busca"]').fill('UFG');
+await pag.locator('[data-teste="faculdade-opcao"]').first().click();
+await pag.locator('[data-teste="faculdade-salvar"]').click();
+await pag.waitForTimeout(300);
+await pag.evaluate(() => sessionStorage.removeItem('cm-faculdade-depois'));
+await pag.waitForFunction(() => { try { return JSON.parse(localStorage.getItem('cadencia:v3')).profile.faculdade === 'ufg-go'; } catch (e) { return false; } }, null, { timeout: 8000 }).catch(() => {});
+await pag.reload({ waitUntil: 'load' });
+await pag.waitForTimeout(2000);
+d = await dados();
+if (!(await janela.isVisible().catch(() => false)) && d.profile.faculdade === 'ufg-go') ok('depois de o dono preencher, não apaga de novo nem pergunta');
+else falha('dono depois de preencher: ' + JSON.stringify(d.profile));
 
 if (errosDaPagina.length) falha('erros na página: ' + errosDaPagina.join(' | '));
 else ok('nenhum erro de JavaScript na página');

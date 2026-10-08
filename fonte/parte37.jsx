@@ -362,6 +362,7 @@ function limparPerfilFaculdade(pr) {
     }).map((x) => x.trim().slice(0, 60)).slice(0, MAX_ESPECIALIDADES),
     mostrarFaculdade: pr.mostrarFaculdade === true,
     perguntouFaculdade: pr.perguntouFaculdade === true,
+    faculdadeZerada: Number(pr.faculdadeZerada) || 0,
   };
 }
 
@@ -525,7 +526,56 @@ function OptarColegas({ ligado, aoMudar, logado }) {
   );
 }
 
-/* ── a janela, uma vez só ─────────────────────────────────────────────── */
+/* ── a janela, para quem ainda não preencheu ─────────────────────────── */
+
+/* Aparece ao entrar no site para quem nunca pôs nem a faculdade nem a
+   especialidade. "Agora não" adia só até a próxima entrada (vale para esta
+   aba, guardado no sessionStorage); quem preenche não vê mais. */
+const precisaPerguntarFaculdade = (p) => !(p && p.faculdade) && !((p && p.especialidades) || []).length;
+const CHAVE_DEPOIS = "cm-faculdade-depois";
+const adiouNestaEntrada = () => { try { return sessionStorage.getItem(CHAVE_DEPOIS) === "1"; } catch (e) { return false; } };
+
+/* Para o dono testar a janela de novo: apaga uma vez a faculdade e as
+   especialidades da conta dele. O número sobe quando for preciso repetir. */
+const ZERAR_FACULDADE_DO_DONO = 1;
+const EMAIL_TESTE_FACULDADE = "joseeduardo1616@gmail.com";
+
+function PerguntaFaculdadeNaEntrada({ ready, data, setData, nuvem, notify }) {
+  const p = data.profile || {};
+  const [adiou, setAdiou] = useState(adiouNestaEntrada);
+  /* Com a conta sincronizando, espera a primeira leitura dela: senão quem
+     já preencheu em outro aparelho veria a janela piscar. */
+  const conta = nuvem || {};
+  const carregado = conta.estado !== "carregando" && (!conta.usuario || !conta.sincroniza || conta.carregou);
+  const email = String((conta.usuario && conta.usuario.email) || "").toLowerCase();
+
+  useEffect(() => {
+    if (!ready || !carregado || email !== EMAIL_TESTE_FACULDADE) return;
+    if ((Number(p.faculdadeZerada) || 0) >= ZERAR_FACULDADE_DO_DONO) return;
+    setData((x) => ({
+      ...x,
+      profile: {
+        ...x.profile, faculdade: "", faculdadeNome: "", especialidades: [], mostrarFaculdade: false,
+        perguntouFaculdade: false, faculdadeZerada: ZERAR_FACULDADE_DO_DONO,
+      },
+    }));
+    try { sessionStorage.removeItem(CHAVE_DEPOIS); } catch (e) { /* noop */ }
+    setAdiou(false);
+  }, [ready, carregado, email, p.faculdadeZerada, setData]);
+
+  const mostrar = ready && p.onboarded && carregado && !adiou && perguntaFaculdadeLigada()
+    && precisaPerguntarFaculdade(p)
+    && !(email === EMAIL_TESTE_FACULDADE && (Number(p.faculdadeZerada) || 0) < ZERAR_FACULDADE_DO_DONO);
+  if (!mostrar) return null;
+  return createPortal(
+    <PerguntaFaculdade data={data} setData={setData} nuvem={nuvem} notify={notify}
+      aoAdiar={() => {
+        try { sessionStorage.setItem(CHAVE_DEPOIS, "1"); } catch (e) { /* noop */ }
+        setAdiou(true);
+      }} />,
+    document.body,
+  );
+}
 
 /* A marca no localStorage é só dos testes automáticos que rodam contra a
    página de produção: sem ela a janela ficaria na frente de tudo. No build
@@ -535,7 +585,7 @@ const perguntaFaculdadeLigada = () => {
   try { return localStorage.getItem("cm-sem-pergunta-faculdade") !== "1"; } catch (e) { return true; }
 };
 
-function PerguntaFaculdade({ data, setData, nuvem, notify, irPara }) {
+function PerguntaFaculdade({ data, setData, nuvem, notify, aoAdiar }) {
   const p = data.profile || {};
   const [rascunho, setRascunho] = useState({
     faculdade: p.faculdade || "", faculdadeNome: p.faculdadeNome || "",
@@ -556,6 +606,7 @@ function PerguntaFaculdade({ data, setData, nuvem, notify, irPara }) {
         perguntouFaculdade: true,
       },
     }));
+    if (aoAdiar) aoAdiar();
     if (!salvar) return;
     if (rascunho.faculdade && rascunho.mostrarFaculdade && logado) {
       notify("Pronto! Seus colegas da faculdade aparecem na aba Amigos.");
@@ -622,7 +673,7 @@ function PerguntaFaculdade({ data, setData, nuvem, notify, irPara }) {
           <span data-teste="faculdade-depois">
             <Btn tone="quiet" onClick={() => fechar(false)}>Agora não</Btn>
           </span>
-          <span style={{ fontSize: 12.5, color: T.ghost }}>Dá para mudar depois em Configurações, Seu perfil.</span>
+          <span style={{ fontSize: 12.5, color: T.ghost }}>Dá para preencher depois em Configurações, Seu perfil.</span>
         </div>
       </div>
     </div>

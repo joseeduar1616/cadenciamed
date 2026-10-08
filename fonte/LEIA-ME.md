@@ -1726,15 +1726,21 @@ dos amigos) para o `EstudoInterativo`. Teste: `testar-estudo-foco.mjs`.
 
 ## Faculdade, especialidade e simulados abertos
 
-**A pergunta, uma vez só (`parte37.jsx`).** Na primeira entrada depois desta
-versão, quem já passou do cadastro vê uma janela pedindo a faculdade e a
-especialidade pretendida. As duas listas já vêm prontas e filtram enquanto a
-pessoa digita, sem ligar para acento: a faculdade acha por sigla ou por nome
-("ufg" ou "universidade federal de goias"), e quem não achar a sua usa o nome
-que escreveu. As especialidades são as 55 do CFM mais "Ainda não decidi", e dá
-para marcar até 8. "Salvar" ou "Agora não" marcam `profile.perguntouFaculdade`,
-e a janela não volta. Depois, muda-se em Configurações, Seu perfil, ou no
-cartão "Da sua faculdade" da aba Amigos.
+**A pergunta (`parte37.jsx`).** Quem nunca pôs nem a faculdade nem a
+especialidade vê, ao entrar no site, uma janela no meio da tela (por portal,
+no `<body>`) pedindo as duas. Com a conta sincronizando, ela espera a primeira
+leitura da nuvem (`nuvem.carregou`), para não piscar para quem já preencheu em
+outro aparelho. As duas listas já vêm prontas e filtram enquanto a pessoa
+digita, sem ligar para acento: a faculdade acha por sigla ou por nome ("ufg"
+ou "universidade federal de goias"), e quem não achar a sua usa o nome que
+escreveu. As especialidades são as 55 do CFM mais "Ainda não decidi", e dá
+para marcar até 8. "Agora não" adia só até a próxima entrada (marca
+`cm-faculdade-depois` no sessionStorage). Depois, muda-se em Configurações,
+Seu perfil, ou no cartão "Da sua faculdade" da aba Amigos.
+
+Para o dono testar a janela, `ZERAR_FACULDADE_DO_DONO` apaga uma vez a
+faculdade e as especialidades da conta dele (guarda `faculdadeZerada`); subir o
+número repete.
 
 Guardado em `profile`: `faculdade` (id da lista, como `ufg-go`, ou
 `outra-<nome>`), `faculdadeNome`, `especialidades`, `mostrarFaculdade` e

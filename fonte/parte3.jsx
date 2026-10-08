@@ -120,6 +120,10 @@ function useNuvem(data, setData, notify, pronto, pro) {
   /* Enquanto isto for falso, nada sobe: o aparelho ainda não sabe o que a
      conta tem, e subir às cegas é como se perde o que estava gravado. */
   const ouviuNuvem = useRef(false);
+  /* O mesmo "já ouvi a conta", mas como estado: quem precisa saber o que a
+     conta tem antes de decidir algo na tela (a pergunta da faculdade, no
+     parte37) espera por isto. */
+  const [carregou, setCarregou] = useState(false);
   const disp = useRef(idDispositivo());
   const tmr = useRef(null);
   const dataRef = useRef(data);
@@ -210,6 +214,7 @@ function useNuvem(data, setData, notify, pronto, pro) {
     const ref = sdk.F.doc(sdk.db, "usuarios", usuario.uid);
     let primeira = true;
     ouviuNuvem.current = false;
+    setCarregou(false);
     /* includeMetadataChanges porque a decisão depende de saber se a
        resposta veio do servidor ou do cache. Sem isso, um "não existe"
        vindo do cache não seria corrigido por um aviso do servidor dizendo
@@ -221,6 +226,7 @@ function useNuvem(data, setData, notify, pronto, pro) {
         const oQue = decidirNuvem({ existe: false, daCache, primeira });
         if (oQue === "esperar") return;
         ouviuNuvem.current = true;
+        setCarregou(true);
         primeira = false;
         enviar();
         return;
@@ -242,6 +248,7 @@ function useNuvem(data, setData, notify, pronto, pro) {
          tem, e pode voltar a subir — inclusive quando a decisão foi
          ignorar este aviso específico. */
       ouviuNuvem.current = true;
+      setCarregou(true);
       primeira = false;
 
       if (oQue === "ignorar") return;
@@ -418,9 +425,9 @@ function useNuvem(data, setData, notify, pronto, pro) {
    * recarregando sozinha sem parar, e por baixo era uma chamada por render
    * ao servidor. */
   return useMemo(() => ({
-    ligado: !!NUVEM_CFG, estado, usuario, erro, ultima, temBackup, sdk, sincroniza: !!pro,
+    ligado: !!NUVEM_CFG, estado, usuario, erro, ultima, temBackup, sdk, sincroniza: !!pro, carregou,
     entrar, cadastrar, comGoogle, recuperar, sair, enviar, restaurarBackup,
-  }), [estado, usuario, erro, ultima, temBackup, sdk, pro,
+  }), [estado, usuario, erro, ultima, temBackup, sdk, pro, carregou,
     entrar, cadastrar, comGoogle, recuperar, sair, enviar, restaurarBackup]);
 }
 
