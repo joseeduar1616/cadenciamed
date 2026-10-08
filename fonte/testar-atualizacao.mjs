@@ -96,7 +96,7 @@ const preparar = async (pag, jaControlado) => {
 /* ── 1. já havia versão rodando: a troca avisa ───────────────────────── */
 {
   const pag = await (await navegador.newContext()).newPage();
-  await pag.addInitScript(() => { try { const k = 'cadencia:v3:convite-notificacoes-aparelho'; if (!localStorage.getItem(k)) localStorage.setItem(k, 'teste'); } catch (e) { /* noop */ } });
+  await pag.addInitScript(() => { try { const k = 'cadencia:v3:convite-notificacoes-aparelho'; if (!localStorage.getItem(k)) localStorage.setItem(k, 'teste'); localStorage.setItem('cm-sem-pergunta-faculdade', '1'); } catch (e) { /* noop */ } });
   await preparar(pag, true);
   await pag.goto(endereco, { waitUntil: 'load' });
   await pag.waitForTimeout(1500);
@@ -167,7 +167,7 @@ const preparar = async (pag, jaControlado) => {
 /* ── 2. primeira instalação: nada a avisar ───────────────────────────── */
 {
   const pag = await (await navegador.newContext()).newPage();
-  await pag.addInitScript(() => { try { const k = 'cadencia:v3:convite-notificacoes-aparelho'; if (!localStorage.getItem(k)) localStorage.setItem(k, 'teste'); } catch (e) { /* noop */ } });
+  await pag.addInitScript(() => { try { const k = 'cadencia:v3:convite-notificacoes-aparelho'; if (!localStorage.getItem(k)) localStorage.setItem(k, 'teste'); localStorage.setItem('cm-sem-pergunta-faculdade', '1'); } catch (e) { /* noop */ } });
   await preparar(pag, false);
   await pag.goto(endereco, { waitUntil: 'load' });
   await pag.waitForTimeout(1500);

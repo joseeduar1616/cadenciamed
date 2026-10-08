@@ -28,6 +28,7 @@ const navegador = await chromium.launch({
   ...(fs.existsSync(CHROME) ? { executablePath: CHROME } : {}),
 });
 const ctx = await navegador.newContext({ viewport: { width: 1280, height: 860 } });
+await ctx.addInitScript(() => { try { localStorage.setItem('cm-sem-pergunta-faculdade', '1'); } catch (e) { /* noop */ } });
 const pag = await ctx.newPage();
 pag.on('pageerror', (e) => erros.push('pageerror: ' + e.message));
 await pag.route('**/api/**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }));

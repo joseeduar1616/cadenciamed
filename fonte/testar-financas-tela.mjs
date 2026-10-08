@@ -66,6 +66,7 @@ const pedidosFin = [];
 async function abrir({ email, onboarded = true, largura = 1280 }) {
   const ctx = await navegador.newContext({ viewport: { width: largura, height: 900 }, locale: 'pt-BR', timezoneId: 'America/Sao_Paulo' });
   await ctx.addInitScript((onb) => {
+    try { localStorage.setItem('cm-sem-pergunta-faculdade', '1'); } catch (e) { /* noop */ }
     if (location.protocol === 'about:' || window.name === 'semeado') return;
     window.name = 'semeado';
     try {

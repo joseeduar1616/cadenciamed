@@ -105,7 +105,7 @@ await ctx.addInitScript(() => {
   window.name = 'semeado';
   try {
     const k = 'cadencia:v3:convite-notificacoes-aparelho';
-    if (!localStorage.getItem(k)) localStorage.setItem(k, 'teste');
+    if (!localStorage.getItem(k)) localStorage.setItem(k, 'teste'); localStorage.setItem('cm-sem-pergunta-faculdade', '1');
     if (!localStorage.getItem('cadencia:v3')) localStorage.setItem('cadencia:v3', JSON.stringify({ profile: { name: 'Teste', onboarded: true }, theme: 'dark' }));
   } catch (e) { /* noop */ }
 });

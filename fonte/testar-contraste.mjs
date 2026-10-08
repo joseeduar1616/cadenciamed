@@ -32,7 +32,7 @@ const navegador = await chromium.launch({
 });
 const ctx = await navegador.newContext({ viewport: { width: 1280, height: 900 } });
 /* o convite de notificações do primeiro acesso cobriria a tela; quem o testa é o testar-convite-tela.mjs */
-await ctx.addInitScript(() => { try { const k = 'cadencia:v3:convite-notificacoes-aparelho'; if (!localStorage.getItem(k)) localStorage.setItem(k, 'teste'); } catch (e) { /* noop */ } });
+await ctx.addInitScript(() => { try { const k = 'cadencia:v3:convite-notificacoes-aparelho'; if (!localStorage.getItem(k)) localStorage.setItem(k, 'teste'); localStorage.setItem('cm-sem-pergunta-faculdade', '1'); } catch (e) { /* noop */ } });
 const pag = await ctx.newPage();
 
 await pag.addInitScript(() => {

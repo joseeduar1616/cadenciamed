@@ -45,7 +45,7 @@ const ctx = await navegador.newContext({ viewport: { width: 1440, height: 900 } 
    Chromium do teste perder de vez em quando o 'cadencia:v3' num reload —
    o app voltava para a página de entrada no meio do teste (1 a cada 3 ou 4
    rodadas). Lendo primeiro, não aconteceu mais em 8 rodadas. */
-await ctx.addInitScript(() => { try { const k = 'cadencia:v3:convite-notificacoes-aparelho'; if (!localStorage.getItem(k)) localStorage.setItem(k, 'teste'); } catch (e) { /* noop */ } });
+await ctx.addInitScript(() => { try { const k = 'cadencia:v3:convite-notificacoes-aparelho'; if (!localStorage.getItem(k)) localStorage.setItem(k, 'teste'); localStorage.setItem('cm-sem-pergunta-faculdade', '1'); } catch (e) { /* noop */ } });
 const pag = await ctx.newPage();
 pag.on('pageerror', (e) => erros.push('pageerror: ' + e.message));
 pag.on('console', (m) => {

@@ -157,7 +157,7 @@ for (const a of APARELHOS) {
 /* ── o link dentro do site ────────────────────────────────────────────── */
 {
   const ctx = await navegador.newContext({ viewport: { width: 1440, height: 900 } });
-  await ctx.addInitScript(() => { try { const k = 'cadencia:v3:convite-notificacoes-aparelho'; if (!localStorage.getItem(k)) localStorage.setItem(k, 'teste'); } catch (e) { /* noop */ } });
+  await ctx.addInitScript(() => { try { const k = 'cadencia:v3:convite-notificacoes-aparelho'; if (!localStorage.getItem(k)) localStorage.setItem(k, 'teste'); localStorage.setItem('cm-sem-pergunta-faculdade', '1'); } catch (e) { /* noop */ } });
   const pag = await ctx.newPage();
   await pag.route('**/api/**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }));
   await pag.goto('file://' + path.resolve('index.html'), { waitUntil: 'load' });

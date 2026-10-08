@@ -527,9 +527,13 @@ function OptarColegas({ ligado, aoMudar, logado }) {
 
 /* ── a janela, uma vez só ─────────────────────────────────────────────── */
 
-/* No build de teste o montar_teste.py troca isto, para a janela não ficar
-   por cima de todos os outros testes; o teste dela liga de volta. */
-const perguntaFaculdadeLigada = () => true;
+/* A marca no localStorage é só dos testes automáticos que rodam contra a
+   página de produção: sem ela a janela ficaria na frente de tudo. No build
+   de teste o montar_teste.py troca isto, e a janela só aparece para o teste
+   dela. */
+const perguntaFaculdadeLigada = () => {
+  try { return localStorage.getItem("cm-sem-pergunta-faculdade") !== "1"; } catch (e) { return true; }
+};
 
 function PerguntaFaculdade({ data, setData, nuvem, notify, irPara }) {
   const p = data.profile || {};

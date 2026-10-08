@@ -782,7 +782,9 @@ export async function onRequest({ request, env }) {
     if (senha.length < 4) return json({ erro: "A senha precisa ter pelo menos 4 caracteres." }, 400);
 
     if (await lerSala(token, col, slug)) {
-      return json({ erro: "Já existe uma sala com esse nome. Escolha outro, ou entre nela com a senha." }, 409);
+      return json({ erro: col === "salasSimulado"
+        ? "Já existe uma sala com esse nome. Entre nela pela lista, ou escolha outro nome."
+        : "Já existe uma sala com esse nome. Escolha outro, ou entre nela com a senha." }, 409);
     }
 
     const sal = paraB64(crypto.getRandomValues(new Uint8Array(16)));

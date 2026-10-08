@@ -159,6 +159,7 @@ const errosDaPagina = [];
 async function abrir({ logado, respostaPlano, onboarded = true, largura = 1280 }) {
   const ctx = await navegador.newContext({ viewport: { width: largura, height: 900 }, locale: 'pt-BR', timezoneId: 'America/Sao_Paulo' });
   await ctx.addInitScript((onb) => {
+    try { localStorage.setItem('cm-sem-pergunta-faculdade', '1'); } catch (e) { /* noop */ }
     try {
       localStorage.setItem('cadencia:v3:convite-notificacoes-aparelho', 'teste');
       if (onb && !localStorage.getItem('cadencia:v3')) localStorage.setItem('cadencia:v3', JSON.stringify({ profile: { name: 'Teste', onboarded: true }, theme: 'dark' }));
