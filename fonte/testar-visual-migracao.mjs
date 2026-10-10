@@ -13,6 +13,7 @@ import { chromium } from 'playwright';
 import path from 'node:path';
 import fs from 'node:fs';
 import http from 'node:http';
+import { servirSolto } from './servir-teste.mjs';
 
 const alvo = path.resolve(process.argv[2] || 'teste.html');
 if (!fs.existsSync(alvo)) { console.error('não achei', alvo); process.exit(1); }
@@ -43,7 +44,7 @@ export async function setDoc() {}
 export async function getDoc() { return { exists: () => false, data: () => ({}) }; }
 export function onSnapshot(ref, a, b) { return () => {}; }`;
 
-const servidor = http.createServer((req, res) => {
+const servidor = http.createServer((req, res) => { if (servirSolto(req, res)) return;
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
   res.end(fs.readFileSync(alvo));
 });

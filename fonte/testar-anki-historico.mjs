@@ -14,6 +14,7 @@ import { chromium } from 'playwright';
 import path from 'node:path';
 import fs from 'node:fs';
 import http from 'node:http';
+import { servirSolto } from './servir-teste.mjs';
 import zlib from 'node:zlib';
 import { createRequire } from 'node:module';
 
@@ -65,7 +66,7 @@ const REV = [
 const NOVO = pacote(colecao(REV), true);
 const MAIS = pacote(colecao([...REV, ...Array.from({ length: 30 }, (_, i) => [dia(1) + 200000 + i * 1000, 10000])]), false);
 
-const servidor = http.createServer((q, r) => {
+const servidor = http.createServer((q, r) => { if (servirSolto(q, r)) return;
   const u = q.url.split('?')[0];
   if (u === '/fzstd.min.js') { r.writeHead(200, { 'Content-Type': 'text/javascript' }); return r.end(fs.readFileSync('fzstd.min.js')); }
   if (u === '/sql-asm.js') { r.writeHead(200, { 'Content-Type': 'text/javascript' }); return r.end(fs.readFileSync('sql-asm.js')); }

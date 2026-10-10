@@ -16,6 +16,7 @@ import { chromium } from 'playwright';
 import path from 'node:path';
 import fs from 'node:fs';
 import http from 'node:http';
+import { servirSolto } from './servir-teste.mjs';
 
 /* index.html, o de produção: o teste.html libera o plano de propósito
    (montar_teste.py), e aqui o que se testa é justamente o plano. */
@@ -146,7 +147,7 @@ export function onSnapshot(ref, a, b) {
   return () => {};
 }`;
 
-const servidor = http.createServer((req, res) => {
+const servidor = http.createServer((req, res) => { if (servirSolto(req, res)) return;
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
   res.end(fs.readFileSync(alvo));
 });

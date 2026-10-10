@@ -11,6 +11,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
 import http from 'node:http';
+import { servirSolto } from './servir-teste.mjs';
 
 const alvo = path.resolve(process.argv[2] || 'index.html');
 const passos = [];
@@ -55,7 +56,7 @@ export function onSnapshot(ref, a, b) {
 const TODAS = ['assistente', 'cartoes', 'revisoes', 'provas', 'cronograma', 'rotina', 'amigos', 'metas', 'desempenho', 'simulados', 'progresso', 'treino', 'financeiro'];
 const recursos = (dono) => Object.fromEntries(TODAS.map((k) => [k, dono || !['treino', 'financeiro'].includes(k)]));
 
-const servidor = http.createServer((req, res) => { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(fs.readFileSync(alvo)); });
+const servidor = http.createServer((req, res) => { if (servirSolto(req, res)) return; res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(fs.readFileSync(alvo)); });
 await new Promise((r) => servidor.listen(0, '127.0.0.1', r));
 const ENDERECO = `http://127.0.0.1:${servidor.address().port}/`;
 const CHROME = process.env.CHROME_BIN || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';

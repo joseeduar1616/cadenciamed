@@ -13,6 +13,7 @@ import { chromium } from 'playwright';
 import path from 'node:path';
 import fs from 'node:fs';
 import http from 'node:http';
+import { servirSolto } from './servir-teste.mjs';
 import zlib from 'node:zlib';
 import { createRequire } from 'node:module';
 
@@ -60,7 +61,7 @@ zip.file('ppt/media/icone.png', png(24, 24, [0, 150, 0]));
 zip.file('ppt/media/grafico.emf', Buffer.from('emf'));
 const PPTX = await zip.generateAsync({ type: 'nodebuffer' });
 
-const servidor = http.createServer((q, r) => { r.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); r.end(fs.readFileSync(alvo)); });
+const servidor = http.createServer((q, r) => { if (servirSolto(q, r)) return; r.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); r.end(fs.readFileSync(alvo)); });
 await new Promise((r) => servidor.listen(0, '127.0.0.1', r));
 const CHROME = process.env.CHROME_BIN || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const navegador = await chromium.launch({ args: ['--no-sandbox'], ...(fs.existsSync(CHROME) ? { executablePath: CHROME } : {}) });
