@@ -15,6 +15,7 @@ import { chromium } from 'playwright';
 import path from 'node:path';
 import fs from 'node:fs';
 import http from 'node:http';
+import { servirSolto } from './servir-teste.mjs';
 
 const alvo = path.resolve(process.argv[2] || 'teste.html');
 const passos = [];
@@ -22,7 +23,7 @@ const erros = [];
 const ok = (m) => passos.push('ok   ' + m);
 const falha = (m) => { passos.push('FALHA ' + m); erros.push(m); };
 
-const servidor = http.createServer((q, r) => { r.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); r.end(fs.readFileSync(alvo)); });
+const servidor = http.createServer((q, r) => { if (servirSolto(q, r)) return; r.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); r.end(fs.readFileSync(alvo)); });
 await new Promise((r) => servidor.listen(0, '127.0.0.1', r));
 const ENDERECO = `http://127.0.0.1:${servidor.address().port}/`;
 const CHROME = process.env.CHROME_BIN || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';

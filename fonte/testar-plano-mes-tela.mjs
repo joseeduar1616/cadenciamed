@@ -14,6 +14,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
 import http from 'node:http';
+import { servirSolto } from './servir-teste.mjs';
 import { xlsx, FOLHAS } from './planilha-de-teste.mjs';
 
 const alvo = path.resolve(process.argv[2] || 'teste.html');
@@ -82,7 +83,7 @@ fs.writeFileSync(arquivoFoto, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAA
    inteiro vazio (até a chave do convite de notificações, que o app nunca
    apaga), e o teste acusava "o plano sumiu" sem o app ter apagado nada. Num
    endereço http o armazenamento é o de um site de verdade, como no ar. */
-const servidor = http.createServer((req, res) => {
+const servidor = http.createServer((req, res) => { if (servirSolto(req, res)) return;
   if (req.url === '/' || req.url.startsWith('/?')) {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(fs.readFileSync(alvo));

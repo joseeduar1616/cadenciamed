@@ -314,6 +314,8 @@ function useNuvem(data, setData, notify, pronto, pro) {
     if (!sdk) return "Serviço indisponível.";
     try {
       const cred = await sdk.U.createUserWithEmailAndPassword(sdk.auth, email.trim(), senha);
+      /* Conta nova: avisa a medição dos anúncios (medir.js). */
+      try { if (window.cadenciaCadastro) window.cadenciaCadastro("email"); } catch (e) { /* noop */ }
       if (nome.trim()) {
         try { await sdk.U.updateProfile(cred.user, { displayName: nome.trim() }); } catch (e) { /* opcional */ }
         setData((p) => ({ ...p, profile: { ...p.profile, name: nome.trim(), onboarded: true } }));
@@ -334,6 +336,8 @@ function useNuvem(data, setData, notify, pronto, pro) {
       const info = U && U.getAdditionalUserInfo ? U.getAdditionalUserInfo(cred) : null;
       nova = !!((info && info.isNewUser) || (cred && cred._tokenResponse && cred._tokenResponse.isNewUser));
     } catch (e) { /* segue como conta existente */ }
+    /* Conta nova pelo Google: avisa a medição dos anúncios (medir.js). */
+    try { if (nova && window.cadenciaCadastro) window.cadenciaCadastro("google"); } catch (e) { /* noop */ }
     const nome = String((cred && cred.user && cred.user.displayName) || "").trim().slice(0, 40);
     if (nova || nome) {
       setData((p) => ({

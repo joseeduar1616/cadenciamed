@@ -25,6 +25,7 @@ import { chromium } from 'playwright';
 import path from 'node:path';
 import fs from 'node:fs';
 import http from 'node:http';
+import { servirSolto } from './servir-teste.mjs';
 
 const alvo = path.resolve(process.argv[2] || 'index.html');
 if (!fs.existsSync(alvo)) { console.error('não achei', alvo); process.exit(1); }
@@ -52,7 +53,7 @@ if (meta && html.includes(`"${meta[1]}"`)) {
 
 /* Servido por http em 127.0.0.1: origem segura para o navegador, e o
    mesmo caminho de código que roda em produção. */
-const servidor = http.createServer((req, res) => {
+const servidor = http.createServer((req, res) => { if (servirSolto(req, res)) return;
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
   res.end(html);
 });
