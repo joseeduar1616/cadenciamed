@@ -21,7 +21,7 @@
  */
 const VERSAO = "cadencia-v1";
 const CASCA = "/";
-const PAGINAS_SOLTAS = /^\/(app|app\.html|privacidade\.html|termos\.html|recuperar\.html)$/;
+const PAGINAS_SOLTAS = /^\/(app|app\.html|privacidade\.html|termos\.html|recuperar\.html|comecar\.html)$/;
 
 /* Instala já guardando a casca do app, para a primeira visita offline
    depois desta já funcionar. */

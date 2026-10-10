@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cadência Med · Sua semana de estudos em volta dos plantões</title>
+<meta name="description" content="O Cadência Med monta sua semana em volta dos plantões, traz cada revisão no dia certo e transforma seu PDF em flashcards. Teste 3 dias grátis, sem cartão.">
+<meta name="theme-color" content="#F3EFFC">
+<link rel="icon" href="/icone-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="/icone-180.png">
+<link rel="canonical" href="https://cadenciamed.com.br/comecar.html">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Internato, plantão e residência ao mesmo tempo?">
+<meta property="og:description" content="Sua semana montada em volta dos plantões. Teste 3 dias grátis, sem cartão.">
+<meta property="og:image" content="https://cadenciamed.com.br/cartao.png">
+<!--
+  Página de chegada dos anúncios.
+
+  Ela existe separada do app de propósito: o index.html carrega o
+  aplicativo inteiro (mais de 1,5 MB) antes de mostrar qualquer coisa, e
+  no 4G muita gente que clicava no anúncio desistia antes de ver a página.
+  Esta abre com uns 20 KB; as imagens vêm depois, sem segurar a primeira
+  tela. O botão leva para o cadastro do app ("/#conta"), levando junto os
+  parâmetros utm_* do anúncio.
+
+  A promessa aqui é a mesma dos anúncios (plantão, revisão, PDF que vira
+  flashcard). Quem clica num anúncio sobre plantão e cai numa página que
+  fala de outra coisa sente que errou de lugar.
+-->
+<script src="/medir.js" defer></script>
+<style>
+  :root {
+    --fundo: #F3EFFC; --tinta: #120F24; --texto: #3F3A55; --fraco: #5E5873;
+    --roxo: #7C3AED; --roxo-escuro: #5B21B6; --azul: #2563EB; --vermelho: #E11D2E;
+    --caixa: #FFFFFF; --linha: #E4DDF3;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+  body {
+    margin: 0; color: var(--tinta);
+    background:
+      radial-gradient(circle at 100% 0%, rgba(124, 58, 237, .22), rgba(124, 58, 237, 0) 45%),
+      radial-gradient(circle at 0% 40%, rgba(37, 99, 235, .14), rgba(37, 99, 235, 0) 45%),
+      var(--fundo);
+    font: 17px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+  main { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
+  a { color: var(--roxo); }
+  img { max-width: 100%; display: block; }
+  .topo { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: calc(14px + env(safe-area-inset-top)) 0 6px; }
+  .topo img { height: 34px; width: auto; }
+  .topo span { font-size: 13px; font-weight: 800; letter-spacing: .14em; color: var(--tinta); }
+  .entrar { font-size: 15px; font-weight: 700; text-decoration: none; color: var(--roxo-escuro); }
+
+  .heroi { display: grid; gap: 28px; align-items: center; padding: 22px 0 8px; }
+  @media (min-width: 860px) { .heroi { grid-template-columns: 1.15fr .85fr; padding-top: 40px; } }
+  .olho { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 800;
+    letter-spacing: .12em; text-transform: uppercase; color: #fff; background: var(--vermelho);
+    padding: 6px 12px; border-radius: 999px; }
+  h1 { font-size: clamp(36px, 9vw, 60px); line-height: 1.02; letter-spacing: -.035em; margin: 16px 0 0; font-weight: 900; }
+  h1 em { font-style: normal; color: var(--roxo); }
+  .sub { font-size: clamp(18px, 4.6vw, 21px); color: var(--texto); margin: 16px 0 0; max-width: 34em; }
+  .botao {
+    display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    min-height: 56px; padding: 14px 28px; border-radius: 999px; text-decoration: none;
+    font-weight: 900; font-size: 18px; color: #fff; background: var(--roxo);
+    box-shadow: 0 14px 34px rgba(91, 33, 182, .35); border: 0; cursor: pointer;
+  }
+  .botao:hover { background: var(--roxo-escuro); }
+  .acao { margin-top: 24px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+  .selos { display: flex; flex-wrap: wrap; gap: 8px; }
+  .selos span { font-size: 14px; font-weight: 700; padding: 6px 12px; border-radius: 999px;
+    background: var(--caixa); border: 1px solid var(--linha); }
+  .selos span:first-child { background: #FDE68A; border-color: #F5D565; }
+
+  .celular { width: min(300px, 78vw); margin: 0 auto; border-radius: 40px; background: var(--tinta);
+    padding: 9px; box-shadow: 0 30px 70px rgba(76, 29, 149, .35); }
+  .celular img { border-radius: 32px; width: 100%; height: auto; aspect-ratio: 560 / 1100; object-fit: cover; object-position: top; background: #fff; }
+
+  .faixa { margin: 34px 0 0; background: var(--roxo-escuro); color: #fff; border-radius: 22px;
+    padding: 18px 20px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  .faixa b { font-size: 34px; letter-spacing: -.03em; line-height: 1; }
+  .faixa p { margin: 0; flex: 1; min-width: 220px; color: #EDE6FF; font-size: 16px; }
+
+  h2 { font-size: clamp(28px, 6.5vw, 40px); line-height: 1.08; letter-spacing: -.03em; margin: 0; font-weight: 900; }
+  h2 em { font-style: normal; color: var(--roxo); }
+  .secao { padding: 56px 0 0; }
+  .secao > p.sub { margin-bottom: 26px; }
+  .funcoes { display: grid; gap: 18px; }
+  @media (min-width: 860px) { .funcoes { grid-template-columns: repeat(3, 1fr); } }
+  .funcao { background: var(--caixa); border: 1px solid var(--linha); border-radius: 26px; padding: 22px;
+    box-shadow: 0 16px 40px rgba(76, 29, 149, .10); display: flex; flex-direction: column; gap: 10px; }
+  .funcao .num { font-size: 12.5px; font-weight: 800; letter-spacing: .12em; color: var(--roxo); }
+  .funcao h3 { margin: 0; font-size: 22px; line-height: 1.2; letter-spacing: -.02em; }
+  .funcao p { margin: 0; color: var(--texto); font-size: 16px; }
+  .funcao .tela { margin-top: 8px; border-radius: 18px; overflow: hidden; border: 1px solid var(--linha);
+    height: 300px; background: #fff; }
+  .funcao .tela img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
+
+  .precos { display: grid; gap: 14px; margin-top: 22px; }
+  @media (min-width: 700px) { .precos { grid-template-columns: 1fr 1fr; } }
+  .preco { background: var(--caixa); border: 1px solid var(--linha); border-radius: 22px; padding: 20px 22px; }
+  .preco.destaque { border: 2px solid var(--roxo); }
+  .preco small { font-size: 12.5px; font-weight: 800; letter-spacing: .12em; color: var(--roxo); }
+  .preco div { font-size: 36px; font-weight: 900; letter-spacing: -.03em; margin-top: 4px; }
+  .preco div span { font-size: 16px; font-weight: 600; color: var(--fraco); letter-spacing: 0; }
+  .preco p { margin: 6px 0 0; color: var(--texto); font-size: 15px; }
+  .garantia { margin-top: 14px; color: var(--texto); font-size: 15.5px; }
+
+  details { background: var(--caixa); border: 1px solid var(--linha); border-radius: 18px; padding: 16px 18px; margin-top: 10px; }
+  summary { cursor: pointer; font-weight: 800; }
+  details p { margin: 10px 0 0; color: var(--texto); font-size: 16px; }
+
+  .final { text-align: center; padding: 60px 0 10px; }
+  .final .acao { align-items: center; }
+  footer { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; font-size: 14px; padding: 36px 0 0; }
+  footer a { color: var(--fraco); text-decoration: none; }
+
+  /* O botão fica sempre à mão no celular: quem decidiu no meio da página
+     não precisa rolar de volta. */
+  .fixo { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    background: rgba(243, 239, 252, .92); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border-top: 1px solid var(--linha); display: flex; gap: 12px; align-items: center; justify-content: center; }
+  .fixo .botao { min-height: 52px; width: 100%; max-width: 460px; font-size: 17px; }
+  @media (min-width: 860px) { .fixo { display: none; } body { padding-bottom: 40px; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="topo">
+    <a href="/" aria-label="Cadência Med"><img src="/comecar/marca.webp" alt="Cadência Med" width="69" height="34"></a>
+    <a class="entrar cadastro" href="/#conta">Já tenho conta</a>
+  </header>
+
+  <section class="heroi">
+    <div>
+      <span class="olho">Residência 2027</span>
+      <h1>Internato, plantão e residência <em>ao mesmo tempo?</em></h1>
+      <p class="sub">O Cadência Med monta sua semana em volta dos plantões, traz cada revisão no dia certo e transforma seu PDF em flashcards. Você só abre e estuda.</p>
+      <div class="acao">
+        <a class="botao cadastro" href="/#conta">Criar conta grátis
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+        </a>
+        <div class="selos"><span>3 dias grátis</span><span>sem cartão</span><span>tudo liberado</span></div>
+      </div>
+    </div>
+    <div class="celular"><img src="/comecar/hoje.webp" alt="Tela Hoje do Cadência Med com as atividades do dia" width="560" height="1100" fetchpriority="high"></div>
+  </section>
+
+  <div class="faixa">
+    <b>98 mil</b>
+    <p>inscrições no ENARE 2026/27. Há dois anos eram 53 mil. Com essa disputa, passa quem estuda do jeito certo, não quem estuda mais horas.</p>
+  </div>
+
+  <section class="secao">
+    <h2>O que os aprovados fazem, <em>rodando sozinho.</em></h2>
+    <p class="sub">Revisar antes de esquecer, fazer questão todo dia e manter o ritmo até na semana de plantão. O Cadência Med transforma isso em rotina.</p>
+    <div class="funcoes">
+      <article class="funcao">
+        <span class="num">01 · CRONOGRAMA E MENTOR</span>
+        <h3>Sua semana montada em volta dos plantões</h3>
+        <p>Use o cronograma pronto, com 90 aulas e 213 tópicos, ou mande o do seu cursinho. Conte seus horários e o mentor encaixa cada aula onde ela cabe.</p>
+        <div class="tela"><img src="/comecar/cronograma.webp" alt="Tela de cronograma" loading="lazy" width="560" height="1100"></div>
+      </article>
+      <article class="funcao">
+        <span class="num">02 · REVISÃO ESPAÇADA</span>
+        <h3>Cada assunto volta antes de você esquecer</h3>
+        <p>Toda aula entra numa escada de revisão: 1 semana, 1 mês, 2, 4 e 6 meses. O que vence aparece em Hoje, sem você precisar lembrar.</p>
+        <div class="tela"><img src="/comecar/revisoes.webp" alt="Tela de revisões" loading="lazy" width="560" height="1100"></div>
+      </article>
+      <article class="funcao">
+        <span class="num">03 · FLASHCARDS E QUESTÕES</span>
+        <h3>Mande o PDF. A IA faz o resto.</h3>
+        <p>Seu PDF ou Word vira baralho de flashcards. Mande a foto de uma prova e receba cada questão comentada, alternativa por alternativa.</p>
+        <div class="tela"><img src="/comecar/cartoes.webp" alt="Tela de flashcards" loading="lazy" width="560" height="1100"></div>
+      </article>
+    </div>
+  </section>
+
+  <section class="secao">
+    <h2>Teste 3 dias. <em>Depois você decide.</em></h2>
+    <p class="sub">Crie a conta e use tudo liberado por 3 dias, sem cartão e sem cobrança. Se quiser continuar, estes são os preços de lançamento:</p>
+    <div class="precos">
+      <div class="preco"><small>MENSAL</small><div>R$ 39 <span>por mês</span></div><p>Quem assina mantém o preço enquanto a assinatura ficar ativa.</p></div>
+      <div class="preco destaque"><small>ANUAL · QUATRO MESES DE GRAÇA</small><div>R$ 300 <span>por ano</span></div><p>Válido até 31/12/2027.</p></div>
+    </div>
+    <p class="garantia">Assinou e não gostou? Em até 7 dias devolvemos 100% do dinheiro, sem precisar explicar o motivo.</p>
+  </section>
+
+  <section class="secao">
+    <h2>Dúvidas rápidas</h2>
+    <details><summary>Preciso colocar cartão para testar?</summary><p>Não. O teste de 3 dias não pede cartão e nada é cobrado. Você só assina se quiser continuar.</p></details>
+    <details><summary>Funciona no celular?</summary><p>Funciona no celular e no computador, com os dados sincronizados entre os dois. Dá até para instalar como app.</p></details>
+    <details><summary>Já uso o cronograma do meu cursinho. Serve pra mim?</summary><p>Serve. Você manda o cronograma do cursinho e o Cadência Med organiza as revisões, os flashcards e a sua semana em cima dele.</p></details>
+  </section>
+
+  <section class="final">
+    <h2>Seu próximo plantão <em>já cabe na semana.</em></h2>
+    <div class="acao">
+      <a class="botao cadastro" href="/#conta">Criar conta grátis
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+      </a>
+      <div class="selos"><span>3 dias grátis</span><span>sem cartão</span></div>
+    </div>
+  </section>
+
+  <footer>
+    <a href="/termos.html">Termos de uso</a>
+    <a href="/privacidade.html">Privacidade</a>
+    <a href="mailto:suporte@cadenciamed.com">suporte@cadenciamed.com</a>
+  </footer>
+</main>
+
+<div class="fixo"><a class="botao cadastro" href="/#conta">Testar 3 dias grátis</a></div>
+
+<script>
+/* No navegador do Instagram o login com Google é bloqueado pelo próprio
+   Google. Avisamos já aqui, embaixo do primeiro botão. */
+(function () {
+  if (!/Instagram|FBAN|FBAV|FB_IAB|FBIOS/i.test(navigator.userAgent || "")) return;
+  var alvo = document.querySelector(".heroi .acao");
+  if (!alvo) return;
+  var p = document.createElement("p");
+  p.style.cssText = "margin:4px 0 0;font-size:14.5px;color:#3F3A55";
+  p.textContent = "Dica: aqui no Instagram, crie a conta com e-mail e senha. O login com Google só funciona no navegador do celular.";
+  alvo.appendChild(p);
+})();
+/* Os botões levam para o cadastro do app carregando os parâmetros do
+   anúncio (utm_*), para a origem chegar junto com a conta nova. */
+(function () {
+  var busca = window.location.search || "";
+  var links = document.querySelectorAll("a.cadastro");
+  for (var i = 0; i < links.length; i++) {
+    links[i].setAttribute("href", "/" + busca + "#conta");
+  }
+})();
+</script>
+</body>
+</html>

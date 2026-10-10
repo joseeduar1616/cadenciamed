@@ -44,6 +44,8 @@ TPL = """<!DOCTYPE html>
      conferência passa a mentir em silêncio. -->
 <meta name="cadencia-versao" content="__VERSAO__">
 <link rel="canonical" href="__SITE__/">
+<!-- Medição dos anúncios (Pixel da Meta, origem da visita). Ver medir.js. -->
+<script src="/medir.js" defer></script>
 
 <!-- Compartilhamento. Sem isto, colar o link no WhatsApp, no Instagram ou
      no Twitter mostra só o endereço cru: nada de imagem, título ou

@@ -37,6 +37,12 @@ ARQUIVOS = [
     # app: é o endereço que se manda para quem ainda nem entrou, e precisa
     # abrir leve em qualquer celular.
     'app.html',
+    # A página de chegada dos anúncios (cadenciamed.com.br/comecar.html) e a
+    # medição que ela divide com o app. Fica fora do app pelo mesmo motivo
+    # das outras: abre leve no 4G, sem esperar o aplicativo inteiro. As
+    # imagens dela moram em comecar/ e são copiadas logo abaixo.
+    'comecar.html',
+    'medir.js',
     # As regras do Firestore NÃO vão para o site: quem as publica é o
     # .github/workflows/firestore.yml, direto no Firebase. Servidas aqui,
     # só mostravam a qualquer visitante o mapa do banco.
@@ -98,6 +104,10 @@ for f in ARQUIVOS:
         continue
     shutil.copy(f, os.path.join(DESTINO, f))
     total += os.path.getsize(f)
+# As imagens da página de anúncio (comecar.html).
+shutil.copytree('comecar', os.path.join(DESTINO, 'comecar'))
+total += sum(os.path.getsize(os.path.join('comecar', f)) for f in os.listdir('comecar'))
+
 # ── o aplicativo na Play Store, quando ele existir ────────────────────────
 #
 # Um app de Play Store feito de site (TWA) só abre sem a barra de endereço
