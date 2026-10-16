@@ -1,0 +1,77 @@
+{
+  "id": "2026-10-16-cronograma-atrasado",
+  "legenda": "Atrasou o cronograma? Dá pra recuperar sem largar as revisões.\n\n1. Revisão vencida vem primeiro\n2. O que mais cai entra antes\n3. Refaça a semana com os plantões\n4. Questões todo dia, até no dia ruim\n\nNo Cadência Med isso já vem montado: as revisões do dia aparecem sozinhas, os temas ficam na ordem de prioridade que você escolher, o mentor de IA monta a semana em volta dos plantões e cada erro vai pro caderno de erros.\n\nSalva esse post pra quando apertar e manda pra aquele amigo que tá com a matéria acumulada 😅\n\nQual matéria tá mais atrasada aí? Conta nos comentários 👇\n\nTeste 3 dias grátis, sem cartão. Link na bio 👉 cadenciamed.com.br\n\n#residenciamedica #medicina #estudantedemedicina #internato #rotinadeestudos",
+  "slides": [
+    {
+      "tipo": "capa", "tema": "degrade", "direita": "SALVA ESSE",
+      "tag": "CRONOGRAMA ATRASADO",
+      "titulo": "ATRASOU O {g}CRONOGRAMA?{/g}",
+      "texto": "4 passos pra recuperar <b>sem largar as revisões</b>.",
+      "ui": {"tipo": "checklist", "itens": [
+        {"texto": "Revisão vencida vem primeiro"},
+        {"texto": "O que mais cai entra antes"},
+        {"texto": "Refaça a semana com os plantões"},
+        {"texto": "Questões todo dia, até no dia ruim"}
+      ]}
+    },
+    {
+      "tipo": "passo", "tema": "escuro", "numero": "1", "direita": "PASSO 1",
+      "tag": "REVISÃO",
+      "titulo": "REVISÃO VENCIDA {g}VEM PRIMEIRO{/g}",
+      "texto": "Antes de abrir aula nova, passe pelas revisões que já venceram. Retomar do zero um assunto esquecido custa bem mais tempo do que <b>revisar no dia certo</b>.",
+      "ui": {"tipo": "lista", "titulo": "Revisões pedindo passagem", "itens": [
+        {"titulo": "Arritmias", "sub": "Cardiologia · 2ª revisão", "selo": "hoje", "cor": "#A86BFF"},
+        {"titulo": "SUS: princípios e diretrizes", "sub": "Preventiva · 1ª revisão", "selo": "hoje", "cor": "#46D9F5"},
+        {"titulo": "Diabetes mellitus", "sub": "Endocrinologia · 3ª revisão", "selo": "ontem", "cor": "#F5A524", "cor_selo": "rgba(242,85,122,.18)", "cor_texto": "#F2557A"}
+      ]}
+    },
+    {
+      "tipo": "passo", "tema": "escuro", "numero": "2", "direita": "PASSO 2",
+      "tag": "PRIORIDADE",
+      "titulo": "O QUE MAIS CAI {g}ENTRA ANTES{/g}",
+      "texto": "Ordene o que falta pelo peso na prova. Os temas que mais caem ganham aula completa. <b>O resto você cobre com questões</b> e revisão rápida.",
+      "ui": {"tipo": "barras", "titulo": "O que falta, por prioridade", "itens": [
+        {"nome": "Tema A", "valor": 0.92, "rotulo": "cai muito"},
+        {"nome": "Tema B", "valor": 0.74, "rotulo": "cai muito"},
+        {"nome": "Tema C", "valor": 0.45, "rotulo": "cai às vezes"},
+        {"nome": "Tema D", "valor": 0.2, "rotulo": "cai pouco"}
+      ]}
+    },
+    {
+      "tipo": "passo", "tema": "escuro", "numero": "3", "direita": "PASSO 3",
+      "tag": "SEMANA REAL",
+      "titulo": "REFAÇA A SEMANA {g}COM OS PLANTÕES{/g}",
+      "texto": "Conte as horas que sobram de verdade. Um plano que ignora o plantão de 12h <b>já começa atrasado</b>.",
+      "ui": {"tipo": "semana", "dias": [
+        {"d": "SEG", "blocos": [{"t": "Aula", "cor": "#A86BFF"}, {"t": "Questões", "cor": "#46D9F5"}]},
+        {"d": "TER", "blocos": [{"t": "Revisões", "cor": "#2DD4A0"}]},
+        {"d": "QUA", "blocos": [{"t": "Plantão 12h", "cor": "#F2557A"}]},
+        {"d": "QUI", "blocos": [{"t": "Aula", "cor": "#A86BFF"}]},
+        {"d": "SEX", "blocos": [{"t": "Erros", "cor": "#F5A524"}]},
+        {"d": "SÁB", "blocos": [{"t": "Simulado", "cor": "#46D9F5"}]},
+        {"d": "DOM", "blocos": [{"t": "Folga", "cor": "#C9C3DE"}]}
+      ]}
+    },
+    {
+      "tipo": "passo", "tema": "escuro", "numero": "4", "direita": "PASSO 4",
+      "tag": "QUESTÕES",
+      "titulo": "QUESTÕES TODO DIA, {g}ATÉ NO DIA RUIM{/g}",
+      "texto": "Num dia corrido, poucas questões já mantêm o assunto vivo. <b>Cada erro vai pro caderno de erros</b>, pra voltar na revisão.",
+      "ui": {"tipo": "questao", "titulo": "Questão do dia", "enunciado": "Qual princípio do SUS orienta oferecer mais cuidado a quem mais precisa?",
+        "alternativas": ["Universalidade", "Equidade", "Integralidade"], "certa": 1}
+    },
+    {
+      "tipo": "final", "tema": "claro", "direita": "TESTE GRÁTIS",
+      "tag": "NO CADÊNCIA MED",
+      "titulo": "ISSO TUDO {g}JÁ VEM MONTADO{/g}",
+      "ui": {"tipo": "recursos", "itens": [
+        {"titulo": "Revisões do dia, sozinhas", "texto": "cada assunto volta na hora certa"},
+        {"titulo": "Temas por prioridade", "texto": "na ordem que você escolher"},
+        {"titulo": "Mentor de IA", "texto": "monta a semana com os seus plantões"},
+        {"titulo": "Caderno de erros", "texto": "e questões comentadas"}
+      ]},
+      "botao": "Teste 3 dias grátis",
+      "site": "SEM CARTÃO · LINK NA BIO"
+    }
+  ]
+}

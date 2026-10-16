@@ -36,3 +36,7 @@ material/slides/
 material/envio/
 cadenciamed-capturas.zip
 fonte/_anexo.mjs
+
+# gerados por social/carrossel.py (o que vai ao ar fica em social/publicado/)
+social/saida/
+social/node_modules

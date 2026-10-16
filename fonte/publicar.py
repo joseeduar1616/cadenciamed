@@ -113,6 +113,16 @@ CABECALHOS = """/index.html
 """
 open(os.path.join(DESTINO, '_headers'), 'w', encoding='utf-8').write(CABECALHOS)
 
+# ── imagens dos posts do Instagram ────────────────────────────────────────
+# Para publicar pela API, o Instagram busca a imagem num link público. Os
+# carrosséis gerados por social/carrossel.py ficam em social/publicado/ e vão
+# ao ar em /s/<id>/<n>.jpg. Sem esta cópia, a próxima montagem apagaria as
+# imagens de posts já publicados.
+SOCIAL = os.path.join(RAIZ, 'social', 'publicado')
+if os.path.isdir(SOCIAL):
+    shutil.copytree(SOCIAL, os.path.join(DESTINO, 's'))
+    print('s/: imagens dos posts,', sum(len(a) for _, _, a in os.walk(SOCIAL)), 'arquivos')
+
 # Não há _redirects: "atualizar numa rota inventada devolve o index.html" é
 # resolvido por not_found_handling no wrangler.jsonc, e o /api/ é resolvido
 # por run_worker_first. Um _redirects aqui só criaria uma segunda fonte de
