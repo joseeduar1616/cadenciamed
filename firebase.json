@@ -8,6 +8,10 @@
     ],
     "rewrites": [
       {
+        "source": "/app",
+        "destination": "/app.html"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }
@@ -94,7 +98,16 @@
         ]
       },
       {
-        "source": "/@(privacidade|termos).html",
+        "source": "/@(privacidade|termos|app).html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=3600"
+          }
+        ]
+      },
+      {
+        "source": "/app",
         "headers": [
           {
             "key": "Cache-Control",

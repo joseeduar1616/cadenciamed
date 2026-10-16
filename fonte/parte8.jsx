@@ -12,13 +12,68 @@
  * (Layers): Cartões e Desempenho ficavam com o mesmo desenho na barra, que
  * é justamente o que a barra existe para evitar — achar a aba de relance
  * sem ler. Quem entrar com aba nova põe o ícone dela aqui. */
+/* ── a barra em grupos ─────────────────────────────────────────────────
+ *
+ * Dezessete abas numa lista corrida, sem separação nenhuma, e sem caber
+ * na tela do celular: achar qualquer coisa era varrer dezessete nomes de
+ * cima a baixo. Em grupos, é olhar cinco títulos e depois três ou quatro
+ * nomes dentro de um.
+ *
+ * O primeiro grupo não é uma categoria: é a lista do que se abre todo dia.
+ * Ele existe porque agrupar por assunto espalhou as seis funções que
+ * sustentam o site — o cronômetro, o cronograma, os flashcards, o
+ * assistente, a agenda e os amigos — por quatro grupos diferentes, três
+ * deles abaixo da dobra no celular. Um recurso que a pessoa precisa
+ * procurar é um recurso que ela não usa, e um que ela não usa é um que
+ * não segura a assinatura.
+ *
+ * Os outros grupos seguem a ordem do dia de quem estuda: o que se faz
+ * agora, o que se revisa, o que se olha para saber como está indo, as
+ * outras pessoas, e por último a conta. Uma aba que não esteja em grupo
+ * nenhum cai no último, em vez de sumir.
+ */
+const GRUPOS_DE_ABAS = [
+  { nome: "Todo dia", abas: ["foco", "cronograma", "cartoes", "assistente", "rotina", "amigos"] },
+  { nome: "Estudar", abas: ["hoje", "estudo", "materias", "clinico", "temas"] },
+  { nome: "Fixar", abas: ["revisoes", "erros", "provas"] },
+  { nome: "Acompanhar", abas: ["desempenho", "progresso", "metas", "simulados"] },
+  { nome: "Com outras pessoas", abas: ["mentor"] },
+  { nome: "Você", abas: ["motivacao", "treino", "financeiro", "planos", "config"] },
+];
+
+/* Devolve [{ nome, itens }] só com o que existe na barra desta pessoa: um
+   grupo que ficaria vazio não é desenhado, senão sobraria um título
+   solto sem nada embaixo. */
+function agruparAbas(abas) {
+  const porId = new Map(abas.map((t) => [t.id, t]));
+  const grupos = [];
+  const usados = new Set();
+  for (const g of GRUPOS_DE_ABAS) {
+    const itens = [];
+    for (const id of g.abas) {
+      const t = porId.get(id);
+      if (t) { itens.push(t); usados.add(id); }
+    }
+    if (itens.length) grupos.push({ nome: g.nome, itens });
+  }
+  /* Aba nova que ninguém pôs em grupo nenhum: melhor no fim da lista do
+     que invisível. */
+  const sobrando = abas.filter((t) => !usados.has(t.id));
+  if (sobrando.length) {
+    if (grupos.length) grupos[grupos.length - 1].itens.push(...sobrando);
+    else grupos.push({ nome: "Outras", itens: sobrando });
+  }
+  return grupos;
+}
+
 const ICONE_ABA = {
   hoje: CalendarDays, foco: Target, materias: ListChecks, clinico: BookMarked,
   cronograma: GraduationCap, temas: Stethoscope,
   assistente: Sparkles, cartoes: Layers, revisoes: RotateCcw,
   rotina: CalendarClock, amigos: Users, mentor: User,
-  metas: Flame, desempenho: BarChart3, treino: Dumbbell, simulados: Flag,
-  progresso: TrendingUp, planos: Zap, config: Settings2,
+  metas: Flame, desempenho: BarChart3, treino: Dumbbell, financeiro: Wallet, simulados: Flag,
+  provas: FileText, erros: NotebookPen,
+  progresso: TrendingUp, planos: Zap, config: Settings2, estudo: Presentation, motivacao: Heart,
 };
 
 /* Diz se a tela é estreita. A escolha "forçar celular" no rodapé manda
@@ -36,7 +91,7 @@ function useTelaEstreita(forcado) {
   return forcado ? true : estreita;
 }
 
-function BarraLateral({ abas, atual, onEscolher, estreita, aberta, onFechar, aberto, setAberto, pro }) {
+function BarraLateral({ abas, atual, onEscolher, estreita, aberta, onFechar, aberto, setAberto, pro, limpo }) {
   /* No celular a gaveta some do caminho quando fechada; no computador ela
      continua na tela, só encolhida para a largura dos ícones. */
   const expandida = estreita ? true : aberto;
@@ -75,7 +130,28 @@ function BarraLateral({ abas, atual, onEscolher, estreita, aberta, onFechar, abe
       </div>
 
       <nav className="flex flex-col gap-1 px-3 pb-4" style={{ overflowY: "auto", flex: 1 }}>
-        {abas.map((t) => {
+        {agruparAbas(abas).map((grupo, iGrupo) => (
+          <Fragment key={grupo.nome}>
+            {/* O título do grupo só existe com a barra aberta. Encolhida,
+                ela é uma coluna de ícones, e um rótulo em caixa alta ali
+                viraria um borrão; um risco separa os grupos igual. */}
+            {expandida ? (
+              <span style={limpo ? {
+                fontSize: 11, fontWeight: 700, letterSpacing: "0.08em",
+                textTransform: "uppercase", color: T.ghost, whiteSpace: "nowrap",
+                padding: "0 12px", marginTop: iGrupo ? 16 : 6, marginBottom: 4,
+              } : {
+                fontFamily: F_MONO, fontSize: 9.5, letterSpacing: "0.24em",
+                textTransform: "uppercase", color: T.ghost, whiteSpace: "nowrap",
+                padding: "0 12px", marginTop: iGrupo ? 14 : 4, marginBottom: 4,
+              }}>{grupo.nome}</span>
+            ) : iGrupo ? (
+              <span aria-hidden="true" style={{
+                height: 1, background: T.line, margin: "9px 10px", flexShrink: 0,
+              }} />
+            ) : null}
+
+            {grupo.itens.map((t) => {
           const on = atual === t.id;
           const Ic = ICONE_ABA[t.id] || Layers;
           const trancada = !pro && ABAS_PRO.indexOf(t.id) >= 0;
@@ -84,7 +160,16 @@ function BarraLateral({ abas, atual, onEscolher, estreita, aberta, onFechar, abe
               onClick={() => { onEscolher(t.id); if (estreita) onFechar(); }}
               className="aba flex items-center gap-3 rounded-2xl px-3 whitespace-nowrap"
               data-on={on ? "1" : "0"}
-              style={{
+              style={limpo ? {
+                /* Limpo: item em frase normal; o escolhido ganha um fundo
+                   roxo bem leve e a letra no roxo da marca. */
+                minHeight: 40, flexShrink: 0, borderRadius: 10,
+                background: on ? soft("var(--neon)", 12) : "transparent",
+                border: "1px solid transparent",
+                color: on ? "var(--neon)" : T.dim,
+                fontSize: 14.5, fontWeight: on ? 700 : 500,
+                cursor: "pointer", justifyContent: expandida ? "flex-start" : "center",
+              } : {
                 minHeight: 44, flexShrink: 0,
                 background: on
                   ? `linear-gradient(100deg, ${soft(t.acc, 26)}, ${soft(t.acc, 8)})`
@@ -103,7 +188,7 @@ function BarraLateral({ abas, atual, onEscolher, estreita, aberta, onFechar, abe
               ) : null}
               {t.badge ? (
                 <span style={{
-                  fontFamily: F_MONO, fontSize: 10, background: T.warn, color: "var(--bg)",
+                  fontFamily: F_MONO, fontSize: 10, background: limpo ? "var(--btn)" : T.warn, color: limpo ? "#FFFFFF" : "var(--bg)",
                   borderRadius: 99, padding: "1px 6px", fontWeight: 700,
                   position: expandida ? "static" : "absolute", marginLeft: expandida ? 0 : 22,
                   marginTop: expandida ? 0 : -18,
@@ -111,8 +196,28 @@ function BarraLateral({ abas, atual, onEscolher, estreita, aberta, onFechar, abe
               ) : null}
             </button>
           );
-        })}
+            })}
+          </Fragment>
+        ))}
       </nav>
+
+      {/* Baixar o app: fica fora da lista de abas, no pé da barra, e some
+          para quem já está usando o app instalado. Leva à página pública
+          /app, que tem o passo a passo de cada aparelho. */}
+      {!instalado() ? (
+        <a href="/app" title={expandida ? undefined : "Baixar o app"}
+          className="aba flex items-center gap-3 rounded-2xl px-3 whitespace-nowrap"
+          style={{
+            minHeight: 42, flexShrink: 0, margin: "0 12px 14px", textDecoration: "none",
+            border: `1px solid ${soft("var(--neon)", 30)}`, background: soft("var(--neon)", 8),
+            color: "var(--neon)", fontSize: limpo ? 14 : 12.5, fontWeight: 700, letterSpacing: limpo ? 0 : "0.06em",
+            textTransform: limpo ? "none" : "uppercase", justifyContent: expandida ? "flex-start" : "center",
+            borderRadius: limpo ? 10 : undefined,
+          }}>
+          <Download size={16} style={{ flexShrink: 0 }} />
+          {expandida ? <span className="flex-1 text-left">Baixar o app</span> : null}
+        </a>
+      ) : null}
     </>
   );
 
@@ -149,7 +254,7 @@ function BarraLateral({ abas, atual, onEscolher, estreita, aberta, onFechar, abe
       style={{
         width: largura, flexShrink: 0, position: "sticky", top: 0,
         height: "100vh", borderRight: `1px solid ${T.line}`,
-        background: soft("var(--bg2)", 55),
+        background: limpo ? T.card : soft("var(--bg2)", 55),
         backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
         transition: "width .25s cubic-bezier(.2,.8,.2,1)",
       }}>
@@ -195,6 +300,21 @@ export default function Cadencia() {
     return () => { alive = false; };
   }, []);
 
+  /* O que passou sem ser cumprido vai para o próximo horário livre
+     (parte27). Ao abrir e a cada cinco minutos, que é o que pega a virada
+     do dia com o site aberto. Quando não há nada a fazer a função devolve
+     o mesmo objeto, e nada é redesenhado nem gravado. */
+  useEffect(() => {
+    if (!ready) return undefined;
+    const rodar = () => {
+      const agora = new Date();
+      setData((p) => rolarPendentes(p, todayISO(), agora.getHours() * 60 + agora.getMinutes()));
+    };
+    rodar();
+    const t = window.setInterval(rodar, 5 * 60000);
+    return () => window.clearInterval(t);
+  }, [ready]);
+
   useEffect(() => {
     if (!ready) return undefined;
     if (firstRef.current) { firstRef.current = false; return undefined; }
@@ -221,6 +341,20 @@ export default function Cadencia() {
     return () => { cancelado = true; if (saveRef.current) window.clearTimeout(saveRef.current); };
   }, [data, ready]);
 
+  /* Uma cópia guardada por meio dia de uso, sem ninguém pedir.
+   *
+   * É a parte que faltava: o app já sabia fazer backup, mas só quando a
+   * pessoa clicava — e quem perde dados é justamente quem não clicou.
+   * Roda uma vez por abertura, depois que os dados terminaram de carregar;
+   * a própria guardarVersao decide se já é hora e se mudou alguma coisa. */
+  useEffect(() => {
+    if (!ready) return undefined;
+    /* "data" aqui é o que acabou de ser carregado do disco, que é
+       exatamente o que se quer copiar. */
+    const t = window.setTimeout(() => { guardarVersao(data, "automática"); }, 4000);
+    return () => window.clearTimeout(t);
+  }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /* A personalização de aparência é escrita direto no <html>: assim vale
      também para o que é pintado fora do React, como o fundo da página e a
      cor da barra do navegador no celular. */
@@ -237,24 +371,40 @@ export default function Cadencia() {
       ambiente: tm.cor === "cadencia" || !neon2 ? null : neon2,
       fonte: (FONTES.find((f) => f.id === tm.fonte) || FONTES[0]).ui,
       tamanho: Number(tm.tamanho) || 1,
+      visual: tm.visual === "neon" ? "neon" : "limpo",
+      escuro: tm.escuro === "azul" ? "azul" : "preto",
+      /* No visual limpo, a cor "Cadência" é o roxo do próprio visual. */
+      corPropria: tm.cor !== "cadencia",
     };
   }, [data.tema]);
 
   /* Sem cor escolhida o objeto é vazio, e aí nada é sobrescrito: vale o
      THEME_CSS, que é o desenho de origem. */
-  const ambienteVars = useMemo(() => (
-    aparencia.ambiente ? ambienteDoTema(aparencia.ambiente, data.theme === "light") : {}
-  ), [aparencia.ambiente, data.theme]);
+  const limpo = aparencia.visual === "limpo";
+  const ambienteVars = useMemo(() => {
+    /* No limpo, fundo e painéis ficam neutros e só o acento acompanha a
+       cor escolhida (acentoLimpo, em base.jsx). */
+    if (limpo) return aparencia.corPropria ? acentoLimpo(aparencia.neon, aparencia.neon2, data.theme === "light") : {};
+    return aparencia.ambiente
+      ? ambienteDoTema(aparencia.ambiente, data.theme === "light", aparencia.neon, aparencia.neon2)
+      : {};
+  }, [limpo, aparencia.corPropria, aparencia.ambiente, aparencia.neon, aparencia.neon2, data.theme]);
 
   useEffect(() => {
     try {
       const raiz = document.documentElement;
       raiz.setAttribute("data-theme", data.theme);
-      raiz.setAttribute("data-layout", data.layout);
-      if (aparencia.neon) raiz.style.setProperty("--neon", aparencia.neon);
-      else raiz.style.removeProperty("--neon");
-      if (aparencia.neon2) raiz.style.setProperty("--neon2", aparencia.neon2);
-      else raiz.style.removeProperty("--neon2");
+      raiz.setAttribute("data-visual", aparencia.visual);
+      raiz.setAttribute("data-escuro", aparencia.escuro);
+      raiz.setAttribute("data-layout", "auto");
+      /* O acento NÃO é gravado aqui direto. Ele sai do ambiente, que o
+         calcula por tema — ver ambienteDoTema. Gravado cru, como era, ele
+         virava um valor só para o claro e o escuro: no tema claro o
+         <html> continuava com o ciano do escuro, e o fundo da página e a
+         barra do navegador ficavam com o acento do tema errado. Sem cor
+         própria escolhida o ambiente vem vazio, as duas somem do <html>,
+         e quem decide passa a ser o THEME_CSS, que tem um valor para
+         cada tema. */
 
       /* O ambiente também no <html>, para o que é pintado fora do React:
          o fundo do body e a barra do navegador no celular. Dentro do app
@@ -269,8 +419,16 @@ export default function Cadencia() {
       raiz.style.setProperty("--f-ui", aparencia.fonte);
       document.body.style.background = "var(--bg)";
       document.body.style.margin = "0";
+      /* A letra também no <body>: as telas cheias (Foco, cartões) vão por
+         portal direto para ele, fora da div raiz que define a fonte, e o
+         texto miúdo delas saía na fonte padrão do navegador, serifada. */
+      document.body.style.fontFamily = "var(--f-ui)";
+      document.body.style.fontWeight = "500";
+      document.body.style.color = "var(--ink)";
       const barra = document.querySelector('meta[name="theme-color"]');
-      const fundo = ambienteVars["--bg"] || (data.theme === "light" ? "#F1EFF8" : "#04030A");
+      const fundo = ambienteVars["--bg"] || (limpo
+        ? (data.theme === "light" ? "#F5F4F8" : aparencia.escuro === "azul" ? "#0B1120" : "#050507")
+        : (data.theme === "light" ? "#F1EFF8" : "#04030A"));
       if (barra) barra.setAttribute("content", fundo);
     } catch (e) { /* noop */ }
   }, [data.theme, data.layout, aparencia, ambienteVars]);
@@ -283,7 +441,9 @@ export default function Cadencia() {
     definir: (v) => setData((p) => ({ ...p, notaTema: v })),
   }), [data.theme, data.notaTema, setData]);
 
-  const LARGURA = data.layout === "movel" ? 470 : 1120;
+  /* O site decide sozinho pelo tamanho da tela: a escolha "Celular",
+     que forçava a coluna estreita, saiu. */
+  const LARGURA = 1120;
   const today = todayISO();
   const ativo = useMemo(() => montarCurriculo(data.cronogramaProprio), [data.cronogramaProprio]);
   const subjects = useMemo(() => ativo.lista.map((s) => subjectState(s, data.marks)), [ativo, data.marks]);
@@ -350,8 +510,15 @@ export default function Cadencia() {
       const anchor = rec.anchor || s.date || today;
       const marked = { ...(rec.done || {}) };
       for (const k of Object.keys(rec.undone || {})) delete marked[k];
-      const steps = degraus.map((st) => {
-        const due = addDays(anchor, st.d);
+      /* Os dias saem da escada JÁ esticada ou encurtada para este tópico:
+         o que a pessoa achou difícil volta mais cedo, o que ela domina
+         some da frente por mais tempo. A chave do degrau continua sendo o
+         dia do esqueleto (st.d) — é por ela que o que já foi marcado como
+         feito é encontrado, e mexer nisso apagaria o histórico de quem já
+         usa o site. */
+      const ajustados = diasDoTopico(degraus, rec, s.perf);
+      const steps = degraus.map((st, i) => {
+        const due = addDays(anchor, ajustados[i] === undefined ? st.d : ajustados[i]);
         const on = marked[String(st.d)] || null;
         let state = "futura";
         if (on) state = "feita";
@@ -430,15 +597,52 @@ export default function Cadencia() {
   const salvarAnotacao = useCallback((id, html) => {
     setData((p) => ({ ...p, anotacoes: { ...p.anotacoes, [id]: { html, atualizadoEm: Date.now() } } }));
   }, []);
-  const toggleStep = useCallback((id, days, anchor) => {
+  /* "comoFoi" é o que alimenta a adaptação: "facil", "ok", "dificil" ou
+     "errei". Sem ele — desmarcar um degrau, por exemplo — o fator não se
+     mexe, porque desmarcar é corrigir um clique, não relatar um estudo. */
+  const toggleStep = useCallback((id, days, anchor, comoFoi) => {
     setData((p) => {
-      const rec = { ...(p.reviews[id] || {}) };
-      const doneMap = { ...(rec.done || {}) }, undo = { ...(rec.undone || {}) };
+      let rec = { ...(p.reviews[id] || {}) };
       const k = String(days);
+      const jaFeito = !!(rec.done || {})[k];
+
+      if (!jaFeito && comoFoi) {
+        rec = depoisDaRevisao(rec, comoFoi, todayISO());
+        /* Errar recomeça o ciclo de hoje: depoisDaRevisao já zerou os
+           degraus e mudou a âncora, então não há degrau para marcar. */
+        if (comoFoi === "errei") {
+          return { ...p, reviews: { ...p.reviews, [id]: rec } };
+        }
+      }
+
+      const doneMap = { ...(rec.done || {}) }, undo = { ...(rec.undone || {}) };
       if (doneMap[k]) { delete doneMap[k]; undo[k] = 1; }
       else { doneMap[k] = todayISO(); delete undo[k]; }
       rec.done = doneMap; rec.undone = undo;
       if (!rec.anchor) rec.anchor = anchor;
+      return { ...p, reviews: { ...p.reviews, [id]: rec } };
+    });
+  }, []);
+
+  /* A dificuldade que a pessoa declara para um tópico. É o ponto de
+     partida da escada dele, antes de qualquer revisão ter acontecido. */
+  /* A prioridade de uma especialidade. Zero quer dizer "não entra na
+     semana": é diferente de "importa pouco", e quem monta a semana precisa
+     dessa diferença. */
+  const setPeso = useCallback((esp, valor) => {
+    setData((p) => ({
+      ...p,
+      pesos: { ...(p.pesos || {}), [esp]: Math.max(0, Math.min(10, Math.round(Number(valor) || 0))) },
+    }));
+  }, []);
+
+  const marcarDificuldade = useCallback((id, valor) => {
+    setData((p) => {
+      const rec = { ...(p.reviews[id] || {}) };
+      rec.dificuldade = Math.max(0, Math.min(10, Math.round(Number(valor) || 0)));
+      /* Mudar a dificuldade reabre a conta: o fator acumulado veio de uma
+         premissa que a pessoa acabou de corrigir. */
+      delete rec.facilidade;
       return { ...p, reviews: { ...p.reviews, [id]: rec } };
     });
   }, []);
@@ -482,6 +686,24 @@ export default function Cadencia() {
     }
   }, [ativo]);
 
+  /* O tempo de um bloco da agenda iniciado na hora (parte28): vira sessão
+     como o Foco, com o nome do bloco, e abre a mesma pergunta de tipo,
+     questões e acertos. */
+  const registrarBloco = useCallback((mins, b) => {
+    const id = uid();
+    const kind = b.type === "Questões" ? "Questões" : "Aula";
+    setData((p) => ({
+      ...p,
+      sessions: [{
+        id, date: todayISO(), subjectId: null, area: null,
+        topic: b.label, kind, minutes: mins,
+        questions: 0, correct: 0, notes: "bloco da agenda", createdAt: Date.now(),
+      }, ...p.sessions],
+    }));
+    setTipoSessao(kind); setQtdQuestoes(""); setQtdAcertos("");
+    setClassificar({ id, minutes: mins });
+  }, []);
+
   const salvarClassificacao = useCallback(() => {
     if (!classificar) return;
     const q = Math.max(0, Math.floor(Number(qtdQuestoes) || 0));
@@ -498,13 +720,26 @@ export default function Cadencia() {
   const P = usePomodoro({ pomo: data.pomo, onFocusDone, notify, pronto: ready });
   const [proAtivo, setProAtivo] = useState(false);
   const nuvem = useNuvem(data, setData, notify, ready, proAtivo);
+  /* O bloco da agenda iniciado na hora (parte28). Um cronômetro de cada
+     vez: iniciar um bloco pausa o Foco. */
+  const Pref = useRef(P);
+  Pref.current = P;
+  const pausarFoco = useCallback(() => { if (Pref.current.running) Pref.current.setRunning(false); }, []);
+  const B = useBlocoEmAndamento({ setData, notify, registrar: registrarBloco, pausarFoco });
+
   const gcal = useGoogleAgenda({ data, setData, notify, ladder, today, nuvem });
   const mentorInfo = useMentor(nuvem);
   const assinatura = useAssinatura(nuvem.sdk, nuvem.usuario);
   const pro = assinatura.pro;
-  useEffect(() => { setProAtivo(pro); }, [pro]);
-
   const souDono = ehDono(nuvem.usuario);
+  /* Quem vê o quê, dito pelo servidor. Enquanto ele não responde — ou se
+     ele não responder — valem as regras padrão aplicadas ao que a tela já
+     sabe, para a barra não nascer vazia nem tirar aba de quem paga. */
+  const ver = useMemo(
+    () => assinatura.recursos || recursosLocais(pro, souDono),
+    [assinatura.recursos, pro, souDono],
+  );
+  useEffect(() => { setProAtivo(pro); }, [pro]);
 
   /* Publica os três números que aparecem no ranking das salas. Fica aqui,
      e não dentro da aba Amigos, para o perfil continuar em dia mesmo de
@@ -518,11 +753,13 @@ export default function Cadencia() {
     minutos: P.modo === "corrido" ? P.corrido / 60 : (P.total - P.left) / 60,
   };
 
-  usePerfilPublico(nuvem, data.profile.name, data.sessions, today, data.mostrarDesempenho, aoVivo);
+  usePerfilPublico(nuvem, data.profile.name, data.sessions, today, data.mostrarDesempenho, aoVivo,
+    data.profile.apelido, data.profile.foto);
+  usePerfilFaculdade(nuvem, data.profile);
 
   /* Menu lateral: no celular é gaveta que abre por cima; no computador
      fica fixo e só encolhe para a largura dos ícones. */
-  const estreita = useTelaEstreita(data.layout === "movel");
+  const estreita = useTelaEstreita(false);
   const [menuAberto, setMenuAberto] = useState(false);
   const [menuFixo, setMenuFixo] = useState(true);
   useEffect(() => { if (!estreita) setMenuAberto(false); }, [estreita]);
@@ -531,14 +768,16 @@ export default function Cadencia() {
      conteúdo, como cada capítulo da página de entrada. Aba sem frase abre
      só com o título, que já basta. */
   const OLHOS = {
-    hoje: "o dia de hoje", foco: "cronômetro e sessões",
-    materias: "as 90 aulas da residência", clinico: "o seu ciclo clínico",
+    hoje: "o dia de hoje", foco: "cronômetro e sessões", estudo: "seu material vira aula interativa", motivacao: "para os dias em que estudar pesa",
+    materias: "as aulas da residência", clinico: "o seu ciclo clínico",
     cronograma: "de onde vêm as suas aulas", temas: "por especialidade",
     assistente: "pergunte sobre o seu progresso", cartoes: "repetição espaçada",
     revisoes: "a escada de revisão", rotina: "a semana e o Google Agenda",
     amigos: "quem estuda com você", mentor: "os seus alunos",
     metas: "simulados, provas e hábitos", desempenho: "acerto por área e matéria",
-    treino: "academia, fora da conta do estudo", simulados: "acerto contra os amigos",
+    provas: "prova enviada vira gabarito comentado",
+    erros: "o erro de hoje é o acerto da prova",
+    treino: "academia, fora da conta do estudo", financeiro: "as suas contas, só para você", simulados: "acerto contra os amigos",
     progresso: "o caminho até aqui",
     planos: "assinatura", config: "tudo que dá para ajustar",
   };
@@ -553,30 +792,53 @@ export default function Cadencia() {
     today,
   });
 
+  /* A frase que a notificação do dia vai carregar amanhã de manhã. Mora
+     aqui pelo mesmo motivo dos lembretes: é a raiz que sabe quantas
+     revisões estão atrasadas, e é preciso atualizar isso a cada abertura
+     mesmo que a pessoa nunca abra Configurações. */
+  usePushDoDia({
+    nuvem,
+    ligado: !!(data.lembretes && data.lembretes.push && data.lembretes.push.ligado),
+    hora: Math.max(0, Math.min(23, Math.round(
+      Number((data.lembretes && data.lembretes.push && data.lembretes.push.hora) ?? 7)))),
+    atrasadas: late.length,
+    cartoes: cartoesHoje,
+    blocos: blocosHoje,
+  });
+
   /* O convite para duelar também mora aqui, e pelo mesmo motivo: quem foi
      chamado precisa saber disso com qualquer aba aberta. Devolve quantos
      duelos esperam por mim, que é o número que acende na aba Amigos. */
-  const duelosEsperando = useConviteDeDuelo({ nuvem, notify });
+  const duelosEsperando = useConviteDeDuelo({
+    nuvem, notify, lembretes: !!(data.lembretes && data.lembretes.ligado),
+  });
 
   const TABS = [
     { id: "hoje", label: "Hoje", acc: "var(--a-CL)" },
     { id: "foco", label: "Foco", acc: "var(--a-PR)" },
+    { id: "estudo", label: "Estudo interativo", acc: "var(--neon)" },
     { id: "materias", label: "Matérias", acc: "var(--a-GO)" },
     ...(subjectsClinico.length ? [{ id: "clinico", label: "Ciclo clínico", acc: "var(--ok)" }] : []),
     { id: "cronograma", label: "Cronograma", acc: "var(--a-PE)" },
     { id: "temas", label: "Temas", acc: "var(--a-CI)" },
-    ...(souDono || pro ? [{ id: "assistente", label: "Assistente", acc: "var(--neon)" }] : []),
+    ...(ver.assistente ? [{ id: "assistente", label: "Assistente", acc: "var(--neon)" }] : []),
     { id: "cartoes", label: "Cartões", acc: "var(--neon)", badge: cartoesHoje },
     { id: "revisoes", label: "Revisões", acc: "var(--ok)", badge: late.length },
+    { id: "erros", label: "Caderno de erros", acc: "var(--warn)", badge: (data.erros || []).filter((e) => e.prox <= today).length },
+    ...(ver.provas ? [{ id: "provas", label: "Provas", acc: "var(--warn)" }] : []),
     { id: "rotina", label: "Agenda", acc: "var(--a-PE)" },
     { id: "amigos", label: "Amigos", acc: "var(--neon2)", badge: duelosEsperando },
     ...(mentorInfo.mentor ? [{ id: "mentor", label: "Mentor", acc: "var(--neon2)" }] : []),
     { id: "metas", label: "Metas", acc: "var(--warn)" },
     { id: "desempenho", label: "Desempenho", acc: "var(--a-CI)" },
-    /* Treino é só do dono: o servidor recusa a montagem para qualquer
-       outra conta, e deixar a aba na barra seria prometer o que a rota não
-       entrega. */
-    ...(souDono ? [{ id: "treino", label: "Treino", acc: "var(--ok)" }] : []),
+    /* A academia não tem nada a ver com prova de residência: ela nasce
+       fechada, e quem decide é o painel de acessos. O servidor também
+       recusa a montagem para quem não tem a aba, então deixá-la na barra
+       seria prometer o que a rota não entrega. */
+    ...(ver.treino ? [{ id: "treino", label: "Treino", acc: "var(--ok)" }] : []),
+    /* O financeiro pessoal do dono: só a conta dele vê (regra "dono"). */
+    ...(ver.financeiro ? [{ id: "financeiro", label: "Financeiro", acc: "var(--ok)" }] : []),
+    { id: "motivacao", label: "Motivação", acc: "var(--neon2)" },
     { id: "simulados", label: "Simulados", acc: "var(--a-CI)" },
     { id: "progresso", label: "Progresso", acc: "var(--a-CI)" },
     { id: "planos", label: pro ? "Plano" : "Assinar", acc: "var(--neon2)" },
@@ -592,7 +854,7 @@ export default function Cadencia() {
   useEffect(() => {
     if (assinatura.carregando || !mentorInfo.carregado) return;
     if (!TABS.some((t) => t.id === tab)) setTab("hoje");
-  }, [souDono, pro, tab, assinatura.carregando, mentorInfo.mentor, mentorInfo.carregado]);
+  }, [souDono, pro, ver, tab, assinatura.carregando, mentorInfo.mentor, mentorInfo.carregado]);
 
   useEffect(() => {
     const h = (e) => {
@@ -697,6 +959,7 @@ export default function Cadencia() {
 
   return (
     <AtivoContext.Provider value={ativo}>
+    <BlocoAtivoCtx.Provider value={B}>
     <TemaNotaContext.Provider value={temaDaNota}>
     {/* O ambiente do tema entra aqui, no style do próprio elemento: o
         THEME_CSS logo abaixo redeclara as mesmas variáveis num
@@ -705,9 +968,9 @@ export default function Cadencia() {
         valor é o mais específico que existe e vale para tudo que está
         dentro. Foi por isso que os painéis continuavam roxos num tema
         rosa mesmo com a variável certa no <html>. */}
-    <div data-theme={data.theme} style={{ background: T.bg, minHeight: "100vh", color: T.ink, fontFamily: F_UI, fontWeight: 500, "--acc": acc, ...ambienteVars }}>
+    <div data-theme={data.theme} data-visual={aparencia.visual} data-escuro={aparencia.escuro} style={{ background: T.bg, minHeight: "100vh", color: T.ink, fontFamily: F_UI, fontWeight: 500, "--acc": acc, ...ambienteVars }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Instrument+Serif&family=JetBrains+Mono:wght@400;500;600;700&family=Sora:wght@300;400;500;600;700&family=Manrope:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Instrument+Serif&family=JetBrains+Mono:wght@400;500;600;700&family=Sora:wght@300;400;500;600;700&family=Manrope:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@300;400;500;600;700&family=Oswald:wght@600;700&display=swap');
         ${THEME_CSS}
         *,*::before,*::after{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
         input,select,textarea,button{font-family:inherit}
@@ -731,6 +994,8 @@ export default function Cadencia() {
         @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
         @keyframes breathe{0%,100%{opacity:1}50%{opacity:.4}}
         .breathe{animation:breathe 2.6s ease-in-out infinite}
+        @keyframes pulsar-voz{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
+        .pulsar-voz{animation:pulsar-voz 1.6s ease-in-out infinite}
         @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
         .rise{animation:rise .38s cubic-bezier(.2,.8,.2,1) both}
         /* os painéis de uma aba entram em cascata, um logo depois do outro */
@@ -741,22 +1006,29 @@ export default function Cadencia() {
         .rise > *:nth-child(4){animation-delay:.17s}
         .rise > *:nth-child(5){animation-delay:.22s}
         .rise > *:nth-child(n+6){animation-delay:.26s}
-        .aura{position:fixed;pointer-events:none;z-index:0;border-radius:50%;filter:blur(100px);will-change:transform,opacity}
-        [data-theme="light"] .aura{filter:blur(120px);opacity:.5}
+        /* Sem filter:blur. O desfoque de 100px em quatro círculos de até
+           880px, animados, era refeito a cada quadro: no computador sem
+           aceleração boa o site inteiro caía para poucos quadros por
+           segundo, e o relógio de placas do Foco virava aos trancos. O
+           degradê radial, com mais paradas até o transparente, dá a mesma
+           mancha macia sem custo, e a animação mexe só em transform e
+           opacity, que a placa de vídeo faz sozinha. */
+        .aura{position:fixed;pointer-events:none;z-index:0;border-radius:50%;will-change:transform,opacity}
+        [data-theme="light"] .aura{opacity:.5}
         .aura-a{top:-18%;left:4%;width:56vw;height:56vw;max-width:820px;max-height:820px;
-          background:radial-gradient(circle,color-mix(in srgb,var(--neon) 34%,transparent),transparent 66%);
+          background:radial-gradient(circle,color-mix(in srgb,var(--neon) 30%,transparent) 0%,color-mix(in srgb,var(--neon) 14%,transparent) 34%,color-mix(in srgb,var(--neon) 4%,transparent) 54%,transparent 70%);
           animation:vaga 22s ease-in-out infinite}
         .aura-b{top:2%;right:-12%;width:50vw;height:50vw;max-width:740px;max-height:740px;
-          background:radial-gradient(circle,color-mix(in srgb,var(--neon2) 42%,transparent),transparent 66%);
+          background:radial-gradient(circle,color-mix(in srgb,var(--neon2) 36%,transparent) 0%,color-mix(in srgb,var(--neon2) 17%,transparent) 34%,color-mix(in srgb,var(--neon2) 5%,transparent) 54%,transparent 70%);
           animation:vaga 27s ease-in-out infinite reverse}
         /* a terceira aura tem cor própria (--aura3) para o conjunto não ser
            só duas cores; ela acompanha o tema escolhido, senão sobrava um
            verde-água no meio de um site rosa */
         .aura-c{bottom:-24%;left:28%;width:60vw;height:60vw;max-width:880px;max-height:880px;
-          background:radial-gradient(circle,color-mix(in srgb,var(--aura3) 24%,transparent),transparent 68%);
+          background:radial-gradient(circle,color-mix(in srgb,var(--aura3) 21%,transparent) 0%,color-mix(in srgb,var(--aura3) 10%,transparent) 34%,color-mix(in srgb,var(--aura3) 3%,transparent) 55%,transparent 72%);
           animation:vaga 33s ease-in-out infinite}
         .aura-d{top:34%;left:38%;width:38vw;height:38vw;max-width:520px;max-height:520px;
-          background:radial-gradient(circle,color-mix(in srgb,var(--neon2) 26%,transparent),transparent 70%);
+          background:radial-gradient(circle,color-mix(in srgb,var(--neon2) 22%,transparent) 0%,color-mix(in srgb,var(--neon2) 10%,transparent) 36%,color-mix(in srgb,var(--neon2) 3%,transparent) 56%,transparent 72%);
           animation:vaga 41s ease-in-out infinite reverse}
         @keyframes vaga{
           0%,100%{transform:translate3d(0,0,0) scale(1);opacity:.55}
@@ -862,10 +1134,10 @@ export default function Cadencia() {
         /* títulos grandes, finos e bem espaçados */
         h1,h2{text-rendering:geometricPrecision}
         ::selection{background:color-mix(in srgb,var(--neon) 35%,transparent);color:var(--ink)}
-        /* o cabeçalho da marca respira devagar */
-        @keyframes aceso{0%,100%{filter:drop-shadow(0 0 18px color-mix(in srgb,var(--neon2) 55%,transparent))}
-          50%{filter:drop-shadow(0 0 34px color-mix(in srgb,var(--neon2) 85%,transparent))}}
-        .marca{animation:aceso 5.5s ease-in-out infinite}
+        /* o brilho da marca é parado: um drop-shadow animado é refeito a
+           cada quadro, para sempre, mesmo com a página quieta */
+        .marca{filter:drop-shadow(0 0 24px color-mix(in srgb,var(--neon2) 65%,transparent))}
+        ${LIMPO_CSS}
       `}</style>
 
       {/* A cor vai resolvida, e não como var(--neon): o canvas lê a variável
@@ -873,24 +1145,30 @@ export default function Cadencia() {
           efeito da Cena (filho antes de pai). Lendo var(), ela pintava
           sempre com a cor anterior — foi por isso que a constelação
           continuava ciano depois de escolher rosa. */}
-      <Cena cor1={aparencia.neon || "#35E4FF"} cor2={aparencia.neon2 || "#A855F7"}
-        chave={`${data.theme}|${aparencia.neon}|${aparencia.neon2}`} />
+      {/* O fundo vivo (constelação, auras, fios de luz) é do visual neon.
+          O limpo é papel liso. */}
+      {!limpo ? (
+        <>
+          <Cena cor1={aparencia.neon || "#35E4FF"} cor2={aparencia.neon2 || "#A855F7"}
+            chave={`${data.theme}|${aparencia.neon}|${aparencia.neon2}`} />
 
-      {/* auras de luz que respiram, em ciano, verde e roxo */}
-      <div aria-hidden="true" className="aura aura-a" />
-      <div aria-hidden="true" className="aura aura-b" />
-      <div aria-hidden="true" className="aura aura-c" />
-      <div aria-hidden="true" className="aura aura-d" />
-      <div aria-hidden="true" style={{
-        position: "fixed", top: 0, left: 0, right: 0, height: 1, pointerEvents: "none", zIndex: 3,
-        background: "linear-gradient(90deg, transparent, var(--neon), transparent)", opacity: 0.5,
-      }} />
-      {/* clarão na base, como o das referências */}
-      <div aria-hidden="true" style={{
-        position: "fixed", bottom: -180, left: "50%", transform: "translateX(-50%)",
-        width: "120%", height: 340, pointerEvents: "none", zIndex: 0,
-        background: "radial-gradient(50% 100% at 50% 100%, color-mix(in srgb, var(--neon) 16%, transparent), transparent 70%)",
-      }} />
+          {/* auras de luz que respiram, em ciano, verde e roxo */}
+          <div aria-hidden="true" className="aura aura-a" />
+          <div aria-hidden="true" className="aura aura-b" />
+          <div aria-hidden="true" className="aura aura-c" />
+          <div aria-hidden="true" className="aura aura-d" />
+          <div aria-hidden="true" style={{
+            position: "fixed", top: 0, left: 0, right: 0, height: 1, pointerEvents: "none", zIndex: 3,
+            background: "linear-gradient(90deg, transparent, var(--neon), transparent)", opacity: 0.5,
+          }} />
+          {/* clarão na base, como o das referências */}
+          <div aria-hidden="true" style={{
+            position: "fixed", bottom: -180, left: "50%", transform: "translateX(-50%)",
+            width: "120%", height: 340, pointerEvents: "none", zIndex: 0,
+            background: "radial-gradient(50% 100% at 50% 100%, color-mix(in srgb, var(--neon) 16%, transparent), transparent 70%)",
+          }} />
+        </>
+      ) : null}
 
       {avisoDisco ? (
         <div className="px-5 sm:px-8 pt-4" style={{ position: "relative", zIndex: 2 }}>
@@ -910,13 +1188,14 @@ export default function Cadencia() {
       {needsOnboarding ? (
         <Onboarding nuvem={nuvem} aoLiberar={assinatura.recarregar}
           onDone={(name) => setData((p) => ({ ...p, profile: { ...p.profile, name, onboarded: true } }))}
-          theme={data.theme} toggleTheme={() => setData((p) => ({ ...p, theme: p.theme === "dark" ? "light" : "dark" }))} />
+          theme={data.theme} toggleTheme={() => setData((p) => ({ ...p, theme: p.theme === "dark" ? "light" : "dark" }))}
+          tema={data.tema} mudarTema={(m) => setData((p) => ({ ...p, tema: { ...p.tema, ...m, avisoVisual: false } }))} />
       ) : (
         /* O tamanho do texto escolhido em Progresso é aplicado com zoom só
            no conteúdo: as camadas de fundo ficam de fora, porque elas são
            fixas na tela e escalar junto deslocaria as auras. */
         <div className="flex" style={{ position: "relative", zIndex: 1, alignItems: "flex-start", zoom: aparencia.tamanho !== 1 ? aparencia.tamanho : undefined }}>
-          <BarraLateral abas={TABS} atual={tab} onEscolher={setTab} pro={pro}
+          <BarraLateral abas={TABS} atual={tab} onEscolher={setTab} pro={pro} limpo={limpo}
             estreita={estreita} aberta={menuAberto} onFechar={() => setMenuAberto(false)}
             aberto={menuFixo} setAberto={setMenuFixo} />
 
@@ -944,7 +1223,7 @@ export default function Cadencia() {
                    podia pegar a cópia invisível e travar esperando ela
                    aparecer. */}
                 {estreita ? (
-                  <div className="flex items-center justify-between" style={{ marginBottom: 16 }}>
+                  <div className="flex items-center justify-between gap-3" style={{ marginBottom: 16 }}>
                     <div className="flex items-center gap-3">{controlesEsquerda}</div>
                     <div className="flex items-center gap-2">{controlesDireita}</div>
                   </div>
@@ -960,7 +1239,8 @@ export default function Cadencia() {
                 )}
 
                 {/* A marca é só a onda: o nome vem escrito logo abaixo, então
-                    repetir o texto que existe dentro da logo ficaria dobrado. */}
+                    repetir o texto que existe dentro da logo ficaria dobrado.
+                    É a logo do site, a mesma nos dois visuais. */}
                 <button type="button" onClick={() => setTab("hoje")} aria-label="Ir para Hoje"
                   className="flex flex-col items-center mx-auto"
                   style={{ background: "none", border: "none", cursor: "pointer", padding: "2px 0 0" }}>
@@ -988,6 +1268,15 @@ export default function Cadencia() {
           </header>
 
           <main className="px-5 sm:px-8 pb-16">
+            {/* Quem já usava o site antes do visual limpo: o aviso de que ele
+                existe, com as opções para testar ali mesmo (parte33). */}
+            {/* A pergunta da faculdade e da especialidade, para quem ainda não preencheu (parte37). */}
+            <PerguntaFaculdadeNaEntrada ready={ready} data={data} setData={setData} nuvem={nuvem} notify={notify} />
+            {ready && data.tema && data.tema.avisoVisual ? (
+              <div className="mx-auto" style={{ maxWidth: LARGURA, marginBottom: 22 }}>
+                <AvisoVisualNovo data={data} setData={setData} />
+              </div>
+            ) : null}
             <div className="mx-auto rise surge" style={{ maxWidth: LARGURA }} key={tab}>
               {/* Cabeçalho da aba, na tipografia da página de entrada. Antes
                   o conteúdo começava direto no primeiro painel, e em telas
@@ -997,20 +1286,24 @@ export default function Cadencia() {
                 {OLHOS[tab] ? <span className="capa-olho">{OLHOS[tab]}</span> : null}
                 <h1 className="capa-t">{(TABS.find((t) => t.id === tab) || {}).label || ""}</h1>
               </div>
-              {tab === "hoje" && <Hoje {...{ data, setData, today, minToday, minWeek, qWeek, streak, late, done, bonusDone, addSession, delSession, notify, go: setTab, blocosHoje, projecao: pro ? projecao : null, pro, verPlanos: () => setTab("planos"), cartoesHoje }} />}
+              {tab === "hoje" && <Hoje {...{ data, setData, today, minToday, minWeek, qWeek, streak, late, done, bonusDone, addSession, delSession, notify, go: setTab, blocosHoje, projecao: pro ? projecao : null, pro, verPlanos: () => setTab("planos"), cartoesHoje, plano: assinatura.plano, emTeste: assinatura.emTeste, testeAcabou: assinatura.testeAcabou }} />}
               {tab === "foco" && <Foco {...{ data, setData, today, P, subjectId: pomoSubject, setSubjectId: setPomoSubject }} />}
-              {tab === "materias" && <Materias {...{ subjects: subjectsResidencia, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, salvarAnotacao, notify, setData, nuvem, pastas: data.pastas, vazioEm: subjectsClinico.length ? "clinico" : null, irPara: setTab }} />}
-              {tab === "clinico" && <Materias {...{ subjects: subjectsClinico, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, salvarAnotacao, notify, setData, nuvem, pastas: data.pastas, irPara: setTab }} />}
+              {tab === "materias" && <Materias {...{ sessions: data.sessions, reviews: data.reviews, today, addSession, marcarDificuldade, subjects: subjectsResidencia, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, folhas: data.folhas, salvarAnotacao, notify, setData, nuvem, pastas: data.pastas, vazioEm: subjectsClinico.length ? "clinico" : null, irPara: setTab }} />}
+              {tab === "clinico" && <Materias {...{ sessions: data.sessions, reviews: data.reviews, today, addSession, marcarDificuldade, subjects: subjectsClinico, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, folhas: data.folhas, salvarAnotacao, notify, setData, nuvem, pastas: data.pastas, irPara: setTab }} />}
               {tab === "cronograma" && <AbaCronograma {...{ data, setData, notify, nuvem, pro, verPlanos: () => setTab("planos") }} />}
               {tab === "temas" && !pro && <Bloqueado recurso={RECURSOS_PRO.temas} onVerPlanos={() => setTab("planos")} />}
               {tab === "rotina" && !pro && <Bloqueado recurso={RECURSOS_PRO.rotina} onVerPlanos={() => setTab("planos")} />}
+              {tab === "motivacao" && !ver.motivacao && <Bloqueado recurso={RECURSOS_PRO.motivacao} onVerPlanos={() => setTab("planos")} />}
+              {tab === "motivacao" && ver.motivacao && <Motivacao {...{ data, setData, nuvem, notify, today }} irPara={setTab} />}
+              {tab === "estudo" && !ver.estudo && <Bloqueado recurso={RECURSOS_PRO.estudo} onVerPlanos={() => setTab("planos")} />}
+              {tab === "estudo" && ver.estudo && <EstudoInterativo {...{ data, setData, nuvem, notify }} focoAtivo={aoVivo.ativo} />}
               {tab === "cartoes" && !pro && <Bloqueado recurso={RECURSOS_PRO.cartoes} onVerPlanos={() => setTab("planos")} />}
               {tab === "cartoes" && pro && <Cartoes {...{ data, setData, subjects, today, notify, nuvem, souDono }} />}
               {tab === "revisoes" && !pro && <Bloqueado recurso={RECURSOS_PRO.revisoes} onVerPlanos={() => setTab("planos")} />}
               {tab === "metas" && !pro && <Bloqueado recurso={RECURSOS_PRO.metas} onVerPlanos={() => setTab("planos")} />}
-              {tab === "planos" && <Precos usuario={nuvem.usuario} plano={assinatura.plano} aviso={assinatura.aviso} />}
-              {tab === "temas" && pro && <Temas {...{ subjects, setMark, minutos: minutesBySubject, sessoes: data.sessions, today }} />}
-              {tab === "assistente" && (souDono || pro) && (
+              {tab === "planos" && <Precos usuario={nuvem.usuario} plano={assinatura.plano} aviso={assinatura.aviso} testeAcabou={assinatura.testeAcabou} />}
+              {tab === "temas" && pro && <Temas {...{ subjects, setMark, minutos: minutesBySubject, sessoes: data.sessions, today, pesos: data.pesos, setPeso }} />}
+              {tab === "assistente" && ver.assistente && (
                 <div className="flex flex-col gap-5">
                   <Assistente {...{ data, setData, subjects, ladder, today, totals, minWeek, qWeek, notify, nuvem }} />
                   {/* O cronograma do Notion fica junto do assistente porque é ele quem
@@ -1018,14 +1311,22 @@ export default function Cadencia() {
                   <Notion {...{ nuvem, subjects, data, setData, notify }} />
                 </div>
               )}
-              {tab === "revisoes" && pro && <Revisoes {...{ rows: ladder, toggleStep, resetCycle, data, setData, degraus, notify }} />}
-              {tab === "rotina" && pro && <Rotina {...{ data, setData, gcal, today }} />}
+              {tab === "revisoes" && pro && <Revisoes {...{ rows: ladder, toggleStep, resetCycle, marcarDificuldade, data, setData, degraus, notify }} />}
+              {tab === "rotina" && pro && (
+                <div className="flex flex-col gap-5">
+                  <MontarSemana {...{ data, setData, subjects, ladder, notify }} />
+                  <Rotina {...{ data, setData, gcal, today, notify }} />
+                </div>
+              )}
               {tab === "amigos" && !pro && <Bloqueado recurso={RECURSOS_PRO.amigos} onVerPlanos={() => setTab("planos")} />}
               {tab === "amigos" && pro && <Amigos {...{ nuvem, notify, data, setData, irPara: setTab }} />}
               {tab === "metas" && pro && <Metas {...{ data, setData, today, qWeek, notify, ladder, gcal }} />}
               {tab === "mentor" && mentorInfo.mentor && <Mentor {...{ nuvem, notify, mentorInfo }} />}
               {tab === "desempenho" && <Desempenho {...{ data, today, addSession, delSession, notify }} />}
-              {tab === "treino" && souDono && <Treino {...{ data, setData, notify, today, nuvem }} />}
+              {tab === "provas" && ver.provas && <Provas {...{ nuvem, notify }} />}
+              {tab === "erros" && <CadernoErros {...{ data, setData, today, notify, nuvem, subjects }} />}
+              {tab === "treino" && ver.treino && <Treino {...{ data, setData, notify, today, nuvem }} />}
+              {tab === "financeiro" && ver.financeiro && <Financeiro {...{ data, setData, notify, nuvem, today }} />}
               {tab === "simulados" && pro && <Simulados {...{ nuvem, notify, irPara: setTab }} />}
               {tab === "simulados" && !pro && <Bloqueado recurso={RECURSOS_PRO.simulados} onVerPlanos={() => setTab("planos")} />}
               {tab === "progresso" && <Progresso {...{ data, byDay, today, totals, subjects }} />}
@@ -1035,22 +1336,6 @@ export default function Cadencia() {
 
           <footer className="px-6 pb-12 pt-2">
             <div className="mx-auto flex flex-col items-center gap-4" style={{ maxWidth: LARGURA }}>
-              <div className="flex items-center gap-2 rounded-full p-1" style={{ background: T.card, border: `1px solid ${T.line}` }}>
-                {[["auto", "Automático", <Monitor size={14} key="d" />], ["movel", "Celular", <Smartphone size={14} key="m" />]].map(([id, lb, ic]) => (
-                  <button key={id} type="button" onClick={() => setData((p) => ({ ...p, layout: id }))}
-                    className="inline-flex items-center gap-2 rounded-full px-4 py-2"
-                    style={{
-                      background: data.layout === id ? T.card3 : "transparent", border: "none",
-                      color: data.layout === id ? T.ink : T.dim, fontSize: 14,
-                      fontWeight: data.layout === id ? 700 : 500, cursor: "pointer",
-                    }}>{ic} {lb}</button>
-                ))}
-              </div>
-              <button type="button" onClick={() => setShowKeys(true)} className="inline-flex items-center gap-2"
-                style={{ background: "none", border: "none", color: T.faint, fontSize: 13.5, cursor: "pointer" }}>
-                <Keyboard size={14} /> atalhos de teclado
-              </button>
-              <div style={{ width: 34, height: 1, background: T.line2 }} />
               <div className="text-center">
                 <div style={{ fontSize: 14.5, fontWeight: 700, color: T.dim }}>Cadência Med</div>
                 <Mini style={{ marginTop: 5, lineHeight: 1.6, maxWidth: 420 }}>
@@ -1061,6 +1346,8 @@ export default function Cadencia() {
                     abrem sem carregar o aplicativo inteiro e é esse
                     endereço que se cola no checkout. */}
                 <div className="mt-4 flex items-center justify-center gap-3 flex-wrap">
+                  <a href="/app" style={{ color: T.faint, fontSize: 13, textDecoration: "none" }}>Baixar o app</a>
+                  <span style={{ color: T.ghost, fontSize: 13 }}>·</span>
                   <a href="/termos.html" style={{ color: T.faint, fontSize: 13, textDecoration: "none" }}>Termos de uso</a>
                   <span style={{ color: T.ghost, fontSize: 13 }}>·</span>
                   <a href="/privacidade.html" style={{ color: T.faint, fontSize: 13, textDecoration: "none" }}>Privacidade</a>
@@ -1129,6 +1416,18 @@ export default function Cadencia() {
         </div>
       ) : null}
 
+      {/* A aula que está gravando, visível em qualquer aba (ver parte24.jsx). */}
+      <AvisoGravandoAula irPara={setTab} />
+
+      {/* O bloco da agenda que está contando, visível em qualquer aba. */}
+      <BarraBlocoAtivo irPara={setTab} />
+
+      {/* Primeira vez neste aparelho: convida a ligar as notificações
+          (uma vez só por aparelho — ver parte21.jsx). */}
+      {!needsOnboarding && ready ? (
+        <ConviteNotificacoesAparelho data={data} setData={setData} nuvem={nuvem} notify={notify} />
+      ) : null}
+
       {toast ? (
         <div className="fixed left-1/2 bottom-7 rounded-full px-5 py-3"
           style={{ transform: "translateX(-50%)", background: T.card3, border: `1px solid ${T.line}`, color: T.ink, fontSize: 14.5, zIndex: 80, boxShadow: T.shadow, maxWidth: "90vw" }}>
@@ -1137,6 +1436,7 @@ export default function Cadencia() {
       ) : null}
     </div>
     </TemaNotaContext.Provider>
+    </BlocoAtivoCtx.Provider>
     </AtivoContext.Provider>
   );
 }

@@ -259,41 +259,13 @@ function Metas({ data, setData, today, qWeek, notify, ladder, gcal }) {
           </label>
         ) : null}
 
-        {/* A ligação de vez. Sem ela o Google devolve um token que vale cerca
-            de uma hora e some quando o aplicativo fecha, e a autorização
-            volta a aparecer toda vez que a pessoa abre o site. */}
-        {gcal && gcal.disponivel && gcal.podeLigarDeVez ? (
-          <div className="mt-4 rounded-2xl px-4 py-4"
-            style={{
-              background: soft(gcal.permanente ? "var(--ok)" : "var(--a-GO)", 10),
-              border: `1px solid ${soft(gcal.permanente ? "var(--ok)" : "var(--a-GO)", 30)}`,
-            }}>
-            {gcal.permanente ? (
-              <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
-                <span style={{ fontSize: 14.5, fontWeight: 600, color: T.ok }}>
-                  Conta do Google ligada de vez
-                </span>
-                <Mini>não precisa autorizar de novo ao abrir o app</Mini>
-              </div>
-            ) : (
-              <>
-                <div style={{ fontSize: 14.5, fontWeight: 600, color: T.ink }}>
-                  Cansado de autorizar toda vez que abre?
-                </div>
-                <Mini style={{ marginTop: 6, lineHeight: 1.6 }}>
-                  Ligue a conta de vez: você autoriza uma única vez e o site
-                  renova o acesso sozinho daí em diante, sem abrir janela
-                  nenhuma. Dá para desligar quando quiser.
-                </Mini>
-                <div className="mt-4">
-                  <Btn size="sm" tone="primary" disabled={!gcal.pronto} onClick={gcal.ligarDeVez}>
-                    Ligar a conta de vez
-                  </Btn>
-                </div>
-              </>
-            )}
-          </div>
-        ) : null}
+        {/* A ligação de vez. Sem ela o Google devolve um token que vale
+            cerca de uma hora e some quando o aplicativo fecha, e a
+            autorização volta a aparecer toda vez que a pessoa abre o
+            site. O cartão é o mesmo da aba Agenda, de propósito: um
+            componente só, e não duas cópias para divergirem. */}
+        <LigarGoogleDeVez gcal={gcal} />
+
         {/* Sem conta não há onde guardar a autorização, então o Google
             devolve um acesso de uma hora e a tela de autorizar volta a cada
             abertura. Dizer isso aqui evita a pessoa achar que é defeito. */}
@@ -370,47 +342,6 @@ function Metas({ data, setData, today, qWeek, notify, ladder, gcal }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   16 · PROGRESSO
-   ═══════════════════════════════════════════════════════════════════ */
-
-function Heatmap({ byDay, today, weeks = 22 }) {
-  const cells = [];
-  const end = weekStart(today);
-  const start = addDays(end, -7 * (weeks - 1));
-  let max = 1;
-  for (let i = 0; i < weeks * 7; i++) max = Math.max(max, byDay[addDays(start, i)] || 0);
-  for (let w = 0; w < weeks; w++) {
-    const col = [];
-    for (let d = 0; d < 7; d++) {
-      const iso = addDays(start, w * 7 + d);
-      const v = byDay[iso] || 0;
-      const lvl = v === 0 ? 0 : v < max * 0.25 ? 1 : v < max * 0.5 ? 2 : v < max * 0.75 ? 3 : 4;
-      col.push({ iso, v, lvl, future: iso > today });
-    }
-    cells.push(col);
-  }
-  const shade = [T.card2, soft("var(--ok)", 22), soft("var(--ok)", 42), soft("var(--ok)", 68), "var(--ok)"];
-  return (
-    <div className="overflow-x-auto">
-      <div className="flex gap-1" style={{ minWidth: weeks * 15 }}>
-        {cells.map((col, i) => (
-          <div key={i} className="flex flex-col gap-1">
-            {col.map((c) => (
-              <div key={c.iso} title={`${brDate(c.iso)} · ${fmtMin(c.v)}`}
-                style={{
-                  width: 11, height: 11, borderRadius: 3,
-                  background: c.future ? "transparent" : shade[c.lvl],
-                  border: c.future ? `1px dashed ${T.line}` : "none",
-                }} />
-            ))}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════════
    16c · CUPOM
    O código é conferido no servidor, nunca aqui: se a lista de cupons
    estivesse no navegador, bastaria abrir o código-fonte da página para
@@ -441,19 +372,31 @@ function Cupom({ nuvem, notify, aoLiberar }) {
   const [msg, setMsg] = useState("");
   const [bom, setBom] = useState(false);
 
+  /* O try/finally não é enfeite.
+     Sem ele, qualquer erro no meio do caminho escapa da função e o
+     setOcupado(false) nunca roda: o botão fica em "Conferindo…" para
+     sempre, sem mensagem nenhuma, e a pessoa não tem o que fazer a não
+     ser fechar o site. Foi exatamente o que aconteceu quando a função de
+     resgate sumiu num commit: o botão travava e nada dizia por quê. */
   const enviar = async () => {
     if (!codigo.trim()) { setBom(false); setMsg("Escreva o código."); return; }
     setOcupado(true); setMsg("");
-    const j = await resgatarCupom(nuvem, codigo.trim());
-    setOcupado(false);
-    setBom(!!j.ok);
-    setMsg(j.erro || j.mensagem || "");
-    if (j.ok) {
-      setCodigo(""); notify(j.mensagem || "Acesso liberado.");
-      /* A assinatura acabou de ser gravada pelo servidor. Perguntar de novo
-         agora é o que abre as abas na hora, sem depender de o navegador
-         conseguir ler a coleção por conta própria. */
-      if (aoLiberar) aoLiberar();
+    try {
+      const j = await resgatarCupom(nuvem, codigo.trim());
+      setBom(!!j.ok);
+      setMsg(j.erro || j.mensagem || "");
+      if (j.ok) {
+        setCodigo(""); notify(j.mensagem || "Acesso liberado.");
+        /* A assinatura acabou de ser gravada pelo servidor. Perguntar de novo
+           agora é o que abre as abas na hora, sem depender de o navegador
+           conseguir ler a coleção por conta própria. */
+        if (aoLiberar) aoLiberar();
+      }
+    } catch (e) {
+      setBom(false);
+      setMsg("Algo quebrou ao resgatar o cupom. Tente de novo, e se continuar avise o suporte.");
+    } finally {
+      setOcupado(false);
     }
   };
 
@@ -485,7 +428,40 @@ function Cupom({ nuvem, notify, aoLiberar }) {
   );
 }
 
-function ContaNuvem({ nuvem, notify }) {
+/* "Continuar com o Google": entra numa conta que já existe ou cria uma
+   nova, com o mesmo botão. O G colorido é o que o Google pede para o
+   botão de login dele, e é o que as pessoas reconhecem. */
+function BotaoGoogle({ onClick, disabled, cheio }) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} data-teste="entrar-google"
+      className={`toque-larg rounded-full inline-flex items-center justify-center gap-2.5 ${cheio ? "w-full" : ""}`}
+      style={{
+        padding: "11px 20px", fontSize: 14.5, fontWeight: 600, cursor: disabled ? "not-allowed" : "pointer",
+        background: "#fff", color: "#1f1f1f", border: "1px solid #dadce0", opacity: disabled ? 0.55 : 1,
+      }}>
+      <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+      </svg>
+      Continuar com o Google
+    </button>
+  );
+}
+
+/* Linha "ou" entre o Google e o e-mail. */
+function OuSeparador() {
+  return (
+    <div className="flex items-center gap-3" aria-hidden="true">
+      <span style={{ flex: 1, height: 1, background: T.line }} />
+      <span style={{ fontSize: 12, color: T.faint, letterSpacing: "0.1em" }}>OU</span>
+      <span style={{ flex: 1, height: 1, background: T.line }} />
+    </div>
+  );
+}
+
+function ContaNuvem({ nuvem, notify, aoLiberar }) {
   const [modo, setModo] = useState("entrar");
   /* Marcado por padrão: é o que a maioria quer, e quem está num computador
      de todo mundo desmarca. */
@@ -570,20 +546,36 @@ function ContaNuvem({ nuvem, notify }) {
     }
     setOcupado(false);
     if (e) { setMsg(e); return; }
+    await resgatarCupomDoForm();
+  };
 
-    /* Conta criada. Se veio cupom junto, ele é resgatado agora, já com a
-       sessão aberta: o servidor precisa do token para saber de quem é. */
+  const entrarGoogle = async () => {
+    setMsg(""); setOcupado(true);
+    const r = await nuvem.comGoogle(manter);
+    setOcupado(false);
+    if (r.erro) { setMsg(r.erro); return; }
+    if (r.redirecionou) return;
+    if (r.nova) await resgatarCupomDoForm();
+  };
+
+  /* Conta criada. Se veio cupom junto, ele é resgatado agora, já com a
+     sessão aberta: o servidor precisa do token para saber de quem é. */
+  const resgatarCupomDoForm = async () => {
     const cod = f.cupom.trim();
     setF({ nome: "", email: "", senha: "", cupom: "" });
     if (!cod) return;
     setOcupado(true);
-    const j = await resgatarCupom(nuvem, cod);
-    setOcupado(false);
-    if (j.ok) {
-      setMsg(j.mensagem || "Cupom aceito."); notify(j.mensagem || "Acesso liberado.");
-      if (aoLiberar) aoLiberar();
+    try {
+      const j = await resgatarCupom(nuvem, cod);
+      if (j.ok) {
+        setMsg(j.mensagem || "Cupom aceito."); notify(j.mensagem || "Acesso liberado.");
+        if (aoLiberar) aoLiberar();
+      } else setMsg(`Conta criada, mas o cupom não passou: ${j.erro}`);
+    } catch (e) {
+      setMsg("Conta criada, mas algo quebrou ao resgatar o cupom. Tente pelo campo de cupom em Configurações.");
+    } finally {
+      setOcupado(false);
     }
-    else setMsg(`Conta criada, mas o cupom não passou: ${j.erro}`);
   };
 
   return (
@@ -603,6 +595,13 @@ function ContaNuvem({ nuvem, notify }) {
             }}>{lb}</button>
         ))}
       </div>
+      {modo === "criar" ? <div className="mt-5"><AvisoTesteGratis /></div> : null}
+      {modo !== "senha" ? (
+        <div className="mt-5 flex flex-col gap-4" style={{ maxWidth: 420 }}>
+          <BotaoGoogle onClick={entrarGoogle} disabled={ocupado} cheio />
+          <OuSeparador />
+        </div>
+      ) : null}
       <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
         {modo === "criar" ? (
           <Field label="Seu nome"><TextInput value={f.nome} placeholder="Como quer ser chamado" onChange={(e) => set("nome", e.target.value)} /></Field>
@@ -674,8 +673,35 @@ function Aparencia({ data, setData }) {
         Clínica, do verde da Cirurgia e assim por diante.
       </Texto>
 
+      {/* ── o visual: limpo ou neon ──────────────────────────────────── */}
+      <div className="mt-6" data-teste="escolha-visual">
+        <Label>Visual</Label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+          {[
+            ["limpo", "Limpo", "Fundo liso, cartões brancos e o roxo da marca de destaque. O padrão."],
+            ["neon", "Neon", "O visual de antes: partículas, brilho e cores vivas."],
+          ].map(([id, nome, desc]) => {
+            const on = (tema.visual || "limpo") === id;
+            return (
+              <button key={id} type="button" onClick={() => mudar({ visual: id })}
+                className="text-left rounded-2xl px-4 py-3.5 brilhar"
+                style={{
+                  background: on ? soft("var(--neon)", 10) : "transparent",
+                  border: `1px solid ${on ? soft("var(--neon)", 50) : T.line}`,
+                  cursor: "pointer", color: T.ink,
+                }}>
+                <div className="flex items-center gap-2" style={{ fontSize: 15, fontWeight: 700 }}>
+                  {on ? <Check size={15} style={{ color: "var(--neon)" }} /> : null}{nome}
+                </div>
+                <Mini style={{ marginTop: 4, lineHeight: 1.5 }}>{desc}</Mini>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* ── claro ou escuro ─────────────────────────────────────────── */}
-      <div className="mt-6">
+      <div className="mt-6 pt-5" style={{ borderTop: `1px solid ${T.line}` }}>
         <Label>Fundo</Label>
         <div className="flex gap-2 mt-3 flex-wrap">
           {[["dark", "Escuro", <Moon size={14} key="e" />], ["light", "Claro", <Sun size={14} key="c" />]].map(([id, lb, ic]) => (
@@ -689,6 +715,27 @@ function Aparencia({ data, setData }) {
               }}>{ic} {lb}</button>
           ))}
         </div>
+              {/* O tom do escuro, no visual limpo: preto ou azul-noite. */}
+        {data.theme === "dark" && (tema.visual || "limpo") === "limpo" ? (
+          <div className="flex gap-2 mt-3 flex-wrap items-center" data-teste="tom-escuro">
+            <Mini style={{ marginRight: 4 }}>Tom do escuro:</Mini>
+            {[["preto", "Preto", "#050507"], ["azul", "Azul-noite", "#0B1120"]].map(([id, lb, cor]) => {
+              const on = (tema.escuro || "preto") === id;
+              return (
+                <button key={id} type="button" onClick={() => mudar({ escuro: id })}
+                  className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 brilhar"
+                  style={{
+                    background: on ? T.card3 : "transparent",
+                    border: `1px solid ${on ? T.line2 : T.line}`,
+                    color: on ? T.ink : T.dim, fontSize: 13.5, fontWeight: on ? 700 : 500, cursor: "pointer",
+                  }}>
+                  <span style={{ width: 14, height: 14, borderRadius: 99, background: cor, border: `1px solid ${T.line2}` }} />
+                  {lb}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
       </div>
 
       {/* ── cor de acento ───────────────────────────────────────────── */}
@@ -831,6 +878,102 @@ function Aparencia({ data, setData }) {
   );
 }
 
+/* ── constância ───────────────────────────────────────────────────────
+ *
+ * Um quadradinho por dia do último ano, mais escuro quanto mais tempo
+ * estudado. É o gráfico que responde à pergunta que nenhum total responde:
+ * "eu sou constante?". Trezentas horas em três meses de maratona e
+ * trezentas horas espalhadas por um ano são a mesma soma e duas histórias
+ * diferentes, e só esta tela mostra qual das duas é a sua.
+ *
+ * Dia sem estudo fica vazio, e não invisível: é o buraco que ensina.
+ */
+const SEMANAS_CONSTANCIA = 53;
+
+function Constancia({ sessions, today }) {
+  const { colunas, total, dias, maiorSeq } = useMemo(() => {
+    const porDia = {};
+    for (const s of (sessions || [])) {
+      if (!s || !s.date) continue;
+      porDia[s.date] = (porDia[s.date] || 0) + (Number(s.minutes) || 0);
+    }
+
+    /* A grade termina no domingo da semana de hoje, para a última coluna
+       ser a semana atual e não uma semana pela metade no meio do quadro. */
+    const fim = new Date(`${today}T12:00:00`);
+    fim.setDate(fim.getDate() + (6 - fim.getDay()));
+
+    const cols = [];
+    let soma = 0, quantos = 0, seq = 0, melhor = 0;
+    for (let c = SEMANAS_CONSTANCIA - 1; c >= 0; c--) {
+      const coluna = [];
+      for (let d = 0; d < 7; d++) {
+        const dia = new Date(fim);
+        dia.setDate(fim.getDate() - (c * 7) - (6 - d));
+        const iso = dia.toISOString().slice(0, 10);
+        const min = porDia[iso] || 0;
+        if (iso <= today) {
+          if (min > 0) { soma += min; quantos += 1; seq += 1; melhor = Math.max(melhor, seq); }
+          else seq = 0;
+        }
+        coluna.push({ iso, min, futuro: iso > today });
+      }
+      cols.unshift(coluna);
+    }
+    return { colunas: cols, total: soma, dias: quantos, maiorSeq: melhor };
+  }, [sessions, today]);
+
+  /* Quatro tons, por faixa de minutos. Escala fixa e não relativa ao
+     próprio máximo: relativa, um dia de quatro horas encolheria todos os
+     outros para quase invisíveis, e a grade passaria a mentir sobre um ano
+     inteiro por causa de um domingo. */
+  const tom = (min) => {
+    if (min <= 0) return T.card2;
+    if (min < 30) return soft("var(--neon)", 22);
+    if (min < 90) return soft("var(--neon)", 45);
+    if (min < 180) return soft("var(--neon)", 70);
+    return "var(--neon)";
+  };
+
+  return (
+    <Card className="px-6 py-6">
+      <H size={18} color="var(--neon)" icon={<Flame size={16} />}>Constância</H>
+      <Texto style={{ marginTop: 8 }}>
+        {dias} dia{dias === 1 ? "" : "s"} de estudo no último ano
+        {maiorSeq > 1 ? ` · maior sequência: ${maiorSeq} dias seguidos` : ""}
+        {total ? ` · ${fmtMin(total)} no total` : ""}
+      </Texto>
+
+      <div style={{ overflowX: "auto", marginTop: 16, paddingBottom: 4 }}>
+        <div style={{ display: "flex", gap: 3, minWidth: 0 }}>
+          {colunas.map((col, i) => (
+            <div key={i} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              {col.map((d) => (
+                <span key={d.iso}
+                  title={d.futuro ? "" : `${brDate(d.iso)}: ${d.min ? fmtMin(d.min) : "nada"}`}
+                  style={{
+                    width: 11, height: 11, borderRadius: 3,
+                    background: d.futuro ? "transparent" : tom(d.min),
+                    border: d.futuro ? "none" : `1px solid ${T.line}`,
+                    display: "block",
+                  }} />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-3 flex items-center gap-2">
+        <Mini>menos</Mini>
+        {[0, 20, 60, 120, 240].map((m) => (
+          <span key={m} style={{ width: 11, height: 11, borderRadius: 3, background: tom(m), border: `1px solid ${T.line}` }} />
+        ))}
+        <Mini>mais</Mini>
+      </div>
+    </Card>
+  );
+}
+
 function Progresso({ data, byDay, today, totals, subjects }) {
   const ativo = useAtivo();
 
@@ -894,6 +1037,7 @@ function Progresso({ data, byDay, today, totals, subjects }) {
 
   return (
     <div className="flex flex-col gap-5">
+      <Constancia sessions={data.sessions} today={today} />
       <Card className="px-6 sm:px-8 py-7">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-7">
           <div><Num size={34}>{fmtMin(totals.min)}</Num><Label style={{ marginTop: 9 }}>horas registradas</Label></div>
@@ -906,12 +1050,6 @@ function Progresso({ data, byDay, today, totals, subjects }) {
             <Label style={{ marginTop: 9 }}>{totals.q ? `acerto em ${totals.q} questões` : "sem questões lançadas"}</Label>
           </div>
         </div>
-      </Card>
-
-      <Card className="px-6 py-6">
-        <H size={18} color="var(--ok)" icon={<Flame size={16} />}>Constância</H>
-        <Label style={{ marginTop: 4 }}>cada quadradinho é um dia, das últimas 22 semanas</Label>
-        <div className="mt-5"><Heatmap byDay={byDay} today={today} /></div>
       </Card>
 
       <Card className="px-5 sm:px-7 py-6">
@@ -1427,6 +1565,42 @@ function NumerosEntrada({ itens }) {
   );
 }
 
+/* A prova comentada: uma questão com a certa marcada e o comentário de
+   cada alternativa, que é o que a aba faz de diferente de um gabarito. */
+function FiguraProva() {
+  const alternativas = [
+    ["A", "Antibiótico de amplo espectro", false, "não há foco infeccioso no caso"],
+    ["B", "Diurético de alça", true, "alivia a congestão, que é o que o quadro mostra"],
+    ["C", "Corticoide em pulso", false, "seria a conduta se houvesse atividade inflamatória"],
+  ];
+  return (
+    <div className="flex flex-col gap-3">
+      {alternativas.map(([letra, texto, certa, porque], i) => (
+        <div key={letra} className="pe-peca rounded-2xl px-4 py-3.5"
+          style={{
+            animationDelay: `${0.12 + i * 0.12}s`,
+            background: certa ? soft("var(--ok)", 12) : soft("var(--ink)", 4),
+            border: `1px solid ${certa ? soft("var(--ok)", 38) : soft("var(--ink)", 9)}`,
+          }}>
+          <div className="flex items-start gap-3">
+            <span style={{
+              fontFamily: F_MONO, fontSize: 12.5, fontWeight: 700, marginTop: 1,
+              color: certa ? T.ok : T.ghost, flexShrink: 0,
+            }}>{letra}</span>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600, color: T.ink }}>
+              {texto}
+            </span>
+            {certa ? <Check size={15} style={{ color: "var(--ok)", flexShrink: 0, marginTop: 2 }} /> : null}
+          </div>
+          <div style={{ fontSize: 12.5, lineHeight: 1.55, color: T.faint, marginTop: 7, paddingLeft: 23 }}>
+            {porque}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* Os capítulos do meio, na ordem em que aparecem. Ficam numa lista só para
    o trilho da direita e as seções saírem do mesmo lugar — acrescentar um
    capítulo é acrescentar um item aqui. */
@@ -1434,9 +1608,8 @@ const CAPITULOS = [
   {
     id: "cronograma", rotulo: "Cronograma", cor: "var(--a-GO)", x: "78%",
     titulo: "O cronograma inteiro, num lugar só.",
-    texto: `As ${CURRICULUM.length} aulas principais e ${TOTAL_BONUS} tópicos, divididos pelas cinco áreas da prova. Você marca o que fez, e o radar mostra onde está atrasado. Sem planilha, sem caderno de controle e sem montar cronograma do zero.`,
+    texto: `Todas as aulas e tópicos, divididos pelas cinco áreas da prova. Você marca o que fez, e o radar mostra onde está atrasado. Sem planilha, sem caderno de controle e sem montar cronograma do zero.`,
     figura: <FiguraGrade />,
-    numeros: [[String(CURRICULUM.length), "aulas"], [String(TOTAL_BONUS), "tópicos"], ["5", "áreas"]],
   },
   {
     id: "revisao", rotulo: "Revisão", cor: "var(--ok)", x: "74%",
@@ -1457,14 +1630,20 @@ const CAPITULOS = [
     figura: <FiguraAnel />,
   },
   {
+    id: "provas", rotulo: "Provas", cor: "var(--warn)", x: "76%",
+    titulo: "A prova que você fez, comentada.",
+    texto: "Mande o PDF ou a foto de uma prova e receba cada questão de volta com a alternativa certa e o comentário de TODAS as alternativas, explicando o conteúdo. Gabarito você já tem; o que ensina é saber por que a errada está errada.",
+    figura: <FiguraProva />,
+  },
+  {
     id: "amigos", rotulo: "Amigos", cor: "var(--neon2)", x: "74%",
     titulo: "Estudar junto rende mais.",
-    texto: "Combine um nome e uma senha com quem estuda com você e abram uma sala. Horas, questões e acerto de todo mundo no mesmo ranking, e quem está estudando agora aparece aceso.",
+    texto: "Chame quem estuda com você pelo e-mail, sem combinar sala nem senha, e disputem questões ao vivo que a IA escreve do material que vocês mandarem. Tem também a sala com ranking de horas, questões e acerto, e quem está estudando agora aparece aceso.",
     figura: <FiguraRanking />,
   },
 ];
 
-function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar }) {
+function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar, tema, mudarTema }) {
   /* A conta vem antes do nome.
    *
    * Pedir só o nome deixava a pessoa entrar, estudar, e descobrir depois
@@ -1503,12 +1682,37 @@ function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar }) {
        fecha esta página assim que a sessão abre. */
     if (modo === "criar") {
       onDone(f.nome.trim() || "Estudante");
+      await resgatarDoForm();
+    }
+  };
+
+  /* O Google cria a conta ou entra na que já existe. Conta nova fecha as
+     boas-vindas com o nome do Google (ou o digitado) e resgata o cupom do
+     campo, se tiver; conta que já existia é tratada no componente raiz,
+     como no entrar por e-mail. */
+  const entrarGoogle = async () => {
+    setMsg(""); setOcupado(true);
+    const r = await nuvem.comGoogle(manter);
+    setOcupado(false);
+    if (r.erro) { setMsg(r.erro); return; }
+    if (r.redirecionou || !r.nova) return;
+    onDone(r.nome || f.nome.trim() || "Estudante");
+    await resgatarDoForm();
+  };
+
+  const resgatarDoForm = async () => {
+    {
       const cod = f.cupom.trim();
       if (cod) {
         setOcupado(true);
-        const j = await resgatarCupom(nuvem, cod);
-        setOcupado(false);
-        if (!j.ok) setMsg(`Conta criada, mas o cupom não passou: ${j.erro}`);
+        try {
+          const j = await resgatarCupom(nuvem, cod);
+          if (!j.ok) setMsg(`Conta criada, mas o cupom não passou: ${j.erro}`);
+        } catch (e) {
+          setMsg("Conta criada, mas algo quebrou ao resgatar o cupom. Tente pelo campo de cupom em Configurações.");
+        } finally {
+          setOcupado(false);
+        }
       }
     }
   };
@@ -1589,6 +1793,13 @@ function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar }) {
      capítulo de criar conta, lá embaixo. */
   const campos = (
     <div className="flex flex-col gap-4">
+      {modo === "criar" ? <AvisoTesteGratis compacto /> : null}
+      {!conectando ? (
+        <>
+          <BotaoGoogle onClick={entrarGoogle} disabled={ocupado} cheio />
+          <OuSeparador />
+        </>
+      ) : null}
       {modo === "criar" ? (
         <Field label="Seu nome">
           <TextInput value={f.nome} placeholder="Como quer ser chamado"
@@ -1612,6 +1823,16 @@ function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar }) {
             onChange={(e) => set("cupom", e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") enviar(); }} />
         </Field>
+      ) : null}
+      {modo === "criar" && mudarTema ? (
+        /* O visual do site, escolhido já na inscrição. Vale também para
+           quem cria a conta pelo botão do Google, lá em cima: a escolha fica
+           guardada assim que é tocada. */
+        <div data-teste="inscricao-visual" className="flex flex-col gap-2">
+          <Label>Visual do site</Label>
+          <EscolhaVisual tema={tema} theme={theme} mudarTema={mudarTema} compacto />
+          <div style={{ fontSize: 12.5, color: T.faint }}>Dá para trocar depois em Configurações, Aparência.</div>
+        </div>
       ) : null}
       {modo === "entrar" ? (
         <label className="flex items-center gap-2.5" style={{ cursor: "pointer" }}>
@@ -1684,22 +1905,25 @@ function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar }) {
               <p className="pe-rev pe-p" data-rev style={{ transitionDelay: ".14s" }}>
                 O cronograma inteiro, a revisão que volta na hora certa e os seus
                 flashcards, no mesmo lugar, no computador e no celular.
-                {" "}{CURRICULUM.length} aulas e {TOTAL_BONUS} tópicos já prontos para marcar.
               </p>
               <div className="pe-rev mt-8 flex gap-3 flex-wrap" data-rev style={{ transitionDelay: ".2s" }}>
                 <button type="button" className="pe-cta pe-cheio" onClick={() => irPara("conta")}>
-                  Criar minha conta <ArrowUpRight size={17} />
+                  Criar conta · {DIAS_TESTE} dias grátis <ArrowUpRight size={17} />
                 </button>
                 <button type="button" className="pe-cta pe-vazio"
                   onClick={() => (semNuvem ? irPara("conta") : abrirEntrar())}>
                   Já tenho conta
                 </button>
               </div>
+              <p className="pe-rev" data-rev data-teste="entrada-teste-gratis"
+                style={{ marginTop: 12, fontSize: 13.5, color: T.faint, transitionDelay: ".22s" }}>
+                {DIAS_TESTE} dias grátis com todas as funções liberadas, sem cartão. Depois você decide se assina.
+              </p>
               <div className="pe-rev mt-10" data-rev style={{ transitionDelay: ".26s" }}>
                 <NumerosEntrada itens={[
-                  [String(CURRICULUM.length), "aulas"],
-                  [String(TOTAL_BONUS), "tópicos"],
                   ["5", "áreas da prova"],
+                  [String(DIAS_TESTE), "dias grátis"],
+                  ["100%", "das funções no teste"],
                 ]} />
               </div>
             </div>
@@ -1770,6 +1994,7 @@ function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar }) {
             {/* Exigência prática, não enfeite: a LGPD pede que esteja
                 escrito o que se coleta, e a plataforma de pagamento pede
                 o endereço dos termos para aprovar o produto. */}
+            <a className="pe-link" href="/app">Baixar o app</a>
             <a className="pe-link" href="/termos.html">Termos de uso</a>
             <a className="pe-link" href="/privacidade.html">Privacidade</a>
           </div>
@@ -1852,7 +2077,7 @@ function SecaoConta({
             <p className="pe-rev pe-p" data-rev style={{ transitionDelay: ".14s" }}>
               {semNuvem
                 ? "A sincronização não está disponível agora, mas nada disso trava: escreva seu nome e comece. Dá para criar a conta depois, e o que você já tiver anotado vai junto."
-                : `O cronograma com as ${CURRICULUM.length} aulas e ${TOTAL_BONUS} tópicos, o cronômetro e o registro das suas sessões são de graça, para sempre. A conta é o que guarda tudo isso e leva de um aparelho para o outro.`}
+                : `Criando a conta, você tem ${DIAS_TESTE} dias grátis com todas as funções liberadas, sem cartão e sem cobrança. Depois decide se assina. O cronograma com todas as aulas e tópicos, o cronômetro e o registro das suas sessões continuam de graça, para sempre.`}
             </p>
             {!semNuvem ? (
               <div className="pe-rev mt-7" data-rev style={{ transitionDelay: ".2s" }}>
@@ -1963,11 +2188,12 @@ function SecaoPlanos({ irPara }) {
           </span>
         </div>
         <h2 className="pe-rev pe-t pe-t2 mt-5" data-rev style={{ transitionDelay: ".12s", maxWidth: 780 }}>
-          Assine agora,<br />pelo preço de lançamento.
+          {DIAS_TESTE} dias grátis,<br />depois o preço de lançamento.
         </h2>
         <p className="pe-rev pe-p" data-rev style={{ transitionDelay: ".16s" }}>
-          Os valores abaixo são os de lançamento e valem para quem assina agora.
-          Quem assinar mantém o preço enquanto a assinatura ficar ativa.
+          Crie a conta e use todas as funções liberadas por {DIAS_TESTE} dias, sem cartão e sem cobrança.
+          Depois, se quiser continuar, os valores abaixo são os de lançamento, e quem
+          assinar mantém o preço enquanto a assinatura ficar ativa.
         </p>
 
         <div className="mt-10 grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -2027,7 +2253,7 @@ function SecaoPlanos({ irPara }) {
                     <button type="button"
                       className={`pe-cta w-full ${destaque ? "pe-cheio" : "pe-vazio"}`}
                       onClick={() => abrir(k)}>
-                      {CHECKOUT[k] ? `Assinar ${p.rotulo.toLowerCase()}` : "Criar conta e assinar"}
+                      {CHECKOUT[k] ? `Assinar ${p.rotulo.toLowerCase()}` : `Começar ${DIAS_TESTE} dias grátis`}
                       <ArrowUpRight size={16} />
                     </button>
                   </div>
@@ -2057,9 +2283,9 @@ function SecaoPlanos({ irPara }) {
           <Card className="px-6 py-5" flat>
             <Mini style={{ lineHeight: 1.7 }}>
               Crie sua conta antes de assinar e pague com o mesmo e-mail: é por ele
-              que a assinatura é reconhecida. E o cronograma completo com
-              as {CURRICULUM.length} aulas e {TOTAL_BONUS} tópicos, o cronômetro e o
-              registro das sessões continuam de graça, para sempre.
+              que a assinatura é reconhecida. E o cronograma completo com todas
+              as aulas e tópicos, o cronômetro e o registro das sessões continuam
+              de graça, para sempre.
             </Mini>
           </Card>
         </div>

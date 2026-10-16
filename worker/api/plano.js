@@ -19,11 +19,12 @@
  */
 import {
   json, corpoJson, quemPede, ehDono, contaDeServico, tokenDeAcesso,
-  BASE_FIRESTORE,
+  BASE_FIRESTORE, regrasGravadas, recursosDe, fimDoTeste, PLANO_TESTE,
 } from "./_comum.js";
 
 const texto = (v) => (v && v.stringValue) || "";
 const numero = (v) => Number((v && (v.doubleValue || v.integerValue)) || 0);
+const mapa = (v) => ((v && v.mapValue && v.mapValue.fields) || {});
 
 export async function onRequest({ request, env }) {
   if (request.method !== "POST") return json({ erro: "Método não permitido." }, 405);
@@ -38,11 +39,6 @@ export async function onRequest({ request, env }) {
   const pessoa = await quemPede(corpo.token, env.FIREBASE_API_KEY);
   if (!pessoa) return json({ erro: "Sessão inválida. Entre de novo." }, 401);
 
-  /* O dono não tem assinatura gravada, e não deveria precisar de uma. */
-  if (ehDono(pessoa.email)) {
-    return json({ ok: true, pro: true, plano: "dono", validoAte: 0 });
-  }
-
   const conta = contaDeServico(env);
   if (!conta) return json({ erro: "Conta de serviço inválida." }, 500);
 
@@ -50,25 +46,85 @@ export async function onRequest({ request, env }) {
   try { token = await tokenDeAcesso(conta); }
   catch (e) { return json({ erro: "Não consegui autenticar no banco." }, 500); }
 
-  const r = await fetch(`${BASE_FIRESTORE}/assinaturas/${pessoa.uid}`, {
+  /* Quem vê o quê. Vem junto do plano porque é a mesma pergunta da tela
+     ("o que eu posso abrir?") e porque uma segunda ida ao servidor só
+     para isto deixaria a barra de abas piscando: ela desenharia sem as
+     abas e as acrescentaria um instante depois. */
+  const regras = regrasGravadas(await (async () => {
+    const c = await fetch(`${BASE_FIRESTORE}/config/recursos`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return c.ok ? c.json().catch(() => null) : null;
+  })());
+
+  /* O dono não tem assinatura gravada, e não deveria precisar de uma. */
+  if (ehDono(pessoa.email)) {
+    return json({
+      ok: true, pro: true, plano: "dono", validoAte: 0,
+      recursos: recursosDe({ dono: true, pro: true, regras }),
+    });
+  }
+
+  const ler = () => fetch(`${BASE_FIRESTORE}/assinaturas/${pessoa.uid}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
+  let r = await ler();
+
+  /* Conta nova, ainda sem nada gravado: começa o teste grátis. Grava só se
+     o documento continuar não existindo (currentDocument.exists=false): um
+     cupom resgatado no mesmo instante, logo depois de criar a conta, nunca
+     é atropelado pelo teste. Gravando ou não, lê de novo e segue. */
+  if (r.status === 404) {
+    const fim = fimDoTeste(pessoa.criadaEm);
+    if (fim > Date.now()) {
+      await fetch(`${BASE_FIRESTORE}/assinaturas/${pessoa.uid}?currentDocument.exists=false`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fields: {
+            plano: { stringValue: PLANO_TESTE },
+            email: { stringValue: pessoa.email },
+            validoAte: { doubleValue: fim },
+            cortesia: { booleanValue: false },
+            atualizadoEm: { doubleValue: Date.now() },
+          },
+        }),
+      }).catch(() => null);
+      r = await ler();
+    }
+  }
 
   /* 404 é conta sem assinatura, que é uma resposta legítima. Qualquer outro
      erro é problema do banco, e dizer "sem plano" nesse caso mandaria para
      a tela de pagamento quem já pagou. */
-  if (r.status === 404) return json({ ok: true, pro: false, plano: "", validoAte: 0 });
+  if (r.status === 404) {
+    return json({
+      ok: true, pro: false, plano: "", validoAte: 0,
+      recursos: recursosDe({ dono: false, pro: false, regras }),
+    });
+  }
   if (!r.ok) return json({ erro: "Não consegui conferir seu plano agora." }, 502);
 
   const j = await r.json().catch(() => null);
   const f = (j || {}).fields || {};
   const validoAte = numero(f.validoAte);
+  const pro = validoAte > Date.now();
+
+  /* Liberação avulsa: o dono pode abrir UMA aba para UMA pessoa, sem
+     mexer na regra geral nem dar assinatura inteira a ela. */
+  const liberados = {};
+  for (const [k, v] of Object.entries(mapa(f.recursos))) {
+    if ((v || {}).booleanValue === true) liberados[k] = true;
+  }
 
   return json({
     ok: true,
-    pro: validoAte > Date.now(),
+    pro,
     plano: texto(f.plano),
     validoAte,
+    /* teste: está nos 3 dias grátis (pro) ou eles já acabaram (!pro). */
+    teste: texto(f.plano) === PLANO_TESTE,
     cortesia: !!((f.cortesia || {}).booleanValue),
+    recursos: recursosDe({ dono: false, pro, regras, liberados }),
   });
 }

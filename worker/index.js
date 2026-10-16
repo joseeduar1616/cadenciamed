@@ -22,8 +22,20 @@ import { onRequest as lerFoto } from "./api/ler-foto.js";
 import { onRequest as buscarImagem } from "./api/buscar-imagem.js";
 import { onRequest as google } from "./api/google.js";
 import { onRequest as treinoIa } from "./api/treino-ia.js";
+import { onRequest as refeicaoIa } from "./api/refeicao-ia.js";
+import { onRequest as financasIa } from "./api/financas-ia.js";
+import { onRequest as dominios, garantirDominios } from "./api/liberar-dominios.js";
+import { onRequest as planoIa } from "./api/plano-ia.js";
 import { onRequest as duplas } from "./api/duplas.js";
 import { onRequest as questoesIa } from "./api/questoes-ia.js";
+import { onRequest as provasIa } from "./api/provas-ia.js";
+import { onRequest as provas } from "./api/provas.js";
+import { onRequest as push, enviarRodada } from "./api/push.js";
+import { onRequest as conversas } from "./api/conversas.js";
+import { onRequest as aulaIa } from "./api/aula-ia.js";
+import { onRequest as folhaIa } from "./api/folha-ia.js";
+import { onRequest as estudoIa } from "./api/estudo-ia.js";
+import { onRequest as motivacaoIa } from "./api/motivacao-ia.js";
 
 const ROTAS = {
   "/api/assistente": assistente,
@@ -41,8 +53,20 @@ const ROTAS = {
   "/api/buscar-imagem": buscarImagem,
   "/api/google": google,
   "/api/treino-ia": treinoIa,
+  "/api/refeicao-ia": refeicaoIa,
+  "/api/financas-ia": financasIa,
+  "/api/liberar-dominios": dominios,
+  "/api/plano-ia": planoIa,
   "/api/duplas": duplas,
   "/api/questoes-ia": questoesIa,
+  "/api/provas-ia": provasIa,
+  "/api/provas": provas,
+  "/api/push": push,
+  "/api/conversas": conversas,
+  "/api/aula-ia": aulaIa,
+  "/api/folha-ia": folhaIa,
+  "/api/estudo-ia": estudoIa,
+  "/api/motivacao-ia": motivacaoIa,
 };
 
 /* ── quem pode chamar de outro endereço ────────────────────────────────
@@ -129,5 +153,32 @@ export default {
 
     /* Qualquer outra coisa é arquivo do site. */
     return env.ASSETS.fetch(request);
+  },
+
+  /* ── a batida dos lembretes ─────────────────────────────────────────
+   *
+   * De hora em hora, e não uma vez por dia, porque cada pessoa escolhe o
+   * horário dela e ninguém mora no fuso do servidor. Quem não está na hora
+   * escolhida é descartado sem custo nenhum; quem está recebe.
+   *
+   * O horário do cron está no wrangler.jsonc. Uma batida que falha não
+   * marca ninguém como avisado, então a próxima hora tenta de novo — e, se
+   * a hora da pessoa já passou, ela perde o aviso do dia em vez de receber
+   * às três da tarde um lembrete de manhã.
+   */
+  async scheduled(evento, env, ctx) {
+    /* A lista de endereços liberados para o login do Google (liberar-dominios.js):
+       confere de hora em hora e acrescenta o que faltar. */
+    ctx.waitUntil(garantirDominios(env).then((r) => {
+      if (!r.ok || (r.adicionados || []).length) console.log("dominios", JSON.stringify(r));
+    }).catch((e) => console.error("dominios falharam", e && e.message)));
+    ctx.waitUntil((async () => {
+      try {
+        const r = await enviarRodada(env, evento.scheduledTime || Date.now());
+        console.log("lembretes", JSON.stringify(r));
+      } catch (e) {
+        console.error("lembretes falharam", e && e.stack);
+      }
+    })());
   },
 };

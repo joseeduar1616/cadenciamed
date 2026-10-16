@@ -28,6 +28,7 @@ let GRAVADO = null;
 let APAGADO = null;
 let LISTA = [];
 let MENTORES = {};   // uid -> { fields }, para o "conceder-mentor"
+let CUPONS = {};     // codigo -> { fields }, os criados pelo painel
 
 const json = (corpo, status = 200) => new Response(JSON.stringify(corpo),
   { status, headers: { 'Content-Type': 'application/json' } });
@@ -49,6 +50,11 @@ globalThis.fetch = async (url, opcoes = {}) => {
     if (metodo === 'PATCH') { GRAVADO = JSON.parse(opcoes.body); return json({ name: 'ok' }); }
     if (u.includes('pageSize')) return json({ documents: LISTA });
     return json({ error: {} }, 404);
+  }
+  const cp = /\/cupons\/([^/?]+)(?:\?|$)/.exec(u);
+  if (cp) {
+    if (metodo === 'GET') return CUPONS[cp[1]] ? json(CUPONS[cp[1]]) : json({ error: {} }, 404);
+    if (metodo === 'PATCH') { CUPONS[cp[1]] = JSON.parse(opcoes.body); return json({ name: cp[1] }); }
   }
   const m = /\/mentores\/([^/?]+)(?:\?|$)/.exec(u);
   if (m) {
@@ -125,7 +131,7 @@ if (r.corpo.ok && APAGADO && APAGADO.includes('uid-aluna')) ok('o dono revoga ac
 else falha('revogar: ' + JSON.stringify(r));
 
 /* ── conceder o papel de mentor ────────────────────────────────────────
-   Mesmo caminho do cupom "mentor1612" (concederMentor, em _comum.js), só
+   Mesmo caminho do cupom de mentor (concederMentor, em _comum.js), só
    que iniciado pelo dono, com o e-mail de quem ele escolher. */
 MENTORES = {};
 r = await chamarAcessos({ token: 't', acao: 'conceder-mentor', email: 'Aluna@Email.com' });
@@ -148,6 +154,22 @@ r = await chamarAcessos({ token: 't', acao: 'conceder-mentor', email: 'aluna@ema
 if (r.corpo.ok && (MENTORES['uid-aluna'].fields.alunos.arrayValue.values || []).length === 1) {
   ok('conceder o papel de novo preserva os alunos que já tinham sido adicionados');
 } else falha('conceder de novo apagou os alunos: ' + JSON.stringify(MENTORES['uid-aluna']));
+
+/* ── o painel cria cupom de plano e cupom de mentor ─────────────────── */
+r = await chamarAcessos({ token: 't', acao: 'cupom-criar', codigo: 'Turma Abril', plano: 'mensal' });
+if (r.corpo.ok && CUPONS.turmaabril && CUPONS.turmaabril.fields.plano.stringValue === 'mensal') ok('o painel cria cupom de plano, com o código limpo');
+else falha('cupom-criar mensal: ' + JSON.stringify(r));
+r = await chamarAcessos({ token: 't', acao: 'cupom-criar', codigo: 'mentoria', plano: 'mentor' });
+if (r.corpo.ok && CUPONS.mentoria && CUPONS.mentoria.fields.plano.stringValue === 'mentor') ok('o painel cria cupom de mentor');
+else falha('cupom-criar mentor: ' + JSON.stringify(r));
+r = await chamarAcessos({ token: 't', acao: 'cupom-criar', codigo: 'qualquer', plano: 'dono' });
+if (r.status === 400 && !CUPONS.qualquer) ok('plano desconhecido não vira cupom');
+else falha('cupom-criar plano estranho: ' + JSON.stringify(r));
+QUEM = { email: 'outra@x.com', localId: 'uid-outra' };
+r = await chamarAcessos({ token: 't', acao: 'cupom-criar', codigo: 'meucupom', plano: 'mentor' });
+if (r.status === 403 && !CUPONS.meucupom) ok('quem não é dono não cria cupom');
+else falha('cupom-criar sem ser dono: ' + JSON.stringify(r));
+QUEM = { email: 'joseeduardo1616@gmail.com', localId: 'uid-dono' };
 
 r = await chamarAcessos({}, 'GET');
 if (r.status === 405) ok('o painel só aceita POST');

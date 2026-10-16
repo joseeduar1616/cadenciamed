@@ -7,7 +7,8 @@
  * Com as duas, o Gemini ganha. IA_PROVEDOR força um dos dois.
  * GEMINI_MODELO e ANTHROPIC_MODELO trocam o modelo sem mexer no código.
  */
-import { contaDeServico, tokenDeAcesso, validoAte, ehDono } from "./_comum.js";
+import { contaDeServico, tokenDeAcesso, validoAte, ehDono, BASE_FIRESTORE } from "./_comum.js";
+import { podePelaCota, registroApos } from "./_limites.js";
 
 /* Modelo padrão do Gemini.
  *
@@ -35,19 +36,79 @@ export const GEMINI_PADRAO = "gemini-3.6-flash";
  * Sem a conta de serviço cadastrada não há como conferir plano, e aí só o
  * dono passa. Liberar geral nesse caso deixaria qualquer pessoa gastando a
  * cota da conta que paga. */
-export async function podeUsar(pessoa, env) {
+export async function podeUsar(pessoa, env, rota) {
   if (ehDono(pessoa.email)) return { ok: true };
   const conta = contaDeServico(env);
   if (!conta) {
     return { ok: false, erro: "O assistente está indisponível: falta configurar o servidor." };
   }
+  let token;
   try {
-    const token = await tokenDeAcesso(conta);
-    if (await validoAte(token, pessoa.uid) > Date.now()) return { ok: true };
+    token = await tokenDeAcesso(conta);
+    if (await validoAte(token, pessoa.uid) <= Date.now()) {
+      return { ok: false, erro: "Esta função faz parte do plano completo." };
+    }
   } catch (e) {
     return { ok: false, erro: "Não consegui conferir sua assinatura. Tente de novo em instantes." };
   }
-  return { ok: false, erro: "Esta função faz parte do plano completo." };
+
+  if (!rota) return { ok: true };
+  return cobrar(token, pessoa.uid, rota);
+}
+
+/* ── o teto diário ────────────────────────────────────────────────────
+ *
+ * A assinatura é um valor fixo por mês; o custo de cada chamada à IA é
+ * variável. Sem teto, uma conta que processe um acervo inteiro num sábado
+ * gasta mais num dia do que paga num ano — e sem ter feito nada de errado,
+ * porque o site é que oferece o botão.
+ *
+ * A conta é marcada ANTES da chamada ao provedor, e não depois. Assim uma
+ * resposta que falhe no meio ainda conta um ponto, o que é injusto de vez
+ * em quando; contar depois seria não contar nada quando o Worker fosse
+ * interrompido, que é como um teto deixa de existir sem ninguém notar.
+ *
+ * Se o banco não responder, a chamada PASSA. O teto existe para conter o
+ * caso extremo, não para ser mais uma peça capaz de derrubar o site: uma
+ * falha de leitura do Firestore não pode virar "a IA parou para todo
+ * mundo".
+ */
+const ORCAMENTO = (uid) => `${BASE_FIRESTORE}/uso/${encodeURIComponent(uid)}`;
+
+async function cobrar(token, uid, rota) {
+  const agora = Date.now();
+  let registro = null;
+  try {
+    const r = await fetch(ORCAMENTO(uid), { headers: { Authorization: `Bearer ${token}` } });
+    if (r.ok) {
+      const f = ((await r.json().catch(() => null)) || {}).fields || {};
+      registro = {
+        dia: (f.dia && f.dia.stringValue) || "",
+        pontos: Number((f.pontos && (f.pontos.integerValue || f.pontos.doubleValue)) || 0),
+      };
+    }
+  } catch (e) {
+    return { ok: true };   /* banco fora do ar não derruba a IA */
+  }
+
+  const veredito = podePelaCota({ registro, rota, dono: false, agora });
+  if (!veredito.ok) return { ok: false, erro: veredito.erro };
+
+  const novo = registroApos(registro, rota, agora);
+  try {
+    await fetch(ORCAMENTO(uid), {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fields: {
+          dia: { stringValue: novo.dia },
+          pontos: { integerValue: String(novo.pontos) },
+          em: { doubleValue: novo.em },
+        },
+      }),
+    });
+  } catch (e) { /* não gravou: no pior caso esta chamada saiu de graça */ }
+  return { ok: true, restante: veredito.restante };
 }
 
 /* Traduz o erro do provedor para uma frase que o estudante entenda, sem
@@ -95,16 +156,24 @@ const pedacos = (conteudo) => (
 );
 
 function partesGemini(conteudo) {
-  return pedacos(conteudo).map((p) => (p.imagem
-    ? { inline_data: { mime_type: p.imagem.tipo, data: p.imagem.dados } }
-    : { text: p.texto || "" }));
+  return pedacos(conteudo).map((p) => {
+    const midia = p.imagem || p.audio;
+    return midia
+      ? { inline_data: { mime_type: midia.tipo, data: midia.dados } }
+      : { text: p.texto || "" };
+  });
 }
 
 function partesAnthropic(conteudo) {
   if (typeof conteudo === "string") return conteudo;
+  /* A API da Anthropic não recebe áudio. Quem precisa de áudio (a gravação
+     de aula) confere o provedor antes de chamar; isto aqui só impede que um
+     pedaço de áudio vire uma requisição malformada se algum dia escapar. */
   return pedacos(conteudo).map((p) => (p.imagem
     ? { type: "image", source: { type: "base64", media_type: p.imagem.tipo, data: p.imagem.dados } }
-    : { type: "text", text: p.texto || "" }));
+    : p.audio
+      ? { type: "text", text: "[trecho de áudio: este provedor não recebe áudio]" }
+      : { type: "text", text: p.texto || "" }));
 }
 
 /* ── Gemini ────────────────────────────────────────────────────────────
@@ -131,7 +200,7 @@ export async function chamarGemini(chave, modelo, { sistema, mensagens, maxSaida
     let real = "";
     try { real = (JSON.parse(detalhe).error || {}).message || ""; } catch (e) { /* texto puro */ }
     console.error("gemini", r.status, detalhe.slice(0, 500));
-    return { erro: recado(r.status, real, "gemini", modelo) };
+    return { erro: recado(r.status, real, "gemini", modelo), status: r.status, real };
   }
 
   const j = await r.json();
@@ -193,6 +262,13 @@ export function escolherProvedor(env) {
   if (gem) return { nome: "gemini", chave: gem };
   if (ant) return { nome: "anthropic", chave: ant };
   return null;
+}
+
+/* Quem entende áudio. Só o Gemini recebe áudio, então a gravação de aula
+   usa ele mesmo quando IA_PROVEDOR aponta para a Anthropic — desde que a
+   chave dele exista. */
+export function provedorDeAudio(env) {
+  return env.GEMINI_API_KEY ? { nome: "gemini", chave: env.GEMINI_API_KEY } : null;
 }
 
 export function modeloAtual(provedor, env) {

@@ -93,6 +93,73 @@ for (const hex of ['#FF0000', '#00FF00', '#0000FF', '#35E4FF', '#A855F7', '#FFFF
   } else falha('hex de 3 dígitos não bateu com o de 6');
 }
 
+
+/* ── o ambiente da cor própria também precisa ser legível ──────────────
+ *
+ * Quem escolhe uma cor não recebe só um botão colorido: o fundo, os
+ * painéis, os quatro tons de texto, as cinco áreas e as duas cores de
+ * acento são todos recalculados no matiz escolhido. Cada um desses vira
+ * letra em algum lugar do site, e nenhum deles era conferido de verdade.
+ *
+ * O defeito concreto: a conta media o texto contra o painel mais claro,
+ * que no tema escuro é um rgba translúcido. A luminância só sabia ler
+ * hex, um rgba virava NaN, "NaN >= alvo" é sempre falso, e o laço de
+ * ajuste rodava até o fim — levando os QUATRO tons de texto a branco
+ * puro. A hierarquia inteira sumia, sem erro nenhum aparecer.
+ */
+import { ambienteDoTema, contraste, achatar, luminancia, canaisDaCor, CONTRASTE_MINIMO } from './_cores.mjs';
+
+if (!Number.isNaN(luminancia('rgba(66,55,104,0.88)'))) ok('a luminância lê rgba, e não só hex');
+else falha('rgba ainda vira NaN na conta de luminância');
+
+const [r, g, b, a] = canaisDaCor('rgba(10, 20, 30, 0.5)');
+if (r === 10 && g === 20 && b === 30 && a === 0.5) ok('canaisDaCor separa os quatro canais de um rgba');
+else falha(`canaisDaCor devolveu ${r},${g},${b},${a}`);
+
+if (achatar('rgba(0,0,0,0.5)', '#FFFFFF').toLowerCase() === '#808080') ok('preto pela metade sobre branco dá cinza médio');
+else falha('achatar errou a mistura: ' + achatar('rgba(0,0,0,0.5)', '#FFFFFF'));
+if (achatar('#123456', '#FFFFFF').toLowerCase() === '#123456') ok('cor opaca atravessa o achatar sem mudar');
+else falha('achatar mexeu numa cor opaca');
+
+/* O piso de verdade: o painel mais claro já empilhado sobre os de baixo. */
+const pisoDe = (v) => achatar(v['--card3'], achatar(v['--card2'], achatar(v['--card'], v['--bg'])));
+
+const CORES = ['#A855F7', '#E23E96', '#12A594', '#FF7A3D', '#5C7CFA', '#7C3AED', '#FFC658'];
+const LETRAS = ['--ink', '--dim', '--faint', '--ghost', '--neon', '--neon2',
+  '--a-CL', '--a-CI', '--a-GO', '--a-PE', '--a-PR'];
+
+for (const claro of [false, true]) {
+  const nome = claro ? 'claro' : 'escuro';
+  const ruins = [];
+  const iguais = [];
+  for (const cor of CORES) {
+    const v = ambienteDoTema(cor, claro, '', '');
+    const piso = pisoDe(v);
+    for (const n of LETRAS) {
+      const rz = contraste(v[n], piso);
+      if (!(rz >= 4.5)) ruins.push(`${cor} ${n}=${v[n]} → ${Number.isNaN(rz) ? 'NaN' : rz.toFixed(2)}:1`);
+    }
+    /* Os quatro tons de texto precisam continuar DIFERENTES entre si.
+       Quando o ajuste descambava, todos iam parar no mesmo branco: o
+       contraste passava e a hierarquia morria. */
+    const tons = new Set(['--ink', '--dim', '--faint', '--ghost'].map((n) => v[n]));
+    if (tons.size < 4) iguais.push(`${cor}: ${[...tons].join(' ')}`);
+  }
+  if (!ruins.length) ok(`tema ${nome}: toda cor do ambiente passa em 4.5:1 contra o painel composto`);
+  else falha(`tema ${nome}, abaixo do mínimo: ${ruins.slice(0, 6).join('; ')}`);
+  if (!iguais.length) ok(`tema ${nome}: os quatro tons de texto continuam distintos entre si`);
+  else falha(`tema ${nome}, tons achatados no mesmo valor: ${iguais.slice(0, 3).join('; ')}`);
+}
+
+/* A cor escolhida é respeitada: o ajuste só corrige o quanto precisa. */
+const claroV = ambienteDoTema('#E23E96', true, '#FF7BC0', '#E23E96');
+const escuroV = ambienteDoTema('#E23E96', false, '#FF7BC0', '#E23E96');
+if (claroV['--neon'] !== escuroV['--neon']) ok('o acento nasce diferente em cada tema, em vez de um valor só para os dois');
+else falha('o acento saiu igual nos dois temas');
+
+if (CONTRASTE_MINIMO['--ghost'] >= 4.5) ok('o tom mais apagado responde por texto, e não por ícone');
+else falha('o --ghost voltou a ser orçado abaixo de 4.5:1');
+
 console.log(passos.join('\n'));
 console.log('\n' + (erros.length ? `${erros.length} PROBLEMA(S):\n` + erros.join('\n') : 'nenhum erro'));
 if (erros.length) process.exitCode = 1;

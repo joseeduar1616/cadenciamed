@@ -340,32 +340,6 @@ function Desempenho({ data, today, addSession, delSession, notify }) {
 
 /* ── configurações ───────────────────────────────────────────────────── */
 
-/* O layout saiu do rodapé e veio para cá. No rodapé ele ficava longe de
-   tudo que é ajuste, e quem procurava configuração não olhava lá embaixo. */
-function EscolhaLayout({ data, setData }) {
-  return (
-    <Card className="px-6 py-6">
-      <H size={18} color="var(--a-PE)" icon={<Smartphone size={16} />}>Formato da tela</H>
-      <Texto style={{ marginTop: 10 }}>
-        No automático o site se ajusta ao tamanho do aparelho. Em celular ele
-        usa o layout estreito mesmo numa tela grande, que é útil para quem
-        prefere a coluna única.
-      </Texto>
-      <div className="mt-5 flex items-center gap-2 rounded-full p-1" style={{ background: T.card2, border: `1px solid ${T.line}`, width: "fit-content" }}>
-        {[["auto", "Automático", <Monitor size={14} key="d" />], ["movel", "Celular", <Smartphone size={14} key="m" />]].map(([id, lb, ic]) => (
-          <button key={id} type="button" onClick={() => setData((p) => ({ ...p, layout: id }))}
-            className="inline-flex items-center gap-2 rounded-full px-4 py-2"
-            style={{
-              background: data.layout === id ? T.card3 : "transparent", border: "none",
-              color: data.layout === id ? T.ink : T.dim, fontSize: 14,
-              fontWeight: data.layout === id ? 700 : 500, cursor: "pointer",
-            }}>{ic} {lb}</button>
-        ))}
-      </div>
-    </Card>
-  );
-}
-
 function MetasDoEstudo({ data, setData }) {
   const metas = data.goals || DEFAULTS.goals;
   const mudar = (k, v) => setData((p) => ({
@@ -399,9 +373,42 @@ function MetasDoEstudo({ data, setData }) {
 
 /* Backup, restauração e o apagar tudo. Veio da aba Progresso: é ajuste da
    conta, não número de estudo. */
+/* Quando foi, em palavras de gente. Uma lista de carimbos de data é uma
+   lista que ninguém lê na hora do aperto. */
+function quandoFoi(em) {
+  const min = Math.round((Date.now() - em) / 60000);
+  if (min < 2) return "agora";
+  if (min < 60) return `há ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `há ${h}h`;
+  const d = Math.round(h / 24);
+  return d === 1 ? "ontem" : `há ${d} dias`;
+}
+
 function SeusDados({ data, setData, today, notify }) {
   const [confirm, setConfirm] = useState(false);
+  const [versoes, setVersoes] = useState([]);
+  const [vendoVersoes, setVendoVersoes] = useState(false);
   const arquivoRef = useRef(null);
+
+  const recarregarVersoes = useCallback(() => {
+    listarVersoes().then(setVersoes).catch(() => setVersoes([]));
+  }, []);
+
+  useEffect(() => { recarregarVersoes(); }, [recarregarVersoes]);
+
+  /* Voltar para uma versão é, ele mesmo, escrever por cima do que está
+     aqui — então guarda o agora antes, senão voltar atrás seria uma
+     viagem só de ida. */
+  const voltarPara = async (v) => {
+    try {
+      await guardarVersao(data, "antes de voltar para uma versão");
+      const novo = normalize(JSON.parse(v.dados));
+      setData(novo);
+      notify(`Voltou para a cópia de ${quandoFoi(v.em)}: ${v.resumo.aulas} aulas e ${v.resumo.sessoes} sessões.`);
+      recarregarVersoes();
+    } catch (e) { notify("Não consegui ler essa cópia."); }
+  };
 
   const exportar = () => {
     const txt = JSON.stringify(data, null, 2);
@@ -415,6 +422,9 @@ function SeusDados({ data, setData, today, notify }) {
     rd.onload = () => {
       try {
         const novo = normalize(JSON.parse(String(rd.result)));
+        /* Restaurar um arquivo é escrever por cima do que está aqui. Se o
+           arquivo for o errado, é desta cópia que se volta. */
+        guardarVersao(data, "antes de restaurar um arquivo");
         setData(novo);
         const aulas = Object.values(novo.marks || {}).filter((m) => m && m.aula).length;
         const degraus = Object.values(novo.reviews || {}).reduce((a, r) => a + Object.keys((r && r.done) || {}).length, 0);
@@ -435,13 +445,19 @@ function SeusDados({ data, setData, today, notify }) {
       <div className="mt-5 flex flex-wrap gap-2">
         <Btn onClick={exportar}><Download size={15} /> Baixar backup</Btn>
         <Btn onClick={() => arquivoRef.current && arquivoRef.current.click()}><Upload size={15} /> Restaurar backup</Btn>
+        {versoes.length ? (
+          <Btn tone="outline" onClick={() => setVendoVersoes((v) => !v)}>
+            <RotateCcw size={15} /> Versões anteriores ({versoes.length})
+          </Btn>
+        ) : null}
         <input ref={arquivoRef} type="file" accept="application/json,.json" onChange={importar} style={{ display: "none" }} />
         {confirm ? (
           <>
             <Btn tone="danger" onClick={() => {
+              guardarVersao(data, "antes de apagar tudo");
               setData({ ...DEFAULTS, theme: data.theme, layout: data.layout, tema: data.tema, revisao: data.revisao });
               setConfirm(false);
-              notify("Tudo apagado.");
+              notify("Tudo apagado. Dá para voltar atrás em Versões anteriores.");
             }}>
               <Trash2 size={15} /> Confirmar
             </Btn>
@@ -455,9 +471,223 @@ function SeusDados({ data, setData, today, notify }) {
         <Label style={{ marginTop: 14, color: T.bad }}>
           Isso apaga sessões, marcações, revisões, cartões, pastas, rotina, metas
           e anotações. A aparência e o esquema de revisão continuam como estão.
-          Baixe um backup antes.
+          Dá para voltar atrás em Versões anteriores, mas baixe um backup antes.
         </Label>
       ) : null}
+
+      {/* ── versões anteriores ────────────────────────────────────────
+        * O app guarda sozinho uma cópia por meio dia de uso, e sempre
+        * antes de escrever por cima: ao carregar a conta, ao restaurar um
+        * arquivo, ao apagar tudo. Cada linha diz o que tem dentro, porque
+        * escolher entre doze datas sem saber o que cada uma guarda é
+        * adivinhação — e quem chega aqui já está com pressa.
+        *
+        * As cópias são deste aparelho e não sobem para a nuvem: elas são
+        * a rede de proteção para quando a nuvem for a coisa errada. */}
+      {vendoVersoes ? (
+        <div style={{ marginTop: 18, borderTop: `1px solid ${T.line}`, paddingTop: 16 }}>
+          <Label>Cópias guardadas neste aparelho</Label>
+          <div className="mt-3 flex flex-col gap-2">
+            {versoes.map((v) => (
+              <div key={v.em} className="flex items-center justify-between gap-3 flex-wrap"
+                style={{ background: T.card2, border: `1px solid ${T.line}`, borderRadius: 12, padding: "10px 14px" }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 14.5, fontWeight: 600 }}>
+                    {quandoFoi(v.em)}
+                    <span style={{ color: T.dim, fontWeight: 400 }}> · {v.motivo}</span>
+                  </div>
+                  <div style={{ fontSize: 13, color: T.dim, marginTop: 2 }}>
+                    {v.resumo.aulas} aulas · {v.resumo.sessoes} sessões ({v.resumo.horas}h)
+                    · {v.resumo.questoes} questões
+                    {v.resumo.cartoes ? ` · ${v.resumo.cartoes} cartões` : ""}
+                  </div>
+                </div>
+                <Btn size="sm" tone="outline" onClick={() => voltarPara(v)}>Voltar para esta</Btn>
+              </div>
+            ))}
+          </div>
+          <Label style={{ marginTop: 12, textTransform: "none", letterSpacing: 0, fontSize: 13, lineHeight: 1.6, color: T.dim }}>
+            Voltar para uma cópia guarda antes o que está aqui agora, então dá
+            para ir e voltar sem perder nada.
+          </Label>
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
+/* ── perfil: apelido e foto ────────────────────────────────────────────
+ *
+ * O nome e a foto só importam onde há outras pessoas: amigos, salas,
+ * duelos, simulados. Por isso o campo se chama "apelido" e não "nome
+ * completo" — ninguém quer aparecer como "José Eduardo da Silva Santos"
+ * num ranking de estudo.
+ *
+ * A foto é encolhida AQUI, no navegador, antes de sair. Não é enfeite:
+ * ela vai para o perfil, que é lido em lote para todo mundo de uma sala
+ * de uma vez. Uma foto de celular tem alguns megabytes; vinte delas numa
+ * sala estourariam o limite do documento e deixariam o ranking pesado de
+ * abrir num celular com internet ruim. Cento e vinte e oito pixels é o
+ * tamanho em que ela aparece, e nesse tamanho dá uns poucos quilobytes.
+ */
+const LADO_PERFIL = 128;
+const TETO_PERFIL = 60000;   // ~60 KB de data URL, com folga sobre o esperado
+
+function encolherFoto(arquivo) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(arquivo);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        /* Recorte quadrado pelo centro: a foto aparece dentro de um
+           círculo, e esticar para caber deformaria o rosto. */
+        const lado = Math.min(img.width, img.height);
+        const cx = (img.width - lado) / 2;
+        const cy = (img.height - lado) / 2;
+        const tela = document.createElement("canvas");
+        tela.width = LADO_PERFIL; tela.height = LADO_PERFIL;
+        const ctx = tela.getContext("2d");
+        ctx.drawImage(img, cx, cy, lado, lado, 0, 0, LADO_PERFIL, LADO_PERFIL);
+        const dados = tela.toDataURL("image/jpeg", 0.72);
+        URL.revokeObjectURL(url);
+        resolve(dados.length > TETO_PERFIL
+          ? { erro: "Essa foto ficou pesada demais mesmo depois de encolher. Tente outra." }
+          : { foto: dados });
+      } catch (e) {
+        URL.revokeObjectURL(url);
+        resolve({ erro: "Não consegui ler essa imagem." });
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve({ erro: "Não consegui abrir essa imagem." });
+    };
+    img.src = url;
+  });
+}
+
+function PerfilPublico({ data, setData, notify, nuvem }) {
+  const [ocupado, setOcupado] = useState(false);
+  const arquivoRef = useRef(null);
+  const p = data.profile || {};
+  const comoApareco = (p.apelido || "").trim() || (p.name || "").trim() || "Sem nome";
+
+  const trocar = (campo, valor) => setData((x) => ({
+    ...x, profile: { ...x.profile, [campo]: valor },
+  }));
+
+  return (
+    <Card className="px-6 py-6">
+      <H size={18} color="var(--neon2)" icon={<User size={16} />}>Seu perfil</H>
+      <Texto style={{ marginTop: 8 }}>
+        É assim que você aparece para as outras pessoas: nos amigos, nas salas, nos
+        duelos e nos simulados. Só aqui, em nenhum outro lugar.
+      </Texto>
+
+      <div className="mt-5 flex items-center gap-4 flex-wrap">
+        <Face nome={comoApareco} foto={p.foto} tamanho={64} forte />
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-2 flex-wrap">
+            <Btn size="sm" disabled={ocupado}
+              onClick={() => arquivoRef.current && arquivoRef.current.click()}>
+              <Camera size={14} /> {p.foto ? "Trocar a foto" : "Pôr uma foto"}
+            </Btn>
+            {p.foto ? (
+              <Btn size="sm" tone="outline" disabled={ocupado}
+                onClick={() => { trocar("foto", ""); notify("Foto removida."); }}>tirar</Btn>
+            ) : null}
+          </div>
+          <Mini>sem foto, aparecem as suas iniciais</Mini>
+        </div>
+        <input ref={arquivoRef} type="file" hidden accept="image/*"
+          onChange={async (e) => {
+            const arq = (e.target.files || [])[0];
+            e.target.value = "";
+            if (!arq) return;
+            setOcupado(true);
+            const r = await encolherFoto(arq);
+            setOcupado(false);
+            if (r.erro) { notify(r.erro); return; }
+            trocar("foto", r.foto);
+            notify("Foto trocada.");
+          }} />
+      </div>
+
+      <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Field label="Seu nome">
+          <TextInput value={p.name || ""} placeholder="Como quer ser chamado"
+            onChange={(e) => trocar("name", e.target.value)} />
+        </Field>
+        <Field label="Apelido (o que os outros veem)">
+          <TextInput value={p.apelido || ""} maxLength={24}
+            placeholder={(p.name || "").trim() || "deixe vazio para usar o seu nome"}
+            onChange={(e) => trocar("apelido", e.target.value.slice(0, 24))} />
+        </Field>
+      </div>
+
+      <FaculdadeNoPerfil data={data} setData={setData} nuvem={nuvem} />
+    </Card>
+  );
+}
+
+/* ── qual versão está rodando aqui ────────────────────────────────────
+ *
+ * O carimbo do build só aparecia no rodapé da página de entrada, que
+ * ninguém com conta chega a ver. O resultado: quando o site publicava e o
+ * celular continuava velho, não havia como saber — nem para quem usa, nem
+ * para quem conserta. A conversa virava "publiquei" contra "não mudou
+ * nada", sem nenhum dado no meio.
+ *
+ * Agora a versão está escrita aqui, e o botão pergunta ao servidor se há
+ * uma mais nova. A tarja de atualização faz o resto (ver o registro do
+ * service worker, no montar.py).
+ */
+function VersaoDoSite({ notify }) {
+  const [procurando, setProcurando] = useState(false);
+
+  const procurar = async () => {
+    setProcurando(true);
+    try {
+      const reg = navigator.serviceWorker
+        ? await navigator.serviceWorker.getRegistration()
+        : null;
+      if (reg) await reg.update();
+      /* Uma ida ao servidor sem passar por cache nenhum. É ela que
+         responde de verdade "o que está publicado agora?", mesmo onde o
+         service worker não existe (Safari sem instalar, aba anônima). */
+      const r = await fetch(`/?v=${Date.now()}`, { cache: "no-store" });
+      const html = await r.text();
+      /* A meta que o montar.py carimba com o mesmo VERSAO do JS. Ler
+         qualquer outro texto da página daria certo hoje e passaria a
+         mentir no dia em que alguém mudasse a redação. */
+      const m = html.match(/name="cadencia-versao"\s+content="([^"]*)"/);
+      const publicada = m ? m[1].trim() : "";
+      setProcurando(false);
+      if (publicada && publicada !== VERSAO) {
+        notify("Tem uma versão nova. Feche e abra o site para ela entrar.");
+      } else {
+        notify("Você já está na versão mais nova.");
+      }
+    } catch (e) {
+      setProcurando(false);
+      notify("Não consegui falar com o servidor para conferir.");
+    }
+  };
+
+  return (
+    <Card className="px-6 py-5">
+      <H size={18} color="var(--dim)" icon={<RefreshCw size={16} />}>Versão</H>
+      <div className="mt-4 flex items-center gap-3 flex-wrap">
+        <span style={{ fontFamily: F_MONO, fontSize: 13.5, color: T.ink }}>{VERSAO}</span>
+        <Btn size="sm" tone="outline" disabled={procurando} onClick={procurar}>
+          {procurando ? "conferindo…" : "procurar atualização"}
+        </Btn>
+      </div>
+      <Mini style={{ marginTop: 10, lineHeight: 1.6 }}>
+        O site se atualiza sozinho, mas a tela que já está aberta continua na versão
+        antiga até ser recarregada. Se alguma coisa parecer velha, é isto: feche e
+        abra de novo. No celular com o site instalado, feche o aplicativo de vez.
+      </Mini>
     </Card>
   );
 }
@@ -465,12 +695,14 @@ function SeusDados({ data, setData, today, notify }) {
 function Configuracoes({ data, setData, today, notify, nuvem, pro, aoLiberar, irPara }) {
   return (
     <div className="flex flex-col gap-5">
-      <ContaNuvem nuvem={nuvem} notify={notify} />
+      <ContaNuvem nuvem={nuvem} notify={notify} aoLiberar={aoLiberar} />
       {nuvem.usuario && !pro ? <Cupom nuvem={nuvem} notify={notify} aoLiberar={aoLiberar} /> : null}
 
-      <Lembretes data={data} setData={setData} notify={notify} />
+      <PerfilPublico data={data} setData={setData} notify={notify} nuvem={nuvem} />
+
+      <BaixarApp notify={notify} />
+      <Lembretes data={data} setData={setData} notify={notify} nuvem={nuvem} />
       <Aparencia data={data} setData={setData} />
-      <EscolhaLayout data={data} setData={setData} />
       <MetasDoEstudo data={data} setData={setData} />
 
       {/* O esquema de revisão e as conexões têm tela própria, com o
@@ -499,6 +731,7 @@ function Configuracoes({ data, setData, today, notify, nuvem, pro, aoLiberar, ir
       </Card>
 
       <SeusDados data={data} setData={setData} today={today} notify={notify} />
+      <VersaoDoSite notify={notify} />
 
       {/* Ferramenta de obra fica no fim: quem abre Configurações quer
           mexer na conta e na aparência, não em cupom. */}

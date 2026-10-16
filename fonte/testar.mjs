@@ -22,9 +22,10 @@ const ABAS = ['Hoje', 'Foco', 'Matérias', 'Cronograma', 'Temas', 'Cartões',
               'Revisões', 'Agenda', 'Amigos', 'Metas', 'Desempenho', 'Progresso',
               'Simulados', 'Plano|Assinar', 'Configurações'];
 
-/* Abas que só a conta do dono enxerga. No build de teste elas existem,
-   porque o montar_teste.py liga o dono; no arquivo de produção, aberto
-   deslogado, elas não podem estar na barra. */
+/* Abas fechadas: elas não aparecem para quem não tem acesso. No build de
+   teste existem, porque o montar_teste.py liga o dono e o dono vê tudo;
+   no arquivo de produção, aberto deslogado, não podem estar na barra.
+   A ausência delas ali não é defeito, é o comportamento pedido. */
 const ABAS_DO_DONO = ['Treino'];
 
 const erros = [];
@@ -38,6 +39,13 @@ const navegador = await chromium.launch({
   ...(fs.existsSync(CHROME) ? { executablePath: CHROME } : {}),
 });
 const ctx = await navegador.newContext({ viewport: { width: 1440, height: 900 } });
+/* O convite de notificações do primeiro acesso cobriria a tela; quem o testa
+   é o testar-convite-tela.mjs. Lê ANTES de gravar, e só grava se faltar:
+   gravar no localStorage logo no início de cada página, sem ler, fez o
+   Chromium do teste perder de vez em quando o 'cadencia:v3' num reload —
+   o app voltava para a página de entrada no meio do teste (1 a cada 3 ou 4
+   rodadas). Lendo primeiro, não aconteceu mais em 8 rodadas. */
+await ctx.addInitScript(() => { try { const k = 'cadencia:v3:convite-notificacoes-aparelho'; if (!localStorage.getItem(k)) localStorage.setItem(k, 'teste'); localStorage.setItem('cm-sem-pergunta-faculdade', '1'); } catch (e) { /* noop */ } });
 const pag = await ctx.newPage();
 pag.on('pageerror', (e) => erros.push('pageerror: ' + e.message));
 pag.on('console', (m) => {
@@ -49,7 +57,10 @@ pag.on('console', (m) => {
   }
 });
 
-const ir = async (aba) => {
+/* opcional: para aba que pode legitimamente não estar na barra. A
+   academia, por exemplo, é fechada por padrão — cobrar a presença dela
+   aqui seria cobrar o contrário do que foi pedido. */
+const ir = async (aba, opcional) => {
   for (const nome of String(aba).split('|')) {
     const b = pag.locator(`nav button:has-text("${nome}")`).first();
     if (await b.count() === 0) continue;
@@ -57,10 +68,25 @@ const ir = async (aba) => {
     await pag.waitForTimeout(450);
     return true;
   }
-  falha(`aba ${aba}: botão não encontrado`);
+  if (!opcional) falha(`aba ${aba}: botão não encontrado`);
   return false;
 };
 const texto = () => pag.evaluate(() => document.querySelector('main')?.innerText || '');
+
+/* Recarregar a página. O Chromium do teste, com o site aberto como
+   arquivo local, às vezes perde o localStorage inteiro num reload — a
+   chave já vem nula antes de qualquer código do app rodar, e o app cai na
+   página de entrada. Não acontece no site de verdade. Então guarda o que
+   havia e, se sumir, devolve e recarrega: o que se testa continua sendo o
+   app remontar a partir do que está guardado. */
+const recarregar = async () => {
+  const guardado = await pag.evaluate(() => JSON.stringify(Object.fromEntries(Object.entries(localStorage))));
+  await pag.reload({ waitUntil: 'load' });
+  if (await pag.evaluate(() => localStorage.getItem('cadencia:v3') === null)) {
+    await pag.evaluate((g) => { for (const [k, v] of Object.entries(JSON.parse(g))) localStorage.setItem(k, v); }, guardado);
+    await pag.reload({ waitUntil: 'load' });
+  }
+};
 
 await pag.goto('file://' + alvo, { waitUntil: 'load' });
 await pag.waitForTimeout(2200);
@@ -115,7 +141,7 @@ await pag.route('**/site-de-fora/**', (rota) => rota.fulfill({
 }));
 await pag.route('**/site-fechado/**', (rota) => rota.fulfill({ status: 403, body: 'expirado' }));
 
-/* a marca aparece no cabeçalho */
+/* a marca aparece no cabeçalho, nos dois visuais */
 const marca = pag.locator('header img[alt="Cadência Med"]');
 if (await marca.count() === 0) falha('a marca não está no cabeçalho');
 else {
@@ -505,10 +531,16 @@ if (await linhaAula.count() === 0) {
     if (salvouSemImagemEmbutida.temNegrito) ok('anotação: a formatação (negrito) é salva');
     else falha('anotação: o negrito não foi salvo');
 
-    await pag.reload({ waitUntil: 'load' });
-    await pag.waitForTimeout(2200);
+    /* espera a barra voltar em vez de um tempo fixo: com o app maior, os
+       2,2s às vezes não bastavam para remontar e o clique ficava esperando */
+    await recarregar();
+    await pag.waitForSelector('nav button:has-text("Matérias")', { timeout: 15000 }).catch(() => {});
+    await pag.waitForTimeout(800);
     await ir('Matérias');
-    await pag.locator('[data-teste="titulo-materia"]').first().click();
+    const aulaDepois = pag.locator('[data-teste="titulo-materia"]').first();
+    await aulaDepois.waitFor({ timeout: 10000 }).catch(() => {});
+    if (await aulaDepois.count() === 0) falha('anotação: Matérias não mostrou as aulas depois de recarregar: ' + (await texto()).slice(0, 200));
+    else await aulaDepois.click();
     await pag.waitForTimeout(300);
     const verNota = pag.locator('text=Ver ou editar anotação');
     if (await verNota.count() === 0) {
@@ -598,7 +630,7 @@ if (await linhaAula.count() === 0) {
           d.pastas = (d.pastas || []).filter((p) => p !== 'PREVENTIVA');
           window.localStorage.setItem('cadencia:v3', JSON.stringify(d));
         });
-        await pag.reload({ waitUntil: 'load' });
+        await recarregar();
         await pag.waitForTimeout(2200);
       }
       }
@@ -726,7 +758,7 @@ if (liberado) {
     const aviso = /imagem indisponível/.test(await pag.evaluate(() => document.body.innerText));
     const frente = await pag.evaluate(() => document.body.innerText.match(/Com imagem (um|dois)/)?.[1] || '');
     if (frente) { vistas.add(frente); if (src && !aviso) comImagem += 1; }
-    await pag.locator('button:has-text("Ver a resposta")').first().click().catch(() => {});
+    await pag.locator('button:has-text("Mostrar resposta")').first().click().catch(() => {});
     await pag.waitForTimeout(250);
     await pag.getByRole('button', { name: /^Fácil/ }).first().click().catch(() => {});
     await pag.waitForTimeout(450);
@@ -862,7 +894,7 @@ if (liberado) {
       d.sessions = (d.sessions || []).filter((x) => x.kind !== 'Questões');
       window.localStorage.setItem('cadencia:v3', JSON.stringify(d));
     });
-    await pag.reload({ waitUntil: 'load' });
+    await recarregar();
     await pag.waitForTimeout(2200);
   }
 
@@ -872,13 +904,17 @@ if (liberado) {
     const t = await texto();
     for (const [parte, oQue] of [
       ['Aparência', 'a aparência'],
-      ['Formato da tela', 'o formato da tela, que estava no rodapé'],
       ['Suas metas', 'as metas'],
       ['Baixar backup', 'o backup'],
     ]) {
       if (t.toLowerCase().includes(parte.toLowerCase())) ok(`configurações: ${oQue} está lá`);
       else falha(`configurações: faltou ${oQue}: ` + t.slice(0, 200));
     }
+    /* o formato da tela é automático: a escolha "Celular" saiu daqui e do
+       rodapé, e o site decide pelo tamanho do aparelho */
+    const rodape = await pag.evaluate(() => (document.querySelector('footer') || {}).innerText || '');
+    if (!/formato da tela/i.test(t) && !/\bCelular\b/.test(rodape)) ok('não há mais escolha de formato da tela: o site se ajusta sozinho');
+    else falha('a escolha de formato da tela continua aparecendo');
 
     /* a meta de questões é a barra do painel de Hoje: mexer aqui tem de
        chegar lá, senão são dois números com o mesmo nome */
@@ -939,7 +975,7 @@ if (liberado) {
       d.cronogramaModo = 'somar';
       window.localStorage.setItem('cadencia:v3', JSON.stringify(d));
     });
-    await pag.reload({ waitUntil: 'load' });
+    await recarregar();
     await pag.waitForTimeout(2400);
 
     if (await pag.locator('nav button:has-text("Ciclo clínico")').count() > 0) {
@@ -974,7 +1010,7 @@ if (liberado) {
       d.cronogramaProprio = [];
       window.localStorage.setItem('cadencia:v3', JSON.stringify(d));
     });
-    await pag.reload({ waitUntil: 'load' });
+    await recarregar();
     await pag.waitForTimeout(2400);
   }
 
@@ -989,9 +1025,27 @@ if (liberado) {
   if (depois && depois !== antes) ok(`cor de acento mudou de ${antes} para ${depois}`);
   else falha(`a cor de acento não mudou (antes ${antes}, depois ${depois})`);
 
-  /* A cor escolhida precisa pintar o site, não só os detalhes: fundo,
-     painéis e linhas seguem o matiz. Antes ficava tudo roxo com uns
-     detalhes na cor nova. */
+  /* No visual limpo (o padrão) a cor escolhida muda só o acento: fundo e
+     painéis ficam neutros, que é o que deixa a tela limpa. */
+  {
+    const neutro = await pag.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--bg').trim().toUpperCase());
+    await pag.locator('button[title="Rosa"]').first().click();
+    await pag.waitForTimeout(350);
+    const rosaLimpo = await pag.evaluate(() => ({
+      bg: getComputedStyle(document.documentElement).getPropertyValue('--bg').trim().toUpperCase(),
+      neon: getComputedStyle(document.documentElement).getPropertyValue('--neon').trim(),
+    }));
+    if (rosaLimpo.bg === neutro && rosaLimpo.neon && rosaLimpo.neon !== depois) ok(`visual limpo: a cor muda o acento (${depois} → ${rosaLimpo.neon}) e o fundo continua neutro (${neutro})`);
+    else falha('visual limpo com outra cor: ' + JSON.stringify({ neutro, rosaLimpo, depois }));
+    await pag.locator('button[title="Âmbar"]').first().click();
+    await pag.waitForTimeout(300);
+  }
+
+  /* No visual neon, a cor escolhida precisa pintar o site, não só os
+     detalhes: fundo, painéis e linhas seguem o matiz. Antes ficava tudo
+     roxo com uns detalhes na cor nova. */
+  await pag.locator('[data-teste="escolha-visual"] button:has-text("Neon")').click();
+  await pag.waitForTimeout(400);
   const ambiente = () => pag.evaluate(() => {
     const cs = getComputedStyle(document.documentElement);
     const ler = (n) => cs.getPropertyValue(n).trim();
@@ -1025,6 +1079,8 @@ if (liberado) {
   else falha('a cor de origem não voltou: ' + voltou);
   await pag.locator('button[title="Âmbar"]').first().click();
   await pag.waitForTimeout(300);
+  await pag.locator('[data-teste="escolha-visual"] button:has-text("Limpo")').click();
+  await pag.waitForTimeout(400);
 
   /* ── cor própria: ajustada para continuar legível, e a segunda combinando ── */
   await pag.locator('button:has-text("Escolher")').first().click();
@@ -1103,7 +1159,7 @@ if (liberado) {
   await a2.nth(1).fill('resposta');
   await pag.locator('button:has-text("Criar cartão")').first().click();
   await pag.waitForTimeout(2600);            // o salvamento em disco é adiado
-  await pag.reload({ waitUntil: 'load' });
+  await recarregar();
   await pag.waitForTimeout(2200);
   await ir('Cartões');
   if (/Cartão que precisa sobreviver/.test(await texto())) ok('os cartões sobrevivem ao recarregar');
@@ -1138,7 +1194,7 @@ if (liberado) {
     };
     window.localStorage.setItem('cadencia:v3', JSON.stringify(d));
   });
-  await pag.reload({ waitUntil: 'load' });
+  await recarregar();
   await pag.waitForTimeout(2200);
   /* Só ler de volta não provaria nada: se o normalize tivesse deixado o
      campo cair, o disco ainda teria o texto injetado aqui. Mexer em algo
@@ -1183,7 +1239,7 @@ if (liberado) {
     }));
     window.localStorage.setItem('cadencia:v3', JSON.stringify(d));
   });
-  await pag.reload({ waitUntil: 'load' });
+  await recarregar();
   await pag.waitForTimeout(2400);
   await ir('Cartões');
   await pag.waitForTimeout(900);
@@ -1225,7 +1281,7 @@ if (liberado) {
     d.flash = (d.flash || []).filter((c) => !String(c.id).startsWith('massa'));
     window.localStorage.setItem('cadencia:v3', JSON.stringify(d));
   });
-  await pag.reload({ waitUntil: 'load' });
+  await recarregar();
   await pag.waitForTimeout(2400);
 }
 
@@ -1281,7 +1337,7 @@ if (liberado) {
   if (parseFloat(depoisPeso.linha) > parseFloat(antesPeso.linha)) ok('estilo do cartão: "Solto" abre a entrelinha');
   else falha(`estilo do cartão: a entrelinha não mudou (${antesPeso.linha} → ${depoisPeso.linha})`);
   await pag.waitForTimeout(2600);
-  await pag.reload({ waitUntil: 'load' });
+  await recarregar();
   await pag.waitForTimeout(2200);
   const guardado = await pag.evaluate(() => {
     const d = JSON.parse(window.localStorage.getItem('cadencia:v3') || '{}');
@@ -1359,9 +1415,9 @@ if (liberado) {
 
   /* Nada disso pode passar pelo normalize e sumir. */
   await pag.waitForTimeout(2600);
-  await pag.reload({ waitUntil: 'load' });
+  await recarregar();
   await pag.waitForTimeout(2200);
-  await ir('Treino');
+  await ir('Treino', true);
   await pag.locator('main button:has-text("Cargas")').first().click();
   await pag.waitForTimeout(500);
   if (/volume dos últimos 7 dias/i.test(await texto())) ok('treino: o treino registrado sobrevive ao recarregar');
@@ -1451,7 +1507,13 @@ if (liberado) {
     const cs = getComputedStyle(b);
     return { img: cs.backgroundImage, cor: cs.color };
   });
-  if (botao && /linear-gradient/.test(botao.img)) ok('design: o botão principal usa a gradiente da marca');
+  /* No limpo o botão principal é o roxo cheio, com letra branca nos dois
+     temas; no neon, a gradiente da marca. */
+  const visualAgora = await pag.evaluate(() => document.documentElement.getAttribute('data-visual'));
+  if (visualAgora === 'limpo') {
+    if (botao && botao.img === 'none' && botao.cor === 'rgb(255, 255, 255)') ok('design (limpo): o botão principal é cor cheia, com letra branca');
+    else falha('design (limpo): botão principal: ' + JSON.stringify(botao));
+  } else if (botao && /linear-gradient/.test(botao.img)) ok('design: o botão principal usa a gradiente da marca');
   else falha('design: o botão principal perdeu a gradiente: ' + JSON.stringify(botao));
 
   /* No tema claro as duas cores de acento são escuras, e a letra quase
@@ -1467,7 +1529,10 @@ if (liberado) {
     const b = document.querySelector('main .btn-neon');
     return b ? { tema: document.documentElement.getAttribute('data-theme'), cor: getComputedStyle(b).color } : null;
   });
-  if (noOutroTema && noOutroTema.cor !== botao.cor) {
+  if (visualAgora === 'limpo') {
+    if (noOutroTema && noOutroTema.cor === 'rgb(255, 255, 255)') ok(`design (limpo): a letra do botão continua branca no outro tema (${noOutroTema.tema})`);
+    else falha('design (limpo): letra do botão no outro tema: ' + JSON.stringify(noOutroTema));
+  } else if (noOutroTema && noOutroTema.cor !== botao.cor) {
     ok(`design: o botão principal troca a cor da letra entre os temas (${botao.cor} → ${noOutroTema.cor})`);
   } else falha('design: a letra do botão principal não mudou ao trocar de tema: ' + JSON.stringify(noOutroTema));
 
@@ -1517,6 +1582,49 @@ await pag.locator('button[aria-label="Expandir menu"]').first().click();
 const larguraDeVolta = await esperarLargura(larguraAberta);
 if (Math.abs(larguraDeVolta - larguraAberta) < 3) ok('a barra volta a expandir');
 else falha(`a barra não voltou (${Math.round(larguraDeVolta)} vs ${Math.round(larguraAberta)})`);
+
+/* ── a barra em grupos ──────────────────────────────────────────────
+   Dezessete abas numa lista corrida, sem separação nenhuma e sem caber na
+   tela do celular: achar qualquer coisa era varrer dezessete nomes. O que
+   se cobra aqui é que os grupos existam, que toda aba esteja dentro de
+   um, e que nenhuma tenha sumido no caminho. */
+{
+  const grupos = await pag.evaluate(() => {
+    const n = document.querySelector('nav');
+    const saida = [];
+    let atual = null;
+    for (const el of n.children) {
+      if (el.tagName === 'SPAN' && el.innerText.trim()) {
+        atual = { nome: el.innerText.trim(), itens: [] };
+        saida.push(atual);
+      } else if (el.tagName === 'BUTTON') {
+        (atual ? atual.itens : (saida[0] ? saida[0].itens : [])).push(
+          el.innerText.trim().split('\n')[0]);
+      }
+    }
+    return saida;
+  });
+
+  if (grupos.length >= 4) ok(`a barra vem separada em grupos (${grupos.length})`);
+  else falha('a barra voltou a ser uma lista corrida de abas');
+
+  const soltos = grupos.filter((g) => !g.nome).length;
+  if (!soltos) ok('toda aba está debaixo de um título de grupo');
+  else falha(`${soltos} aba(s) ficaram fora de qualquer grupo`);
+
+  /* Nenhuma aba pode ter sumido ao agrupar: o agrupamento é por lista
+     escrita à mão, e uma aba nova que ninguém pôs numa lista sumiria da
+     barra sem ninguém notar. */
+  const dentro = grupos.reduce((n, g) => n + g.itens.length, 0);
+  const naBarra = await pag.evaluate(() => [...document.querySelectorAll('nav button')]
+    .filter((b) => b.innerText.trim()).length);
+  if (dentro === naBarra) ok(`as ${dentro} abas continuam todas na barra depois de agrupadas`);
+  else falha(`agrupar perdeu abas: ${dentro} nos grupos e ${naBarra} na barra`);
+
+  const vazios = grupos.filter((g) => !g.itens.length).map((g) => g.nome);
+  if (!vazios.length) ok('nenhum grupo aparece vazio, com título e nada embaixo');
+  else falha('grupo sem nada dentro: ' + vazios.join(', '));
+}
 
 /* ── o que a auditoria pegou ────────────────────────────────────────
    Cada uma destas foi um defeito de verdade encontrado varrendo o site
@@ -1697,6 +1805,7 @@ if (liberado) {
     const vazaCartoes = await pag.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2);
     if (vazaCartoes) falha('celular: a aba Cartões passou da largura da tela');
     else ok('celular: a aba Cartões cabe na largura da tela');
+
     await pag.screenshot({ path: 'captura-celular-cartoes.png' });
   }
 }

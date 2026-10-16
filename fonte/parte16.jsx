@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════════
    30 · MENTOR
-   Quem resgatou o cupom "mentor1612" adiciona alunos pelo e-mail com que
+   Quem resgatou um cupom de mentor adiciona alunos pelo e-mail com que
    eles se cadastraram (useMentor, no parte3.jsx) e daqui monta a rotina,
    as metas e marca o currículo de cada um — os mesmos três campos que o
    próprio aluno mexe em Rotina, Hoje e Matérias, só que a rota /api/mentor

@@ -24,7 +24,18 @@ fonte/_curriculo.mjs
 fonte/_cores.mjs
 fonte/_pastas.mjs
 fonte/_agenda.mjs
+fonte/_nuvem.mjs
+fonte/_lotes.mjs
+fonte/_revisao.mjs
+fonte/_semana.mjs
+fonte/_ficha.mjs
+fonte/_memoria.mjs
+fonte/_presenca.mjs
+fonte/_cronograma.mjs
+fonte/_cartoes.mjs
+fonte/_aula.mjs
 fonte/_treino.mjs
+fonte/_plano_mes.mjs
 
 # refeitos por material/capturar.mjs e material/gerar.mjs
 material/capturas/

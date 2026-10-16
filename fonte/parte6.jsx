@@ -2,7 +2,191 @@
    12 · MATÉRIAS
    ═══════════════════════════════════════════════════════════════════ */
 
-function SubjectRow({ s, open, minutes, onToggleOpen, setMark, toggleBonus, anotacao, salvarAnotacao, notify, setData, nuvem, pastas }) {
+/* ── a ficha de estudo do tópico ──────────────────────────────────────
+ *
+ * Tempo, acertos e dificuldade de um conteúdo estavam em três abas
+ * diferentes: os minutos no Foco, as questões no registro de estudo, a
+ * dificuldade em Revisões. Quem queria saber "como estou em insuficiência
+ * cardíaca?" tinha de abrir as três e fazer a conta de cabeça.
+ *
+ * Aqui os três ficam juntos, dentro da própria aula, com o registro na
+ * mesma tela — e é essa dificuldade que decide quando o conteúdo volta.
+ *
+ * A conta toda mora no base.jsx (fichaDoTopico), testada pelo
+ * testar-ficha.mjs. Aqui é só tela.
+ */
+function FichaDoTopico({ s, sessions, rec, today, addSession, marcarDificuldade, setMark, setData, notify }) {
+  const [abrir, setAbrir] = useState(false);
+  const [campos, setCampos] = useState({ minutos: "", questoes: "", acertos: "", comoFoi: "" });
+  const [erro, setErro] = useState("");
+
+  const f = useMemo(() => fichaDoTopico(s.id, sessions, rec, today), [s.id, sessions, rec, today]);
+
+  const declarada = f.dificuldade === null ? (f.sugerida === null ? 5 : f.sugerida) : f.dificuldade;
+  const faixaMedida = perfDeAproveitamento(f.aproveitamento);
+  /* A faixa escolhida à mão discordando do que foi medido: ela entra na
+     escada de revisão, então uma escolha velha desloca as revisões sem nada
+     na tela discordando dela. */
+  const discorda = faixaMedida > 0 && s.perf > 0 && faixaMedida !== s.perf;
+
+  const salvar = () => {
+    const r = lerRegistro(campos);
+    if (!r.ok) { setErro(r.erro); return; }
+    setErro("");
+    addSession({
+      id: uid(), date: today, subjectId: s.id, area: s.area,
+      topic: s.title, kind: r.questoes ? "Questões" : "Aula",
+      minutes: r.minutos, questions: r.questoes, correct: r.acertos,
+      notes: "ficha da matéria", createdAt: Date.now(),
+    });
+    /* Uma resposta de "como foi" é uma revisão feita, e ela mexe na escada
+       deste tópico — é o que liga o registro à hora em que ele volta. */
+    if (r.comoFoi) {
+      setData((p) => ({
+        ...p,
+        reviews: { ...p.reviews, [s.id]: depoisDaRevisao(p.reviews[s.id], r.comoFoi, today) },
+      }));
+    }
+    /* O registro também atualiza a faixa de desempenho, que estava sendo
+       escolhida à mão e envelhecia junto. Só quando houve questão: tempo
+       sozinho não diz nada sobre acerto. */
+    if (r.questoes) {
+      const nova = perfDeAproveitamento(aproveitamento(f.questoes + r.questoes, f.acertos + r.acertos));
+      if (nova > 0 && nova !== s.perf) setMark(s.id, { perf: nova });
+    }
+    if (!s.date) setMark(s.id, { date: today });
+    setCampos({ minutos: "", questoes: "", acertos: "", comoFoi: "" });
+    setAbrir(false);
+    notify("Registrado nesta aula.");
+  };
+
+  const set = (k, v) => setCampos((p) => ({ ...p, [k]: v }));
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <Label>Sua ficha nesta aula</Label>
+        <Mini>{f.quando}</Mini>
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-3">
+        <div className="rounded-xl px-3 py-3" style={{ background: T.card2, border: `1px solid ${T.line}` }}>
+          <Mini>tempo</Mini>
+          <div style={{ marginTop: 3 }}>
+            <Num size={17} color={f.minutos ? T.ink : T.faint} weight={600}>
+              {f.minutos ? fmtMin(f.minutos) : "—"}
+            </Num>
+          </div>
+          <Mini style={{ marginTop: 2 }}>{f.sessoes ? `${f.sessoes} ${f.sessoes === 1 ? "vez" : "vezes"}` : "nada ainda"}</Mini>
+        </div>
+        <div className="rounded-xl px-3 py-3" style={{ background: T.card2, border: `1px solid ${T.line}` }}>
+          <Mini>acerto</Mini>
+          <div style={{ marginTop: 3 }}>
+            <Num size={17} weight={600}
+              color={f.aproveitamento === null ? T.faint : perfColor(faixaMedida)}>
+              {f.aproveitamento === null ? "—" : `${f.aproveitamento}%`}
+            </Num>
+          </div>
+          <Mini style={{ marginTop: 2 }}>
+            {f.questoes ? `${f.acertos} de ${f.questoes}` : "sem questões"}
+          </Mini>
+        </div>
+        <div className="rounded-xl px-3 py-3" style={{ background: T.card2, border: `1px solid ${T.line}` }}>
+          <Mini>dificuldade</Mini>
+          <div style={{ marginTop: 3 }}>
+            <Num size={17} weight={600}
+              color={f.dificuldade === null ? T.faint : declarada >= 7 ? T.bad : declarada <= 3 ? T.ok : T.warn}>
+              {f.dificuldade === null ? "—" : `${declarada}/10`}
+            </Num>
+          </div>
+          <Mini style={{ marginTop: 2 }}>
+            {f.revisoes ? `${f.revisoes} ${f.revisoes === 1 ? "revisão" : "revisões"}` : "sem revisão"}
+          </Mini>
+        </div>
+      </div>
+
+      {/* O quanto este conteúdo é difícil PARA ESTA PESSOA é o que decide
+          quando ele volta. Fica aqui, ao lado do acerto medido, porque é
+          olhando os dois juntos que a resposta faz sentido. */}
+      <div className="mt-4 flex items-center gap-3 flex-wrap">
+        <Mini style={{ minWidth: 72 }}>o quanto pesa</Mini>
+        <input type="range" min="0" max="10" step="1" value={declarada}
+          onChange={(e) => marcarDificuldade(s.id, e.target.value)}
+          style={{ flex: 1, minWidth: 130, maxWidth: 240, accentColor: "var(--neon)" }}
+          aria-label={`Dificuldade de ${s.title}`} />
+        <Mini style={{ color: T.dim }}>
+          {declarada <= 3 ? "tranquilo" : declarada >= 7 ? "pesado" : "médio"}
+          {f.dificuldade === null && f.sugerida !== null ? " · palpite pelo seu acerto" : ""}
+        </Mini>
+      </div>
+      <Mini style={{ marginTop: 6, lineHeight: 1.6 }}>
+        É isto que decide quando esta aula volta para revisar: o que pesa volta antes,
+        o que é tranquilo se afasta.
+      </Mini>
+
+      {discorda ? (
+        <div className="mt-3 flex items-center gap-3 flex-wrap">
+          <Mini style={{ color: T.warn }}>
+            a faixa marcada aqui é "{PERF[s.perf]}" e suas questões deram {f.aproveitamento}%
+          </Mini>
+          <Btn size="sm" tone="quiet" onClick={() => setMark(s.id, { perf: faixaMedida })}>
+            usar {PERF[faixaMedida]}
+          </Btn>
+        </div>
+      ) : null}
+
+      {abrir ? (
+        <div className="mt-4 rounded-2xl px-4 py-4" style={{ background: T.card2, border: `1px solid ${T.line}` }}>
+          <Label>Registrar estudo de hoje</Label>
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Field label="Minutos">
+              <TextInput type="number" min="0" inputMode="numeric" value={campos.minutos}
+                placeholder="50" onChange={(e) => set("minutos", e.target.value)} />
+            </Field>
+            <Field label="Questões">
+              <TextInput type="number" min="0" inputMode="numeric" value={campos.questoes}
+                placeholder="20" onChange={(e) => set("questoes", e.target.value)} />
+            </Field>
+            <Field label="Acertos">
+              <TextInput type="number" min="0" inputMode="numeric" value={campos.acertos}
+                placeholder="14" onChange={(e) => set("acertos", e.target.value)} />
+            </Field>
+          </div>
+          <div className="mt-3">
+            <Label>Foi revisão? Como ela foi (opcional)</Label>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {COMO_FOI.map((op) => (
+                <Btn key={op.id} size="sm" tone={campos.comoFoi === op.id ? "primary" : "outline"} title={op.dica}
+                  onClick={() => set("comoFoi", campos.comoFoi === op.id ? "" : op.id)}>
+                  {op.rotulo}
+                </Btn>
+              ))}
+            </div>
+            <Mini style={{ marginTop: 8, lineHeight: 1.6 }}>
+              Respondendo aqui, a escada desta aula se ajusta: o que foi fácil se afasta,
+              e o que você não lembrou recomeça a contagem de hoje. Os degraus continuam
+              sendo marcados na aba Revisões. Deixe em branco se foi estudo novo.
+            </Mini>
+          </div>
+          {erro ? <Label style={{ marginTop: 12, color: T.bad }}>{erro}</Label> : null}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Btn size="sm" tone="primary" onClick={salvar}>Registrar</Btn>
+            <Btn size="sm" tone="quiet" onClick={() => { setAbrir(false); setErro(""); }}>cancelar</Btn>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-4">
+          <Btn size="sm" onClick={() => setAbrir(true)}>
+            <Plus size={14} /> Registrar estudo desta aula
+          </Btn>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SubjectRow({ s, open, minutes, onToggleOpen, setMark, toggleBonus, anotacao, salvarAnotacao, notify, setData, nuvem, pastas, folha,
+  sessions, rec, today, addSession, marcarDificuldade }) {
   const temNota = temAnotacao(anotacao);
   return (
     <Card className="overflow-hidden">
@@ -37,9 +221,16 @@ function SubjectRow({ s, open, minutes, onToggleOpen, setMark, toggleBonus, anot
 
       {open ? (
         <div className="px-5 pb-5 pt-4 grid grid-cols-1 sm:grid-cols-2 gap-5" style={{ borderTop: `1px solid ${T.line}` }}>
+          {/* A ficha vem primeiro porque é a resposta da pergunta que fez a
+              pessoa abrir a linha: "como eu estou nisto?" */}
+          <div className="sm:col-span-2 pb-4" style={{ borderBottom: `1px solid ${T.line}` }}>
+            <FichaDoTopico s={s} sessions={sessions} rec={rec} today={today}
+              addSession={addSession} marcarDificuldade={marcarDificuldade}
+              setMark={setMark} setData={setData} notify={notify} />
+          </div>
           <div className="sm:col-span-2 pb-4" style={{ borderBottom: `1px solid ${T.line}` }}>
             <AnotacaoMateria subjectId={s.id} area={s.area} titulo={s.title}
-              anotacao={anotacao} salvarAnotacao={salvarAnotacao} notify={notify} setData={setData} nuvem={nuvem} pastas={pastas} />
+              anotacao={anotacao} salvarAnotacao={salvarAnotacao} notify={notify} setData={setData} nuvem={nuvem} pastas={pastas} folha={folha} />
           </div>
           <div className="flex flex-col gap-3">
             <Label>Etapas</Label>
@@ -89,7 +280,8 @@ function SubjectRow({ s, open, minutes, onToggleOpen, setMark, toggleBonus, anot
   );
 }
 
-function Materias({ subjects, setMark, toggleBonus, minutes, done, bonusDone, anotacoes, salvarAnotacao, notify, setData, nuvem, pastas, vazioEm, irPara }) {
+function Materias({ subjects, setMark, toggleBonus, minutes, done, bonusDone, anotacoes, salvarAnotacao, notify, setData, nuvem, pastas, vazioEm, irPara, folhas,
+  sessions, reviews, today, addSession, marcarDificuldade }) {
   const [area, setArea] = useState("todas");
   const [status, setStatus] = useState("todas");
   const [q, setQ] = useState("");
@@ -132,7 +324,10 @@ function Materias({ subjects, setMark, toggleBonus, minutes, done, bonusDone, an
   const row = (s) => (
     <SubjectRow key={s.id} s={s} open={openId === s.id} minutes={minutes[s.id] || 0}
       onToggleOpen={() => setOpenId(openId === s.id ? null : s.id)} setMark={setMark} toggleBonus={toggleBonus}
-      anotacao={(anotacoes || {})[s.id]} salvarAnotacao={salvarAnotacao} notify={notify} setData={setData} nuvem={nuvem} pastas={pastas} />
+      anotacao={(anotacoes || {})[s.id]} salvarAnotacao={salvarAnotacao} notify={notify} setData={setData} nuvem={nuvem} pastas={pastas}
+      folha={(folhas || {})[s.id]}
+      sessions={sessions} rec={(reviews || {})[s.id]} today={today}
+      addSession={addSession} marcarDificuldade={marcarDificuldade} />
   );
 
   /* Quem substituiu o currículo inteiro pelo ciclo clínico deixa esta aba
@@ -252,6 +447,174 @@ const Leg = ({ color, t }) => (
   </span>
 );
 
+/* ── o teste de memória ───────────────────────────────────────────────
+ *
+ * Seis perguntas que dizem de que escada de revisão ESTA pessoa precisa,
+ * em vez de ela escolher num cardápio de nomes sem saber qual serve.
+ * O cálculo mora no base.jsx (perfilDeMemoria, escadaDoPerfil) e está
+ * testado no testar-memoria.mjs; aqui é a tela.
+ *
+ * O resultado não é uma "categoria" de estudante, é uma escada de dias —
+ * e ela só vale quando a pessoa aperta "usar". Até lá o teste é só uma
+ * simulação, e a escada em uso continua a de antes.
+ */
+function TesteDeMemoria({ data, setData, notify }) {
+  const pm = data.perfilMemoria || {};
+  const [aberto, setAberto] = useState(!pm.aplicadoEm);
+  const [resp, setResp] = useState(() => ({ ...(pm.respostas || {}) }));
+
+  /* A data da prova cadastrada no perfil ganha da pergunta de prazo: ela é
+     exata, e a pergunta é uma faixa. */
+  const prova = data.profile && data.profile.examDate;
+  const diasProva = prova ? diasEntreISO(todayISO(), prova) : null;
+  const temData = Number.isFinite(diasProva) && diasProva > 0;
+  const perguntas = PERGUNTAS_MEMORIA.filter((q) => !(q.id === "prazo" && temData));
+  const respondidas = perguntas.filter((q) => resp[q.id] !== undefined).length;
+  const completo = respondidas === perguntas.length;
+
+  const perfil = useMemo(() => perfilDeMemoria(resp, temData ? diasProva : null), [resp, temData, diasProva]);
+  const dias = useMemo(() => escadaDoPerfil(perfil), [perfil]);
+  const curva = useMemo(() => curvaDeRetencao(perfil, dias, perfil.horizonte), [perfil, dias]);
+  const noFim = curva[curva.length - 1] || { com: 0, sem: 0 };
+
+  const usar = () => {
+    setData((x) => ({
+      ...x,
+      revisao: { esquema: "personalizado", dias },
+      perfilMemoria: { respostas: resp, dias, aplicadoEm: todayISO() },
+    }));
+    setAberto(false);
+    notify(`Escada do seu perfil em uso: ${dias.length} revisões por assunto.`);
+  };
+
+  const tip = { background: T.card3, border: `1px solid ${T.line}`, borderRadius: 14, color: T.ink, fontSize: 13.5, boxShadow: T.shadow };
+  const emUso = pm.aplicadoEm && (data.revisao || {}).esquema === "personalizado"
+    && JSON.stringify((data.revisao || {}).dias) === JSON.stringify(pm.dias);
+
+  if (!aberto) {
+    return (
+      <Card className="px-6 py-5" brilho="var(--neon)">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <H size={17} color="var(--neon)" icon={<Brain size={16} />}>Seu perfil de memória</H>
+          <Btn size="sm" tone="outline" onClick={() => setAberto(true)}>refazer o teste</Btn>
+        </div>
+        <Texto style={{ marginTop: 8 }}>
+          {emUso
+            ? <>Suas revisões seguem a escada do seu teste de {brDate(pm.aplicadoEm)}:{" "}
+                <span style={{ fontFamily: F_MONO, color: T.ink }}>{pm.dias.map(rotuloDias).join(" · ")}</span></>
+            : <>Você trocou de escada depois do teste. Refaça, ou volte a usar a dele quando quiser.</>}
+        </Texto>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="px-6 py-6" brilho="var(--neon)">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <H size={18} color="var(--neon)" icon={<Brain size={16} />}>Descubra a sua escada de revisão</H>
+        {pm.aplicadoEm ? <Btn size="sm" tone="quiet" onClick={() => setAberto(false)}>fechar</Btn> : null}
+      </div>
+      <Texto style={{ marginTop: 8 }}>
+        Cada pessoa esquece num ritmo diferente, e uma escada que serve para uma
+        revisa cedo demais ou tarde demais para outra. Responda com sinceridade:
+        daqui sai quando cada assunto volta para você.
+      </Texto>
+
+      <div className="mt-5 flex flex-col gap-5">
+        {perguntas.map((q, i) => (
+          <div key={q.id}>
+            <Label>{i + 1}. {q.texto}</Label>
+            <div className="mt-2.5 flex flex-wrap gap-2">
+              {q.opcoes.map((o) => {
+                const on = resp[q.id] === o.valor;
+                return (
+                  <button key={o.rotulo} type="button"
+                    onClick={() => setResp((r) => ({ ...r, [q.id]: o.valor }))}
+                    className="rounded-full px-3.5 py-2 brilhar"
+                    style={{
+                      fontSize: 13.5, cursor: "pointer",
+                      background: on ? soft("var(--neon)", 16) : T.card2,
+                      border: `1px solid ${on ? soft("var(--neon)", 55) : T.line}`,
+                      color: on ? "var(--neon)" : T.dim, fontWeight: on ? 700 : 500,
+                    }}>
+                    {o.rotulo}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+        {temData ? (
+          <Mini style={{ lineHeight: 1.6 }}>
+            O prazo vem da data da sua prova, {brDate(prova)} — daqui a {diasProva} dias.
+          </Mini>
+        ) : null}
+      </div>
+
+      {/* ── o resultado ──────────────────────────────────────────────────
+          Aparece desde a primeira resposta, e vai mudando: ver a escada
+          reagir a cada resposta é o que faz a pessoa entender o que cada
+          pergunta estava medindo. */}
+      <div className="mt-6 pt-5" style={{ borderTop: `1px solid ${T.line}` }}>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <Label>A escada que sai das suas respostas</Label>
+          <Mini>{respondidas} de {perguntas.length} respondidas</Mini>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {dias.map((d, i) => (
+            <span key={d} style={{
+              fontFamily: F_MONO, fontSize: 12, borderRadius: 99, padding: "4px 10px",
+              background: T.card2, border: `1px solid ${T.line}`, color: T.ink,
+            }}>{i + 1}ª · {rotuloDias(d)}</span>
+          ))}
+        </div>
+
+        <div className="mt-4" style={{ height: 190 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={curva} margin={{ top: 6, right: 6, left: -24, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="2 5" stroke="var(--line)" vertical={false} />
+              <XAxis dataKey="dia" type="number" domain={[0, perfil.horizonte]}
+                tick={{ fill: "var(--ghost)", fontSize: 10, fontFamily: F_MONO }} axisLine={false} tickLine={false}
+                tickFormatter={(v) => `${Math.round(v)}d`} />
+              <YAxis domain={[0, 100]} tick={{ fill: "var(--ghost)", fontSize: 10, fontFamily: F_MONO }}
+                axisLine={false} tickLine={false} tickFormatter={(v) => `${v}%`} />
+              <Tooltip contentStyle={tip}
+                labelFormatter={(v) => `dia ${Math.round(v)}`}
+                formatter={(v, k) => [`${Math.round(v)}%`, k === "com" ? "revisando" : "sem revisar"]} />
+              <Line type="linear" dataKey="sem" stroke="var(--bad)" strokeWidth={1.5}
+                strokeDasharray="4 4" dot={false} isAnimationActive={false} />
+              <Line type="linear" dataKey="com" stroke="var(--ok)" strokeWidth={2.2}
+                dot={false} isAnimationActive={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="mt-2 flex items-center gap-4 flex-wrap">
+          <Leg color="var(--ok)" t={`revisando: ${Math.round(noFim.com)}% no dia ${perfil.horizonte}`} />
+          <Leg color="var(--bad)" t={`sem revisar: ${Math.round(noFim.sem)}%`} />
+        </div>
+        <Mini style={{ marginTop: 10, lineHeight: 1.65 }}>
+          A linha sobe a cada revisão e cai mais devagar depois de cada uma: é a
+          memória ficando mais estável. São {dias.length} revisões por assunto, e
+          a escada se ajusta sozinha a cada tópico depois, conforme o "como foi"
+          de cada revisão.
+        </Mini>
+
+        <div className="mt-5 flex items-center gap-3 flex-wrap">
+          <Btn tone="primary" disabled={!completo} onClick={usar}>
+            {/* Curto de propósito: o nome inteiro ("nas minhas revisões")
+                passava da borda do card num celular de 390 px. */}
+            <Check size={15} /> Usar esta escada
+          </Btn>
+          {!completo ? <Mini>responda todas para poder usar</Mini> : null}
+        </div>
+        <Mini style={{ marginTop: 10, lineHeight: 1.6 }}>
+          Trocar de escada não apaga nenhuma revisão já feita.
+        </Mini>
+      </div>
+    </Card>
+  );
+}
+
 /* Escolha do esquema de intervalos. Os degraus cumpridos são guardados pelo
    número de dias, não pela posição, então trocar de esquema não apaga nada:
    o que existe nos dois esquemas continua marcado, e o que só existia no
@@ -286,7 +649,11 @@ function EsquemaRevisao({ data, setData, degraus, notify }) {
         </button>
       </div>
       <Texto style={{ marginTop: 10 }}>
-        Em uso: <span style={{ color: T.ink, fontWeight: 700 }}>{atual.nome}</span> ·{" "}
+        Em uso: <span style={{ color: T.ink, fontWeight: 700 }}>
+          {cfg.esquema === "personalizado" && (data.perfilMemoria || {}).aplicadoEm
+            && JSON.stringify(cfg.dias) === JSON.stringify((data.perfilMemoria || {}).dias)
+            ? "Pelo seu perfil de memória" : atual.nome}
+        </span> ·{" "}
         {degraus.map((d) => d.label).join(" · ")}
       </Texto>
 
@@ -349,7 +716,20 @@ function EsquemaRevisao({ data, setData, degraus, notify }) {
   );
 }
 
-function Revisoes({ rows, toggleStep, resetCycle, data, setData, degraus, notify }) {
+/* Como foi a revisão. É a pergunta que faz a escada se ajustar: sem ela, o
+   intervalo seria o mesmo para o que a pessoa lembrou de cara e para o que
+   ela não lembrou de jeito nenhum. */
+const COMO_FOI = [
+  { id: "facil", rotulo: "fácil", cor: "var(--ok)", dica: "lembrei de cara — pode demorar mais a voltar" },
+  { id: "ok", rotulo: "ok", cor: "var(--neon)", dica: "lembrei com esforço" },
+  { id: "dificil", rotulo: "difícil", cor: "var(--warn)", dica: "custou — volta mais cedo" },
+  { id: "errei", rotulo: "não lembrei", cor: "var(--bad)", dica: "recomeça a contagem de hoje" },
+];
+
+function Revisoes({ rows, toggleStep, resetCycle, marcarDificuldade, data, setData, degraus, notify }) {
+  /* Qual degrau está esperando a resposta de "como foi". Guardado como
+     "id do tópico|dia" porque o mesmo tópico tem vários degraus. */
+  const [perguntando, setPerguntando] = useState("");
   const [onlyLate, setOnlyLate] = useState(false);
   const list = onlyLate ? rows.filter((r) => r.late.length > 0) : rows;
   const colunas = { gridTemplateColumns: `repeat(${Math.max(1, degraus.length)}, minmax(0, 1fr))` };
@@ -357,6 +737,7 @@ function Revisoes({ rows, toggleStep, resetCycle, data, setData, degraus, notify
 
   return (
     <div className="flex flex-col gap-4">
+      <TesteDeMemoria data={data} setData={setData} notify={notify} />
       <EsquemaRevisao data={data} setData={setData} degraus={degraus} notify={notify} />
 
       {rows.length === 0 ? (
@@ -395,7 +776,13 @@ function Revisoes({ rows, toggleStep, resetCycle, data, setData, degraus, notify
                   const active = st.state === "vencida" || st.state === "hoje";
                   const col = st.state === "feita" ? T.ok : active ? T.warn : T.ghost;
                   return (
-                    <button key={st.d} type="button" onClick={() => toggleStep(r.id, st.d, r.anchor)}
+                    <button key={st.d} type="button"
+                      onClick={() => {
+                        /* Marcar pergunta como foi; desmarcar é só desfazer
+                           um clique, e não mexe na adaptação. */
+                        if (st.state === "feita") toggleStep(r.id, st.d, r.anchor);
+                        else setPerguntando(`${r.id}|${st.d}`);
+                      }}
                       className="rounded-2xl px-1 py-3 flex flex-col items-center gap-2 brilhar"
                       title={st.on ? `revisado em ${brDate(st.on)}` : `vence em ${brDate(st.due)}`}
                       style={{
@@ -409,6 +796,56 @@ function Revisoes({ rows, toggleStep, resetCycle, data, setData, degraus, notify
                     </button>
                   );
                 })}
+              </div>
+
+              {/* ── como foi a revisão ───────────────────────────────────
+                * A escada deste tópico sai daqui. Quatro respostas, porque
+                * duas ("lembrei" / "não lembrei") não distinguem o que
+                * voltou de cara do que voltou a duras penas — e é
+                * justamente essa diferença que diz se o intervalo pode
+                * crescer. */}
+              {perguntando.startsWith(`${r.id}|`) ? (
+                <div className="mt-4 rounded-2xl px-4 py-4"
+                  style={{ background: T.card2, border: `1px solid ${T.line}` }}>
+                  <Label>Como foi essa revisão?</Label>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {COMO_FOI.map((op) => (
+                      <Btn key={op.id} size="sm" tone="outline" title={op.dica}
+                        style={{ borderColor: soft(op.cor, 40), color: op.cor }}
+                        onClick={() => {
+                          const dia = Number(perguntando.split("|")[1]);
+                          toggleStep(r.id, dia, r.anchor, op.id);
+                          setPerguntando("");
+                          if (op.id === "errei") notify("Contagem reiniciada hoje: esse conteúdo volta logo.");
+                        }}>
+                        {op.rotulo}
+                      </Btn>
+                    ))}
+                    <Btn size="sm" tone="quiet" onClick={() => setPerguntando("")}>cancelar</Btn>
+                  </div>
+                  <Mini style={{ marginTop: 10, lineHeight: 1.6 }}>
+                    A resposta muda quando este conteúdo volta. Nada de escada fixa:
+                    o que você lembra fácil se afasta, o que custa volta antes.
+                  </Mini>
+                </div>
+              ) : null}
+
+              {/* ── o quanto este conteúdo é difícil PARA VOCÊ ──────────
+                * É o ponto de partida da escada, antes de existir qualquer
+                * revisão para corrigi-la. */}
+              <div className="mt-3 flex items-center gap-3 flex-wrap">
+                <Mini>dificuldade</Mini>
+                <input type="range" min="0" max="10" step="1"
+                  value={Number((data.reviews[r.id] || {}).dificuldade ?? 5)}
+                  onChange={(e) => marcarDificuldade(r.id, e.target.value)}
+                  style={{ flex: 1, minWidth: 140, maxWidth: 260, accentColor: "var(--neon)" }}
+                  aria-label={`Dificuldade de ${r.title}`} />
+                <Mini style={{ color: T.dim }}>
+                  {(() => {
+                    const d = Number((data.reviews[r.id] || {}).dificuldade ?? 5);
+                    return d <= 3 ? "tranquilo" : d >= 7 ? "pesado" : "médio";
+                  })()}
+                </Mini>
               </div>
             </Card>
           ))}

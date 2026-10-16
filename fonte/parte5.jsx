@@ -21,6 +21,183 @@ function Ring({ pct, color, size = 240, children }) {
   );
 }
 
+/* ── relógio de virar ─────────────────────────────────────────────────
+ *
+ * O estilo "Virar": um cartão para os minutos e outro para os segundos
+ * (e um para as horas, no tempo corrido), com a linha no meio, e a
+ * metade de cima caindo quando o número muda — o relógio de mesa de
+ * placas. Na tela cheia, os cartões ocupam a tela.
+ *
+ * A virada são duas abas por cima de duas metades fixas: a metade de
+ * cima já mostra o número NOVO e a de baixo ainda o VELHO; a aba de cima
+ * (velho) cai até sumir, e a de baixo (novo) desce até cobrir o velho.
+ * Quem pediu menos movimento no sistema vê só a troca, sem a virada (a
+ * regra global de prefers-reduced-motion desliga as animações). */
+const FONTE_VIRAR = "'Oswald', 'Bebas Neue', 'Arial Narrow', 'Roboto Condensed', sans-serif";
+
+const DURACAO_VIRADA = 560;
+
+function PlacaDeVirar({ valor, largura }) {
+  const altura = Math.round(largura * 1.32);
+  const [atual, setAtual] = useState(valor);
+  const [antigo, setAntigo] = useState(valor);
+  const [virada, setVirada] = useState(0);
+  /* A virada acontece SEMPRE, inclusive com "reduzir movimento" ligado no
+     sistema (no Windows, "efeitos de animação" desligado). Antes, nesse
+     caso, o número só trocava seco, e no computador de quem tinha essa
+     opção desligada o relógio parecia travado. Como a virada é conduzida
+     aqui, quadro a quadro, a regra geral do site que desliga as animações
+     de CSS não a atinge, e não sobra folha parada no meio. */
+  const menosMovimento = false;
+  /* A virada é conduzida aqui, quadro a quadro, com o transform escrito
+     direto no elemento — e não por animação de CSS. No Safari do iPhone a
+     animação de CSS da folha não aparecia (o cartão tinha um filter de
+     sombra, e o WebKit não redesenha animação dentro de elemento com
+     filtro): sobravam as metades fixas, e a de cima trocava de uma vez,
+     com a de baixo vindo depois. Conduzida assim, não depende disso. */
+  const [prog, setProg] = useState(1);
+  useEffect(() => {
+    if (valor === atual) return undefined;
+    setAntigo(atual);
+    setAtual(valor);
+    setVirada((n) => n + 1);
+    const inicio = Date.now();
+    let quadro = 0;
+    const passo = () => {
+      const p = Math.min(1, (Date.now() - inicio) / DURACAO_VIRADA);
+      setProg(p);
+      if (p < 1) quadro = window.requestAnimationFrame(passo);
+      else setAntigo(valor);
+    };
+    setProg(0);
+    quadro = window.requestAnimationFrame(passo);
+    /* aba em segundo plano não roda requestAnimationFrame: a placa
+       assenta mesmo assim */
+    const fim = window.setTimeout(() => { setProg(1); setAntigo(valor); }, DURACAO_VIRADA + 120);
+    return () => { window.cancelAnimationFrame(quadro); window.clearTimeout(fim); };
+  }, [valor]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* Os números têm de caber no cartão com qualquer fonte. Com a Oswald
+     (estreita) cabem folgados; sem ela (sem internet, ou antes de ela
+     chegar) a fonte de reserva é larga e estouraria o cartão. Mede "00"
+     na fonte que estiver valendo e aperta na horizontal o que passar —
+     o que também dá à reserva o jeito estreito do relógio de placas. */
+  /* Medido no próprio número da tela, e não num canvas à parte: o canvas
+     media às vezes com outra fonte (a Oswald ainda chegando, a reserva do
+     aparelho), o "00" saía mais largo que a conta, passava da placa e,
+     sendo mais largo que a caixa, escorria para a direita em vez de ficar
+     no meio. Agora a caixa do número é centralizada pelo meio (sobra para
+     os dois lados igual) e o aperto é refeito quando a fonte troca. */
+  const tamanhoFonte = Math.round(altura * 0.84);
+  const [aperto, setAperto] = useState(1);
+  const medida = useRef(null);
+  useLayoutEffect(() => {
+    let vivo = true;
+    const medir = () => {
+      const el = medida.current;
+      const w = el ? el.offsetWidth : 0;   // offsetWidth ignora o scaleX
+      if (vivo && w > 0) setAperto(Math.min(1, (largura * 0.86) / w));
+    };
+    medir();
+    let obs = null;
+    if (typeof ResizeObserver !== "undefined" && medida.current) {
+      obs = new ResizeObserver(medir);
+      obs.observe(medida.current);
+    }
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(medir).catch(() => {});
+    if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener("loadingdone", medir);
+    return () => {
+      vivo = false;
+      if (obs) obs.disconnect();
+      if (document.fonts && document.fonts.removeEventListener) document.fonts.removeEventListener("loadingdone", medir);
+    };
+  }, [largura, tamanhoFonte]);
+
+  const raio = Math.round(largura * 0.08);
+  const fundo = "linear-gradient(180deg, #b9c6d4 0%, #a4b2c2 100%)";
+  const estiloNumero = {
+    display: "inline-block", whiteSpace: "nowrap", fontFamily: FONTE_VIRAR, fontWeight: 700,
+    fontSize: tamanhoFonte, lineHeight: `${altura}px`, letterSpacing: "-0.02em",
+    fontVariantNumeric: "tabular-nums", fontFeatureSettings: "\"tnum\"",
+  };
+  const numero = (txt) => (
+    <div style={{
+      position: "absolute", left: 0, right: 0, height: altura,
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }}>
+      <span style={{
+        ...estiloNumero, flexShrink: 0, color: "#ffffff", textShadow: "0 2px 6px rgba(20,30,45,.25)",
+        transform: aperto < 1 ? `scaleX(${aperto})` : undefined, transformOrigin: "50% 50%",
+      }}>{txt}</span>
+    </div>
+  );
+  /* sombra: escurece a metade enquanto a folha passa por cima dela */
+  const metade = (txt, embaixo, extra, sombra) => (
+    <div style={{
+      position: "absolute", left: 0, right: 0, height: altura / 2, overflow: "hidden",
+      top: embaixo ? altura / 2 : 0, background: fundo,
+      borderRadius: embaixo ? `0 0 ${raio}px ${raio}px` : `${raio}px ${raio}px 0 0`,
+      boxShadow: embaixo ? "0 12px 26px rgba(0,0,0,.32)" : "none",
+      ...extra,
+    }}>
+      <div style={{ position: "absolute", left: 0, right: 0, top: embaixo ? -altura / 2 : 0, height: altura }}>{numero(txt)}</div>
+      {sombra ? <div style={{ position: "absolute", inset: 0, background: "#141b26", opacity: sombra }} /> : null}
+    </div>
+  );
+
+  /* As duas metades da virada. Primeira metade do tempo: a folha de cima
+     (o número VELHO) dobra para baixo até a dobradiça, e a parte de cima
+     do NOVO vai aparecendo atrás dela, saindo da sombra. Segunda metade:
+     o verso da folha (a parte de baixo do NOVO) desce e cobre o velho. */
+  const virando = antigo !== atual && !menosMovimento && prog < 1;
+  const q1 = Math.min(1, prog / 0.5), q2 = Math.max(0, (prog - 0.5) / 0.5);
+  const cai = 1 - q1 * q1;                 // acelera ao cair
+  const desce = 1 - (1 - q2) * (1 - q2);   // freia ao assentar
+  return (
+    <div role="img" aria-label={valor} data-teste="placa-virar"
+      style={{ position: "relative", width: largura, height: altura, flexShrink: 0 }}>
+      {/* a régua: o número sem aperto, invisível, só para medir */}
+      <span ref={medida} aria-hidden="true"
+        style={{ ...estiloNumero, position: "absolute", left: 0, top: 0, visibility: "hidden", pointerEvents: "none" }}>
+        {"0".repeat(Math.max(2, String(valor).length))}
+      </span>
+      {metade(atual, false, null, virando ? 0.55 * (1 - q1) : 0)}
+      {metade(antigo, true, null, virando ? 0.4 * q1 * (1 - q2) : 0)}
+      {virando ? (
+        <>
+          <div key={`c${virada}`} className="virar-cai" style={{ position: "absolute", inset: 0, zIndex: 2 }}>
+            {metade(antigo, false, { transform: `scaleY(${cai})`, transformOrigin: "50% 100%", willChange: "transform" }, 0.5 * q1)}
+          </div>
+          <div key={`b${virada}`} className="virar-desce" style={{ position: "absolute", inset: 0, zIndex: 2 }}>
+            {metade(atual, true, { transform: `scaleY(${q2 > 0 ? desce : 0})`, transformOrigin: "50% 0%", willChange: "transform" }, 0.5 * (1 - q2))}
+          </div>
+        </>
+      ) : null}
+      {/* a fresta do meio, onde as placas dobram */}
+      <div style={{ position: "absolute", left: 0, right: 0, top: altura / 2 - 1, height: 2, background: "rgba(30,38,50,.55)", zIndex: 3 }} />
+    </div>
+  );
+}
+
+function RelogioDeVirar({ relogio, largura }) {
+  const grupos = String(relogio || "").split(":");
+  return (
+    <div className="flex items-center justify-center" style={{ gap: Math.round(largura * 0.09) }}>
+      {grupos.map((g, i) => <PlacaDeVirar key={i} valor={g.padStart(2, "0")} largura={largura} />)}
+    </div>
+  );
+}
+
+/* Na tela cheia: cada placa o maior possível sem passar da largura nem
+   da altura da tela (sobra espaço para o nome da fase e os botões). */
+function larguraPlacaCheia(grupos) {
+  const w = typeof window !== "undefined" ? window.innerWidth : 1280;
+  const h = typeof window !== "undefined" ? window.innerHeight : 800;
+  const porLargura = (w - 48) / (grupos + (grupos - 1) * 0.09);
+  const porAltura = (h - 300) / 1.32;
+  return Math.max(90, Math.floor(Math.min(porLargura, porAltura, 520)));
+}
+
 /* Quatro jeitos de mostrar o mesmo estado (fase, cor, relógio, progresso),
    escolhido em Ajustes e guardado em data.pomo.estilo. Só vale na tela
    normal — a tela cheia (Foco, if (full)) continua com anel + barra
@@ -55,6 +232,16 @@ function Cronometro({ estilo, pct, color, name, relogio, corrido, cycle, round, 
       <div className="flex flex-col items-center" style={{ width: 240, flexShrink: 0 }}>
         {rotulo}{digitos}
         <div className="w-full mt-5"><Track pct={pct * 100} color={color} height={8} /></div>
+        {status}
+      </div>
+    );
+  }
+  if (estilo === "virar") {
+    const grupos = String(relogio || "").split(":").length;
+    return (
+      <div className="flex flex-col items-center" style={{ width: grupos > 2 ? 300 : 260, flexShrink: 0 }}>
+        {rotulo}
+        <div style={{ marginTop: 14 }}><RelogioDeVirar relogio={relogio} largura={grupos > 2 ? 84 : 112} /></div>
         {status}
       </div>
     );
@@ -113,8 +300,17 @@ function Foco({ data, setData, today, P, subjectId, setSubjectId }) {
   const subj = subjectId ? ativo.byId[subjectId] : null;
 
   if (full) {
-    return (
-      <div className="fixed flex flex-col items-center justify-center px-6" style={{ inset: 0, background: T.bg, zIndex: 90 }}>
+    /* Por portal, no <body>. Dentro da página, o "fixed" ficava preso ao
+       bloco com a animação de entrada (.rise, que usa transform) e não à
+       tela: o relógio gigante saía por cima do cabeçalho, com o menu e o
+       rodapé aparecendo em volta. É a mesma saída dos cartões, parte12.jsx. */
+    return createPortal((
+      <div className="fixed flex flex-col items-center justify-center px-6"
+        style={{
+          inset: 0, background: T.bg, zIndex: 90,
+          /* Sem cursor de texto piscando no meio do relógio. Ver parte12.jsx. */
+          caretColor: "transparent",
+        }}>
         <button type="button" onClick={() => setFull(false)} aria-label="Sair da tela cheia"
           className="fixed flex items-center justify-center rounded-full"
           style={{ top: 20, right: 20, width: 44, height: 44, background: T.card2, border: `1px solid ${T.line}`, color: T.dim, cursor: "pointer" }}>
@@ -127,11 +323,18 @@ function Foco({ data, setData, today, P, subjectId, setSubjectId }) {
           </div>
         ) : null}
         <div style={{ fontFamily: F_UI, fontSize: 17, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", color }}>{name}</div>
-        <div style={{
-          fontFamily: F_MONO, fontWeight: 700, color,
-          fontSize: corrido ? "clamp(64px, 19vw, 200px)" : "clamp(88px, 26vw, 260px)",
-          letterSpacing: "-0.05em", lineHeight: 1, marginTop: 18, fontVariantNumeric: "tabular-nums",
-        }}>{relogio}</div>
+        {data.pomo.estilo === "virar" ? (
+          /* as placas ocupam a tela: largura pela tela, sem passar da altura */
+          <div style={{ marginTop: 22 }}>
+            <RelogioDeVirar relogio={relogio} largura={larguraPlacaCheia(String(relogio).split(":").length)} />
+          </div>
+        ) : (
+          <div style={{
+            fontFamily: F_MONO, fontWeight: 700, color,
+            fontSize: corrido ? "clamp(64px, 19vw, 200px)" : "clamp(88px, 26vw, 260px)",
+            letterSpacing: "-0.05em", lineHeight: 1, marginTop: 18, fontVariantNumeric: "tabular-nums",
+          }}>{relogio}</div>
+        )}
         <div className="w-full mt-10" style={{ maxWidth: 640 }}><Track pct={pct * 100} color={color} height={10} /></div>
         {!corrido ? (
           <div className="flex gap-2 mt-5">
@@ -157,7 +360,7 @@ function Foco({ data, setData, today, P, subjectId, setSubjectId }) {
         </div>
         <Mini style={{ marginTop: 26 }}>espaço inicia e pausa · F ou Esc sai da tela cheia</Mini>
       </div>
-    );
+    ), document.body);
   }
 
   return (
@@ -248,7 +451,7 @@ function Foco({ data, setData, today, P, subjectId, setSubjectId }) {
             </div>
             <div className="col-span-2 lg:col-span-4 pt-5 flex flex-wrap gap-2 items-center" style={{ borderTop: `1px solid ${T.line}` }}>
               <Label>Estilo do cronômetro</Label>
-              {[["anel", "Anel"], ["digitos", "Dígitos"], ["barra", "Barra"], ["minimalista", "Minimalista"]].map(([id, lb]) => (
+              {[["anel", "Anel"], ["digitos", "Dígitos"], ["barra", "Barra"], ["minimalista", "Minimalista"], ["virar", "Virar"]].map(([id, lb]) => (
                 <button key={id} type="button" onClick={() => set("estilo", id)} className="toque-larg rounded-full px-4 py-2"
                   style={{
                     background: (data.pomo.estilo || "anel") === id ? T.card3 : "transparent",
@@ -346,7 +549,7 @@ function LogForm({ today, addSession, notify, onDone }) {
   );
 }
 
-function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, done, bonusDone, addSession, delSession, notify, go, blocosHoje, projecao, pro, verPlanos, cartoesHoje }) {
+function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, done, bonusDone, addSession, delSession, notify, go, blocosHoje, projecao, pro, verPlanos, cartoesHoje, plano, emTeste, testeAcabou }) {
   const [openLog, setOpenLog] = useState(false);
   const [newTask, setNewTask] = useState("");
   const ativo = useAtivo();
@@ -374,6 +577,12 @@ function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, do
 
   return (
     <div className="flex flex-col gap-5">
+      {/* O dia em uma olhada, como a "Visão geral" da Easy: a saudação, o
+          quanto já foi, e as atividades com o botão para ir fazer. */}
+      <PainelDoDia {...{ data, today, minToday, late, blocosHoje, cartoesHoje, go }} />
+      {/* um motivo do painel de motivação por dia, para lembrar por quê */}
+      <MotivoDoDia data={data} today={today} go={go} />
+
       <Card className="px-6 sm:px-8 py-7" brilho="var(--neon)" tilt>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-7">
           {stats.map((s, i) => (
@@ -441,16 +650,37 @@ function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, do
         </Card>
       ) : null}
 
-      {!pro ? (
+      {emTeste ? (
+        <div data-teste="banner-teste"><Card className="px-6 py-5" brilho="var(--ok)">
+          <div className="flex items-center gap-4 flex-wrap">
+            <span className="flex items-center justify-center rounded-full" style={{ width: 42, height: 42, background: soft("var(--ok)", 16), color: T.ok, flexShrink: 0 }}>
+              <Sparkles size={19} />
+            </span>
+            <div className="flex-1" style={{ minWidth: 200 }}>
+              <div style={{ fontSize: 15.5, fontWeight: 700, color: T.ink }}>
+                Teste grátis com todas as funções liberadas · {faltaDoTeste(plano.ate)}
+              </div>
+              <Mini style={{ marginTop: 3, lineHeight: 1.55 }}>
+                Todas as funções do site estão abertas até {diaDoFim(plano.ate)}, sem cobrança. Depois você decide se assina.
+              </Mini>
+            </div>
+            <Btn tone="quiet" onClick={verPlanos}>Ver planos</Btn>
+          </div>
+        </Card></div>
+      ) : !pro ? (
         <Card className="px-6 py-5" brilho="var(--neon2)">
           <div className="flex items-center gap-4 flex-wrap">
             <span className="flex items-center justify-center rounded-full" style={{ width: 42, height: 42, background: soft("var(--neon2)", 16), color: "var(--neon2)", flexShrink: 0 }}>
               <Cadeado tamanho={19} />
             </span>
             <div className="flex-1" style={{ minWidth: 200 }}>
-              <div style={{ fontSize: 15.5, fontWeight: 700, color: T.ink }}>Você está na versão gratuita</div>
+              <div style={{ fontSize: 15.5, fontWeight: 700, color: T.ink }}>
+                {testeAcabou ? "Seu teste grátis acabou" : "Você está na versão gratuita"}
+              </div>
               <Mini style={{ marginTop: 3, lineHeight: 1.55 }}>
-                Especialidades, assistente, rotina e sincronização entram no plano completo.
+                {testeAcabou
+                  ? `Os ${DIAS_TESTE} dias com todas as funções liberadas terminaram, e seus dados continuam aqui. Para voltar a usar tudo, escolha um plano.`
+                  : "Especialidades, assistente, rotina e sincronização entram no plano completo."}
               </Mini>
             </div>
             <Btn tone="primary" onClick={verPlanos}>Ver planos</Btn>
@@ -466,13 +696,16 @@ function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, do
           </div>
           <div className="mt-4 flex flex-col gap-2">
             {blocosHoje.map((b) => (
-              <div key={b.id} className="flex items-center gap-3 rounded-2xl px-4 py-3" style={{ background: T.card2 }}>
+              <div key={b.id} className="flex items-center gap-3 rounded-2xl px-4 py-3 flex-wrap" style={{ background: T.card2 }}>
                 <span style={{ width: 3, height: 26, borderRadius: 3, background: BLOCKS[b.type] || T.faint, flexShrink: 0 }} />
                 <Num size={13} color={T.dim} weight={600}>{b.start}</Num>
                 <div className="flex-1 min-w-0">
                   <div style={{ fontSize: 15, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.label}</div>
                   <Mini style={{ marginTop: 1 }}>{b.type} · até {b.end}</Mini>
                 </div>
+                {!(data.blocos || {})[`${b.id}|${today}`]
+                  ? <BotaoIniciarBloco b={b} iso={today} compacto />
+                  : <Mini style={{ color: T.ok, flexShrink: 0 }}>cumprido</Mini>}
               </div>
             ))}
           </div>
@@ -485,6 +718,17 @@ function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, do
             <H color="var(--warn)" icon={<RotateCcw size={16} />}>Revisões pedindo passagem</H>
             {late.length ? <Btn size="sm" tone="outline" onClick={() => go("revisoes")}>ver todas <ChevronRight size={13} /></Btn> : null}
           </div>
+          {/* ── o convite para ligar o lembrete ──────────────────────────
+            * Fica aqui, e não escondido em Configurações, porque é aqui
+            * que ele faz sentido: ao lado da revisão que já está atrasada.
+            * Quem chega a esta tela e vê conteúdo vencido é exatamente
+            * quem ganha alguma coisa sendo avisado antes.
+            *
+            * Aparece uma vez por dia no máximo, e só com revisão atrasada
+            * de verdade. Convite que aparece sempre vira paisagem, e o
+            * navegador guarda para sempre quem clicou em "não". */}
+          <ConviteLembrete data={data} setData={setData} notify={notify} quantas={late.length} />
+
           {late.length === 0 ? (
             <Blank icon={<Check size={24} />} title="Nada atrasado" hint="Todos os degraus estão dentro do prazo." />
           ) : (

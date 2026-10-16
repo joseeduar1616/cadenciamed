@@ -90,7 +90,7 @@ d.text((86, 436),
        'O cronograma inteiro, a revisão que volta na hora certa\ne os seus flashcards, no mesmo lugar.',
        font=f_frase, fill=APAGADO, spacing=12)
 
-d.text((86, 540), '90 aulas  ·  213 tópicos  ·  cadenciamed.com.br', font=f_pe, fill=(110, 103, 138))
+d.text((86, 540), '3 dias grátis  ·  cadenciamed.com.br', font=f_pe, fill=(110, 103, 138))
 
 # Fio de gradiente no rodapé, a mesma assinatura visual do site.
 for x in range(L):

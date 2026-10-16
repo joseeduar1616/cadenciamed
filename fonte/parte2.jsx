@@ -16,7 +16,9 @@ const CORES_TIMER = [
 ];
 
 const DEFAULTS = {
-  profile: { name: PRESET ? "José Eduardo" : "", examDate: "", onboarded: PRESET },
+  /* apelido: como a pessoa quer ser chamada nas telas com outras pessoas.
+     foto: a imagem já encolhida, guardada como data URL. Ver PerfilPublico. */
+  profile: { name: PRESET ? "José Eduardo" : "", apelido: "", foto: "", examDate: "", onboarded: PRESET },
   theme: "dark",
   layout: "auto",
   sessions: [], marks: {}, reviews: {}, routine: [], agenda: [], tasks: [],
@@ -24,6 +26,29 @@ const DEFAULTS = {
      data porque um bloco que se repete toda semana é um compromisso
      diferente em cada segunda-feira. */
   blocos: {},
+  /* Bloco de estudo que passou sem ser marcado como cumprido é remarcado
+     no próximo horário livre (pendentes.jsx, parte27). "modo" diz quais:
+     só os da mentoria, todos os de estudo, ou nenhum. "ate" é o último dia
+     já conferido, para não remarcar a mesma coisa duas vezes. */
+  rolagem: { modo: "mentoria", ate: "", semLugar: [] },
+  /* Caderno de erros (parte29): uma ficha por questão errada. */
+  erros: [],
+  /* Folha em branco por aula (parte30): as caixas, o que foi escrito e a
+     conferência. A conversa com a IA não fica; o resultado fica. */
+  folhas: {},
+  /* O financeiro do dono (parte31). Só a conta do dono vê a aba; para
+     todo mundo isto fica vazio. */
+  financas: { rendas: [], fixos: [], gastos: [], meta: 0, conversa: [] },
+  /* Estudo de cartões por dia: { "2026-10-06": { respostas, acertos,
+     segundos } }. Alimenta o "cartões revisados hoje" e o calendário. */
+  cartoesDia: {},
+  /* Estudo interativo (parte34): o índice das aulas montadas, com o
+     progresso de cada bloco. O conteúdo (material, slides, figuras) fica
+     no aparelho, no IndexedDB: é grande demais para o documento da conta. */
+  estudos: [],
+  /* Painel de motivação (parte36): a entrevista, os cartões e os motivos
+     que a pessoa escreveu. Texto curto, vai junto com a conta. */
+  motivacao: { entrevista: [], painel: null, meus: [] },
   goals: { daily: 120, weekly: 720, questions: 200 },
   pomo: {
     focus: 25, short: 5, long: 15, cycle: 4, modo: "pomodoro",
@@ -32,17 +57,29 @@ const DEFAULTS = {
   pomoLog: [],
   simulados: {}, provas: [], habits: HABITS_SEED, habitLog: {},
   rever: [], notes: {},
+  /* A mentoria de estudo (aba Assistente). Vai para a nuvem só o que é
+     pequeno e importa: o que a entrevista descobriu, o plano, e o
+     checklist do dia. A conversa da entrevista em si fica no aparelho —
+     ela pode ser longa, e o estado inteiro da conta é UM documento no
+     banco, com limite de tamanho. Perder a conversa ao trocar de aparelho
+     não perde nada: a mentoria retoma pelo perfil gravado aqui. */
+  mentoria: { perfil: {}, plano: null, planoEm: 0, aplicadoEm: 0, feitos: {} },
   googleCal: { id: "", ultima: 0, autoSync: false, autoEnviar: true, opts: {}, enviados: {} },
   /* Academia. Fica separado de tudo que é estudo de propósito: não conta
      hora, não entra no cronograma, não mexe em meta semanal. */
-  treino: { perfil: {}, planos: [], planoAtivo: "", emCurso: null, sessoes: [], medidas: [] },
+  treino: {
+    perfil: {}, planos: [], planoAtivo: "", emCurso: null, sessoes: [], medidas: [],
+    /* O plano do mês (parte25.jsx): metas, semana de atividades,
+       cardápio, refeições anotadas e o controle de cada dia. */
+    meta: {}, semana: [], cardapio: null, comidas: [], diario: {},
+  },
   /* Como o cartão de flashcard aparece na tela de estudo. */
   cartaoEstilo: {
     fonte: "app", tamanho: "normal", fundo: "limpo", alinhar: "centro",
     peso: "normal", altura: "normal",
   },
   /* Aviso do navegador para revisão do dia e bloco que vai começar. */
-  lembretes: { ligado: false },
+  lembretes: { ligado: false, push: { ligado: false, hora: 7 } },
   /* Cronograma que a pessoa recebeu do curso dela, em texto, para o
      assistente organizar a rotina em cima do que ela realmente tem.
      As duas datas dizem quando esse período começa e quando acaba: sem elas
@@ -61,6 +98,13 @@ const DEFAULTS = {
   cronogramaModo: "somar",
   /* Anotação rica por matéria (parte17.jsx), por id de aula. */
   anotacoes: {},
+  /* O quanto cada especialidade importa PARA ESTA PESSOA, de 0 a 10.
+     Prova de residência não cobra tudo igual: cardiologia e pediatria
+     valem muito mais questão que genética médica, e a banca de cada
+     estado pesa diferente. Sem isso, "o que estudar agora" trata as 34
+     especialidades como se fossem a mesma coisa. Cinco é o neutro, e
+     especialidade sem peso declarado vale cinco. */
+  pesos: {},
   /* Se os números desta pessoa aparecem no ranking das salas de amigos.
      Começa ligado, que é o motivo de entrar numa sala; desligar mantém a
      pessoa na sala, sem os números dela à mostra. */
@@ -71,11 +115,79 @@ const DEFAULTS = {
   baralhoCfg: {},
   /* esquema da escada de revisão espaçada, escolhido em Revisões */
   revisao: { esquema: "cadencia", dias: [7, 21, 60, 150] },
+  /* As respostas do teste de memória e a escada que saiu dele. Guardadas
+     como número, não como rótulo: é o que deixa trocar o texto de uma
+     pergunta sem invalidar o perfil de quem já respondeu. */
+  perfilMemoria: { respostas: {}, dias: [], aplicadoEm: "" },
   /* aparência: cor de acento, fonte e tamanho do texto */
-  tema: { cor: "cadencia", neon: "", neon2: "", fonte: "inter", tamanho: 1 },
+  /* visual: "limpo" (o padrão de conta nova, no estilo da Easy Medicina) ou
+     "neon" (o desenho de antes, com partículas e brilho). versaoVisual marca
+     o dado como de depois da chegada do visual limpo; avisoVisual é o
+     cartão "o site ganhou um visual novo", que fica até a pessoa decidir. */
+  tema: { cor: "cadencia", neon: "", neon2: "", fonte: "inter", tamanho: 1, visual: "limpo", escuro: "preto", versaoVisual: 2, avisoVisual: false },
   /* Claro e escuro da anotação, à parte do resto: "auto" segue o app. */
   notaTema: "auto",
 };
+
+/* A mentoria como ela pode ser guardada. O conteúdo já foi conferido pelo
+   servidor quando chegou; o que esta limpeza protege é a TELA, de um dado
+   corrompido no aparelho ou vindo de uma versão antiga, que derrubaria o
+   desenho do plano. */
+function limparMentoria(v) {
+  const m = v && typeof v === "object" ? v : {};
+  const perfil = {};
+  if (m.perfil && typeof m.perfil === "object") {
+    for (const [k, val] of Object.entries(m.perfil).slice(0, 30)) {
+      if (typeof val === "string" && val.trim()) perfil[k] = val.slice(0, 500);
+    }
+  }
+  const p = m.plano;
+  const plano = p && typeof p === "object" && Array.isArray(p.semana) && p.semana.length === 7
+    ? {
+      resumo: typeof p.resumo === "string" ? p.resumo.slice(0, 600) : "",
+      semana: p.semana.map((d, i) => ({
+        dia: i,
+        blocos: (Array.isArray(d && d.blocos) ? d.blocos : [])
+          .filter((b) => b && typeof b.inicio === "string" && typeof b.fim === "string" && typeof b.titulo === "string")
+          .slice(0, 8)
+          .map((b) => ({
+            inicio: b.inicio.slice(0, 5), fim: b.fim.slice(0, 5), titulo: b.titulo.slice(0, 60),
+            tipo: BLOCK_IDS.indexOf(b.tipo) >= 0 ? b.tipo : "Estudo",
+            como: typeof b.como === "string" ? b.como.slice(0, 200) : "",
+          })),
+      })),
+      comoEstudar: (Array.isArray(p.comoEstudar) ? p.comoEstudar : [])
+        .filter((c) => c && typeof c.situacao === "string" && Array.isArray(c.passos))
+        .slice(0, 8)
+        .map((c) => ({
+          situacao: c.situacao.slice(0, 60),
+          passos: c.passos.filter((x) => typeof x === "string").slice(0, 8).map((x) => x.slice(0, 200)),
+        })),
+      checklist: (Array.isArray(p.checklist) ? p.checklist : [])
+        .filter((x) => typeof x === "string").slice(0, 10).map((x) => x.slice(0, 150)),
+      metas: {
+        questoesDia: Math.max(0, Math.min(300, Math.round(Number(p.metas && p.metas.questoesDia) || 0))),
+        simuladosPorMes: Math.max(0, Math.min(8, Math.round(Number(p.metas && p.metas.simuladosPorMes) || 0))),
+      },
+    }
+    : null;
+  /* O checklist marcado guarda só a última semana: o de um mês atrás não
+     serve para nada, e cresceria para sempre no documento da conta. */
+  const feitos = {};
+  if (m.feitos && typeof m.feitos === "object") {
+    const datas = Object.keys(m.feitos).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort().slice(-7);
+    for (const d of datas) {
+      const l = m.feitos[d];
+      if (Array.isArray(l)) feitos[d] = l.filter((n) => Number.isInteger(n) && n >= 0 && n < 10);
+    }
+  }
+  return {
+    perfil, plano,
+    planoEm: Number(m.planoEm) || 0,
+    aplicadoEm: Number(m.aplicadoEm) || 0,
+    feitos,
+  };
+}
 
 const KEY = "cadencia:v3";
 
@@ -160,6 +272,7 @@ function normalizarTreino(tr) {
       id: txt(o(pl).id, 30) || uid(),
       nome: txt(o(pl).nome, 50) || "Meu treino",
       aviso: txt(o(pl).aviso, 400),
+      regras: a(o(pl).regras).slice(0, 12).map((r) => txt(r, 220)).filter(Boolean),
       criadoEm: num(o(pl).criadoEm, 0, 4102444800000, 0),
       dias: a(o(pl).dias).slice(0, 7).map((d) => ({
         id: txt(o(d).id, 30) || uid(),
@@ -173,7 +286,90 @@ function normalizarTreino(tr) {
     emCurso: emCurso.id ? sessao(emCurso) : null,
     sessoes: a(tr.sessoes).slice(0, 1500).map(sessao).filter((s) => s.data),
     medidas: a(tr.medidas).slice(0, 2000).map(medida).filter((m) => m.data),
+    ...planoDoMesNormalizado(tr, { o, a, txt, num }),
   };
+}
+
+/* O plano do mês dentro da aba Treino: metas, semana, cardápio, refeições
+ * anotadas e o controle de cada dia. Os tetos seguem a mesma razão dos de
+ * cima, e o das refeições é o MAX_COMIDAS do parte25.jsx: o documento da
+ * nuvem tem 1 MiB, e o diário alimentar é o que mais cresce. */
+function planoDoMesNormalizado(tr, { o, a, txt, num }) {
+  const dia = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? String(v) : "");
+  const m = o(tr.meta);
+  const meta = {};
+  for (const k of ["titulo", "nota"]) if (txt(m[k], 300)) meta[k] = txt(m[k], k === "titulo" ? 80 : 300);
+  for (const k of ["inicio", "fim"]) if (dia(m[k])) meta[k] = dia(m[k]);
+  const limites = {
+    altura: [0.5, 250], pesoInicial: [20, 400], cinturaInicial: [30, 250], perdaAlvo: [0, 150],
+    cinturaAlvo: [0, 100], kcalMin: [0, 10000], kcalMax: [0, 10000], kcalPiso: [0, 10000],
+    protMin: [0, 600], protMax: [0, 600], passosMin: [0, 100000], passosMax: [0, 100000],
+    sonoMin: [0, 16], aguaMin: [0, 15], aguaMax: [0, 15], idade: [1, 120], fatorAtividade: [1, 2.5],
+  };
+  for (const [k, [mi, ma]] of Object.entries(limites)) {
+    const v = num(m[k], mi, ma, null);
+    if (v !== null) meta[k] = v;
+  }
+  if (m.sexo === "m" || m.sexo === "f") meta.sexo = m.sexo;
+  meta.regras = a(m.regras).slice(0, 12).map((r) => txt(r, 220)).filter(Boolean);
+  if (!meta.regras.length) delete meta.regras;
+
+  const semana = a(tr.semana).slice(0, 7).map((x) => ({
+    atividade: txt(o(x).atividade, 40), descricao: txt(o(x).descricao, 160), diaPlanoId: txt(o(x).diaPlanoId, 30),
+  }));
+
+  const itemCardapio = (i) => ({
+    id: txt(o(i).id, 30) || uid(), alimento: txt(o(i).alimento, 80), quantidade: txt(o(i).quantidade, 40),
+    kcal: num(o(i).kcal, 0, 5000, 0), proteina: num(o(i).proteina, 0, 500, 0),
+    carbo: num(o(i).carbo, 0, 800, 0), gordura: num(o(i).gordura, 0, 500, 0),
+  });
+  const c = tr.cardapio && typeof tr.cardapio === "object" ? o(tr.cardapio) : null;
+  const cardapio = c ? {
+    nota: txt(c.nota, 300),
+    refeicoes: a(c.refeicoes).slice(0, 12).map((r) => ({
+      id: txt(o(r).id, 30) || uid(), nome: txt(o(r).nome, 40), horario: txt(o(r).horario, 10),
+      itens: a(o(r).itens).slice(0, 20).map(itemCardapio).filter((i) => i.alimento),
+    })).filter((r) => r.nome),
+    substituicoes: a(c.substituicoes).slice(0, 12).map((g) => ({
+      grupo: txt(o(g).grupo, 30), referencia: txt(o(g).referencia, 80),
+      opcoes: a(o(g).opcoes).slice(0, 12).map((x) => txt(x, 80)).filter(Boolean),
+    })).filter((g) => g.grupo),
+    secoes: a(c.secoes).slice(0, 8).map((x) => ({
+      titulo: txt(o(x).titulo, 60), itens: a(o(x).itens).slice(0, 15).map((i) => txt(i, 220)).filter(Boolean),
+    })).filter((x) => x.titulo),
+    avisos: a(c.avisos).slice(0, 6).map((x) => txt(x, 300)).filter(Boolean),
+  } : null;
+
+  const comidas = a(tr.comidas).slice(0, 600).map((x) => ({
+    id: txt(o(x).id, 30) || uid(), data: dia(o(x).data), refeicao: txt(o(x).refeicao, 40),
+    descricao: txt(o(x).descricao, 200),
+    itens: a(o(x).itens).slice(0, 15).map((i) => ({
+      nome: txt(o(i).nome, 60), quantidade: txt(o(i).quantidade, 40),
+      kcal: num(o(i).kcal, 0, 5000, 0), proteina: num(o(i).proteina, 0, 500, 0),
+      carbo: num(o(i).carbo, 0, 800, 0), gordura: num(o(i).gordura, 0, 500, 0),
+    })).filter((i) => i.nome),
+    kcal: num(o(x).kcal, 0, 10000, 0), proteina: num(o(x).proteina, 0, 1000, 0),
+    carbo: num(o(x).carbo, 0, 1500, 0), gordura: num(o(x).gordura, 0, 1000, 0),
+    fonte: ["foto", "texto", "cardapio", "manual"].indexOf(o(x).fonte) >= 0 ? o(x).fonte : "manual",
+    confianca: ["alta", "media", "baixa"].indexOf(o(x).confianca) >= 0 ? o(x).confianca : "",
+    em: num(o(x).em, 0, 4102444800000, 0),
+  })).filter((x) => x.data);
+
+  const diario = {};
+  for (const [k, v] of Object.entries(o(tr.diario)).slice(-800)) {
+    if (!dia(k)) continue;
+    const x = o(v);
+    const d = {};
+    if (x.treino === "sim" || x.treino === "nao") d.treino = x.treino;
+    const passos = num(x.passos, 1, 200000, 0); if (passos) d.passos = Math.round(passos);
+    const sono = num(x.sono, 0.1, 24, 0); if (sono) d.sono = sono;
+    const agua = num(x.agua, 1, 12000, 0); if (agua) d.agua = Math.round(agua);
+    if (typeof x.semAlcool === "boolean") d.semAlcool = x.semAlcool;
+    if (typeof x.proteinaOk === "boolean") d.proteinaOk = x.proteinaOk;
+    if (txt(x.obs, 200)) d.obs = txt(x.obs, 200);
+    if (Object.keys(d).length) diario[k] = d;
+  }
+  return { meta, semana, cardapio, comidas, diario };
 }
 
 function normalize(raw) {
@@ -184,6 +380,12 @@ function normalize(raw) {
   const gc = obj(d.googleCal);
   const tr = obj(d.treino);
   const rv = obj(d.revisao), tm = obj(d.tema);
+  /* Dado guardado antes do visual limpo (sem versaoVisual): é de quem já
+     usava o site. Essa pessoa continua no neon que conhecia e recebe o
+     aviso do visual novo uma vez, para testar e decidir. Vale também para
+     quem abriu o site nas primeiras horas do limpo, quando ele virava o
+     padrão de todo mundo sem ninguém ter escolhido. */
+  const deAntes = !(Number(tm.versaoVisual) >= 2);
   const hex = (v) => (/^#[0-9a-fA-F]{6}$/.test(v) ? v : "");
 
   /* Até a reorganização do cronograma o identificador da aula era a posição
@@ -203,11 +405,20 @@ function normalize(raw) {
   return {
     profile: {
       name: typeof pr.name === "string" ? pr.name : DEFAULTS.profile.name,
+      apelido: typeof pr.apelido === "string" ? pr.apelido.slice(0, 24) : "",
+      /* Só data URL de imagem entra. Um endereço http aqui viraria uma
+         busca a um site de fora toda vez que a lista de amigos abrisse,
+         contando para quem hospedasse a imagem quem estava olhando. */
+      foto: typeof pr.foto === "string" && /^data:image\//.test(pr.foto) ? pr.foto : "",
       examDate: typeof pr.examDate === "string" ? pr.examDate : "",
       onboarded: pr.onboarded === undefined ? DEFAULTS.profile.onboarded : !!pr.onboarded,
+      /* faculdade e especialidade pretendida (parte37) */
+      ...limparPerfilFaculdade(pr),
     },
     theme: d.theme === "light" ? "light" : "dark",
-    layout: d.layout === "movel" ? "movel" : "auto",
+    /* o formato da tela é sempre automático; o "Celular" guardado de
+       antes não vale mais */
+    layout: "auto",
     sessions: arr(d.sessions, []).map((x) => (
       x && x.subjectId && ID_NOVO(x.subjectId) ? { ...x, subjectId: ID_NOVO(x.subjectId) } : x
     )),
@@ -216,6 +427,38 @@ function normalize(raw) {
     /* O que já foi cumprido na agenda precisa sobreviver ao recarregar a
        página: o que não for copiado aqui se perde. */
     blocos: obj(d.blocos),
+    erros: limparErros(d.erros),
+    folhas: limparFolhas(d.folhas),
+    financas: limparFinancas(d.financas),
+    estudos: limparEstudos(d.estudos),
+    motivacao: limparMotivacao(d.motivacao),
+    cartoesDia: (() => {
+      /* Só dia de verdade, número de verdade, e no máximo 400 dias. */
+      const fora = {};
+      const dias = Object.keys(obj(d.cartoesDia)).filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k)).sort().slice(-400);
+      for (const k of dias) {
+        const v = obj(d.cartoesDia[k]);
+        const n = (x) => Math.max(0, Math.min(1e6, Math.round(Number(x) || 0)));
+        fora[k] = { respostas: n(v.respostas), acertos: Math.min(n(v.acertos), n(v.respostas)), segundos: n(v.segundos) };
+      }
+      return fora;
+    })(),
+    rolagem: {
+      modo: ["mentoria", "estudo", "nao"].indexOf(obj(d.rolagem).modo) >= 0 ? d.rolagem.modo : "mentoria",
+      ate: /^\d{4}-\d{2}-\d{2}$/.test(obj(d.rolagem).ate || "") ? d.rolagem.ate : "",
+      semLugar: arr(obj(d.rolagem).semLugar, [])
+        .filter((x) => x && typeof x.id === "string" && typeof x.label === "string" && Number(x.minutos) > 0)
+        .slice(0, 30),
+    },
+    /* Peso por especialidade: só número de 0 a 10 entra. */
+    pesos: (() => {
+      const fora = {};
+      for (const [k, v] of Object.entries(obj(d.pesos))) {
+        const n = Math.round(Number(v));
+        if (Number.isFinite(n) && n >= 0 && n <= 10) fora[String(k).slice(0, 60)] = n;
+      }
+      return fora;
+    })(),
     goals: {
       daily: Number(g.daily) > 0 ? Number(g.daily) : 120,
       weekly: Number(g.weekly) > 0 ? Number(g.weekly) : 720,
@@ -230,11 +473,12 @@ function normalize(raw) {
       autoNext: p.autoNext !== false, sound: p.sound !== false,
       corFoco: /^#[0-9a-fA-F]{6}$/.test(p.corFoco) ? p.corFoco : "#A182E6",
       corPausa: /^#[0-9a-fA-F]{6}$/.test(p.corPausa) ? p.corPausa : "#45C08A",
-      estilo: ["anel", "digitos", "barra", "minimalista"].indexOf(p.estilo) >= 0 ? p.estilo : "anel",
+      estilo: ["anel", "digitos", "barra", "minimalista", "virar"].indexOf(p.estilo) >= 0 ? p.estilo : "anel",
     },
     pomoLog: arr(d.pomoLog, []), simulados: obj(d.simulados), provas: arr(d.provas, []),
     habits: arr(d.habits, HABITS_SEED), habitLog: obj(d.habitLog),
     rever: arr(d.rever, []), notes: obj(d.notes),
+    mentoria: limparMentoria(d.mentoria),
     mostrarDesempenho: d.mostrarDesempenho !== false,
     notaTema: ["light", "dark"].indexOf(d.notaTema) >= 0 ? d.notaTema : "auto",
     cronograma: {
@@ -242,7 +486,7 @@ function normalize(raw) {
       /* Cortado aqui, e não só na hora de enviar: um arquivo enorme colado
          encheria o armazenamento do navegador e derrubaria o salvamento
          inteiro, não só o assistente. */
-      texto: String(obj(d.cronograma).texto || "").slice(0, 20000),
+      texto: String(obj(d.cronograma).texto || "").slice(0, LIMITE_CRONOGRAMA),
       /* Data solta vira vazio: o campo é um <input type="date">, então o que
          vale é AAAA-MM-DD, e qualquer outra coisa só quebraria a conta de
          dias mais adiante. */
@@ -254,7 +498,7 @@ function normalize(raw) {
        Cronograma (parte9.jsx). Mesmo formato do currículo padrão, para o
        resto do app (Matérias, Rotina, Progresso...) não precisar saber a
        diferença. */
-    cronogramaProprio: arr(d.cronogramaProprio, []).slice(0, 300).map((s) => (obj(s))).filter((s) => (
+    cronogramaProprio: arr(d.cronogramaProprio, []).slice(0, MAX_AULAS_PROPRIAS).map((s) => (obj(s))).filter((s) => (
       typeof s.id === "string" && s.id && typeof s.title === "string" && s.title.trim()
       && AREA_IDS.indexOf(s.area) >= 0
     )).map((s) => ({
@@ -304,7 +548,16 @@ function normalize(raw) {
        curto — uma opção que não existe mais cai no padrão sozinha. */
     /* O aviso é do aparelho, mas a escolha de querer ou não é da
        pessoa, então acompanha a conta como o resto. */
-    lembretes: { ligado: !!obj(d.lembretes).ligado },
+    lembretes: {
+      ligado: !!obj(d.lembretes).ligado,
+      /* O aviso do dia que vem do servidor, separado do aviso imediato: a
+         pessoa pode querer um e não o outro, e ligar o de servidor exige
+         assinar este aparelho — não basta o interruptor. */
+      push: {
+        ligado: !!obj(obj(d.lembretes).push).ligado,
+        hora: Math.max(0, Math.min(23, Math.round(Number(obj(obj(d.lembretes).push).hora) || 7))),
+      },
+    },
     cartaoEstilo: (() => {
       const ce = obj(d.cartaoEstilo);
       const t = (v, padrao) => (typeof v === "string" && v.length <= 20 ? v : padrao);
@@ -338,12 +591,28 @@ function normalize(raw) {
         return [String(k).slice(0, 90), {
           embaralhar: c.embaralhar !== false,
           min: limite(c.min), max: limite(c.max),
+          /* Sem esta linha a cor escolhida sumia no primeiro recarregar:
+             o que o normalizador não copia, ele apaga. */
+          cor: CORES_BARALHO.some((x) => x.id === c.cor) ? c.cor : "",
         }];
       })),
     revisao: {
       esquema: ESQUEMAS.some((e) => e.id === rv.esquema) ? rv.esquema : "cadencia",
       dias: limparDias(rv.dias).length ? limparDias(rv.dias) : DEFAULTS.revisao.dias,
     },
+    perfilMemoria: (() => {
+      const pm = obj(d.perfilMemoria);
+      const resp = {};
+      for (const q of PERGUNTAS_MEMORIA) {
+        const v = Number(obj(pm.respostas)[q.id]);
+        if (Number.isFinite(v) && v > 0) resp[q.id] = v;
+      }
+      return {
+        respostas: resp,
+        dias: limparDias(pm.dias),
+        aplicadoEm: typeof pm.aplicadoEm === "string" ? pm.aplicadoEm.slice(0, 10) : "",
+      };
+    })(),
     tema: {
       cor: CORES_TEMA.some((c) => c.id === tm.cor) || tm.cor === "propria" ? tm.cor : "cadencia",
       /* corLegivel mantém a cor dentro de uma faixa legível nos dois temas
@@ -353,6 +622,11 @@ function normalize(raw) {
       neon2: hex(tm.neon2) ? corLegivel(hex(tm.neon2)) : "",
       fonte: FONTES.some((f) => f.id === tm.fonte) ? tm.fonte : "inter",
       tamanho: Number(tm.tamanho) >= 0.85 && Number(tm.tamanho) <= 1.3 ? Number(tm.tamanho) : 1,
+      visual: deAntes || tm.visual === "neon" ? "neon" : "limpo",
+      /* o tom do fundo escuro no visual limpo: preto (padrão) ou azul-noite */
+      escuro: tm.escuro === "azul" ? "azul" : "preto",
+      versaoVisual: 2,
+      avisoVisual: deAntes ? true : tm.avisoVisual === true,
     },
   };
 }
@@ -504,6 +778,151 @@ function diagnostico(e) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
+   3c · VERSÕES ANTERIORES
+   Um histórico do que estava guardado, para que voltar atrás nunca
+   dependa de alguém ter tido o reflexo de baixar um backup.
+
+   Existe porque uma pessoa perdeu meses de estudo. O caminho foi este:
+   um aparelho novo subiu o próprio vazio para a conta, e todos os outros
+   baixaram esse vazio por cima do que tinham. A trava que impede isso já
+   foi posta, mas ela protege contra o erro que já conhecemos — e o
+   próximo vai ser outro. O que protege contra o próximo é ter as versões
+   anteriores guardadas.
+
+   Fica no IndexedDB, e não no localStorage, por uma razão prática: o
+   localStorage tem uns 5 MB no total e é onde os dados ativos já moram.
+   Guardar doze cópias ali encheria o espaço e derrubaria justamente a
+   gravação que interessa.
+
+   As cópias são locais, deste aparelho. Não sobem para a nuvem: são a
+   rede de proteção para quando a nuvem for a coisa errada.
+   ═══════════════════════════════════════════════════════════════════ */
+
+const BD_VERSOES = "cadencia-versoes";
+const LOJA_VERSOES = "copias";
+/* Doze cópias. A mais antiga nunca é descartada enquanto houver outra
+   para descartar no lugar dela: é ela que cobre o estrago que só foi
+   notado semanas depois, que é como esse tipo de estrago costuma ser
+   notado. */
+const MAX_VERSOES = 12;
+/* Uma cópia automática por meio dia de uso. Mais que isso enche o
+   histórico de versões iguais e empurra as antigas para fora. */
+const ESPERA_VERSAO = 12 * 60 * 60 * 1000;
+
+function abrirBDVersoes() {
+  return new Promise((ok, falha) => {
+    if (typeof window === "undefined" || !window.indexedDB) return falha(new Error("sem indexedDB"));
+    const req = window.indexedDB.open(BD_VERSOES, 1);
+    req.onupgradeneeded = () => {
+      const bd = req.result;
+      if (!bd.objectStoreNames.contains(LOJA_VERSOES)) {
+        bd.createObjectStore(LOJA_VERSOES, { keyPath: "em" });
+      }
+    };
+    req.onsuccess = () => ok(req.result);
+    req.onerror = () => falha(req.error);
+  });
+}
+
+/* O que há dentro de uma cópia, para a lista poder dizer qual vale a pena
+   sem abrir nenhuma. Sem isto, escolher entre doze datas é adivinhação. */
+function resumirDados(d) {
+  const sessoes = (d && d.sessions) || [];
+  return {
+    aulas: Object.values((d && d.marks) || {}).filter((m) => m && m.aula).length,
+    revisoes: Object.values((d && d.reviews) || {})
+      .reduce((a, r) => a + Object.keys((r && r.done) || {}).length, 0),
+    sessoes: sessoes.length,
+    horas: Math.round(sessoes.reduce((a, x) => a + (Number(x.minutes) || 0), 0) / 60),
+    questoes: sessoes.reduce((a, x) => a + (Number(x.questions) || 0), 0),
+    cartoes: ((d && d.flash) || []).length,
+  };
+}
+
+async function listarVersoes() {
+  try {
+    const bd = await abrirBDVersoes();
+    const todas = await new Promise((ok, falha) => {
+      const tx = bd.transaction(LOJA_VERSOES, "readonly");
+      const r = tx.objectStore(LOJA_VERSOES).getAll();
+      r.onsuccess = () => ok(r.result || []);
+      r.onerror = () => falha(r.error);
+    });
+    bd.close();
+    return todas.sort((a, b) => b.em - a.em);
+  } catch (e) { return []; }
+}
+
+async function apagarVersao(em) {
+  try {
+    const bd = await abrirBDVersoes();
+    await new Promise((ok) => {
+      const tx = bd.transaction(LOJA_VERSOES, "readwrite");
+      tx.objectStore(LOJA_VERSOES).delete(em);
+      tx.oncomplete = () => ok(true);
+      tx.onerror = () => ok(false);
+    });
+    bd.close();
+  } catch (e) { /* segue */ }
+}
+
+/* Guarda uma cópia do que está em mãos AGORA, antes de mexer nisso.
+ *
+ * Nunca lança: uma cópia de segurança que quebra a tela ao falhar é pior
+ * do que cópia nenhuma. O "motivo" é o que a lista mostra depois, e é ele
+ * que dá sentido à data — "antes de carregar a conta" diz muito mais do
+ * que um horário.
+ */
+async function guardarVersao(dados, motivo) {
+  if (!dados) return false;
+  try {
+    const texto = JSON.stringify(dados);
+    const resumo = resumirDados(dados);
+
+    const antigas = await listarVersoes();
+    /* Cópia automática só se a última já tiver idade, e nunca se nada
+       mudou desde ela: histórico cheio de versões iguais empurra para
+       fora justamente as diferentes. */
+    if (motivo === "automática") {
+      const ultima = antigas[0];
+      if (ultima && Date.now() - ultima.em < ESPERA_VERSAO) return false;
+      if (ultima && ultima.tamanho === texto.length
+        && JSON.stringify(ultima.resumo) === JSON.stringify(resumo)) return false;
+    }
+
+    const gravar = async () => {
+      const bd = await abrirBDVersoes();
+      await new Promise((ok, falha) => {
+        const tx = bd.transaction(LOJA_VERSOES, "readwrite");
+        tx.objectStore(LOJA_VERSOES).put({
+          em: Date.now(), motivo: String(motivo || ""), resumo,
+          tamanho: texto.length, dados: texto,
+        });
+        tx.oncomplete = () => ok(true);
+        tx.onerror = () => falha(tx.error);
+      });
+      bd.close();
+    };
+
+    try { await gravar(); } catch (e) {
+      /* Sem espaço: abre lugar jogando fora a segunda mais antiga (a mais
+         antiga fica, que é a âncora) e tenta uma vez. */
+      const sobrando = antigas.slice(0, -1);
+      if (sobrando.length) await apagarVersao(sobrando[sobrando.length - 1].em);
+      await gravar();
+    }
+
+    /* Poda: sai a segunda mais antiga, nunca a primeira. */
+    let lista = await listarVersoes();
+    while (lista.length > MAX_VERSOES) {
+      await apagarVersao(lista[lista.length - 2].em);
+      lista = await listarVersoes();
+    }
+    return true;
+  } catch (e) { return false; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
    4 · PEÇAS DE INTERFACE
    ═══════════════════════════════════════════════════════════════════ */
 
@@ -514,6 +933,8 @@ function Card({ children, className = "", style, flat, brilho, tilt, marca }) {
 
   const mover = (e) => {
     if (!tilt || !ref.current) return;
+    /* O visual limpo não inclina: o painel fica parado, como papel. */
+    if (document.documentElement.getAttribute("data-visual") === "limpo") return;
     const r = ref.current.getBoundingClientRect();
     const px = (e.clientX - r.left) / r.width - 0.5;
     const py = (e.clientY - r.top) / r.height - 0.5;
@@ -525,7 +946,7 @@ function Card({ children, className = "", style, flat, brilho, tilt, marca }) {
   };
 
   const canto = (pos) => (
-    <span aria-hidden="true" style={{
+    <span aria-hidden="true" className="canto-card" style={{
       position: "absolute", width: 9, height: 9, pointerEvents: "none",
       borderColor: T.line2, borderStyle: "solid", borderWidth: 0,
       ...(pos === "tl" ? { top: -1, left: -1, borderTopWidth: 1, borderLeftWidth: 1 }
@@ -556,7 +977,7 @@ function Card({ children, className = "", style, flat, brilho, tilt, marca }) {
         }}>{marca}</span>
       ) : null}
       {brilho ? (
-        <span aria-hidden="true" style={{
+        <span aria-hidden="true" className="brilho-card" style={{
           position: "absolute", top: -1, left: "8%", right: "8%", height: 1,
           background: `linear-gradient(90deg, transparent, ${brilho}, transparent)`,
           opacity: 0.9, pointerEvents: "none", boxShadow: `0 0 10px ${brilho}`,
@@ -592,12 +1013,12 @@ function Texto({ children, style }) {
    deixaria o título com duas aberturas. */
 function H({ children, size = 20, color, icon }) {
   return (
-    <h2 className="flex items-center gap-2.5" style={{
+    <h2 className="titulo-h flex items-center gap-2.5" style={{
       fontFamily: F_UI, fontSize: Math.max(13, size - 5), fontWeight: 700, margin: 0,
       letterSpacing: "0.16em", textTransform: "uppercase", color: color || T.ink,
     }}>
       {icon ? (
-        <span className="flex items-center justify-center" style={{
+        <span className="icone-h flex items-center justify-center" style={{
           width: 26, height: 26, borderRadius: 4, flexShrink: 0,
           border: `1px solid ${soft(color || "var(--ink)", 40)}`,
           background: soft(color || "var(--ink)", 10), color: color || T.ink,
@@ -611,7 +1032,7 @@ function H({ children, size = 20, color, icon }) {
 
 function Num({ children, size = 34, color = T.ink, weight = 600 }) {
   return (
-    <span style={{
+    <span className="num" style={{
       fontFamily: F_MONO, fontSize: size, fontWeight: weight, color,
       letterSpacing: "-0.04em", fontVariantNumeric: "tabular-nums", lineHeight: 1.05,
     }}>{children}</span>

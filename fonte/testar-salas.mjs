@@ -38,12 +38,13 @@ globalThis.fetch = async (url, opcoes = {}) => {
   if (u.includes(':runQuery')) {
     const corpo = JSON.parse(opcoes.body);
     const col = corpo.structuredQuery.from[0].collectionId;
-    const uid = corpo.structuredQuery.where.fieldFilter.value.stringValue;
+    /* Sem filtro é a lista aberta das salas de simulado: vêm todas. */
+    const uid = corpo.structuredQuery.where ? corpo.structuredQuery.where.fieldFilter.value.stringValue : null;
     /* A consulta é por coleção: a sala de treino não pode aparecer na lista
        do estudo nem o contrário. */
     const achadas = Object.entries(SALAS)
       .filter(([chave]) => (col === 'salas' ? chave.indexOf(':') < 0 : chave.startsWith(col + ':')))
-      .filter(([, doc]) => (doc.fields.membros.arrayValue.values || [])
+      .filter(([, doc]) => uid === null || (doc.fields.membros.arrayValue.values || [])
         .some((v) => v.stringValue === uid))
       .map(([chave, doc]) => ({
         document: { name: 'p/documents/' + col + '/' + chave.split(':').pop(), fields: doc.fields },
@@ -510,8 +511,20 @@ else falha('vazou o resultado da Bia: ' + JSON.stringify(sim));
 /* Mas dá para saber que tem gente lá: é o que convida a lançar. */
 if (sim.quantos === 1) ok('quem não lançou vê quantos já lançaram, sem os números');
 else falha('a contagem de quem lançou saiu ' + sim.quantos);
-/* E o número da Bia não pode estar escondido em canto nenhum da resposta. */
-if (!JSON.stringify(rs.corpo).includes('82')) ok('o acerto do outro não viaja escondido na resposta');
+/* E o número da Bia não pode estar escondido em canto nenhum da resposta.
+ *
+ * A checagem percorre os valores em vez de procurar "82" no JSON inteiro:
+ * a resposta carrega carimbos de tempo de treze dígitos, e dois dígitos
+ * quaisquer aparecem dentro deles por acaso o tempo todo. Do jeito antigo
+ * este teste ficava vermelho de vez em quando sem nada estar errado — e
+ * teste que fica vermelho à toa ensina a ignorar vermelho. */
+const carregaValor = (x, alvo) => {
+  if (x === alvo || x === String(alvo)) return true;
+  if (Array.isArray(x)) return x.some((y) => carregaValor(y, alvo));
+  if (x && typeof x === 'object') return Object.values(x).some((y) => carregaValor(y, alvo));
+  return false;
+};
+if (!carregaValor(rs.corpo, 82)) ok('o acerto do outro não viaja escondido na resposta');
 else falha('o número do outro veio na resposta, só não desenhado');
 
 rs = await pedir({ token: 't', acao: 'sim-lancar', nome: 'r3-clinica', id: idSim, acertos: 91 });
@@ -687,6 +700,41 @@ rf = await pedir({ token: 't', acao: 'sim-listar', tipo: 'simulado', nome: 'r3-c
 const naFamiliaSim = (rf.corpo.simulados || []).length;
 if (naFamiliaSim === 1 && noEstudoSim === 0) ok('o simulado fica na sala de simulado, e não vaza para a de estudo');
 else falha(`vazou entre famílias: estudo ${noEstudoSim}, simulado ${naFamiliaSim}`);
+
+/* ── as salas de simulado são abertas ────────────────────────────────
+   Todo mundo vê as salas e o que foi postado nelas, e entra sem senha.
+   O placar continua fechado: a nota dos outros só depois de lançar a sua. */
+como('dani@email.com', 'uid-dani');
+rf = await pedir({ token: 't', acao: 'sim-abertas', tipo: 'simulado' });
+const aberta = (rf.corpo.salas || []).find((x) => x.slug === 'r3-clinica');
+if (aberta && aberta.souMembro === false && aberta.simulados.length === 1
+  && aberta.simulados[0].nome === 'Prova SUS' && aberta.simulados[0].total === 50 && aberta.simulados[0].quantos === 0) {
+  ok('quem não está na sala vê a sala de simulado e o simulado postado (nome, questões, quantos lançaram)');
+} else falha('lista aberta: ' + JSON.stringify(rf.corpo));
+if (!JSON.stringify(rf.corpo).includes('acertos') && !JSON.stringify(rf.corpo).includes('hash')) ok('a lista aberta não mostra nota de ninguém nem a senha guardada');
+else falha('a lista aberta vazou nota ou senha');
+rf = await pedir({ token: 't', acao: 'sim-abertas' });
+if (rf.status === 400) ok('a lista aberta é só das salas de simulado, as de estudo continuam fechadas');
+else falha('lista aberta de estudo: ' + JSON.stringify(rf));
+rf = await pedir({ token: 't', acao: 'sim-participar', nome: 'r3-clinica' });
+if (rf.status === 403) ok('sala de estudo não deixa entrar sem senha');
+else falha('participar na sala de estudo: ' + JSON.stringify(rf));
+rf = await pedir({ token: 't', acao: 'sim-participar', tipo: 'simulado', nome: 'r3-clinica' });
+if (rf.corpo.ok && (SALAS['salasSimulado:r3-clinica'].fields.membros.arrayValue.values || []).some((v) => v.stringValue === 'uid-dani')) {
+  ok('entra na sala de simulado com um toque, sem senha');
+} else falha('participar: ' + JSON.stringify(rf));
+rf = await pedir({ token: 't', acao: 'sim-listar', tipo: 'simulado', nome: 'r3-clinica' });
+const simDani = (rf.corpo.simulados || [])[0] || {};
+if (rf.corpo.simulados && rf.corpo.simulados.length === 1 && simDani.liberado === false && !simDani.linhas.length) ok('depois de entrar vê o simulado, mas não a nota dos outros antes de lançar a sua');
+else falha('listar depois de entrar: ' + JSON.stringify(rf.corpo));
+rf = await pedir({ token: 't', acao: 'criar', tipo: 'simulado', nome: 'cursinho aberto' });
+if (rf.corpo.ok) ok('criar sala de simulado pede só o nome');
+else falha('criar sem senha: ' + JSON.stringify(rf));
+rf = await pedir({ token: 't', acao: 'criar', nome: 'estudo sem senha' });
+if (rf.status === 400) ok('sala de estudo continua pedindo senha');
+else falha('estudo sem senha: ' + JSON.stringify(rf));
+rf = await pedir({ token: 't', acao: 'sair', tipo: 'simulado', nome: 'r3-clinica' });
+rf = await pedir({ token: 't', acao: 'sair', tipo: 'simulado', nome: 'cursinho-aberto' });
 
 /* ── minhas salas ────────────────────────────────────────────────────── */
 como('ana@email.com', 'uid-ana');

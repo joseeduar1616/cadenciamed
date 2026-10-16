@@ -5,26 +5,108 @@
    de serviço. Assim ninguém se promove a assinante mexendo no navegador.
    ═══════════════════════════════════════════════════════════════════ */
 
-/* Preço de lançamento. O "de" é o valor cheio, que fica riscado ao lado do
-   que está sendo cobrado agora: uma promoção só quer dizer alguma coisa ao
-   lado do preço que ela substitui. Quando o lançamento acabar, é só apagar
-   o "de" de cada plano — a tela deixa de riscar sozinha. */
+/* O "de" é um preço cheio que fica riscado ao lado do que está sendo
+   cobrado. Está vazio de propósito, e o motivo importa: riscar um valor
+   que nunca foi cobrado de ninguém é propaganda enganosa — e, mesmo que
+   não fosse, "de R$ 799 por R$ 250" em produto recém-lançado não passa a
+   impressão de oferta, passa a de que o preço cheio foi inventado.
+   Desconto de lançamento se faz com CUPOM, que já existe aqui: o preço de
+   tabela continua sendo um só, e quem entra com cupom paga menos sem que o
+   valor do produto seja desmentido na própria vitrine.
+
+   Se algum dia houver preço antigo de verdade, basta devolver o "de" ao
+   plano: a tela volta a riscar e a mostrar a tarja de promoção sozinha. */
 const PROMO = "Promoção de lançamento";
 
+/* O anual sai por menos de oito mensalidades — desconto grande de
+   propósito, para empurrar a escolha para ele. A conta que justifica:
+   descontada a taxa da Kiwify, um anual deixa R$ 270,54 de uma vez, e um
+   mensal deixa R$ 33,00 por mês. O anual só perde para quem ficar mais de
+   oito meses pagando mês a mês — e quem paga mês a mês cancela bem antes
+   disso. Além do caixa adiantado, o anual paga a taxa fixa de transação
+   uma vez por ano, contra doze do mensal. */
 const PRECOS = {
-  mensal: { rotulo: "Mensal", de: "R$ 99", valor: "R$ 30", periodo: "por mês", chave: "mensal" },
-  anual: { rotulo: "Anual", de: "R$ 799", valor: "R$ 250", periodo: "por ano", chave: "anual", economia: "economiza R$ 110" },
+  mensal: { rotulo: "Mensal", valor: "R$ 39", periodo: "por mês", chave: "mensal" },
+  anual: {
+    rotulo: "Anual", valor: "R$ 300", periodo: "por ano", chave: "anual",
+    economia: "quatro meses de graça",
+    /* A comparação que decide a escolha é esta, e não um preço riscado:
+       quanto sai o mês pagando o ano inteiro, contra o plano mensal. */
+    equivale: "R$ 25 por mês · contra R$ 39 no mensal",
+  },
 };
 
 /* Garantia e suporte. Ficam aqui, junto do preço, porque é ao lado dele que
    os dois precisam aparecer — na tela de planos dentro do app e na página
    de entrada, que lê estas mesmas constantes. */
 const GARANTIA_DIAS = 7;
-/* No domínio DO SITE. Estava em cadenciamed.com enquanto o site é
-   cadenciamed.com.br: além de confundir, é mais um domínio para manter
-   caixa de entrada. A caixa precisa existir de verdade — sem registro MX
-   no domínio, quem escrever recebe erro de entrega. */
-const EMAIL_SUPORTE = "suporte@cadenciamed.com.br";
+/* A caixa de suporte, no domínio em que ela existe de verdade. Sem
+   registro MX apontando para essa caixa, quem escrever recebe erro de
+   entrega — e um endereço de suporte que devolve erro é pior do que não
+   ter endereço nenhum, porque a pessoa acha que avisou. */
+const EMAIL_SUPORTE = "suporte@cadenciamed.com";
+
+/* O teste grátis. A conta nova tem o plano completo por 3 dias, sem
+   cartão e sem cobrança: quem conta os dias é o servidor (fimDoTeste, em
+   worker/api/_comum.js), a partir da criação da conta. Aqui é só o que a
+   tela diz. */
+const DIAS_TESTE = 3;
+const PLANO_TESTE = "teste";
+
+/* Quanto falta do teste, em palavras: "faltam 2 dias", "falta 1 dia",
+   "faltam 5 h", "falta menos de 1 hora". */
+function faltaDoTeste(ate, agora = Date.now()) {
+  const ms = Number(ate) - agora;
+  if (!(ms > 0)) return "acabou";
+  if (ms < 3600000) return "falta menos de 1 hora";
+  if (ms < 86400000) return `faltam ${Math.floor(ms / 3600000)} h`;
+  const dias = Math.ceil(ms / 86400000);
+  return dias === 1 ? "falta 1 dia" : `faltam ${dias} dias`;
+}
+const diaDoFim = (ate) => {
+  const d = new Date(Number(ate));
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
+
+/* Na hora de criar a conta: os 3 dias grátis e os preços, sem cobrar
+   nada. A pessoa sabe desde o começo quanto custa continuar, e que não
+   precisa de cartão para testar. */
+function AvisoTesteGratis({ compacto }) {
+  return (
+    <div data-teste="aviso-teste-gratis" className="rounded-2xl px-4 py-4"
+      style={{ background: soft("var(--ok)", 10), border: `1px solid ${soft("var(--ok)", 32)}` }}>
+      <div className="flex items-center gap-2" style={{ color: T.ok, fontSize: 15, fontWeight: 700 }}>
+        <Sparkles size={15} /> {DIAS_TESTE} dias grátis com todas as funções liberadas
+      </div>
+      <Mini style={{ marginTop: 6, lineHeight: 1.6 }}>
+        Crie a conta e use todas as funções do site, sem exceção, por {DIAS_TESTE} dias:
+        cartões, revisões, assistente, provas, agenda e o resto. Nada é cobrado agora e não
+        pede cartão. Depois você decide se assina; se não assinar, a conta continua
+        na versão gratuita, com tudo o que você anotou.
+      </Mini>
+      <div className={`mt-3 grid gap-2 ${compacto ? "grid-cols-1" : "grid-cols-2"}`}>
+        {["mensal", "anual"].map((k) => {
+          const p = PRECOS[k];
+          return (
+            <div key={k} className="rounded-xl px-3 py-2.5" style={{ background: T.card2, border: `1px solid ${T.line}` }}>
+              <div className="flex items-baseline justify-between gap-2 flex-wrap">
+                <span style={{ fontSize: 13, color: T.dim, fontWeight: 600 }}>{p.rotulo}</span>
+                <span>
+                  <span style={{ fontFamily: F_MONO, fontSize: 17, fontWeight: 700, color: k === "anual" ? "var(--neon2)" : T.ink }}>{p.valor}</span>
+                  <span style={{ fontSize: 12, color: T.faint }}> {p.periodo}</span>
+                </span>
+              </div>
+              {p.equivale ? <Mini style={{ marginTop: 2, fontSize: 12 }}>{p.equivale}</Mini> : null}
+            </div>
+          );
+        })}
+      </div>
+      <Mini style={{ marginTop: 8, fontSize: 12 }}>
+        Você só paga se decidir assinar depois do teste.
+      </Mini>
+    </div>
+  );
+}
 
 /* Links de checkout da Kiwify ou Hotmart. Trocar pelos seus. */
 const CHECKOUT = (typeof window !== "undefined" && window.CADENCIA_CHECKOUT) || {
@@ -33,6 +115,8 @@ const CHECKOUT = (typeof window !== "undefined" && window.CADENCIA_CHECKOUT) || 
 
 const RECURSOS_PRO = {
   cartoes: "Seus próprios flashcards, com repetição espaçada",
+  estudo: "Estudo interativo: seu material vira aula em slides, com perguntas que a IA corrige",
+  motivacao: "Painel de motivação: a IA entende o que te move e te lembra disso nos dias difíceis",
   revisoes: "A escada de revisão espaçada, com os prazos de cada aula",
   temas: "O cronograma por especialidade, com o radar das áreas",
   rotina: "Agenda da semana e do dia, com o Google Agenda junto",
@@ -42,11 +126,11 @@ const RECURSOS_PRO = {
   nuvem: "Seus dados sincronizados em todos os aparelhos",
   projecao: "Ritmo e projeção até a prova",
 };
-const ABAS_PRO = ["cartoes", "revisoes", "temas", "rotina", "amigos", "metas", "simulados"];
+const ABAS_PRO = ["cartoes", "estudo", "motivacao", "revisoes", "temas", "rotina", "amigos", "metas", "simulados"];
 
 /* Abas que só o administrador enxerga. O servidor faz a mesma checagem,
    então esconder aqui é conveniência, não é o que protege. */
-const ABAS_DONO = ["assistente", "treino"];
+const ABAS_DONO = ["assistente", "treino", "financeiro"];
 
 /* Conta do dono: acesso completo sem precisar assinar. O servidor faz a
    mesma verificação, então isso não é um atalho que outra pessoa consiga
@@ -74,10 +158,44 @@ const ROTA_PLANO = "/api/plano";
  *
  * Nada disso é o que protege o conteúdo pago — cada rota confere o acesso
  * por conta própria. Aqui é só o que a tela mostra. */
+/* A regra padrão de cada aba, igual à do servidor (RECURSOS, em
+   worker/api/_comum.js). Vale só enquanto o servidor não respondeu, e para
+   quem está sem conta: o site abre sem login, e a barra de abas precisa de
+   alguma coisa para desenhar. Quem manda é sempre a resposta do servidor.
+   As duas listas não podem divergir, e é isso que o testar-recursos.mjs
+   confere a cada build. */
+const RECURSOS_PADRAO = {
+  assistente: "pro", cartoes: "pro", revisoes: "pro", provas: "pro",
+  cronograma: "todos", rotina: "todos", amigos: "todos", metas: "todos",
+  desempenho: "todos", simulados: "todos", progresso: "todos",
+  estudo: "pro", motivacao: "pro", treino: "dono", financeiro: "dono",
+};
+
+/* A reserva, aplicando as regras padrão ao que a tela já sabe.
+ *
+ * Ela precisa levar em conta quem paga. Devolvendo só os padrões, como
+ * fazia antes, uma queda de rede na hora de conferir o plano tirava as
+ * abas pagas de quem assina — a pessoa pagou, abriu o site com a internet
+ * oscilando, e os Cartões sumiram da barra. */
+function recursosLocais(pro, dono) {
+  const saida = {};
+  for (const [id, regra] of Object.entries(RECURSOS_PADRAO)) {
+    saida[id] = !!dono || regra === "todos" || (regra === "pro" && !!pro);
+  }
+  return saida;
+}
+
 function useAssinatura(sdk, usuario) {
   const [plano, setPlano] = useState(null);
   const [carregando, setCarregando] = useState(true);
   const [aviso, setAviso] = useState("");
+  /* Quem vê o quê. Vem do servidor junto do plano, e não de uma lista
+     escrita aqui: esconder uma aba no navegador não fecha nada, e era só
+     isso que existia antes. Enquanto não chega é null — a barra espera,
+     em vez de desenhar tudo e tirar abas na cara da pessoa. */
+  const [recursos, setRecursos] = useState(null);
+  /* O teste grátis desta conta já acabou (e ela não assinou). */
+  const [testeAcabou, setTesteAcabou] = useState(false);
 
   const refSdk = useRef(sdk);
   refSdk.current = sdk;
@@ -86,8 +204,7 @@ function useAssinatura(sdk, usuario) {
 
   const perguntar = useCallback(async () => {
     const s = refSdk.current;
-    if (!s || !quem) { setPlano(null); setCarregando(false); return; }
-    if (dono) { setPlano({ tipo: "dono", ate: Infinity }); setCarregando(false); return; }
+    if (!s || !quem) { setPlano(null); setRecursos(null); setTesteAcabou(false); setCarregando(false); return; }
 
     let token = "";
     try {
@@ -99,14 +216,20 @@ function useAssinatura(sdk, usuario) {
     setCarregando(false);
     if (erro) {
       /* Não derruba o que já estava valendo: uma falha de rede não pode
-         trancar quem já estava com o acesso aberto nesta sessão. */
+         trancar quem já estava com o acesso aberto nesta sessão.
+         E o dono não fica de fora do próprio site por causa de uma queda
+         do servidor — o que ele perde nesse caso é só a regra gravada, e
+         quem confere isso de verdade é cada rota, no servidor. */
       setAviso(erro);
+      if (dono) setPlano({ tipo: "dono", ate: Infinity });
       return;
     }
     setAviso("");
     setPlano(dados && dados.pro
       ? { tipo: dados.plano || "mensal", ate: Number(dados.validoAte) || Infinity }
       : null);
+    setTesteAcabou(!!(dados && !dados.pro && dados.plano === PLANO_TESTE));
+    if (dados && dados.recursos) setRecursos(dados.recursos);
   }, [quem, dono]);
 
   useEffect(() => { setCarregando(true); perguntar(); }, [perguntar]);
@@ -129,7 +252,20 @@ function useAssinatura(sdk, usuario) {
     });
   }, [sdk, quem, dono, perguntar]);
 
-  return { pro: !!plano, plano, carregando, aviso, recarregar: perguntar };
+  /* O teste vence com o site aberto: na hora do fim, pergunta de novo ao
+     servidor, para as abas pagas fecharem sem precisar recarregar. */
+  useEffect(() => {
+    if (!plano || plano.tipo !== PLANO_TESTE || !Number.isFinite(plano.ate)) return undefined;
+    const falta = plano.ate - Date.now();
+    if (falta > 2147483000) return undefined;
+    const t = window.setTimeout(perguntar, Math.max(1000, falta + 2000));
+    return () => window.clearTimeout(t);
+  }, [plano, perguntar]);
+
+  return {
+    pro: !!plano, plano, carregando, aviso, recursos, recarregar: perguntar,
+    emTeste: !!(plano && plano.tipo === PLANO_TESTE), testeAcabou,
+  };
 }
 
 function Cadeado({ tamanho = 15 }) {
@@ -169,7 +305,7 @@ function Garantia({ className = "px-6 py-6" }) {
   );
 }
 
-function Precos({ compacto, onFechar, usuario, plano, aviso }) {
+function Precos({ compacto, onFechar, usuario, plano, aviso, testeAcabou }) {
   const abrir = (tipo) => {
     const url = CHECKOUT[tipo];
     if (!url) return;
@@ -205,10 +341,31 @@ function Precos({ compacto, onFechar, usuario, plano, aviso }) {
             <span style={{ fontWeight: 500 }}>organizado num lugar só</span>
           </h2>
           <p style={{ color: T.dim, fontSize: 16, lineHeight: 1.7, marginTop: 22, maxWidth: 470 }}>
-            As {CURRICULUM.length} aulas e {TOTAL_BONUS} tópicos para marcar, revisão espaçada,
-            flashcards seus, cronômetro e acompanhamento por especialidade.
+            Todas as aulas e tópicos para marcar, revisão espaçada, flashcards
+            seus, cronômetro e acompanhamento por especialidade.
           </p>
         </div>
+      ) : null}
+
+      {plano && plano.tipo === PLANO_TESTE ? (
+        <div data-teste="planos-em-teste"><Card className="px-6 py-6" brilho="var(--ok)">
+          <H size={18} color="var(--ok)" icon={<Sparkles size={16} />}>
+            Teste grátis: {faltaDoTeste(plano.ate)}
+          </H>
+          <Texto style={{ marginTop: 10 }}>
+            Todas as funções estão liberadas de graça até {diaDoFim(plano.ate)}. Nada foi
+            cobrado. Para continuar com tudo depois disso, escolha um plano abaixo; se não
+            escolher, a conta volta para a versão gratuita, sem perder o que você anotou.
+          </Texto>
+        </Card></div>
+      ) : testeAcabou ? (
+        <div data-teste="planos-teste-acabou"><Card className="px-6 py-6" brilho="var(--warn)">
+          <H size={18} color="var(--warn)" icon={<Sparkles size={16} />}>Seu teste grátis acabou</H>
+          <Texto style={{ marginTop: 10 }}>
+            Os {DIAS_TESTE} dias com todas as funções liberadas terminaram. Seus dados continuam
+            aqui, na versão gratuita. Para voltar a usar tudo, escolha um plano.
+          </Texto>
+        </Card></div>
       ) : null}
 
       {plano && plano.tipo === "dono" ? (
@@ -248,6 +405,7 @@ function Precos({ compacto, onFechar, usuario, plano, aviso }) {
                   <Num size={38} weight={700} color={destaque ? "var(--neon2)" : T.ink}>{p.valor}</Num>
                   <Mini>{p.periodo}</Mini>
                 </div>
+                {p.equivale ? <Mini style={{ marginTop: 6 }}>{p.equivale}</Mini> : null}
                 {destaque ? <Mini style={{ marginTop: 4 }}>válido até 31/12/2027</Mini> : null}
               </div>
               <div className="mt-5">
@@ -290,8 +448,7 @@ function Precos({ compacto, onFechar, usuario, plano, aviso }) {
         <div className="mt-5 pt-5" style={{ borderTop: `1px solid ${T.line}` }}>
           <Label>Continua de graça, para sempre</Label>
           <Mini style={{ marginTop: 8, lineHeight: 1.7 }}>
-            O cronograma completo com as {CURRICULUM.length} aulas e {TOTAL_BONUS} tópicos
-            para marcar, o cronômetro com pomodoro e tempo corrido, o registro de
+            O cronograma completo com todas as aulas e tópicos para marcar, o cronômetro com pomodoro e tempo corrido, o registro de
             sessões com questões e acertos, e o backup do seu arquivo. Nada do que
             você já anotou é perdido ou bloqueado.
           </Mini>
@@ -306,10 +463,11 @@ function Precos({ compacto, onFechar, usuario, plano, aviso }) {
         <Card className="px-6 py-5" flat>
           <Mini style={{ lineHeight: 1.7 }}>
             Crie sua conta em Configurações antes de assinar, e use o mesmo e-mail
-            na hora do pagamento. É assim que a assinatura é reconhecida.
+            na hora do pagamento. É assim que a assinatura é reconhecida. Conta
+            nova ganha {DIAS_TESTE} dias grátis com todas as funções liberadas, sem cartão.
           </Mini>
         </Card>
-      ) : !plano ? (
+      ) : !plano || plano.tipo === PLANO_TESTE ? (
         <Card className="px-6 py-5" flat>
           <Mini style={{ lineHeight: 1.7 }}>
             Pague com <strong style={{ color: T.dim }}>{usuario.email}</strong>, o

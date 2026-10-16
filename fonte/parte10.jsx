@@ -111,8 +111,15 @@ function Cena({ cor1, cor2, chave, ativo = true }) {
 
     let anterior = 0;
 
+    /* 30 quadros por segundo bastam para um fundo que anda devagar, e
+       custam metade. A 60, num computador sem placa de vídeo boa, a cena
+       disputava o processador com a página e o relógio de placas do Foco
+       virava aos trancos. */
+    const INTERVALO = 1000 / 30 - 2;
+
     const pintar = (t) => {
       if (parar) return;
+      if (anterior && t - anterior < INTERVALO) { raf.current = window.requestAnimationFrame(pintar); return; }
       const dt = anterior ? Math.min(64, t - anterior) : 16;
       anterior = t;
 
@@ -232,23 +239,31 @@ function Cena({ cor1, cor2, chave, ativo = true }) {
         const a = proj[pu.par[0]], b = proj[pu.par[1]];
         const x = a.x + (b.x - a.x) * pu.t, y = a.y + (b.y - a.y) * pu.t;
         const forca = Math.sin(pu.t * Math.PI);
+        /* o brilho é um halo desenhado, não shadowBlur: o desfoque do
+           canvas é refeito ponto a ponto, a cada quadro, e era o mais caro
+           da cena */
+        ctx.beginPath();
+        ctx.arc(x, y, 4 + forca * 5, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${C1},${forca * 0.16 * F})`;
+        ctx.fill();
         ctx.beginPath();
         ctx.arc(x, y, 1.6 + forca * 1.4, 0, Math.PI * 2);
         ctx.fillStyle = `rgba(${C1},${forca * 0.85 * F})`;
-        ctx.shadowColor = `rgba(${C1},1)`;
-        ctx.shadowBlur = 10 * forca;
         ctx.fill();
-        ctx.shadowBlur = 0;
       }
 
       for (const q of proj) {
         const r = Math.max(0.6, q.p * 1.7);
+        if (q.z < -0.5) {
+          ctx.beginPath();
+          ctx.arc(q.x, q.y, r + 4.5, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(${C1},${0.13 * F})`;
+          ctx.fill();
+        }
         ctx.beginPath();
         ctx.arc(q.x, q.y, r, 0, Math.PI * 2);
         ctx.fillStyle = `rgba(${q.z < 0 ? C1 : C2},${Math.max(0.14, 0.78 - q.z * 0.4) * F})`;
-        if (q.z < -0.5) { ctx.shadowColor = `rgba(${C1},1)`; ctx.shadowBlur = 9; }
         ctx.fill();
-        ctx.shadowBlur = 0;
       }
 
       raf.current = window.requestAnimationFrame(pintar);
@@ -319,7 +334,7 @@ function Medidor({ pct, cor, tamanho = 92, largura = 7, children, atraso = 0 }) 
         <circle cx={tamanho / 2} cy={tamanho / 2} r={r} fill="none" stroke="var(--card3)" strokeWidth={largura} />
         <circle cx={tamanho / 2} cy={tamanho / 2} r={r} fill="none" stroke={cor}
           strokeWidth={largura} strokeLinecap="round" strokeDasharray={circ}
-          strokeDashoffset={circ * (1 - (mostrar ? p : 0))}
+          strokeDashoffset={circ * (1 - (mostrar ? p : 0))} className="brilho-svg"
           style={{ transition: "stroke-dashoffset 1.1s cubic-bezier(.2,.8,.2,1)", filter: `drop-shadow(0 0 6px ${cor})` }} />
       </svg>
       <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
@@ -362,7 +377,7 @@ function Radar({ dados, tamanho = 300 }) {
         const [x, y] = ponto(i, 1);
         return <line key={i} x1={c} y1={c} x2={x} y2={y} stroke="var(--line)" strokeWidth="1" />;
       })}
-      <polygon points={caminho} fill="var(--neon)" fillOpacity="0.16" stroke="var(--neon)" strokeWidth="2"
+      <polygon points={caminho} fill="var(--neon)" fillOpacity="0.16" stroke="var(--neon)" strokeWidth="2" className="brilho-svg"
         style={{ transition: "all 1.2s cubic-bezier(.2,.8,.2,1)", filter: "drop-shadow(0 0 8px var(--neon))" }} />
       {dados.map((d, i) => {
         const [x, y] = ponto(i, entrou ? Math.max(0.04, d.pct / 100) : 0.04);

@@ -14,6 +14,12 @@
 /sql-asm.js
   Cache-Control: public, max-age=2592000
 
+/lame.min.js
+  Cache-Control: public, max-age=2592000
+
+/fzstd.min.js
+  Cache-Control: public, max-age=2592000
+
 /sw.js
   Cache-Control: no-cache
   Service-Worker-Allowed: /
@@ -28,4 +34,17 @@
   Cache-Control: public, max-age=3600
 
 /termos.html
+  Cache-Control: public, max-age=3600
+
+/recuperar.html
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/app
+  Cache-Control: public, max-age=3600
+
+/app.html
+  Cache-Control: public, max-age=3600
+
+/.well-known/assetlinks.json
+  Content-Type: application/json
   Cache-Control: public, max-age=3600

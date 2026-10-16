@@ -1,0 +1,127 @@
+# Publica as regras do Firestore e liga o backup contínuo (PITR).
+#
+# As regras moram em fonte/regras-firestore.txt. Antes elas eram coladas à
+# mão no console do Firebase — e ficavam atrasadas: o site ganhava coleções
+# novas (push, uso, conversas) e o banco continuava com as regras antigas.
+# Agora, toda vez que o arquivo muda no main, este fluxo publica.
+#
+# O PITR (point-in-time recovery) guarda 7 dias de histórico do banco, para
+# desfazer um apagão de dados voltando ao minuto anterior. Ligar de novo o
+# que já está ligado não muda nada, então o passo roda sempre.
+#
+# Usa o mesmo segredo FIREBASE_SERVICE_ACCOUNT do deploy do Hosting. Se a
+# conta de serviço não tiver permissão para regras ou para o banco, o log
+# diz qual papel falta, em vez de um erro cru.
+name: Regras e backup do Firestore
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - fonte/regras-firestore.txt
+      - .github/workflows/firestore.yml
+  workflow_dispatch:
+
+concurrency:
+  group: firestore-regras
+  cancel-in-progress: false
+
+env:
+  PROJETO: cadencia-7c1f1
+
+jobs:
+  firestore:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Conferir se há conta de serviço
+        env:
+          TEM: ${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' }}
+        run: |
+          if [ "$TEM" != "true" ]; then
+            echo "::error::Falta o segredo FIREBASE_SERVICE_ACCOUNT em Settings › Secrets and variables › Actions."
+            exit 1
+          fi
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Publicar as regras
+        run: |
+          set -euo pipefail
+          TOKEN="$(gcloud auth print-access-token)"
+          echo "::add-mask::$TOKEN"
+          API="https://firebaserules.googleapis.com/v1/projects/$PROJETO"
+
+          # 1) cria o conjunto de regras — é aqui que o Firebase confere a
+          #    sintaxe; regra com erro para o fluxo antes de ir para o ar.
+          jq -Rs '{source: {files: [{name: "firestore.rules", content: .}]}}' \
+            fonte/regras-firestore.txt > /tmp/ruleset.json
+          STATUS=$(curl -sS -o /tmp/criado.json -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+            --data @/tmp/ruleset.json "$API/rulesets")
+          if [ "$STATUS" != "200" ]; then
+            cat /tmp/criado.json
+            if [ "$STATUS" = "403" ]; then
+              echo "::error::A conta de serviço não pode publicar regras. No Google Cloud (IAM), dê a ela o papel 'Firebase Rules Admin'."
+            else
+              echo "::error::O Firebase recusou as regras (HTTP $STATUS). O motivo está logo acima; nada foi publicado."
+            fi
+            exit 1
+          fi
+          NOME=$(jq -r .name /tmp/criado.json)
+
+          # 2) aponta o banco para o conjunto novo
+          jq -n --arg r "projects/$PROJETO/releases/cloud.firestore" --arg n "$NOME" \
+            '{release: {name: $r, rulesetName: $n}}' > /tmp/release.json
+          STATUS=$(curl -sS -o /tmp/release-resp.json -w '%{http_code}' -X PATCH \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+            --data @/tmp/release.json "$API/releases/cloud.firestore")
+          if [ "$STATUS" != "200" ]; then
+            cat /tmp/release-resp.json
+            echo "::error::Não consegui colocar as regras no ar (HTTP $STATUS)."
+            exit 1
+          fi
+          echo "Regras publicadas: $NOME"
+
+      - name: Ligar o backup contínuo (PITR)
+        run: |
+          set -uo pipefail
+          TOKEN="$(gcloud auth print-access-token)"
+          echo "::add-mask::$TOKEN"
+          BANCO="https://firestore.googleapis.com/v1/projects/$PROJETO/databases/(default)"
+
+          ATUAL=$(curl -sS -H "Authorization: Bearer $TOKEN" "$BANCO" | jq -r '.pointInTimeRecoveryEnablement // "?"')
+          if [ "$ATUAL" = "POINT_IN_TIME_RECOVERY_ENABLED" ]; then
+            echo "PITR já estava ligado."
+            exit 0
+          fi
+
+          STATUS=$(curl -sS -o /tmp/pitr.json -w '%{http_code}' -X PATCH \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+            --data '{"pointInTimeRecoveryEnablement":"POINT_IN_TIME_RECOVERY_ENABLED"}' \
+            "$BANCO?updateMask=pointInTimeRecoveryEnablement")
+          if [ "$STATUS" != "200" ]; then
+            cat /tmp/pitr.json
+            if grep -qi "billing" /tmp/pitr.json; then
+              echo "::error::O PITR só existe no plano Blaze. Ative o faturamento do projeto e rode este fluxo de novo (Actions › Regras e backup do Firestore › Run workflow)."
+            elif [ "$STATUS" = "403" ]; then
+              echo "::error::A conta de serviço não pode mudar o banco. No Google Cloud (IAM), dê a ela o papel 'Cloud Datastore Owner'."
+            else
+              echo "::error::Não consegui ligar o PITR (HTTP $STATUS). O motivo está logo acima."
+            fi
+            exit 1
+          fi
+
+          # a mudança é uma operação demorada; confere o resultado
+          for i in $(seq 1 12); do
+            ATUAL=$(curl -sS -H "Authorization: Bearer $TOKEN" "$BANCO" | jq -r '.pointInTimeRecoveryEnablement // "?"')
+            [ "$ATUAL" = "POINT_IN_TIME_RECOVERY_ENABLED" ] && { echo "PITR ligado."; exit 0; }
+            sleep 10
+          done
+          echo "::warning::Pedi para ligar o PITR, mas ele ainda não aparece como ligado. Confira de novo em alguns minutos."

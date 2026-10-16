@@ -16,7 +16,13 @@ if inicio not in s or fim not in s:
     raise SystemExit('não achei a matemática de cor no base.jsx')
 corpo = s[s.index(inicio):s.index(fim)].rstrip()
 
-for nome in ('hexParaHsl', 'hslParaHex', 'corLegivel', 'corCombinando'):
+if 'CONTRASTE_MINIMO' not in corpo:
+    raise SystemExit('o trecho extraído não levou o CONTRASTE_MINIMO junto')
+corpo = corpo.replace('const CONTRASTE_MINIMO =', 'export const CONTRASTE_MINIMO =', 1)
+
+for nome in ('hexParaHsl', 'hslParaHex', 'corLegivel', 'corCombinando',
+             'ambienteDoTema', 'contraste', 'achatar', 'luminancia',
+             'canaisDaCor', 'ateContrastar'):
     alvo = f'function {nome}'
     if alvo not in corpo:
         raise SystemExit(f'não achei {nome} no trecho extraído')

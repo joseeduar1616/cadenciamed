@@ -6,6 +6,27 @@ const NUVEM_CFG = (typeof window !== "undefined" && window.CADENCIA_FIREBASE) ||
 const FB_VERSAO = (typeof window !== "undefined" && window.CADENCIA_FIREBASE_VERSAO) || "10.12.2";
 const CHAVE_BACKUP = "cadencia:v3:antes-da-nuvem";
 
+/* De onde abre o login do Google.
+ *
+ * O padrão do Firebase é o domínio dele (cadencia-7c1f1.firebaseapp.com):
+ * a janela do Google volta para lá, e o site lê o resultado por um iframe
+ * desse outro domínio. O Safari, o iPhone e o app instalado bloqueiam esse
+ * armazenamento entre domínios, e o login com o Google simplesmente não
+ * terminava. Como cadenciamed.com.br é servido pelo Firebase Hosting, a
+ * página de retorno (/__/auth/handler) existe no próprio domínio, e o
+ * endereço dela está liberado no cliente OAuth do Google: o login abre e
+ * volta pelo mesmo domínio do site, sem nada entre domínios. Em qualquer
+ * outro endereço (o workers.dev, localhost) segue o padrão. */
+const DOMINIOS_LOGIN_PROPRIO = ["cadenciamed.com.br"];
+function configDaNuvem(cfg) {
+  if (!cfg) return cfg;
+  try {
+    const host = window.location.hostname;
+    if (DOMINIOS_LOGIN_PROPRIO.indexOf(host) >= 0) return { ...cfg, authDomain: host };
+  } catch (e) { /* fora do navegador */ }
+  return cfg;
+}
+
 const ERROS_AUTH = {
   "auth/invalid-email": "E-mail inválido.",
   "auth/missing-email": "Digite o e-mail.",
@@ -19,6 +40,30 @@ const ERROS_AUTH = {
   "auth/network-request-failed": "Sem conexão com o servidor.",
   "auth/operation-not-allowed": "Falta ativar o login por e-mail e senha no console do Firebase.",
   "auth/unauthorized-domain": "Este endereço não está liberado no Firebase. Adicione em Authentication, Settings, Domínios autorizados.",
+  "auth/popup-closed-by-user": "A janela do Google foi fechada antes de terminar.",
+  "auth/cancelled-popup-request": "A janela do Google foi fechada antes de terminar.",
+  "auth/user-disabled": "Esta conta foi desativada.",
+  "auth/account-exists-with-different-credential": "Esse e-mail já tem conta com senha. Entre com e-mail e senha.",
+  "auth/web-storage-unsupported": "O navegador está bloqueando os dados do site. Fora da aba anônima costuma funcionar.",
+  "auth/popup-blocked": "O navegador barrou a janela do Google. Libere janelas para este site e tente de novo.",
+};
+/* O mesmo erro quer dizer outra coisa no botão do Google: quem precisa
+   ser ligado no console é o provedor Google, não o e-mail e senha.
+   Fora de cadenciamed.com.br o login passa por outro domínio, que o
+   Safari e o iPhone costumam barrar: aí a saída é abrir pelo endereço
+   principal. E o código vai junto na mensagem: sem ele, "não deu certo"
+   não dá pista nenhuma de onde o login parou. */
+const traduzErroGoogle = (e) => {
+  const c = (e && e.code) || "";
+  console.error("login com o Google:", c, e && e.message);
+  if (c === "auth/popup-closed-by-user" || c === "auth/cancelled-popup-request") return traduzErro(e);
+  let foraDoPrincipal = false;
+  try { foraDoPrincipal = DOMINIOS_LOGIN_PROPRIO.indexOf(window.location.hostname) < 0 && !/^(localhost|127\.)/.test(window.location.hostname); } catch (x) { /* fora do navegador */ }
+  const dica = foraDoPrincipal ? " Abra o site por cadenciamed.com.br e tente de novo." : "";
+  const base = ERROS_AUTH[c] && c !== "auth/operation-not-allowed" && c !== "auth/unauthorized-domain"
+    ? ERROS_AUTH[c]
+    : "O login com o Google não terminou.";
+  return base + dica + (c ? ` Código: ${c.replace(/^auth\//, "")}.` : "");
 };
 const traduzErro = (e) => ERROS_AUTH[e && e.code] || "Não deu certo. Tente de novo.";
 
@@ -30,6 +75,39 @@ function idDispositivo() {
   } catch (e) { return "efemero"; }
 }
 
+/* ── quem vence no encontro entre o aparelho e a conta ────────────────
+ *
+ * Separado do React e do Firebase de propósito: é a regra que decide se os
+ * dados de alguém sobrevivem, e ela precisa ser testável sem navegador.
+ *
+ * O caso que obrigou a escrever isto: num celular novo o aparelho está
+ * vazio, e o app subia esse vazio para a conta antes de ter ouvido a nuvem
+ * uma vez sequer — bastava a resposta do servidor demorar mais que a espera
+ * do envio automático. O vazio ia por cima do que estava gravado, e o
+ * aparelho antigo, ao abrir, baixava o vazio de volta. Dois passos e não
+ * sobrava nada, sem nenhum erro na tela.
+ *
+ * Daí a regra mais importante daqui: "a conta não tem nada" só vale vindo
+ * do SERVIDOR. Um documento ausente no cache local não prova coisa
+ * nenhuma — num aparelho novo o cache está vazio por definição.
+ */
+function decidirNuvem(e) {
+  /* Ainda não deu para falar com o servidor: não existe decisão segura,
+     então não se mexe em nada — nem sobe, nem desce. */
+  if (!e.existe && e.daCache) return "esperar";
+  /* O servidor confirma que a conta nunca guardou nada: este aparelho é o
+     primeiro, e o que ele tem é o que passa a valer. */
+  if (!e.existe) return e.primeira ? "subir" : "esperar";
+  /* Eco do que este mesmo aparelho acabou de escrever. */
+  if (e.mesmoAparelho) return "ignorar";
+  /* Versão mais velha do que a que já temos em mãos. */
+  if (Number(e.atualizadoEm || 0) <= Number(e.stampLocal || 0)) return "ignorar";
+  /* Primeiro encontro com mais conteúdo aqui do que lá: o aparelho ganha, e
+     manda o que tem para a conta. */
+  if (e.primeira && Number(e.riquezaLocal) > Number(e.riquezaNuvem)) return "manter-local";
+  return "baixar";
+}
+
 function useNuvem(data, setData, notify, pronto, pro) {
   const [sdk, setSdk] = useState(null);
   const [usuario, setUsuario] = useState(null);
@@ -39,10 +117,19 @@ function useNuvem(data, setData, notify, pronto, pro) {
   const [temBackup, setTemBackup] = useState(false);
   const stamp = useRef(0);
   const veioDaNuvem = useRef(false);
+  /* Enquanto isto for falso, nada sobe: o aparelho ainda não sabe o que a
+     conta tem, e subir às cegas é como se perde o que estava gravado. */
+  const ouviuNuvem = useRef(false);
+  /* O mesmo "já ouvi a conta", mas como estado: quem precisa saber o que a
+     conta tem antes de decidir algo na tela (a pergunta da faculdade, no
+     parte37) espera por isto. */
+  const [carregou, setCarregou] = useState(false);
   const disp = useRef(idDispositivo());
   const tmr = useRef(null);
   const dataRef = useRef(data);
   dataRef.current = data;
+  const notifyRef = useRef(notify);
+  notifyRef.current = notify;
 
   useEffect(() => {
     try { setTemBackup(!!window.localStorage.getItem(CHAVE_BACKUP)); } catch (e) { /* noop */ }
@@ -61,10 +148,19 @@ function useNuvem(data, setData, notify, pronto, pro) {
           importar(b + "firebase-firestore.js"),
         ]);
         if (!vivo) return;
-        const app = A.initializeApp(NUVEM_CFG);
+        const app = A.initializeApp(configDaNuvem(NUVEM_CFG));
         const auth = U.getAuth(app);
         const db = F.getFirestore(app);
         setSdk({ A, U, F, app, auth, db });
+        /* Quem entrou com o Google pelo redirecionamento (o caminho de
+           reserva quando o navegador barra a janela) volta aqui. */
+        if (U.getRedirectResult) {
+          /* Se a volta do Google falhar, a pessoa precisa saber: antes o erro
+             sumia aqui, e o site só voltava para a tela de entrar. */
+          U.getRedirectResult(auth)
+            .then((cred) => { if (vivo && cred) depoisDoGoogleRef.current(cred); })
+            .catch((e) => { if (vivo) notifyRef.current(traduzErroGoogle(e)); });
+        }
         U.onAuthStateChanged(auth, (u) => {
           if (!vivo) return;
           setUsuario(u ? { uid: u.uid, email: u.email } : null);
@@ -117,23 +213,56 @@ function useNuvem(data, setData, notify, pronto, pro) {
     if (!sdk || !usuario || !pro) return undefined;   // sincronizar é do plano pago
     const ref = sdk.F.doc(sdk.db, "usuarios", usuario.uid);
     let primeira = true;
-    const parar = sdk.F.onSnapshot(ref, (snap) => {
+    ouviuNuvem.current = false;
+    setCarregou(false);
+    /* includeMetadataChanges porque a decisão depende de saber se a
+       resposta veio do servidor ou do cache. Sem isso, um "não existe"
+       vindo do cache não seria corrigido por um aviso do servidor dizendo
+       a mesma coisa, e uma conta nova nunca chegaria a subir nada. */
+    const parar = sdk.F.onSnapshot(ref, { includeMetadataChanges: true }, (snap) => {
+      const daCache = !!(snap.metadata && snap.metadata.fromCache);
+
       if (!snap.exists()) {
-        if (primeira) { primeira = false; enviar(); }
+        const oQue = decidirNuvem({ existe: false, daCache, primeira });
+        if (oQue === "esperar") return;
+        ouviuNuvem.current = true;
+        setCarregou(true);
+        primeira = false;
+        enviar();
         return;
       }
+
       const d = snap.data() || {};
       const era = primeira;
+      let novo = null;
+      try { novo = normalize(JSON.parse(d.dados)); } catch (e) { return; }
+
+      const oQue = decidirNuvem({
+        existe: true, daCache, primeira: era,
+        mesmoAparelho: d.dispositivo === disp.current,
+        atualizadoEm: Number(d.atualizadoEm || 0), stampLocal: stamp.current,
+        riquezaLocal: riqueza(dataRef.current), riquezaNuvem: riqueza(novo),
+      });
+
+      /* O documento existe: a partir daqui o aparelho sabe o que a conta
+         tem, e pode voltar a subir — inclusive quando a decisão foi
+         ignorar este aviso específico. */
+      ouviuNuvem.current = true;
+      setCarregou(true);
       primeira = false;
-      if (d.dispositivo === disp.current) return;
-      if (Number(d.atualizadoEm || 0) <= stamp.current) return;
-      try {
-        const novo = normalize(JSON.parse(d.dados));
-        if (era && riqueza(dataRef.current) > riqueza(novo)) {
-          notify("Mantive os dados deste aparelho e enviei para a conta.");
-          enviar();
-          return;
-        }
+
+      if (oQue === "ignorar") return;
+      if (oQue === "manter-local") {
+        notify("Mantive os dados deste aparelho e enviei para a conta.");
+        enviar();
+        return;
+      }
+      {
+        /* O que estava neste aparelho vira uma versão guardada ANTES de
+           a conta escrever por cima. Vale para toda carga vinda da nuvem,
+           e não só para a primeira: foi uma carga comum, de um aparelho
+           que já tinha sincronizado antes, que apagou os dados de alguém. */
+        guardarVersao(dataRef.current, era ? "antes de carregar a conta" : "antes de atualizar por outro aparelho");
         if (era) {
           try {
             window.localStorage.setItem(CHAVE_BACKUP, JSON.stringify(dataRef.current));
@@ -145,13 +274,17 @@ function useNuvem(data, setData, notify, pronto, pro) {
         setData((p) => ({ ...novo, theme: p.theme, layout: p.layout }));
         setUltima(Date.now());
         notify(era ? "Dados da sua conta carregados." : "Atualizado a partir de outro aparelho.");
-      } catch (e) { /* documento ilegível */ }
+      }
     }, () => setErro("Não consegui ler os dados na nuvem."));
     return parar;
   }, [sdk, usuario, pro, enviar, setData, notify, riqueza]);
 
   useEffect(() => {
     if (!sdk || !usuario || !pronto || !pro) return undefined;
+    /* Nada sobe antes de a conta ter sido ouvida uma vez. É o que impede o
+       aparelho recém-instalado de mandar o próprio vazio por cima do que
+       estava guardado, quando a resposta do servidor demora. */
+    if (!ouviuNuvem.current) return undefined;
     if (veioDaNuvem.current) { veioDaNuvem.current = false; return undefined; }
     if (tmr.current) window.clearTimeout(tmr.current);
     tmr.current = window.setTimeout(enviar, 2500);
@@ -181,6 +314,8 @@ function useNuvem(data, setData, notify, pronto, pro) {
     if (!sdk) return "Serviço indisponível.";
     try {
       const cred = await sdk.U.createUserWithEmailAndPassword(sdk.auth, email.trim(), senha);
+      /* Conta nova: avisa a medição dos anúncios (medir.js). */
+      try { if (window.cadenciaCadastro) window.cadenciaCadastro("email"); } catch (e) { /* noop */ }
       if (nome.trim()) {
         try { await sdk.U.updateProfile(cred.user, { displayName: nome.trim() }); } catch (e) { /* opcional */ }
         setData((p) => ({ ...p, profile: { ...p.profile, name: nome.trim(), onboarded: true } }));
@@ -188,6 +323,81 @@ function useNuvem(data, setData, notify, pronto, pro) {
       return null;
     } catch (e) { return traduzErro(e); }
   }, [sdk, setData]);
+
+  /* Entrar ou criar conta com o Google: é o mesmo botão. Conta que ainda
+     não existia nasce aqui, com o nome do Google, e ganha o teste grátis
+     como qualquer conta nova (o servidor conta da criação da conta).
+     Janela primeiro; se o navegador barrar a janela (alguns celulares, o
+     app instalado no iPhone), vai pelo redirecionamento. */
+  const depoisDoGoogle = useCallback((cred) => {
+    const U = sdk && sdk.U;
+    let nova = false;
+    try {
+      const info = U && U.getAdditionalUserInfo ? U.getAdditionalUserInfo(cred) : null;
+      nova = !!((info && info.isNewUser) || (cred && cred._tokenResponse && cred._tokenResponse.isNewUser));
+    } catch (e) { /* segue como conta existente */ }
+    /* Conta nova pelo Google: avisa a medição dos anúncios (medir.js). */
+    try { if (nova && window.cadenciaCadastro) window.cadenciaCadastro("google"); } catch (e) { /* noop */ }
+    const nome = String((cred && cred.user && cred.user.displayName) || "").trim().slice(0, 40);
+    if (nova || nome) {
+      setData((p) => ({
+        ...p,
+        profile: {
+          ...p.profile,
+          name: (p.profile && p.profile.name && !nova) ? p.profile.name : (nome || (p.profile && p.profile.name) || "Estudante"),
+          onboarded: true,
+        },
+      }));
+    }
+    return { nova, nome };
+  }, [sdk, setData]);
+  const depoisDoGoogleRef = useRef(depoisDoGoogle);
+  depoisDoGoogleRef.current = depoisDoGoogle;
+
+  const comGoogle = useCallback(async (manter) => {
+    if (!sdk) return { erro: "Serviço indisponível." };
+    const U = sdk.U;
+    try {
+      /* Nada de esperar antes de abrir a janela: o Safari só deixa abrir
+         janela colada no toque, e um await no meio faz ele barrar. A
+         persistência padrão já é a de ficar conectado; só quem desmarcou
+         "manter conectado" passa por aqui antes. */
+      if (manter === false && U.browserSessionPersistence) await U.setPersistence(sdk.auth, U.browserSessionPersistence).catch(() => {});
+      const provedor = new U.GoogleAuthProvider();
+      if (provedor.setCustomParameters) provedor.setCustomParameters({ prompt: "select_account" });
+      /* No app instalado (aberto pelo ícone) não existe janela de verdade:
+         no iPhone ela abre fora do app e não consegue devolver o login.
+         Ali o caminho é o redirecionamento, que volta pelo próprio domínio. */
+      let instalado = false;
+      try {
+        instalado = !!(window.navigator.standalone
+          || (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches));
+      } catch (e) { /* segue com a janela */ }
+      /* No celular, pelo endereço principal, o redirecionamento também é o
+         caminho mais firme: a "janela" vira outra aba, que às vezes não
+         consegue avisar a aba do site e deixa a pessoa parada no Google. */
+      let celular = false;
+      try {
+        celular = DOMINIOS_LOGIN_PROPRIO.indexOf(window.location.hostname) >= 0
+          && /iPhone|iPad|iPod|Android|Mobile/i.test(window.navigator.userAgent || "");
+      } catch (e) { /* segue com a janela */ }
+      if ((instalado || celular) && U.signInWithRedirect) {
+        await U.signInWithRedirect(sdk.auth, provedor);
+        return { redirecionou: true };
+      }
+      let cred;
+      try {
+        cred = await U.signInWithPopup(sdk.auth, provedor);
+      } catch (e) {
+        if (e && (e.code === "auth/popup-blocked" || e.code === "auth/operation-not-supported-in-this-environment")) {
+          await U.signInWithRedirect(sdk.auth, provedor);
+          return { redirecionou: true };
+        }
+        throw e;
+      }
+      return depoisDoGoogle(cred);
+    } catch (e) { return { erro: traduzErroGoogle(e) }; }
+  }, [sdk, depoisDoGoogle]);
 
   const recuperar = useCallback(async (email) => {
     if (!sdk) return "Serviço indisponível.";
@@ -219,10 +429,10 @@ function useNuvem(data, setData, notify, pronto, pro) {
    * recarregando sozinha sem parar, e por baixo era uma chamada por render
    * ao servidor. */
   return useMemo(() => ({
-    ligado: !!NUVEM_CFG, estado, usuario, erro, ultima, temBackup, sdk, sincroniza: !!pro,
-    entrar, cadastrar, recuperar, sair, enviar, restaurarBackup,
-  }), [estado, usuario, erro, ultima, temBackup, sdk, pro,
-    entrar, cadastrar, recuperar, sair, enviar, restaurarBackup]);
+    ligado: !!NUVEM_CFG, estado, usuario, erro, ultima, temBackup, sdk, sincroniza: !!pro, carregou,
+    entrar, cadastrar, comGoogle, recuperar, sair, enviar, restaurarBackup,
+  }), [estado, usuario, erro, ultima, temBackup, sdk, pro, carregou,
+    entrar, cadastrar, comGoogle, recuperar, sair, enviar, restaurarBackup]);
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -379,8 +589,24 @@ function diferencaDaAgenda(lista, antes, opts) {
 function estadoDaLigacao(r) {
   const servidorLiga = !(r && r.disponivel === false);
   const permanente = r && typeof r.ligado === "boolean" ? r.ligado : null;
-  return { servidorLiga, permanente };
+  return { servidorLiga, permanente, clientId: String((r && r.clientId) || "") };
 }
+
+/* Qual credencial do Google a janela deve usar.
+ *
+ * O código de autorização é emitido PARA um cliente e só pode ser trocado
+ * por aquele mesmo cliente. Com o id escrito aqui na página, bastava
+ * cadastrar outra credencial no Worker para as duas pontas divergirem: o
+ * navegador pedia o código com uma e o servidor tentava trocar com a outra,
+ * e o Google recusava com invalid_client. Quem manda, então, é o servidor —
+ * que é o único lado que também guarda o segredo, e por isso o único que
+ * não tem como discordar de si mesmo.
+ *
+ * O id daqui fica como reserva, para o caso de o servidor não responder. */
+let idContadoPeloServidor = "";
+const guardarIdDoGoogle = (id) => { if (id) idContadoPeloServidor = String(id); };
+const idDoGoogle = () =>
+  idContadoPeloServidor || (GOOGLE_CFG && GOOGLE_CFG.clientId) || "";
 
 /* O que fazer depois de mandar o código ao servidor.
  *
@@ -516,6 +742,11 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
       if (!vivo) return;
       const e = estadoDaLigacao(r);
       setServidorLiga(e.servidorLiga);
+      /* Fora do estado do React: quem lê isto são as funções que abrem a
+         janela, no instante do clique, e a janela do Drive fica noutro
+         gancho. Um valor só, do módulo, serve os dois sem passar por
+         render nenhum. */
+      guardarIdDoGoogle(e.clientId);
       setPermanente(e.permanente === null ? false : e.permanente);
     })();
     return () => { vivo = false; };
@@ -558,7 +789,7 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
     const codigo = await new Promise((resolve) => {
       try {
         const c = window.google.accounts.oauth2.initCodeClient({
-          client_id: GOOGLE_CFG.clientId,
+          client_id: idDoGoogle(),
           scope: ESCOPO_PERMANENTE,
           ux_mode: "popup",
           /* Sem isto, quem já tinha autorizado antes recebe um código que o
@@ -602,7 +833,7 @@ function useGoogleAgenda({ data, setData, notify, ladder, today, nuvem }) {
     if (!window.google || !window.google.accounts) return resolve(null);
     try {
       cliente.current = window.google.accounts.oauth2.initTokenClient({
-        client_id: GOOGLE_CFG.clientId,
+        client_id: idDoGoogle(),
         scope: ESCOPO_GC,
         callback: (r) => {
           if (r && r.access_token) {
@@ -1143,7 +1374,7 @@ function useGoogleDrive(nuvem) {
     }
     try {
       cliente.current = window.google.accounts.oauth2.initTokenClient({
-        client_id: GOOGLE_CFG.clientId,
+        client_id: idDoGoogle(),
         scope: ESCOPO_DRIVE,
         callback: (r) => {
           if (r && r.access_token) { setToken(r.access_token); resolve({ token: r.access_token, erro: "" }); return; }
@@ -1285,7 +1516,7 @@ function useGoogleDrive(nuvem) {
 
 /* ═══════════════════════════════════════════════════════════════════
    6.5 · MENTOR
-   Quem resgata o cupom "mentor1612" (rota /api/cupom) ganha esta aba, e
+   Quem resgata um cupom de mentor (rota /api/cupom) ganha esta aba, e
    adiciona alunos pelo e-mail com que eles se cadastraram. Os dados do
    aluno ficam inteiros na nuvem dele — o hook só chama o servidor, nunca
    mexe direto no Firestore, porque as regras não deixam ninguém ler o
@@ -1403,6 +1634,10 @@ function usePomodoro({ pomo, onFocusDone, notify, pronto }) {
   cfg.current = pomo;
   const durAnterior = useRef(false);
   const avisado = useRef(false);
+  /* A reabertura já fechou o bloco vencido com o site fechado: o avanço
+     automático, logo abaixo, não pode fechar o mesmo bloco de novo e
+     registrá-lo duas vezes. Volta a valer quando a pessoa começa outro. */
+  const fechouNaAbertura = useRef(false);
 
   const modo = pomo.modo === "corrido" ? "corrido" : "pomodoro";
   const durOf = useCallback((ph) => {
@@ -1436,6 +1671,7 @@ function usePomodoro({ pomo, onFocusDone, notify, pronto }) {
   }, [pronto, pomo.focus, pomo.short, pomo.long]); // eslint-disable-line
 
   const setRunning = useCallback((v) => {
+    if (v) fechouNaAbertura.current = false;
     if (modo === "corrido") {
       if (v) { setSwInicio(Date.now()); setRunningRaw(true); }
       else {
@@ -1497,6 +1733,7 @@ function usePomodoro({ pomo, onFocusDone, notify, pronto }) {
     const s = guardado.current;
     if (!s || !s.running || !s.endsAt || Date.now() < s.endsAt) { avisado.current = true; return; }
     avisado.current = true;
+    fechouNaAbertura.current = true;
     const atraso = Math.round((Date.now() - s.endsAt) / 60000);
     if (s.phase === "foco") {
       const longa = round % cfg.current.cycle === 0;
@@ -1511,10 +1748,14 @@ function usePomodoro({ pomo, onFocusDone, notify, pronto }) {
     }
   }, [pronto, modo, durOf, onFocusDone, notify, round]);
 
+  /* Fim da fase com o site aberto: vira sozinha. Espera a reabertura
+     (avisado) decidir antes, para não decidirem os dois sobre o mesmo
+     bloco. */
   useEffect(() => {
-    if (modo === "corrido") return;
+    if (modo === "corrido" || !pronto || !avisado.current || fechouNaAbertura.current) return;
     if (running && left <= 0) advance(true);
-  }, [modo, running, left, advance]);
+  }, [modo, running, left, advance, pronto]);
+
 
   const reset = useCallback(() => {
     if (modo === "corrido") { setRunningRaw(false); setSwAcum(0); setSwInicio(0); return; }
@@ -1526,4 +1767,54 @@ function usePomodoro({ pomo, onFocusDone, notify, pronto }) {
     modo, phase, left, running, round, total, corrido,
     setRunning, advance, reset, jumpTo, encerrarCorrido,
   };
+}
+
+/* ── o cartão de ligar a conta de vez ──────────────────────────────────
+ *
+ * Mora num componente só porque aparece em DOIS lugares: na aba Agenda,
+ * que é onde qualquer pessoa procura o Google Agenda, e na aba Metas, que
+ * é de onde as provas e metas são exportadas para a agenda.
+ *
+ * Ele nasceu por causa de um defeito que custou várias rodadas. O botão
+ * existia só no fim da aba Metas. O diagnóstico do painel, por outro
+ * lado, mandava clicar nele "na aba Agenda" — e lá ele só aparecia num
+ * caso de falha bem específico (a sincronização sozinha já ter começado e
+ * parado). Quem seguia a instrução ia à Agenda, não achava botão nenhum,
+ * e concluía que o Google estava quebrado. Não estava: faltava um toque
+ * num botão que não estava onde a própria tela dizia que estava.
+ */
+function LigarGoogleDeVez({ gcal }) {
+  if (!gcal || !gcal.disponivel || !gcal.podeLigarDeVez) return null;
+  return (
+    <div className="mt-4 rounded-2xl px-4 py-4"
+      style={{
+        background: soft(gcal.permanente ? "var(--ok)" : "var(--a-GO)", 10),
+        border: `1px solid ${soft(gcal.permanente ? "var(--ok)" : "var(--a-GO)", 30)}`,
+      }}>
+      {gcal.permanente ? (
+        <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+          <span style={{ fontSize: 14.5, fontWeight: 600, color: T.ok }}>
+            Conta do Google ligada de vez
+          </span>
+          <Mini>não precisa autorizar de novo ao abrir o app</Mini>
+        </div>
+      ) : (
+        <>
+          <div style={{ fontSize: 14.5, fontWeight: 600, color: T.ink }}>
+            Cansado de autorizar toda vez que abre?
+          </div>
+          <Mini style={{ marginTop: 6, lineHeight: 1.6 }}>
+            Ligue a conta de vez: você autoriza uma única vez e o site
+            renova o acesso sozinho daí em diante, sem abrir janela
+            nenhuma. Dá para desligar quando quiser.
+          </Mini>
+          <div className="mt-4">
+            <Btn size="sm" tone="primary" disabled={!gcal.pronto} onClick={gcal.ligarDeVez}>
+              Ligar a conta de vez
+            </Btn>
+          </div>
+        </>
+      )}
+    </div>
+  );
 }

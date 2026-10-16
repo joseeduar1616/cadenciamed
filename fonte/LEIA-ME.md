@@ -127,9 +127,11 @@ propósito. Classes de comportamento (`vidro`, `brilhar`, `aba`, `nota`,
 `aura`, `rise`, `marca`, `breathe`, `pulso`) são escritas no `<style>` do
 próprio app e ficam na lista `DO_APP`, no topo do script.
 
-O modo celular funciona escopando as regras `sm:` e `lg:` sob
-`html:not([data-layout="movel"])`, então forçar o celular desliga as regras de
-tela larga.
+As regras `sm:` e `lg:` ficam escopadas sob
+`html:not([data-layout="movel"])`, mas o site não oferece mais escolher
+"Celular" ou "Computador": `data-layout` é sempre `auto`, e o desenho segue a
+largura da tela (o tablet deitado ganha o layout largo, em pé o estreito). O
+`manifest.webmanifest` usa `"orientation": "any"`, para o app instalado girar.
 
 ## Aparência e revisão, escolhidas por quem usa
 
@@ -271,6 +273,7 @@ Como está no ar hoje, em dois lugares:
 |---|---|---|
 | **Firebase Hosting** | `cadenciamed.com.br`, as páginas | `.github/workflows/deploy-firebase.yml` |
 | **Cloudflare Worker** | as rotas `/api/...` | `.github/workflows/publicar.yml` |
+| **Firestore** | as regras (`fonte/regras-firestore.txt`) e o backup contínuo (PITR) | `.github/workflows/firestore.yml`, só quando o arquivo de regras muda |
 
 Os dois disparam no mesmo push para a `main` e nenhum dos dois compila nada:
 mandam a pasta `publicar/` como ela está no repositório.
@@ -496,21 +499,287 @@ conta (cadastro, plano) — ali não haveria de quem ser o currículo próprio.
 
 ## Cupons
 
-Os códigos ficam no `worker/api/cupom.js`, no servidor, e nunca no navegador.
-Para trocá-los sem mexer no código, cadastre `CUPONS` no Cloudflare, no formato
-`codigo:plano,codigo:plano` (planos: semanal, mensal, anual, vitalicio). Enquanto
-essa variável não existir, valem os dois cupons escritos no arquivo — hoje,
-`secdamocada` libera 7 dias (`semanal`) e `medeasysoft` libera o plano anual.
-Cada plano fora do `anual` conta os dias a partir do resgate (`DIAS`, em
-`_comum.js`); só o `anual` vence numa data fixa, veja "Plano anual", abaixo.
+Quem confere o código é o `worker/api/cupom.js`, no servidor, e nunca o
+navegador. Os cupons moram no banco, em `cupons/{codigo}`, e são criados e
+apagados pelo painel do dono (Gestão de Acessos › Cupons), com plano e, se
+quiser, um limite de usos. **Nenhum código fica escrito no repositório**:
+cupom escrito em código é cupom que qualquer pessoa com acesso ao código
+resgata — foi o que aconteceu com os três primeiros, que por isso deixaram
+de valer.
 
-O cupom `mentor1612` é especial: fica fora dessa lista (não dá para trocar
-pela variável `CUPONS`) e não libera plano nenhum — concede o papel de
+Como reserva, o Worker ainda lê a variável `CUPONS`, que deve ser cadastrada
+como **segredo** no Cloudflare (Workers & Pages › cadenciamed › Settings ›
+Variables and Secrets), no formato `codigo:plano,codigo:plano`. Planos:
+semanal, mensal, anual, vitalicio e mentor. Cada plano fora do `anual` conta
+os dias a partir do resgate (`DIAS`, em `_comum.js`); só o `anual` vence numa
+data fixa, veja "Plano anual", abaixo.
+
+O plano `mentor` é especial: não libera plano nenhum — concede o papel de
 mentor, gravando `mentores/{uid}` em vez de `assinaturas/{uid}`. Resgatar de
 novo não faz nada de errado, e não apaga a lista de alunos que a pessoa já
-tinha. O dono (`joseeduardo1616@gmail.com`, em `DONOS`, no `_comum.js`) já é
-mentor sem precisar resgatar nada — é a mesma lista que já dá acesso completo
-sem pagar.
+tinha. O dono (em `DONOS`, no `_comum.js`) já é mentor sem precisar resgatar
+nada — é a mesma lista que já dá acesso completo sem pagar.
+
+## O cronograma que a pessoa envia (tetos)
+
+Dois caminhos, e os dois cortavam o fim do curso sem ninguém perceber — um
+calendário de 46 semanas chegava até a semana 36:
+
+- **Calendário em texto** (aba Cronograma, "as datas e o calendário do seu
+  curso"): era cortado em 20 mil caracteres no envio *e* na leitura do
+  disco/nuvem. Agora o teto é um só, `LIMITE_CRONOGRAMA` no `base.jsx`
+  (100 mil), usado nos dois lugares. O assistente enxerga até 40 mil
+  caracteres dele (antes, 12 mil: só o começo do curso).
+- **Organizar com a IA** (vira as matérias do painel): ia só o começo do
+  texto (45 mil caracteres), e a resposta da IA também tem teto. Agora o
+  texto vai em partes de 10 mil caracteres, cortadas antes de "Semana",
+  "Módulo" ou de linha em branco (`partesParaOrganizar`, `parte9.jsx`),
+  cada parte é organizada numa chamada, e as listas se juntam na ordem
+  (`juntarMaterias`), desfazendo só a repetição da emenda entre partes. O
+  currículo próprio guarda até `MAX_AULAS_PROPRIAS` (1000) aulas.
+
+O `testar-cronograma-partes.mjs` monta um curso de 46 semanas do tamanho
+do que chegou (com o corte antigo, ele parava na 36) e cobra que tudo vá
+até a semana 46.
+
+## O visual limpo e as ideias da Easy Medicina
+
+O padrão é o visual **limpo** (`data-visual="limpo"` no `<html>`), no estilo
+da Easy Medicina com as cores da casa: fundo cinza bem claro (ou preto #050507 no
+escuro; azul-noite opcional em Aparência, `data.tema.escuro`), cartões lisos com sombra curta, o roxo da marca de acento,
+títulos em frase normal, sem constelação,
+auras nem brilho. Mora em `LIMPO_CSS` (base.jsx), por cima do `THEME_CSS`
+com seletor mais específico; as peças decorativas são apagadas por classe
+(`canto-card`, `brilho-card`, `fio-h`, `brilho-svg`). No limpo a cor de
+acento escolhida só muda o acento (`acentoLimpo`), e fundo e painéis ficam
+neutros. O visual de antes continua como **neon**, em Configurações ›
+Aparência (`data.tema.visual`). O `testar-contraste.mjs` mede os dois
+visuais nos dois temas.
+
+Também da Easy:
+- **Estudo de cartões:** nome do baralho e n/total, barra, contadores
+  (novos, aprendendo, revisão, reaprendendo), PERGUNTA e RESPOSTA num
+  cartão branco, "Mostrar resposta", e De novo / Difícil / Bom / Fácil com o
+  próximo intervalo em cima (`rotuloDoIntervalo`). Negrito na pergunta sai
+  no roxo de destaque.
+- **Praticar:** rever o baralho inteiro sem mexer nas datas de revisão.
+- **Hoje:** `PainelDoDia` (parte32): saudação, % da rotina, atividades do
+  dia e os cartões revisados hoje (tempo e s/cartão, de `data.cartoesDia`).
+- **Cartões:** previsão dos próximos 30 dias e calendário de constância.
+
+Teste: `testar-visual-easy.mjs`.
+
+### Quem já usava fica no neon, com o aviso do visual novo
+
+O limpo é o padrão só de **conta nova**. Em `normalize` (parte2), dado sem
+`tema.versaoVisual` é de antes do limpo: vira `visual: "neon"`,
+`versaoVisual: 2` e `avisoVisual: true`. Isso vale também para quem abriu o
+site nas primeiras horas do limpo (o dado já dizia "limpo", mas ninguém
+tinha escolhido). Com `avisoVisual`, o topo da página mostra
+`AvisoVisualNovo` (parte33): explica a novidade, e as opções de visual,
+fundo e tom trocam o site na hora; "Ficar com este visual" grava
+`avisoVisual: false`. O aviso não cobre a página. Na inscrição, o
+formulário de criar conta tem a mesma escolha (`EscolhaVisual`, compacta),
+gravada no toque, e por isso vale também para quem cria pelo Google.
+Teste: `testar-visual-migracao.mjs`.
+
+## Entrar e criar conta com o Google
+
+"Continuar com o Google" fica nos dois formulários de conta (página de
+entrada e Configurações) e serve para entrar e para criar: conta que ainda
+não existia nasce no clique, com o nome do Google, e ganha o teste grátis
+como qualquer conta nova. O caminho é `nuvem.comGoogle` (parte3): janela
+(`signInWithPopup`) primeiro e, se o navegador barrar a janela, o
+redirecionamento, recolhido por `getRedirectResult` ao abrir. O provedor
+Google já está ligado no projeto do Firebase; se um dia aparecer "Este
+endereço não está liberado", falta o domínio em Authentication › Settings ›
+Domínios autorizados. Teste: `testar-financas-tela.mjs` (parte do Google).
+
+Em cadenciamed.com.br o login abre e volta pelo próprio domínio
+(`/__/auth/handler`, servido pelo Firebase Hosting); a página de retorno
+leva direto ao "Fazer login com o Google, prosseguir para
+cadenciamed.com.br". No celular e no app instalado vai pelo
+redirecionamento (a "janela" vira outra aba, que nem sempre consegue avisar
+a aba do site). Erro do Google aparece com o código no fim ("Código:
+internal-error"), inclusive o da volta do redirecionamento, que antes era
+engolido; fora do endereço principal (o workers.dev) a mensagem sugere abrir
+por cadenciamed.com.br, porque ali o login passa por outro domínio, e o
+Safari barra.
+
+## Financeiro (só do dono)
+
+Aba `financeiro` (parte31), com regra `dono` em `RECURSOS` (servidor) e em
+`RECURSOS_PADRAO`/`ABAS_DONO` (tela). A rota `/api/financas-ia` confere o
+e-mail do dono antes de chamar a IA, então liberar a aba para outra pessoa
+no painel não abre nada. Duas ações: `extrato` (o texto do PDF/CSV/OFX, lido
+no navegador, ou até 4 fotos; volta movimentos, fixos e rendas, podados no
+servidor) e `conversa` (o dono conta renda, gastos e meta; volta resposta e
+ações: renda, fixo, gasto, meta, remover). A tela aplica as ações com
+`aplicarAcoesFin` (renda e fixo com o mesmo nome substituem o antigo) e
+deixa desfazer o último registro. O resumo do mês é conta da tela: renda −
+fixos − gastos do mês − meta. Os dados ficam em `data.financas`, que
+sincroniza junto com o resto da conta do dono. Testes:
+`testar-financas.mjs` (rota) e `testar-financas-tela.mjs` (tela).
+
+## Estudo interativo
+
+Aba `estudo` (parte34, regra `pro` em `RECURSOS`), rota `/api/estudo-ia`.
+A pessoa junta um ou mais materiais (PDF e Word com as figuras, texto,
+fotos, imagens coladas no campo de texto) e a IA monta a aula:
+
+- `plano`: divide em blocos (5 em média, de 1 a 9), com objetivo, tópicos,
+  minutos e as figuras de cada bloco. Figura que a IA esquece entra em algum
+  bloco (`limparPlano`): nenhuma imagem do material se perde.
+- `bloco`: os slides de UM bloco (capa, conceito, pontos revelados um a um,
+  esquema, comparação, caso, quiz, pegadinha, resumo) e as 3 perguntas do
+  checkpoint com gabarito. Um bloco por chamada, para a resposta não vir
+  cortada; o seguinte é montado em segundo plano enquanto a pessoa estuda.
+- `corrigir`: veredito (certo, parcial, errado), o que acertou, o que
+  faltou, explicação e, se não estiver certo, uma pergunta de reforço só
+  sobre o que faltou. A pergunta só fecha quando sai "certo"; o bloco
+  seguinte só abre com as três fechadas.
+- `simplificar`: o "Não entendi" de cada slide.
+
+Na criação a pessoa escolhe **Completo** ou **Rápido** (`modo`, guardado no
+índice e no documento da aula, e mandado em `plano` e `bloco`). O rápido
+pede 2 ou 3 blocos de 5 a 10 minutos (teto de 4 blocos e 12 min no
+servidor), de 4 a 6 slides só com o essencial e 2 perguntas no checkpoint
+(`PERGUNTAS_POR_MODO`), com a mesma regra de só seguir com tudo
+consolidado. Aula sem modo (as antigas) é completa.
+
+As figuras nunca vão para a IA (só código e texto em volta). Foto do
+material vira texto (pela `/api/ler-foto`) e também figura dos slides.
+`data.estudos` guarda só o índice e o progresso; material, slides,
+andamento do checkpoint e figuras ficam no IndexedDB (`cadencia-midia`,
+chaves `estudo:<id>` e `estudo:<id>:F1`). Toda gravação do documento passa
+por `mudarDocEstudo`, uma fila: sem ela o bloco montado em segundo plano e
+o checkpoint gravavam juntos e um apagava o outro. Bloco concluído vira
+sessão de estudo (minutos), e o que a pessoa errou de primeira vira
+flashcard na pasta "Estudo interativo". Custos no teto diário:
+`estudo-plano` 3, `estudo-bloco` 5, `estudo-corrigir` 1,
+`estudo-simplificar` 1. "Tela cheia" põe o bloco num portal no `<body>` (como o
+Foco) e pede a tela cheia do navegador; Esc sai. Como trocar de modo remonta
+o slide, o que já se fez em cada slide (pontos revelados, quiz, caso, "não
+entendi") fica em `memoriaSlides`. As legendas das imagens dizem o que a
+imagem mostra, sem citar arquivo ou página. Na tela cheia o slide estica pela
+tela e cresce com ela (`useEscalaDaTela`, zoom até 1,7). As transições valem
+mesmo com "reduzir movimento" no sistema (a regra geral do site desliga toda
+animação nesse caso): cada peça leva a animação na variável `--anim`, e a
+regra `[data-estudo-anima][style*="--anim"]` aplica. Ao trocar de slide, uma
+cópia parada do antigo (`data-saindo`) desliza para fora enquanto o novo
+entra. O relógio de placas do Foco também vira sempre: no Windows com
+"efeitos de animação" desligado, ele trocava seco e parecia travado. Testes: `testar-estudo.mjs` (rota) e
+`testar-estudo-tela.mjs` (tela).
+
+PowerPoint (.pptx) é lido no navegador (`lerPptxComFiguras`, parte30, com
+o JSZip do cdnjs): o texto de cada slide na ordem da apresentação
+(presentation.xml), as notas do apresentador e as imagens de cada slide,
+com o texto do slide como contexto. Imagem repetida em 3 slides ou mais
+(logotipo, fundo do modelo), ícone pequeno e EMF/WMF ficam de fora. Vale
+no Estudo interativo, na importação da anotação e, só o texto, em
+`lerArquivoParaTexto`. Teste: `testar-pptx.mjs`.
+
+## O que foi estudado no Anki conta aqui
+
+Cartões › Trazer baralho › "Contar o que estudei no Anki" (parte35). A
+pessoa exporta a coleção do AnkiDroid ou do Anki (.colpkg, ou .apkg com
+agendamento) e importa. A tabela `revlog` vira, por dia (data local),
+quantos cartões e quanto tempo; cada dia vira UMA sessão de "Flashcards"
+com id `anki-AAAA-MM-DD`, que entra nas horas, no desempenho e no ranking da
+sala. Reimportar não duplica: o dia é atualizado só se o arquivo novo tiver
+mais tempo. Não contam: reagendamento manual (type 4), linha sem resposta
+(ease 0) e o que tem mais de 365 dias; cada resposta conta no máximo 5 min.
+O formato novo (`collection.anki21b`, compactado com zstd, o padrão do
+AnkiDroid) abre com o `fzstd.min.js` (MIT, publicado junto do site); com ele
+o "Trazer baralho" também abre esse formato, só sem as imagens. Teste:
+`testar-anki-historico.mjs`.
+
+## Painel de motivação
+
+Aba `motivacao` (parte36, regra `pro`), rota `/api/motivacao-ia`.
+- `pergunta`: a entrevista, uma pergunta por vez (até 10): por que
+  medicina, sonho de especialidade, por quem estuda, fé (pode pular), o que
+  já superou, a cena de quando passar, metas, medos e o que a faz voltar.
+  Com 3 respostas já dá para montar o painel.
+- `painel`: cartões por categoria (propósito, pessoas, fé, metas, futuro,
+  conquistas, lembretes para os medos, frases), nas palavras da pessoa.
+  Fé só entra se ela trouxe.
+- `agora`: "Preciso de motivação agora". Humor e desabafo, com o painel e
+  o momento (dias para a prova, minutos de hoje, dias seguidos), viram uma
+  mensagem curta e uma ação (Foco, revisões, cartões, pausa). Desabafo com
+  sinal de risco traz o aviso do CVV (188) mesmo que a IA esqueça
+  (`temRisco`).
+Tudo em `data.motivacao` (entrevista, painel com favoritos, motivos da
+pessoa). No Hoje, `MotivoDoDia` mostra um cartão por dia. Custos:
+`motivacao-pergunta` 1, `motivacao-painel` 3, `motivacao-agora` 1.
+Testes: `testar-motivacao.mjs` e `testar-motivacao-tela.mjs`.
+
+## O teste grátis de 3 dias
+
+Toda conta nova tem o plano completo por 3 dias (`DIAS_TESTE`), sem cartão e
+sem cobrança. Os dias contam da criação da conta, que vem do Google junto do
+token (`quemPede` devolve `criadaEm`), então ninguém adia mexendo no
+navegador. Na primeira vez que `/api/plano` vê a conta sem nada gravado, grava
+`assinaturas/{uid}` com `plano: "teste"` e `validoAte` no fim dos 3 dias,
+com `currentDocument.exists=false` para nunca passar por cima de um cupom
+gravado no mesmo instante. Como é o mesmo documento da assinatura, toda rota
+paga que confere `validoAte` já respeita o teste. Conta antiga não ganha
+teste retroativo. Durante o teste o cupom vale normalmente
+(`validoAte(..., { semTeste: true })` no `cupom.js`).
+
+Na tela: o cadastro (página de entrada e Configurações) mostra os 3 dias e os
+preços sem cobrar nada (`AvisoTesteGratis`); Hoje e Planos dizem quanto falta;
+vencido, avisam que acabou e as abas pagas fecham sozinhas (o app pergunta de
+novo ao servidor na hora do fim). Teste: `testar-teste-gratis.mjs index.html`
+(o `teste.html` libera o plano de propósito, então este roda no de produção).
+
+## O convite de notificações (e o fim do "Você está aí?")
+
+O Foco, os blocos da agenda e a sessão de cartões contam direto, sem
+pergunta no meio: o "Você está aí?" de 30 em 30 minutos foi tirado a
+pedido, junto com o aviso marcado no servidor e a batida de minuto em
+minuto do Worker. O tempo corrido continua valendo com o site fechado.
+
+Na primeira abertura de cada aparelho, depois das boas-vindas, o site
+convida a ligar as notificações (`ConviteNotificacoesAparelho`, em
+`parte21.jsx`). A marca fica no aparelho, não na conta: o celular novo
+pergunta mesmo que o computador já tenha ligado. No iPhone sem o site
+instalado, o convite ensina a instalar, porque lá notificação só existe
+para o site na tela de início. Os testes de navegador marcam o convite como
+já visto, para ele não cobrir a tela; quem o testa é o
+`testar-convite-tela.mjs`.
+
+## O app (iPhone, Android, Mac e PC) e a página /app
+
+O Cadência é um só app instalável (PWA): `manifest.webmanifest` + `sw.js`.
+Instalado, ganha ícone, janela própria, funciona sem internet e recebe
+notificação — no iPhone pelo Safari (Adicionar à Tela de Início), no
+Android pelo Chrome (vira um app de verdade na gaveta), no Mac pelo Safari
+(Arquivo › Adicionar ao Dock) ou Chrome/Edge, e no PC pelo Chrome/Edge.
+Atualiza sozinho: não há versão para baixar de novo.
+
+`app.html` é a página pública de download, em `cadenciamed.com.br/app` (a
+regra do `firebase.json` leva `/app` a ela; no Cloudflare o próprio
+servidor de arquivos resolve). Ela reconhece o aparelho e o navegador,
+mostra o passo a passo certo no topo, troca pelo botão "Instalar o app"
+quando o Chrome/Edge oferece a instalação de um toque, avisa quem está no
+navegador de dentro do Instagram/WhatsApp (que não instala nada), e mostra
+um QR code no computador para abrir a página no celular. O QR é um SVG
+fixo, gerado uma vez; se o endereço mudar, gere outro.
+
+O link "Baixar o app" fica no pé do menu lateral (some para quem já usa o
+app instalado), na página de entrada, no rodapé e no cartão de instalar em
+Configurações.
+
+O `sw.js` NÃO guarda as páginas soltas (`/app`, termos, privacidade,
+resgate) como casca do app (`PAGINAS_SOLTAS`): antes, qualquer navegação
+virava casca, e quem abrisse `/app` e depois o app instalado sem internet
+veria a página de download no lugar do Cadência.
+
+Versões de loja (App Store, Play Store, Microsoft Store) dependem de contas
+de desenvolvedor no nome do dono; o ponto de partida para Android é a
+Trusted Web Activity (o `publicar.py` já publica o
+`.well-known/assetlinks.json` quando ele existir).
 
 ## Plano anual e painel de acessos
 
@@ -524,7 +793,7 @@ para não vender por engano um ano a partir da data de hoje.
 
 No painel de acessos (`worker/api/acessos.js`), o dono também pode tornar
 alguém mentor pelo e-mail, sem mexer no plano da pessoa — mesmo caminho do
-cupom `mentor1612` (`concederMentor`, em `_comum.js`), só que iniciado pelo
+cupom de mentor (`concederMentor`, em `_comum.js`), só que iniciado pelo
 dono em vez de digitado pelo aluno. Botão "Tornar mentor(a)", ao lado de
 "Liberar acesso".
 
@@ -1409,7 +1678,7 @@ senão um worker velho preso no cache prenderia junto tudo o mais.
 
 ## Mentor
 
-Quem resgata o cupom `mentor1612` (veja "Cupons", acima) ganha a aba Mentor
+Quem resgata um cupom de mentor (veja "Cupons", acima) ganha a aba Mentor
 e adiciona alunos pelo e-mail com que eles se cadastraram — nunca pelo uid,
 que o mentor não tem como saber. A ligação usa a coleção `emails/{uid}` que
 cada pessoa já grava de si mesma ao entrar (é a mesma que o aviso de compra
@@ -1445,6 +1714,58 @@ sessões (para o resumo de minutos/questões/acerto). Também não existe
 consentimento do aluno para ser adicionado: quem resgata o cupom e sabe o
 e-mail de alguém já consegue montar a rotina e o currículo dessa pessoa. Se
 isso for um problema no seu uso, vale avisar quem for adicionado antes.
+
+## Estudo interativo com o Foco ligado
+
+O bloco do estudo interativo lança as horas estudadas ao terminar, e o Foco
+lança as dele. Com os dois ao mesmo tempo, a mesma meia hora entrava duas
+vezes. Agora o bloco conta à parte os segundos com o Foco parado (`semFoco`,
+guardado no progresso do bloco), e só esses viram minutos; as questões do
+checkpoint entram sempre. O app passa `focoAtivo` (o mesmo `aoVivo.ativo`
+dos amigos) para o `EstudoInterativo`. Teste: `testar-estudo-foco.mjs`.
+
+## Faculdade, especialidade e simulados abertos
+
+**A pergunta (`parte37.jsx`).** Quem nunca pôs nem a faculdade nem a
+especialidade vê, ao entrar no site, uma janela no meio da tela (por portal,
+no `<body>`) pedindo as duas. Com a conta sincronizando, ela espera a primeira
+leitura da nuvem (`nuvem.carregou`), para não piscar para quem já preencheu em
+outro aparelho. As duas listas já vêm prontas e filtram enquanto a pessoa
+digita, sem ligar para acento: a faculdade acha por sigla ou por nome ("ufg"
+ou "universidade federal de goias"), e quem não achar a sua usa o nome que
+escreveu. As especialidades são as 55 do CFM mais "Ainda não decidi", e dá
+para marcar até 8. "Agora não" adia só até a próxima entrada (marca
+`cm-faculdade-depois` no sessionStorage). Depois, muda-se em Configurações,
+Seu perfil, ou no cartão "Da sua faculdade" da aba Amigos.
+
+Para o dono testar a janela, `ZERAR_FACULDADE_DO_DONO` apaga uma vez a
+faculdade e as especialidades da conta dele (guarda `faculdadeZerada`); subir o
+número repete.
+
+Guardado em `profile`: `faculdade` (id da lista, como `ufg-go`, ou
+`outra-<nome>`), `faculdadeNome`, `especialidades`, `mostrarFaculdade` e
+`perguntouFaculdade`, todos passando pelo `limparPerfilFaculdade` no
+`normalize()`.
+
+**Colegas da faculdade.** `usePerfilFaculdade` grava a faculdade em
+`perfis/{uid}` só para quem marcou "Quero achar colegas"; quem não marcou
+grava vazio. A rota `/api/duplas` ganhou `colegas` (busca em `perfis` pela
+mesma faculdade, só de quem marcou, tirando quem já é amigo ou já foi
+convidado) e `convidar-colega` (convite pelo uid, aceito só entre duas pessoas
+que marcaram a mesma faculdade). Quem não marcou também não vê ninguém. O
+colega aparece com apelido, foto e especialidades; e-mail nunca.
+
+**Simulados abertos (`parte20.jsx`, `/api/salas`).** As salas de simulado
+deixaram de ter senha: `sim-abertas` lista todas, com os simulados postados
+(nome, data, questões e quantas pessoas lançaram, sem nota), e
+`sim-participar` entra com um toque. Criar sala de simulado pede só o nome. O
+placar continua com a regra de sempre: a nota dos outros só depois de lançar
+a sua. As salas de estudo e de treino continuam com senha.
+
+No `teste.html` a janela só aparece com `cm-teste-faculdade` no localStorage
+(troca feita no `montar_teste.py`), para não ficar na frente dos outros testes.
+Testes: `testar-colegas.mjs`, o trecho novo do `testar-salas.mjs` e
+`testar-faculdade-tela.mjs`.
 
 ## Domínio
 

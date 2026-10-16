@@ -8,6 +8,7 @@
 import {
   json, corpoJson, quemPede, ehDono, contaDeServico, tokenDeAcesso,
   gravarAssinatura, validadeDoPlano, concederMentor, BASE_FIRESTORE, DIAS,
+  RECURSOS, REGRAS, regrasGravadas, camposDasRegras,
 } from "./_comum.js";
 
 async function uidPeloEmail(token, email) {
@@ -95,7 +96,8 @@ export async function onRequest({ request, env }) {
     const codigo = String(corpo.codigo || "").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 30);
     const plano = String(corpo.plano || "").toLowerCase();
     if (codigo.length < 4) return json({ erro: "O código precisa ter pelo menos 4 letras ou números." }, 400);
-    if (!DIAS[plano]) return json({ erro: "Plano desconhecido. Use semanal, mensal, anual ou vitalicio." }, 400);
+    /* "mentor" não é plano: o cupom dá o papel de mentor (ver cupom.js). */
+    if (!DIAS[plano] && plano !== "mentor") return json({ erro: "Plano desconhecido. Use semanal, mensal, anual, vitalicio ou mentor." }, 400);
     /* 0 = sem limite. É o padrão do cupom de divulgação, que é o caso
        comum; o limite existe para o cupom de parceria, que tem cota. */
     const maxUsos = Math.max(0, Math.min(100000, Math.round(Number(corpo.maxUsos) || 0)));
@@ -140,21 +142,87 @@ export async function onRequest({ request, env }) {
    *
    * Devolver o valor seria transformar esta tela no lugar mais fácil de
    * roubar as chaves do site inteiro. */
+  /* ── quem vê o quê ────────────────────────────────────────────────
+   *
+   * A regra de cada aba, gravada em config/recursos. Ela vale no
+   * SERVIDOR: /api/plano lê daqui para dizer à tela o que desenhar, e
+   * quem tentar abrir uma aba fechada não recebe os dados dela.
+   *
+   * As liberações avulsas ficam na assinatura da pessoa, em
+   * assinaturas/{uid}.recursos, porque são dela e não do site.
+   */
+  if (acao === "recursos") {
+    const r = await fetch(`${BASE_FIRESTORE}/config/recursos`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const doc = r.ok ? await r.json().catch(() => null) : null;
+    const gravadas = regrasGravadas(doc);
+    return json({
+      ok: true,
+      regras: REGRAS,
+      recursos: RECURSOS.map((x) => ({
+        id: x.id, nome: x.nome, padrao: x.padrao,
+        regra: gravadas[x.id] || x.padrao,
+        mudado: !!gravadas[x.id] && gravadas[x.id] !== x.padrao,
+      })),
+    });
+  }
+
+  if (acao === "recursos-definir") {
+    const id = String(corpo.id || "");
+    const regra = String(corpo.regra || "");
+    if (!RECURSOS.some((x) => x.id === id)) return json({ erro: "Essa aba não existe." }, 400);
+    if (REGRAS.indexOf(regra) < 0) return json({ erro: "Regra desconhecida." }, 400);
+
+    /* Grava o conjunto INTEIRO de volta. Um PATCH sem updateMask troca o
+       documento todo, então mandar só o campo mudado apagaria os outros —
+       e o site inteiro voltaria ao padrão de uma vez. */
+    const atual = await fetch(`${BASE_FIRESTORE}/config/recursos`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const gravadas = regrasGravadas(atual.ok ? await atual.json().catch(() => null) : null);
+    gravadas[id] = regra;
+
+    const w = await fetch(`${BASE_FIRESTORE}/config/recursos`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ fields: camposDasRegras(gravadas) }),
+    });
+    if (!w.ok) return json({ erro: "Não consegui gravar a regra." }, 502);
+    const nome = (RECURSOS.find((x) => x.id === id) || {}).nome || id;
+    const comoLer = { todos: "todo mundo", pro: "quem assina", dono: "só você" };
+    return json({ ok: true, mensagem: `${nome}: agora ${comoLer[regra]} vê.` });
+  }
+
+  /* ── o que está cadastrado no servidor ─────────────────────────────
+   *
+   * Só a PRESENÇA de cada variável, nunca o valor: um painel que mostra
+   * chave é um painel que vaza chave na primeira captura de tela.
+   *
+   * O terceiro campo diz se a variável é obrigatória. Sem ele, duas
+   * variáveis que estão vazias de propósito (a chave da Anthropic, que
+   * não é usada porque o site roda no Gemini; e CUPONS, que virou tabela
+   * no banco) apareciam em vermelho, do mesmo jeito que uma chave que
+   * falta de verdade. Vermelho que é normal ensina a ignorar vermelho, e
+   * aí o dia em que faltar algo mesmo ninguém vai reparar.
+   */
   if (acao === "saude") {
     const tem = (v) => !!(v && String(v).trim());
     return json({
       ok: true,
       variaveis: [
-        ["FIREBASE_API_KEY", tem(env.FIREBASE_API_KEY)],
-        ["FIREBASE_SERVICE_ACCOUNT", tem(env.FIREBASE_SERVICE_ACCOUNT)],
-        ["GEMINI_API_KEY", tem(env.GEMINI_API_KEY)],
-        ["ANTHROPIC_API_KEY", tem(env.ANTHROPIC_API_KEY)],
-        ["GOOGLE_CLIENT_ID", tem(env.GOOGLE_CLIENT_ID)],
-        ["GOOGLE_CLIENT_SECRET", tem(env.GOOGLE_CLIENT_SECRET)],
-        ["NOTION_CLIENT_ID", tem(env.NOTION_CLIENT_ID)],
-        ["NOTION_CLIENT_SECRET", tem(env.NOTION_CLIENT_SECRET)],
-        ["CUPONS", tem(env.CUPONS)],
-        ["GEMINI_MODELO", tem(env.GEMINI_MODELO)],
+        ["FIREBASE_API_KEY", tem(env.FIREBASE_API_KEY), true],
+        ["FIREBASE_SERVICE_ACCOUNT", tem(env.FIREBASE_SERVICE_ACCOUNT), true],
+        ["GEMINI_API_KEY", tem(env.GEMINI_API_KEY), true],
+        /* reserva: só é usada se a do Gemini faltar */
+        ["ANTHROPIC_API_KEY", tem(env.ANTHROPIC_API_KEY), false],
+        ["GOOGLE_CLIENT_ID", tem(env.GOOGLE_CLIENT_ID), true],
+        ["GOOGLE_CLIENT_SECRET", tem(env.GOOGLE_CLIENT_SECRET), true],
+        ["NOTION_CLIENT_ID", tem(env.NOTION_CLIENT_ID), true],
+        ["NOTION_CLIENT_SECRET", tem(env.NOTION_CLIENT_SECRET), true],
+        /* os cupons moram no banco desde que o painel passou a criá-los */
+        ["CUPONS", tem(env.CUPONS), false],
+        ["GEMINI_MODELO", tem(env.GEMINI_MODELO), false],
       ],
     });
   }
@@ -200,7 +268,7 @@ export async function onRequest({ request, env }) {
 
   /* ── concede o papel de mentor ────────────────────────────────────────
      Separado do plano: não mexe em assinaturas/{uid}, só em mentores/{uid}
-     — o mesmo caminho que o cupom "mentor1612" usa (concederMentor, em
+     — o mesmo caminho que um cupom de mentor usa (concederMentor, em
      _comum.js), preservando a lista de alunos se a pessoa já for mentora. */
   if (acao === "conceder-mentor") {
     const deu = await concederMentor(token, uid, email);

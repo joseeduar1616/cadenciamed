@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Resgate de dados · Cadência Med</title>
+<style>
+  :root {
+    --fundo: #04030A; --caixa: #0E0B18; --linha: #262038;
+    --texto: #EDE9F7; --fraco: #9D93B4; --neon: #35E4FF; --roxo: #A855F7;
+    --bom: #45C08A; --alerta: #E3AC5C; --ruim: #F08A8F;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--fundo); color: var(--texto);
+    font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 28px 18px 64px;
+  }
+  main { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+  h1 { font-size: 26px; margin: 0; letter-spacing: -0.01em; }
+  h2 { font-size: 15px; margin: 0; text-transform: uppercase; letter-spacing: 0.12em; color: var(--neon); }
+  p { margin: 0; }
+  .fraco { color: var(--fraco); font-size: 14.5px; }
+  .caixa { background: var(--caixa); border: 1px solid var(--linha); border-radius: 14px; padding: 18px; }
+  .aviso { border-left: 3px solid var(--alerta); border-radius: 0 12px 12px 0; }
+  .aviso b { color: var(--alerta); }
+  .achado { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+  .item { background: var(--caixa); border: 1px solid var(--linha); border-radius: 12px; padding: 14px 16px; }
+  .item.rico { border-color: var(--bom); }
+  .item .chave { font-family: ui-monospace, monospace; font-size: 13px; color: var(--fraco); word-break: break-all; }
+  .item .resumo { margin-top: 6px; font-size: 15px; }
+  .item .resumo b { color: var(--bom); }
+  .item .vazio { color: var(--ruim); }
+  button {
+    margin-top: 12px; font: inherit; font-weight: 700; font-size: 14.5px;
+    padding: 9px 18px; border-radius: 999px; cursor: pointer;
+    background: linear-gradient(90deg, var(--neon), var(--roxo));
+    color: #07050F; border: 0;
+  }
+  button.quieto { background: transparent; color: var(--texto); border: 1px solid var(--linha); }
+  button:focus-visible { outline: 2px solid var(--neon); outline-offset: 2px; }
+  ol { margin: 10px 0 0; padding-left: 22px; }
+  li { margin-bottom: 6px; }
+  code { font-family: ui-monospace, monospace; font-size: 13.5px; color: var(--neon); }
+</style>
+</head>
+<body>
+<main>
+
+  <header>
+    <h1>Resgate de dados</h1>
+    <p class="fraco" style="margin-top:8px">
+      Esta página lê o que está guardado neste navegador e devolve num arquivo.
+      Ela não abre o aplicativo, não entra na sua conta e não fala com a nuvem —
+      então nada aqui pode apagar ou sobrescrever o que ainda existir.
+    </p>
+  </header>
+
+  <div class="caixa aviso">
+    <b>Antes de qualquer coisa:</b> baixe o arquivo que aparecer aqui embaixo
+    <b>antes</b> de abrir o aplicativo neste aparelho. Abrir o app conectado
+    pode trazer a versão da nuvem por cima do que está guardado aqui.
+  </div>
+
+  <section>
+    <h2>O que existe neste aparelho</h2>
+    <div id="achados" class="achado">
+      <p class="fraco">procurando…</p>
+    </div>
+  </section>
+
+  <section class="caixa">
+    <h2>O que fazer com o arquivo</h2>
+    <ol>
+      <li>Baixe o arquivo do bloco com mais conteúdo (o de borda verde).</li>
+      <li>Guarde uma cópia dele em outro lugar: e-mail para você mesmo, Drive, o que for.</li>
+      <li>Abra o aplicativo, entre em <b>Configurações → Seus dados</b> e clique em <b>Restaurar backup</b>.</li>
+      <li>Escolha o arquivo. O aplicativo diz quantas aulas e revisões voltaram.</li>
+      <li>Só então clique em <b>Sincronizar agora</b>, para mandar o que voltou para a conta.</li>
+    </ol>
+  </section>
+
+  <section class="caixa">
+    <h2>Se não aparecer nada aqui</h2>
+    <p class="fraco">
+      Quer dizer que este navegador não tem mais os dados. Eles podem estar em
+      outro lugar, e vale conferir cada um antes de desistir: outro navegador do
+      mesmo aparelho, o aplicativo instalado na tela de início (que às vezes
+      guarda separado do navegador), o computador, ou o celular antigo.
+      Abra esta mesma página em cada um deles:
+      <code>cadenciamed.com.br/recuperar.html</code>
+    </p>
+  </section>
+
+</main>
+
+<script>
+(function () {
+  var caixa = document.getElementById("achados");
+
+  /* Conta o que há de verdade dentro de um backup do app. É isto que diz
+     qual cópia vale a pena: um arquivo pode existir e estar vazio. */
+  function resumir(txt) {
+    var d;
+    try { d = JSON.parse(txt); } catch (e) { return null; }
+    if (!d || typeof d !== "object") return null;
+    var marcas = Object.keys(d.marks || {}).length;
+    var revisoes = Object.values(d.reviews || {}).reduce(function (a, r) {
+      return a + Object.keys((r && r.done) || {}).length;
+    }, 0);
+    var sessoes = (d.sessions || []).length;
+    var minutos = (d.sessions || []).reduce(function (a, s) { return a + (Number(s.minutes) || 0); }, 0);
+    var questoes = (d.sessions || []).reduce(function (a, s) { return a + (Number(s.questions) || 0); }, 0);
+    var datas = (d.sessions || []).map(function (s) { return s.date; }).filter(Boolean).sort();
+    return {
+      nome: (d.profile && d.profile.name) || "",
+      marcas: marcas, revisoes: revisoes, sessoes: sessoes,
+      horas: Math.round(minutos / 60), questoes: questoes,
+      cartoes: (d.flash || []).length,
+      provas: (d.provas || []).length,
+      de: datas[0] || "", ate: datas[datas.length - 1] || "",
+      peso: marcas * 10 + revisoes * 5 + sessoes + (d.flash || []).length,
+    };
+  }
+
+  function baixar(nome, texto) {
+    var blob = new Blob([texto], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = nome;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+  }
+
+  var hoje = new Date().toISOString().slice(0, 10);
+  var encontrados = [];
+
+  try {
+    for (var i = 0; i < localStorage.length; i++) {
+      var chave = localStorage.key(i);
+      var valor = localStorage.getItem(chave);
+      if (!valor || valor.length < 20) continue;
+      var r = resumir(valor);
+      if (!r) continue;
+      encontrados.push({ chave: chave, valor: valor, r: r });
+    }
+  } catch (e) {
+    caixa.innerHTML = '<p class="vazio">O navegador bloqueou o armazenamento desta página. '
+      + 'Isso acontece em aba anônima. Abra numa aba normal.</p>';
+    return;
+  }
+
+  encontrados.sort(function (a, b) { return b.r.peso - a.r.peso; });
+
+  caixa.innerHTML = "";
+  if (encontrados.length === 0) {
+    var nada = document.createElement("div");
+    nada.className = "item";
+    nada.innerHTML = '<p class="vazio">Não achei dados do aplicativo no armazenamento comum deste navegador.</p>'
+      + '<p class="fraco" style="margin-top:8px">Ainda pode haver cópias guardadas pelo próprio app; se houver, elas aparecem logo abaixo em um instante.</p>';
+    caixa.appendChild(nada);
+  }
+  encontrados.forEach(function (achado, n) {
+    var r = achado.r;
+    var div = document.createElement("div");
+    div.className = "item" + (n === 0 && r.peso > 0 ? " rico" : "");
+
+    var qual = achado.chave.indexOf("antes-da-nuvem") >= 0
+      ? "cópia guardada pelo app antes da primeira carga da nuvem"
+      : "dados do aplicativo neste navegador";
+
+    var linhas = [];
+    if (r.nome) linhas.push("de " + r.nome);
+    if (r.marcas) linhas.push("<b>" + r.marcas + "</b> aulas marcadas");
+    if (r.revisoes) linhas.push("<b>" + r.revisoes + "</b> revisões feitas");
+    if (r.sessoes) linhas.push("<b>" + r.sessoes + "</b> sessões (" + r.horas + "h)");
+    if (r.questoes) linhas.push("<b>" + r.questoes + "</b> questões");
+    if (r.cartoes) linhas.push("<b>" + r.cartoes + "</b> flashcards");
+    if (r.provas) linhas.push("<b>" + r.provas + "</b> provas");
+
+    div.innerHTML = '<div class="chave">' + achado.chave + " · " + qual + "</div>"
+      + '<div class="resumo">'
+      + (linhas.length ? linhas.join(" · ") : '<span class="vazio">este está vazio</span>')
+      + (r.de ? '<br><span class="fraco">de ' + r.de + " até " + r.ate + "</span>" : "")
+      + "</div>";
+
+    var b = document.createElement("button");
+    b.textContent = "Baixar este";
+    if (r.peso === 0) b.className = "quieto";
+    b.onclick = function () {
+      baixar("cadencia-resgate-" + hoje + (n ? "-" + (n + 1) : "") + ".json", achado.valor);
+    };
+    div.appendChild(b);
+    caixa.appendChild(div);
+  });
+
+  /* As cópias que o app guarda sozinho — uma por meio dia de uso, e
+     sempre antes de escrever por cima. Elas moram no IndexedDB, então não
+     apareceriam na varredura acima, que é do localStorage. São a parte
+     mais provável de salvar alguém: existem sem ninguém ter clicado em
+     nada. */
+  try {
+    var req = indexedDB.open("cadencia-versoes", 1);
+    req.onsuccess = function () {
+      var bd = req.result;
+      if (!bd.objectStoreNames.contains("copias")) { bd.close(); return; }
+      var tx = bd.transaction("copias", "readonly");
+      var todas = tx.objectStore("copias").getAll();
+      todas.onsuccess = function () {
+        var lista = (todas.result || []).sort(function (a, b) { return b.em - a.em; });
+        bd.close();
+        if (!lista.length) return;
+
+        var titulo = document.createElement("div");
+        titulo.className = "item";
+        titulo.innerHTML = '<div class="resumo"><b>' + lista.length + " cópia" + (lista.length === 1 ? "" : "s")
+          + " guardada" + (lista.length === 1 ? "" : "s") + " pelo próprio aplicativo</b>"
+          + '<br><span class="fraco">O app guarda sozinho, sem ninguém pedir. Baixe a que tiver mais conteúdo.</span></div>';
+        caixa.appendChild(titulo);
+
+        lista.forEach(function (v) {
+          var r = v.resumo || {};
+          var div = document.createElement("div");
+          div.className = "item";
+          var quando = new Date(v.em).toLocaleString("pt-BR");
+          div.innerHTML = '<div class="chave">' + quando + " · " + (v.motivo || "") + "</div>"
+            + '<div class="resumo"><b>' + (r.aulas || 0) + "</b> aulas · <b>" + (r.sessoes || 0)
+            + "</b> sessões (" + (r.horas || 0) + "h) · <b>" + (r.questoes || 0) + "</b> questões"
+            + (r.cartoes ? " · <b>" + r.cartoes + "</b> flashcards" : "") + "</div>";
+          var b = document.createElement("button");
+          b.textContent = "Baixar esta";
+          b.onclick = function () {
+            baixar("cadencia-copia-" + new Date(v.em).toISOString().slice(0, 10) + ".json", v.dados);
+          };
+          div.appendChild(b);
+          caixa.appendChild(div);
+        });
+      };
+      todas.onerror = function () { bd.close(); };
+    };
+    req.onerror = function () { /* sem depósito de versões neste navegador */ };
+  } catch (e) { /* segue sem */ }
+
+  /* As imagens dos flashcards e das anotações moram noutro depósito, e não
+     entram no backup de texto. Vale dizer que elas estão aqui, para ninguém
+     apagar o navegador achando que levou tudo. */
+  try {
+    if (window.indexedDB && indexedDB.databases) {
+      indexedDB.databases().then(function (bancos) {
+        var midia = (bancos || []).filter(function (b) { return /cadencia/i.test(b.name || ""); });
+        if (!midia.length) return;
+        var nota = document.createElement("div");
+        nota.className = "item";
+        nota.innerHTML = '<div class="resumo fraco">As imagens (figuras de flashcard e de anotação) '
+          + "ficam guardadas à parte, neste navegador, e não entram no arquivo acima. "
+          + "Enquanto você não limpar os dados do site, elas continuam aqui.</div>";
+        caixa.appendChild(nota);
+      }).catch(function () { /* navegador sem essa lista */ });
+    }
+  } catch (e) { /* segue sem */ }
+})();
+</script>
+</body>
+</html>

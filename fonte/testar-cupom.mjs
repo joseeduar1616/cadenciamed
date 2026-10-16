@@ -25,7 +25,8 @@ let QUEM = { email: 'aluna@email.com', localId: 'uid-aluna' };
 let PLANO_ATUAL = null;          // o que o banco já tem para esse uid
 let GRAVADO = null;              // o que a função tentou gravar
 let FALHAR_GRAVACAO = false;
-let MENTORES = {};               // uid -> { fields }, para o cupom mentor1612
+let MENTORES = {};               // uid -> { fields }, para o cupom de mentor
+let CUPONS_BANCO = {};           // codigo -> { plano, usos, maxUsos }, os do painel
 
 const json = (corpo, status = 200) => new Response(JSON.stringify(corpo),
   { status, headers: { 'Content-Type': 'application/json' } });
@@ -44,6 +45,21 @@ globalThis.fetch = async (url, opcoes = {}) => {
     if ((opcoes.method || 'GET') === 'GET') return MENTORES[uid] ? json(MENTORES[uid]) : json({ error: {} }, 404);
     MENTORES[uid] = JSON.parse(opcoes.body);
     return json({ name: uid });
+  }
+  const c = /\/documents\/cupons\/([^/?]+)(?:\?|$)/.exec(u);
+  if (c) {
+    const cod = decodeURIComponent(c[1]);
+    const doc = CUPONS_BANCO[cod];
+    if ((opcoes.method || 'GET') === 'GET') {
+      if (!doc) return json({ error: {} }, 404);
+      return json({ fields: {
+        plano: { stringValue: doc.plano },
+        usos: { doubleValue: doc.usos || 0 },
+        maxUsos: { doubleValue: doc.maxUsos || 0 },
+      } });
+    }
+    if (doc) doc.usos = JSON.parse(opcoes.body).fields.usos.doubleValue;
+    return json({ name: cod });
   }
   if (u.includes('firestore.googleapis.com')) {
     if ((opcoes.method || 'GET') === 'GET') {
@@ -76,9 +92,32 @@ env.FIREBASE_API_KEY = 'chave-firebase';
 env.FIREBASE_SERVICE_ACCOUNT = JSON.stringify(CONTA);
 delete env.CUPONS;
 
-/* ── os dois cupons combinados funcionam, com planos diferentes ───────── */
-const PLANO_ESPERADO = { secdamocada: 'semanal', medeasysoft: 'anual' };
-for (const cod of ['secdamocada', 'medeasysoft']) {
+/* ── nenhum código vive no arquivo ──────────────────────────────────────
+ * Os primeiros cupons ficavam escritos em cupom.js e o repositório era
+ * público: qualquer um lia o código e ganhava um ano de acesso. Sem nada
+ * no banco e sem CUPONS, nenhum código pode valer. */
+{
+  const fonteCupom = (await import('node:fs')).readFileSync(new URL('../worker/api/cupom.js', import.meta.url), 'utf8');
+  const semComentario = fonteCupom.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  /* cada palavra de cada texto entre aspas vira uma tentativa de resgate */
+  const literais = [...new Set([...semComentario.matchAll(/(["'`])((?:\\.|(?!\1).)*)\1/g)]
+    .flatMap((m) => m[2].toLowerCase().split(/[^a-z0-9]+/))
+    .filter((x) => x.length >= 4))];
+  GRAVADO = null; MENTORES = {};
+  let vazou = [];
+  for (const cod of literais) {
+    const r0 = await pedir({ token: 't', codigo: cod });
+    if (r0.corpo.ok) vazou.push(cod);
+  }
+  if (!vazou.length && GRAVADO === null && !Object.keys(MENTORES).length) {
+    ok('sem banco e sem CUPONS, nenhum texto escrito em cupom.js funciona como cupom');
+  } else falha('código escrito em cupom.js ainda libera acesso: ' + vazou.join(', '));
+}
+
+/* ── os cupons da variável CUPONS funcionam, com planos diferentes ───── */
+env.CUPONS = 'promosemana:semanal,parceiroano:anual';
+const PLANO_ESPERADO = { promosemana: 'semanal', parceiroano: 'anual' };
+for (const cod of ['promosemana', 'parceiroano']) {
   GRAVADO = null; PLANO_ATUAL = null;
   const r = await pedir({ token: 't', codigo: cod });
   if (r.status === 200 && r.corpo.ok) ok(`cupom "${cod}" libera o acesso`);
@@ -107,7 +146,7 @@ for (const cod of ['secdamocada', 'medeasysoft']) {
 
 /* maiúsculas e espaços não podem atrapalhar quem digita */
 GRAVADO = null;
-let r = await pedir({ token: 't', codigo: '  SecDaMoCada  ' });
+let r = await pedir({ token: 't', codigo: '  PromoSemana  ' });
 if (r.corpo.ok) ok('o código não diferencia maiúscula nem espaço em volta');
 else falha('maiúsculas: ' + JSON.stringify(r));
 
@@ -124,12 +163,12 @@ if (r.status === 400) ok('cupom vazio é recusado');
 else falha('cupom vazio: ' + JSON.stringify(r));
 
 QUEM = null;
-r = await pedir({ token: 't', codigo: 'secdamocada' });
+r = await pedir({ token: 't', codigo: 'promosemana' });
 if (r.status === 401 && /Entre na sua conta/.test(r.corpo.erro)) ok('sem sessão válida, o cupom não passa');
 else falha('sessão inválida: ' + JSON.stringify(r));
 QUEM = { email: 'aluna@email.com', localId: 'uid-aluna' };
 
-r = await pedir({ codigo: 'secdamocada' });
+r = await pedir({ codigo: 'promosemana' });
 if (r.status === 401) ok('sem token, o cupom não passa');
 else falha('sem token: ' + JSON.stringify(r));
 
@@ -140,7 +179,7 @@ else falha('método: ' + JSON.stringify(r));
 /* ── quem já tem plano em dia não gasta o cupom ──────────────────────── */
 GRAVADO = null;
 PLANO_ATUAL = Date.now() + 60 * 86400000;
-r = await pedir({ token: 't', codigo: 'secdamocada' });
+r = await pedir({ token: 't', codigo: 'promosemana' });
 if (r.corpo.ok && r.corpo.jaTinha) ok('quem já tem plano em dia recebe aviso em vez de regravar');
 else falha('plano em dia: ' + JSON.stringify(r));
 if (GRAVADO === null) ok('plano em dia não é sobrescrito');
@@ -149,7 +188,7 @@ else falha('sobrescreveu um plano em dia');
 /* plano vencido pode ser renovado pelo cupom */
 GRAVADO = null;
 PLANO_ATUAL = Date.now() - 86400000;
-r = await pedir({ token: 't', codigo: 'secdamocada' });
+r = await pedir({ token: 't', codigo: 'promosemana' });
 if (r.corpo.ok && !r.corpo.jaTinha && GRAVADO) ok('plano vencido é renovado pelo cupom');
 else falha('plano vencido: ' + JSON.stringify(r));
 PLANO_ATUAL = null;
@@ -160,43 +199,77 @@ GRAVADO = null;
 r = await pedir({ token: 't', codigo: 'turma2026' });
 if (r.corpo.ok && GRAVADO.fields.plano.stringValue === 'mensal') ok('CUPONS troca a lista sem mexer no código');
 else falha('CUPONS: ' + JSON.stringify(r));
-r = await pedir({ token: 't', codigo: 'secdamocada' });
-if (r.status === 404) ok('com CUPONS cadastrada, os cupons padrão deixam de valer');
-else falha('CUPONS não substituiu os padrão: ' + JSON.stringify(r));
-delete env.CUPONS;
+r = await pedir({ token: 't', codigo: 'promosemana' });
+if (r.status === 404) ok('trocar CUPONS derruba os códigos que saíram da lista');
+else falha('CUPONS antigo continuou valendo: ' + JSON.stringify(r));
+env.CUPONS = 'promosemana:semanal,parceiroano:anual';
+
+/* ── cupons do painel, no banco ──────────────────────────────────────── */
+CUPONS_BANCO = { turmaabril: { plano: 'mensal', usos: 0, maxUsos: 2 } };
+GRAVADO = null;
+r = await pedir({ token: 't', codigo: 'turmaabril' });
+if (r.corpo.ok && GRAVADO && GRAVADO.fields.plano.stringValue === 'mensal') ok('cupom criado no painel libera o plano dele');
+else falha('cupom do banco: ' + JSON.stringify(r));
+if (CUPONS_BANCO.turmaabril.usos === 1) ok('o resgate conta um uso do cupom do painel');
+else falha('uso não contado: ' + JSON.stringify(CUPONS_BANCO));
+CUPONS_BANCO.turmaabril.usos = 2;
+GRAVADO = null;
+r = await pedir({ token: 't', codigo: 'turmaabril' });
+if (r.status === 410 && GRAVADO === null) ok('cupom do painel com a cota cheia é recusado');
+else falha('cota cheia: ' + JSON.stringify(r));
+CUPONS_BANCO = {};
 
 /* ── falhas de configuração e de banco ───────────────────────────────── */
 delete env.FIREBASE_SERVICE_ACCOUNT;
-r = await pedir({ token: 't', codigo: 'secdamocada' });
+r = await pedir({ token: 't', codigo: 'promosemana' });
 if (r.status === 500 && /FIREBASE_SERVICE_ACCOUNT/.test(r.corpo.erro)) ok('sem conta de serviço, explica o que falta');
 else falha('sem conta de serviço: ' + JSON.stringify(r));
 env.FIREBASE_SERVICE_ACCOUNT = JSON.stringify(CONTA);
 
 FALHAR_GRAVACAO = true;
-r = await pedir({ token: 't', codigo: 'secdamocada' });
+r = await pedir({ token: 't', codigo: 'promosemana' });
 if (r.status === 500 && !r.corpo.ok) ok('falha ao gravar não vira falso positivo');
 else falha('falha de gravação: ' + JSON.stringify(r));
 FALHAR_GRAVACAO = false;
 
 /* ── cupom de mentor não é cupom de plano ─────────────────────────────── */
+CUPONS_BANCO = { mentoria: { plano: 'mentor', usos: 0, maxUsos: 0 } };
 GRAVADO = null; MENTORES = {};
-r = await pedir({ token: 't', codigo: 'mentor1612' });
-if (r.corpo.ok && r.corpo.mentor === true) ok('"mentor1612" concede o papel de mentor');
-else falha('mentor1612: ' + JSON.stringify(r));
-if (GRAVADO === null) ok('mentor1612 não grava nada em assinaturas, só em mentores');
-else falha('mentor1612 mexeu na assinatura: ' + JSON.stringify(GRAVADO));
+r = await pedir({ token: 't', codigo: 'mentoria' });
+if (r.corpo.ok && r.corpo.mentor === true) ok('cupom de mentor criado no painel concede o papel de mentor');
+else falha('cupom de mentor: ' + JSON.stringify(r));
+if (GRAVADO === null) ok('o cupom de mentor não grava nada em assinaturas, só em mentores');
+else falha('o cupom de mentor mexeu na assinatura: ' + JSON.stringify(GRAVADO));
+if (CUPONS_BANCO.mentoria.usos === 1) ok('o cupom de mentor também conta uso');
+else falha('uso do cupom de mentor: ' + JSON.stringify(CUPONS_BANCO));
 if (MENTORES['uid-aluna'] && MENTORES['uid-aluna'].fields.email.stringValue === 'aluna@email.com') {
   ok('o documento do mentor guarda o e-mail de quem resgatou');
 } else falha('documento do mentor: ' + JSON.stringify(MENTORES));
 
 /* resgatar de novo não apaga a lista de alunos que a pessoa já tinha */
 MENTORES['uid-aluna'].fields.alunos = { arrayValue: { values: [{ mapValue: { fields: { uid: { stringValue: 'x' }, email: { stringValue: 'x@x.com' }, adicionadoEm: { doubleValue: 1 } } } }] } };
-r = await pedir({ token: 't', codigo: 'MENTOR1612' });
+r = await pedir({ token: 't', codigo: 'MENTORIA' });
 if (r.corpo.ok && r.corpo.mentor === true) ok('resgatar de novo (maiúsculas incluído) não dá erro');
 else falha('resgatar mentor de novo: ' + JSON.stringify(r));
 if ((MENTORES['uid-aluna'].fields.alunos.arrayValue.values || []).length === 1) {
   ok('resgatar o cupom de novo preserva a lista de alunos já adicionados');
 } else falha('resgatar de novo apagou os alunos: ' + JSON.stringify(MENTORES['uid-aluna']));
+
+/* cota cheia também vale para o cupom de mentor */
+CUPONS_BANCO = { mentoria: { plano: 'mentor', usos: 3, maxUsos: 3 } };
+MENTORES = {};
+r = await pedir({ token: 't', codigo: 'mentoria' });
+if (r.status === 410 && !Object.keys(MENTORES).length) ok('cupom de mentor com a cota cheia é recusado');
+else falha('cota do cupom de mentor: ' + JSON.stringify(r));
+CUPONS_BANCO = {};
+
+/* e pela variável de reserva, com o plano "mentor" */
+env.CUPONS = 'guiaresidencia:mentor';
+GRAVADO = null; MENTORES = {};
+r = await pedir({ token: 't', codigo: 'guiaresidencia' });
+if (r.corpo.ok && r.corpo.mentor === true && GRAVADO === null) ok('CUPONS aceita o plano mentor, sem virar plano pago');
+else falha('CUPONS mentor: ' + JSON.stringify(r) + ' ' + JSON.stringify(GRAVADO));
+env.CUPONS = 'promosemana:semanal,parceiroano:anual';
 
 console.log(passos.join('\n'));
 console.log('\n' + (erros.length ? `${erros.length} PROBLEMA(S):\n` + erros.join('\n') : 'nenhum erro'));

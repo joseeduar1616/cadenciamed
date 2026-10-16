@@ -28,8 +28,36 @@ ARQUIVOS = [
     # 1 MB e continuarem no ar mesmo se o app quebrar.
     'privacidade.html',
     'termos.html',
-    'regras-firestore.txt',
+    # Resgate de dados. Fica FORA do app de propósito: ela precisa abrir sem
+    # carregar 1 MB de aplicativo e, principalmente, sem entrar em conta
+    # nenhuma — é o que garante que abrir esta página não traga a versão da
+    # nuvem por cima do que ainda estiver guardado no aparelho.
+    'recuperar.html',
+    # A página de baixar o app (cadenciamed.com.br/app). Também fica fora do
+    # app: é o endereço que se manda para quem ainda nem entrou, e precisa
+    # abrir leve em qualquer celular.
+    'app.html',
+    # A página de chegada dos anúncios (cadenciamed.com.br/comecar.html) e a
+    # medição que ela divide com o app. Fica fora do app pelo mesmo motivo
+    # das outras: abre leve no 4G, sem esperar o aplicativo inteiro. As
+    # imagens dela moram em comecar/ e são copiadas logo abaixo.
+    'comecar.html',
+    'medir.js',
+    # As regras do Firestore NÃO vão para o site: quem as publica é o
+    # .github/workflows/firestore.yml, direto no Firebase. Servidas aqui,
+    # só mostravam a qualquer visitante o mapa do banco.
     'sql-asm.js',
+    # O codificador de MP3 da gravação de aula. Viaja à parte, e não dentro
+    # do app, por dois motivos: só quem converte áudio o baixa, e ele é
+    # LGPL-3.0 — a licença pede que continue sendo um arquivo separado e
+    # substituível, com o texto dela ao lado.
+    'lame.min.js',
+    'lame.LICENSE.txt',
+    # O descompactador zstd (8 KB, MIT): abre a coleção que o Anki e o
+    # AnkiDroid exportam no formato novo (collection.anki21b). Só quem
+    # importa do Anki o baixa.
+    'fzstd.min.js',
+    'fzstd.LICENSE.txt',
     'favicon.ico',
     'icone-32.png',
     'icone-180.png',
@@ -76,6 +104,32 @@ for f in ARQUIVOS:
         continue
     shutil.copy(f, os.path.join(DESTINO, f))
     total += os.path.getsize(f)
+# As imagens da página de anúncio (comecar.html).
+shutil.copytree('comecar', os.path.join(DESTINO, 'comecar'))
+total += sum(os.path.getsize(os.path.join('comecar', f)) for f in os.listdir('comecar'))
+
+# ── o aplicativo na Play Store, quando ele existir ────────────────────────
+#
+# Um app de Play Store feito de site (TWA) só abre sem a barra de endereço
+# se o site DECLARAR que aquele app é dele, e a declaração é este arquivo,
+# neste caminho exato. Sem ele o app até funciona, mas com a barra do
+# Chrome em cima — que é o mesmo que publicar um atalho na loja.
+#
+# Ele é opcional de propósito. A declaração precisa da impressão digital da
+# chave que assina o app, e essa chave só existe depois de a conta do Play
+# Console ser criada. Publicar um arquivo com impressão digital inventada
+# seria pior que não ter arquivo nenhum: o Chrome conferiria, não bateria, e
+# a barra apareceria do mesmo jeito — sem nada dizendo por quê.
+#
+# Quando a chave existir, é só criar fonte/assetlinks.json e publicar.
+EXTRA = 'assetlinks.json'
+if os.path.exists(EXTRA):
+    pasta = os.path.join(DESTINO, '.well-known')
+    os.makedirs(pasta, exist_ok=True)
+    shutil.copy(EXTRA, os.path.join(pasta, EXTRA))
+    total += os.path.getsize(EXTRA)
+    print('.well-known/assetlinks.json: o app da Play Store abre sem barra de endereço')
+
 # ── cabeçalhos, no formato que o Cloudflare Pages lê ──────────────────────
 # O HTML nunca fica em cache, então publicar já aparece na hora. Ícones e o
 # leitor de banco do Anki mudam pouco e podem ficar guardados.
@@ -95,6 +149,12 @@ CABECALHOS = """/index.html
 /sql-asm.js
   Cache-Control: public, max-age=2592000
 
+/lame.min.js
+  Cache-Control: public, max-age=2592000
+
+/fzstd.min.js
+  Cache-Control: public, max-age=2592000
+
 /sw.js
   Cache-Control: no-cache
   Service-Worker-Allowed: /
@@ -109,6 +169,19 @@ CABECALHOS = """/index.html
   Cache-Control: public, max-age=3600
 
 /termos.html
+  Cache-Control: public, max-age=3600
+
+/recuperar.html
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/app
+  Cache-Control: public, max-age=3600
+
+/app.html
+  Cache-Control: public, max-age=3600
+
+/.well-known/assetlinks.json
+  Content-Type: application/json
   Cache-Control: public, max-age=3600
 """
 open(os.path.join(DESTINO, '_headers'), 'w', encoding='utf-8').write(CABECALHOS)

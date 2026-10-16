@@ -19,7 +19,7 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 ATUALIZADO = '12 de setembro de 2026'
 SITE = 'cadenciamed.com.br'
-EMAIL = 'suporte@cadenciamed.com.br'
+EMAIL = 'suporte@cadenciamed.com'
 
 ESTILO = """
 :root{color-scheme:dark}
