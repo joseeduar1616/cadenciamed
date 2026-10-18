@@ -46,6 +46,9 @@ const DEFAULTS = {
      progresso de cada bloco. O conteúdo (material, slides, figuras) fica
      no aparelho, no IndexedDB: é grande demais para o documento da conta. */
   estudos: [],
+  /* O modo jogo do estudo interativo (parte38): XP total, XP por dia, a
+     meta diária e o som. */
+  jogo: { xp: 0, dias: {}, meta: 50, som: true },
   /* Painel de motivação (parte36): a entrevista, os cartões e os motivos
      que a pessoa escreveu. Texto curto, vai junto com a conta. */
   motivacao: { entrevista: [], painel: null, meus: [] },
@@ -431,6 +434,7 @@ function normalize(raw) {
     folhas: limparFolhas(d.folhas),
     financas: limparFinancas(d.financas),
     estudos: limparEstudos(d.estudos),
+    jogo: limparJogo(d.jogo),
     motivacao: limparMotivacao(d.motivacao),
     cartoesDia: (() => {
       /* Só dia de verdade, número de verdade, e no máximo 400 dias. */

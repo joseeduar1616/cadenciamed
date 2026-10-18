@@ -657,7 +657,7 @@ o checkpoint gravavam juntos e um apagava o outro. Bloco concluído vira
 sessão de estudo (minutos), e o que a pessoa errou de primeira vira
 flashcard na pasta "Estudo interativo". Custos no teto diário:
 `estudo-plano` 3, `estudo-bloco` 5, `estudo-corrigir` 1,
-`estudo-simplificar` 1. "Tela cheia" põe o bloco num portal no `<body>` (como o
+`estudo-simplificar` 1, `estudo-licao` 3 (o modo jogo, mais abaixo). "Tela cheia" põe o bloco num portal no `<body>` (como o
 Foco) e pede a tela cheia do navegador; Esc sai. Como trocar de modo remonta
 o slide, o que já se fez em cada slide (pontos revelados, quiz, caso, "não
 entendi") fica em `memoriaSlides`. As legendas das imagens dizem o que a
@@ -1714,6 +1714,52 @@ sessões (para o resumo de minutos/questões/acerto). Também não existe
 consentimento do aluno para ser adicionado: quem resgata o cupom e sabe o
 e-mail de alguém já consegue montar a rotina e o currículo dessa pessoa. Se
 isso for um problema no seu uso, vale avisar quem for adicionado antes.
+
+## Modo jogo do estudo interativo
+
+`parte38.jsx`, ação `licao` da `/api/estudo-ia` (custo `estudo-licao` 3). No
+painel da aula, "Slides e checkpoint" e "Modo jogo" são dois jeitos de
+estudar a mesma aula; a escolha fica no aparelho
+(`cadencia:v3:estudo-jogo`).
+
+- **Trilha:** uma lição por bloco, em zigue-zague. A lição de um bloco abre
+  quando a anterior foi feita, ou quando o bloco foi consolidado pelos slides
+  (`licaoLiberada`).
+- **Lição:** de 10 a 14 exercícios, montados pela IA numa chamada só e
+  guardados em `doc.licao[bloco]` no IndexedDB. Refazer não chama a IA de
+  novo, e a lição do bloco seguinte é montada em segundo plano.
+  - **Tipos:** `ensina` (cartão, não é corrigido), `escolha` (com
+    `contexto` opcional), `vf`, `lacuna`, `pares` e `ordem`.
+  - **Correção:** a página corrige sozinha (`conferirExercicio`).
+  - **Poda do servidor (`limparLicao`):**
+    - lacuna com exatamente uma lacuna;
+    - alternativa repetida ou índice certo inválido fica de fora;
+    - pares e passos sem repetir;
+    - no máximo 3 cartões de ensinar, e a lição nunca termina num deles;
+    - menos de 6 exercícios que se respondem vira erro, pra pessoa tentar
+      de novo.
+- **Partida (`depoisDaResposta`):**
+  - 5 vidas;
+  - errou: perde uma vida (na tela, na hora do erro), zera a sequência, e o
+    exercício volta no fim da fila até duas vezes;
+  - "de primeira" só conta o que nunca errou;
+  - sem vidas, a lição para sem dar XP e oferece os slides do bloco.
+- **XP (`xpDaLicao`):** 10 da lição, 1 por acerto de primeira, 5 se foi
+  perfeita e 2 a cada 5 seguidas.
+- **`data.jogo` (`limparJogo`):** XP total, XP por dia (últimos 120), a meta
+  diária (20, 50 ou 100) e o som. A ofensiva (`ofensivaDoJogo`) conta dias
+  seguidos com XP, e hoje sem lição ainda não quebra.
+- **Por bloco:** `licoes`, `melhorLicao` e `perfeita` (a coroa da trilha).
+- **O que errou:** vai para `doc.fracos` e vira flashcard pelo mesmo botão
+  do painel.
+- **Sessão de estudo:** lição com 1 minuto ou mais vira sessão
+  ("Questões"). Os minutos contados são só os de fora do Foco.
+- **Sons:** feitos na hora com Web Audio, sem arquivo.
+- **Testes:**
+  - `testar-jogo.mjs` (lógica pura, extraída por `extrair_jogo.py`);
+  - `testar-estudo.mjs` (a poda da lição no servidor);
+  - `testar-jogo-tela.mjs` (o caminho inteiro num celular: trilha, cada
+    tipo de exercício, erro que volta, XP no fim, lição perfeita, sem vidas).
 
 ## Estudo interativo com o Foco ligado
 

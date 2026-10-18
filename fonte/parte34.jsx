@@ -57,6 +57,11 @@ function limparEstudos(v) {
         dePrimeira: Math.max(0, Math.min(3, Math.round(Number(b && b.dePrimeira) || 0))),
         perguntas: Math.max(1, Math.min(3, Math.round(Number(b && b.perguntas) || (e.modo === "rapido" ? 2 : 3)))),
         segundos: Math.max(0, Math.round(Number(b && b.segundos) || 0)),
+        /* o modo jogo (parte38): quantas lições, o melhor acerto e se já
+           saiu uma perfeita */
+        licoes: Math.max(0, Math.min(9999, Math.round(Number(b && b.licoes) || 0))),
+        melhorLicao: Math.max(0, Math.min(100, Math.round(Number(b && b.melhorLicao) || 0))),
+        perfeita: !!(b && b.perfeita),
       })),
     }));
 }
@@ -189,6 +194,10 @@ function EstudoInterativo({ data, setData, nuvem, notify, focoAtivo }) {
   const [bloco, setBloco] = useState(null);         // índice do bloco em estudo
   const [criando, setCriando] = useState(!estudos.length);
   const [cheia, setCheia] = useState(false);
+  const [licao, setLicao] = useState(null);         // índice do bloco em lição do modo jogo
+  /* slides ou jogo: fica lembrado neste aparelho */
+  const [modoJogo, setModoJogo] = useState(() => { try { return localStorage.getItem("cadencia:v3:estudo-jogo") === "1"; } catch (e) { return false; } });
+  const escolherModoJogo = (v) => { setModoJogo(v); try { localStorage.setItem("cadencia:v3:estudo-jogo", v ? "1" : "0"); } catch (e) { /* só não lembra */ } };
   const estudo = estudos.find((e) => e.id === aberto) || null;
 
   const atualizar = useCallback((id, mudar) => {
@@ -196,7 +205,7 @@ function EstudoInterativo({ data, setData, nuvem, notify, focoAtivo }) {
   }, [setData]);
 
   const abrir = (id) => {
-    setAberto(id); setBloco(null); setCriando(false);
+    setAberto(id); setBloco(null); setLicao(null); setCriando(false);
     atualizar(id, (e) => ({ ...e, abertoEm: Date.now() }));
   };
 
@@ -216,12 +225,23 @@ function EstudoInterativo({ data, setData, nuvem, notify, focoAtivo }) {
         onProximo={() => setBloco(bloco + 1 < estudo.blocos.length ? bloco + 1 : null)} />
     );
   }
+  if (estudo && licao !== null) {
+    return (
+      <LicaoDoJogo key={`${estudo.id}-j${licao}`} estudo={estudo} indice={licao} jogo={data.jogo} nuvem={nuvem} notify={notify}
+        setData={setData} atualizar={atualizar} focoAtivo={!!focoAtivo}
+        onSair={() => setLicao(null)}
+        onVerSlides={() => { const i = licao; setLicao(null); setBloco(i); }}
+        onProxima={() => setLicao(licao + 1 < estudo.blocos.length ? licao + 1 : null)} />
+    );
+  }
   if (estudo) {
     return <PainelDaAula estudo={estudo} onVoltar={() => setAberto(null)} onBloco={setBloco}
-      onApagar={() => apagar(estudo)} setData={setData} notify={notify} />;
+      onApagar={() => apagar(estudo)} setData={setData} notify={notify}
+      modoJogo={modoJogo} onModoJogo={escolherModoJogo} onLicao={setLicao} jogo={data.jogo} />;
   }
   return (
     <div className="flex flex-col gap-5" data-teste="estudo-interativo">
+      {data.jogo && data.jogo.xp > 0 ? <PlacarDoJogo jogo={data.jogo} compacto /> : null}
       {criando || !estudos.length ? (
         <CriarEstudo nuvem={nuvem} notify={notify} setData={setData}
           onPronto={(id) => abrir(id)} onCancelar={estudos.length ? () => setCriando(false) : null} />
@@ -442,7 +462,7 @@ function CriarEstudo({ nuvem, notify, setData, onPronto, onCancelar }) {
 }
 
 /* ── o painel da aula: os blocos ─────────────────────────────────────── */
-function PainelDaAula({ estudo, onVoltar, onBloco, onApagar, setData, notify }) {
+function PainelDaAula({ estudo, onVoltar, onBloco, onApagar, setData, notify, modoJogo, onModoJogo, onLicao, jogo }) {
   const feitos = blocosFeitos(estudo);
   const total = minutosDaAula(estudo);
   const tudo = feitos === estudo.blocos.length && feitos > 0;
@@ -484,7 +504,25 @@ function PainelDaAula({ estudo, onVoltar, onBloco, onApagar, setData, notify }) 
             <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 99, background: T.card2, border: `1px solid ${T.line}`, fontSize: 13.5, color: T.dim }}>{ic}{t}</span>
           ))}
         </div>
-        {!tudo && proximo >= 0 ? (
+        {/* dois jeitos de estudar a mesma aula */}
+        <div className="flex gap-1" role="tablist" aria-label="Como estudar" data-teste="estudo-modo-jogo"
+          style={{ marginTop: 16, padding: 4, borderRadius: 14, background: T.card2, border: `1px solid ${T.line}`, alignSelf: "flex-start", width: "fit-content" }}>
+          {[[false, "Slides e checkpoint", <Presentation size={15} key="p" />], [true, "Modo jogo", <Gamepad2 size={15} key="g" />]].map(([v, nome, ic]) => (
+            <button key={nome} type="button" role="tab" aria-selected={!!modoJogo === v ? "true" : "false"} onClick={() => onModoJogo(v)}
+              data-teste={v ? "estudo-aba-jogo" : "estudo-aba-slides"}
+              style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 14px", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 14,
+                background: !!modoJogo === v ? T.card : "transparent", color: !!modoJogo === v ? (v ? "var(--ok)" : "var(--neon)") : T.faint,
+                boxShadow: !!modoJogo === v ? `0 1px 0 ${T.line2}` : "none" }}>
+              {ic}{nome}
+            </button>
+          ))}
+        </div>
+        {modoJogo ? (
+          <div style={{ fontSize: 13.5, color: T.dim, marginTop: 10, lineHeight: 1.5 }}>
+            Cada bloco vira uma lição de exercícios rápidos, com vidas, sequência de acertos e XP. O que você errar volta no fim da lição.
+          </div>
+        ) : null}
+        {!modoJogo && !tudo && proximo >= 0 ? (
           <button type="button" onClick={() => onBloco(proximo)} data-teste="estudo-continuar"
             className="btn-neon" style={{ marginTop: 18, display: "inline-flex", alignItems: "center", gap: 8, padding: "11px 20px", borderRadius: 99, fontWeight: 700, fontSize: 15, cursor: "pointer" }}>
             <Play size={15} /> {feitos ? `Continuar: bloco ${proximo + 1}` : "Começar a aula"}
@@ -500,7 +538,13 @@ function PainelDaAula({ estudo, onVoltar, onBloco, onApagar, setData, notify }) 
         ) : null}
       </Card>
 
-      <div className="flex flex-col gap-3">
+      {modoJogo ? (
+        <Card className="px-5 sm:px-7 py-6">
+          <PlacarDoJogo jogo={jogo} setData={setData} />
+          <TrilhaDoJogo estudo={estudo} onLicao={onLicao} />
+        </Card>
+      ) : null}
+      <div className="flex flex-col gap-3" style={modoJogo ? { display: "none" } : undefined}>
         {estudo.blocos.map((b, i) => {
           const livre = blocoLiberado(estudo, i);
           return (

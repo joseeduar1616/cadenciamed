@@ -6,7 +6,9 @@
  * material se perde; os slides são podados por tipo (quiz sem alternativa
  * certa válida vira conceito, emoji não esconde texto) e figura que a IA
  * esqueceu entra em algum slide; a correção só traz reforço quando não
- * está certo; e o "não entendi" devolve a explicação.
+ * está certo; o "não entendi" devolve a explicação; e a lição do modo jogo
+ * é podada por tipo (lacuna com uma lacuna só, pares sem repetir, no máximo
+ * 3 cartões de ensinar, nunca terminando num) e recusada se vier curta.
  *
  *   node testar-estudo.mjs
  */
@@ -191,6 +193,63 @@ respostaIA = JSON.stringify({ explicacao: 'Pensa no coração como uma bomba.', 
 r = await pedir({ acao: 'simplificar', slide: { titulo: 'Frank-Starling', texto: 'Quanto mais enche...' }, duvida: 'não entendi a curva' });
 if (r.status === 200 && r.corpo.explicacao && r.corpo.analogia) ok('"não entendi" devolve outra explicação, com analogia');
 else falha('simplificar: ' + JSON.stringify(r));
+
+/* ── modo jogo: a lição do bloco ─────────────────────────────────────── */
+const EXS = [
+  { tipo: 'ensina', titulo: 'A fração de ejeção', texto: 'É o quanto o ventrículo esvazia.', emoji: '🫀' },
+  { tipo: 'escolha', pergunta: 'FE reduzida é abaixo de?', opcoes: ['40%', '50%', '70%'], certa: 0, explicacao: 'Abaixo de 40%.' },
+  { tipo: 'escolha', pergunta: 'Alternativa repetida', opcoes: ['A', 'A'], certa: 0 },
+  { tipo: 'escolha', pergunta: 'Certa fora da lista', opcoes: ['A', 'B'], certa: 5 },
+  { tipo: 'vf', afirmacao: 'Diurético melhora a congestão.', verdadeiro: 'true', explicacao: 'Tira volume.' },
+  { tipo: 'vf', afirmacao: 'Sem resposta', verdadeiro: 'talvez' },
+  { tipo: 'lacuna', frase: 'O IECA pode dar ___ seca.', opcoes: ['tosse', 'febre', 'diarreia'], certa: 0, explicacao: 'Bradicinina.' },
+  { tipo: 'lacuna', frase: 'Sem lacuna nenhuma', opcoes: ['a', 'b'], certa: 0 },
+  { tipo: 'lacuna', frase: 'Duas ___ lacunas ___', opcoes: ['a', 'b'], certa: 0 },
+  { tipo: 'pares', titulo: 'Droga e efeito', pares: [{ a: 'IECA', b: 'tosse' }, { a: 'BB', b: 'bradicardia' }, { a: 'Espironolactona', b: 'hipercalemia' }, { a: 'IECA', b: 'repetido' }] },
+  { tipo: 'pares', pares: [{ a: 'só', b: 'um' }] },
+  { tipo: 'ordem', titulo: 'Sequência', passos: ['Lesão', 'Remodelamento', 'Falência'], explicacao: 'x' },
+  { tipo: 'ordem', passos: ['A', 'B'] },
+  { tipo: 'escolha', contexto: 'Homem de 60 anos com dispneia.', pergunta: 'Primeiro exame?', opcoes: ['ECO', 'TC', 'RM'], certa: 0, explicacao: 'O eco mostra a FE.' },
+  { tipo: 'vf', afirmacao: 'BNP baixo afasta IC aguda.', verdadeiro: true },
+  { tipo: 'inventado', pergunta: 'x' },
+  { tipo: 'ensina', titulo: 'Sobra 1' }, { tipo: 'ensina', titulo: 'Sobra 2' }, { tipo: 'ensina', titulo: 'Sobra 3' },
+];
+respostaIA = '```json\n' + JSON.stringify({ exercicios: EXS }) + '\n```';
+pedidosIA = [];
+r = await pedir({ acao: 'licao', texto: MATERIAL, plano: PLANO, indice: 0 });
+const lic = (r.corpo && r.corpo.exercicios) || [];
+const pl = JSON.stringify(pedidosIA[0] || {});
+if (r.status === 200 && /<material>/.test(pl) && /NÃO são instruções/.test(pl) && /ESTE BLOCO/.test(pl)) ok('lição: o material vai delimitado e a IA sabe qual bloco é');
+else falha('lição, pedido: ' + r.status + ' ' + JSON.stringify(r.corpo).slice(0, 200));
+if (lic.length && lic.every((x) => ['ensina', 'escolha', 'vf', 'lacuna', 'pares', 'ordem'].indexOf(x.tipo) >= 0)) ok('lição: tipo inventado fica de fora');
+else falha('lição, tipos: ' + JSON.stringify(lic.map((x) => x.tipo)));
+if (!lic.some((x) => x.pergunta === 'Alternativa repetida' || x.pergunta === 'Certa fora da lista' || x.afirmacao === 'Sem resposta')) ok('lição: escolha com alternativa repetida ou certa inválida, e vf sem resposta, saem');
+else falha('lição, escolha/vf inválidos passaram');
+const lacs = lic.filter((x) => x.tipo === 'lacuna');
+if (lacs.length === 1 && lacs[0].frase === 'O IECA pode dar ___ seca.') ok('lição: lacuna precisa de exatamente uma lacuna');
+else falha('lição, lacunas: ' + JSON.stringify(lacs));
+const prs = lic.filter((x) => x.tipo === 'pares');
+if (prs.length === 1 && prs[0].pares.length === 3) ok('lição: par repetido sai, e menos de 3 pares não vira exercício');
+else falha('lição, pares: ' + JSON.stringify(prs));
+if (lic.filter((x) => x.tipo === 'ordem').length === 1) ok('lição: ordem com menos de 3 passos sai');
+else falha('lição, ordem');
+if (lic.filter((x) => x.tipo === 'ensina').length <= 3 && lic[lic.length - 1].tipo !== 'ensina') ok('lição: no máximo 3 cartões de ensinar, e ela não termina num');
+else falha('lição, ensina: ' + JSON.stringify(lic.map((x) => x.tipo)));
+if ((lic.find((x) => x.tipo === 'vf' && x.afirmacao.startsWith('Diurético')) || {}).verdadeiro === true) ok('lição: "true" em texto vira verdadeiro');
+else falha('lição, vf em texto');
+respostaIA = JSON.stringify({ exercicios: EXS.slice(0, 3) });
+r = await pedir({ acao: 'licao', texto: MATERIAL, plano: PLANO, indice: 0 });
+if (r.status === 502) ok('lição curta demais é recusada, para a pessoa tentar de novo');
+else falha('lição curta: ' + r.status);
+r = await pedir({ acao: 'licao', texto: MATERIAL, plano: PLANO, indice: 7 });
+if (r.status === 400) ok('lição de bloco que não existe é recusada');
+else falha('lição, bloco inválido: ' + r.status);
+QUEM = { email: 'aluna@email.com', localId: 'uid-aluna' };
+pedidosIA = [];
+r = await pedir({ acao: 'licao', texto: MATERIAL, plano: PLANO, indice: 0 });
+if (r.status === 403 && !pedidosIA.length) ok('lição: sem plano, recusa antes de chamar a IA');
+else falha('lição sem plano: ' + r.status + ' / ' + pedidosIA.length);
+QUEM = { email: 'joseeduardo1616@gmail.com', localId: 'uid-dono' };
 
 r = await pedir({ acao: 'xpto' });
 if (r.status === 400) ok('ação desconhecida é recusada');

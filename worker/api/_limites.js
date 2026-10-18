@@ -58,6 +58,9 @@ export const CUSTO = {
   "estudo-bloco": 5,
   "estudo-corrigir": 1,
   "estudo-simplificar": 1,
+  /* O modo jogo: uma chamada monta a lição inteira do bloco, e a página
+     corrige cada toque sozinha. */
+  "estudo-licao": 3,
   /* O painel de motivação: cada pergunta da entrevista e cada "preciso de
      motivação agora" são curtos; montar o painel lê a entrevista inteira. */
   "motivacao-pergunta": 1,
