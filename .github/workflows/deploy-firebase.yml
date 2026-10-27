@@ -47,3 +47,7 @@ jobs:
           firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
           channelId: live
           projectId: cadencia-7c1f1
+          # Sem esta linha a ação baixa a versão mais nova do firebase-tools a
+          # cada publicação. A 15.34.1 (21/10/2026) passou a falhar no deploy
+          # sem mensagem legível; a 15.34.0 é a última que publicou com sucesso.
+          firebaseToolsVersion: 15.34.0
