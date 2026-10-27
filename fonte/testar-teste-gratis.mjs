@@ -39,6 +39,26 @@ let DOCS = {};                 // uid -> fields
 let gravacoes = [];
 let antesDeGravar = null;      // simula um cupom gravado entre a leitura e a gravação
 const resp = (c, s = 200) => new Response(JSON.stringify(c), { status: s, headers: { 'Content-Type': 'application/json' } });
+/* O dono, com um aparelho assinado nos lembretes: é por ele que o aviso
+   de conta nova chega. Chaves de verdade, para a cifragem não recusar. */
+const P = await import('../worker/api/_push.js');
+const { DONOS } = await import('../worker/api/_comum.js');
+const aparelhoDono = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+const ENDPOINT_DONO = 'https://fcm.googleapis.com/fcm/send/dono';
+const DOC_APARELHO = {
+  name: 'projects/x/databases/(default)/documents/push/uid-dono/aparelhos/ap1',
+  fields: {
+    endpoint: { stringValue: ENDPOINT_DONO },
+    p256dh: { stringValue: P.paraBase64Url(await crypto.subtle.exportKey('raw', aparelhoDono.publicKey)) },
+    auth: { stringValue: P.paraBase64Url(crypto.getRandomValues(new Uint8Array(16))) },
+  },
+};
+let avisos = [];                 // POSTs ao servidor de push do dono
+let apagados = [];               // aparelhos do dono apagados por estarem mortos
+let pendentes = [];              // o que a rota deixou para depois da resposta (waitUntil)
+const ctxFalso = { waitUntil: (pr) => pendentes.push(pr) };
+const esperarAvisos = async () => { await Promise.all(pendentes); pendentes = []; };
+
 const fetchReal = globalThis.fetch;
 globalThis.fetch = async (url, op = {}) => {
   const u = String(url);
@@ -46,6 +66,21 @@ globalThis.fetch = async (url, op = {}) => {
   if (u.includes('identitytoolkit')) return resp({ users: [QUEM] });
   if (u.includes('oauth2.googleapis.com/token')) return resp({ access_token: 't' });
   if (u.includes('/documents/config/recursos') || u.includes('/documents/cupons/') || u.includes('/documents/mentores/')) return resp({}, 404);
+  if (u.endsWith(':runQuery')) {
+    const q = JSON.parse(op.body).structuredQuery;
+    const email = q.where.fieldFilter.value.stringValue;
+    if (q.from[0].collectionId === 'emails' && DONOS.includes(email)) {
+      return resp([{ document: { name: 'projects/x/databases/(default)/documents/emails/uid-dono' } }]);
+    }
+    return resp([{}]);
+  }
+  if (u.includes('/documents/config/push')) return metodo === 'GET' ? resp({}, 404) : resp({ name: 'config/push' });
+  if (u.includes('/documents/push/uid-dono/aparelhos')) {
+    if (metodo === 'DELETE') { apagados.push(u); return resp({}); }
+    return resp({ documents: [DOC_APARELHO] });
+  }
+  if (u === ENDPOINT_DONO) { avisos.push({ ttl: op.headers.TTL, urgencia: op.headers.Urgency, corpo: op.body }); return resp({}, 201); }
+  if (u.endsWith('/fcm/send/morto')) return resp({}, 410);
   const m = /\/documents\/assinaturas\/([^/?]+)(\?[^]*)?$/.exec(u);
   if (m) {
     const uid = m[1];
@@ -65,7 +100,7 @@ const plano = (await import('../worker/api/plano.js')).onRequest;
 const cupom = (await import('../worker/api/cupom.js')).onRequest;
 const { validoAte } = await import('../worker/api/_comum.js');
 const pedir = async (fn, corpo) => {
-  const r = await fn({ request: new Request('http://x/api', { method: 'POST', body: JSON.stringify({ token: 'tk', ...corpo }) }), env });
+  const r = await fn({ request: new Request('http://x/api', { method: 'POST', body: JSON.stringify({ token: 'tk', ...corpo }) }), env, ctx: ctxFalso });
   return { status: r.status, corpo: await r.json() };
 };
 
@@ -83,10 +118,24 @@ if (r.corpo.recursos && r.corpo.recursos.cartoes === true) ok('com o teste, as a
 else falha('recursos no teste: ' + JSON.stringify(r.corpo.recursos));
 if (await validoAte('t', 'uid-nova') > Date.now()) ok('toda rota paga (validoAte) já reconhece o teste');
 else falha('validoAte não reconhece o teste');
+
+/* o dono fica sabendo no celular, depois da resposta, sem segurá-la */
+if (!avisos.length && pendentes.length) ok('o aviso de conta nova não segura a resposta do plano (vai pelo waitUntil)');
+else falha('aviso antes da resposta ou sem waitUntil: ' + avisos.length + '/' + pendentes.length);
+await esperarAvisos();
+if (avisos.length === 1 && avisos[0].urgencia === 'high' && Number(avisos[0].ttl) >= DIA / 1000) ok('conta nova: um aviso por push no aparelho do dono, urgente e guardado por um dia');
+else falha('aviso ao dono: ' + JSON.stringify(avisos.map((a) => [a.ttl, a.urgencia])));
+if (avisos[0] && avisos[0].corpo instanceof Uint8Array && avisos[0].corpo.length > 100) ok('o aviso vai cifrado para o aparelho, nunca em texto puro');
+else falha('corpo do aviso: ' + typeof (avisos[0] || {}).corpo);
+avisos = [];
+
 gravacoes = [];
 await pedir(plano, {});
+await esperarAvisos();
 if (!gravacoes.length) ok('o teste é gravado uma vez só: abrir de novo não regrava nem estica');
 else falha('regravou o teste');
+if (!avisos.length) ok('abrir de novo não avisa o dono de novo');
+else falha('avisou o dono de novo ao reabrir');
 
 /* cupom durante o teste: vale, e troca o teste pelo plano do cupom */
 r = await pedir(cupom, { codigo: 'amigo' });
@@ -99,6 +148,9 @@ antesDeGravar = () => { DOCS['uid-corrida'] = { plano: { stringValue: 'anual' },
 r = await pedir(plano, {});
 if (r.corpo.plano === 'anual' && DOCS['uid-corrida'].plano.stringValue === 'anual') ok('cupom gravado no mesmo instante não é atropelado pelo teste');
 else falha('corrida cupom x teste: ' + JSON.stringify(r.corpo));
+await esperarAvisos();
+if (!avisos.length) ok('quando o teste não foi gravado, o dono não é avisado');
+else falha('avisou o dono numa gravação recusada');
 
 /* conta antiga, sem nada: não ganha teste retroativo */
 QUEM = { localId: 'uid-antiga', email: 'a@email.com', createdAt: String(agora - 10 * DIA) };
@@ -119,6 +171,21 @@ QUEM = { localId: 'uid-sem-data', email: 's@email.com' };
 r = await pedir(plano, {});
 if (r.status === 200 && r.corpo.pro === false) ok('sem a data de criação, não inventa teste');
 else falha('sem data: ' + JSON.stringify(r));
+await esperarAvisos();
+if (!avisos.length) ok('conta antiga, teste vencido e conta sem data: nenhum aviso ao dono');
+else falha('avisou o dono fora da conta nova: ' + avisos.length);
+
+/* o dono sem aparelho assinado: a conta nova continua entrando normalmente */
+QUEM = { localId: 'uid-nova2', email: 'nova2@email.com', createdAt: String(agora - 60000) };
+const semAparelho = DOC_APARELHO.fields.endpoint.stringValue;
+DOC_APARELHO.fields.endpoint.stringValue = 'https://fcm.googleapis.com/fcm/send/morto';
+r = await pedir(plano, {});
+await esperarAvisos();
+if (r.status === 200 && r.corpo.teste === true && !avisos.length) ok('se o aviso ao dono falhar, a conta nova entra do mesmo jeito');
+else falha('conta nova com aviso falhando: ' + r.status + ' ' + JSON.stringify(r.corpo));
+if (apagados.length === 1 && apagados[0].endsWith('/aparelhos/ap1')) ok('aparelho do dono que o servidor de push diz não existir mais é apagado');
+else falha('aparelho morto do dono: ' + JSON.stringify(apagados));
+DOC_APARELHO.fields.endpoint.stringValue = semAparelho;
 globalThis.fetch = fetchReal;
 
 /* ── 2. a tela ───────────────────────────────────────────────────────── */

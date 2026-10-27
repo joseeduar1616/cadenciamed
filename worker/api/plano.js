@@ -21,12 +21,13 @@ import {
   json, corpoJson, quemPede, ehDono, contaDeServico, tokenDeAcesso,
   BASE_FIRESTORE, regrasGravadas, recursosDe, fimDoTeste, PLANO_TESTE,
 } from "./_comum.js";
+import { avisarDonos } from "./push.js";
 
 const texto = (v) => (v && v.stringValue) || "";
 const numero = (v) => Number((v && (v.doubleValue || v.integerValue)) || 0);
 const mapa = (v) => ((v && v.mapValue && v.mapValue.fields) || {});
 
-export async function onRequest({ request, env }) {
+export async function onRequest({ request, env, ctx }) {
   if (request.method !== "POST") return json({ erro: "Método não permitido." }, 405);
 
   if (!env.FIREBASE_API_KEY || !env.FIREBASE_SERVICE_ACCOUNT) {
@@ -77,7 +78,7 @@ export async function onRequest({ request, env }) {
   if (r.status === 404) {
     const fim = fimDoTeste(pessoa.criadaEm);
     if (fim > Date.now()) {
-      await fetch(`${BASE_FIRESTORE}/assinaturas/${pessoa.uid}?currentDocument.exists=false`, {
+      const criou = await fetch(`${BASE_FIRESTORE}/assinaturas/${pessoa.uid}?currentDocument.exists=false`, {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -91,6 +92,23 @@ export async function onRequest({ request, env }) {
         }),
       }).catch(() => null);
       r = await ler();
+
+      /* Gravou: é uma conta nova de verdade, não um cupom que chegou no
+         mesmo instante. Quem cuida do site fica sabendo no celular. O
+         aviso segue depois da resposta (waitUntil) e nunca a derruba: a
+         pessoa que acabou de entrar não pode esperar por ele nem ver erro
+         por causa dele. */
+      if (criou && criou.ok) {
+        const aviso = avisarDonos(token, {
+          titulo: "Nova conta no Cadência Med",
+          corpo: `${pessoa.email} começou o teste grátis de 3 dias.`,
+          /* Uma etiqueta por conta: duas pessoas seguidas são dois avisos
+             na bandeja, não um por cima do outro. */
+          etiqueta: `cadencia-nova-conta-${pessoa.uid}`,
+          url: "/",
+        }).catch(() => 0);
+        if (ctx && ctx.waitUntil) ctx.waitUntil(aviso);
+      }
     }
   }
 

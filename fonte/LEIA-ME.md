@@ -733,6 +733,15 @@ vencido, avisam que acabou e as abas pagas fecham sozinhas (o app pergunta de
 novo ao servidor na hora do fim). Teste: `testar-teste-gratis.mjs index.html`
 (o `teste.html` libera o plano de propósito, então este roda no de produção).
 
+Aviso de conta nova: quando essa gravação do teste dá certo (e só então, que
+é o sinal de conta recém-criada), `/api/plano` manda um push para quem cuida
+do site, `avisarDonos` em `push.js`: procura o uid de cada e-mail de `DONOS`
+na coleção `emails` e entrega nos aparelhos que essa pessoa assinou nos
+lembretes, com `ttl` de um dia e urgência alta. Vai pelo `ctx.waitUntil`,
+depois da resposta, e nunca derruba o plano se falhar. Para receber, o dono
+precisa ter ligado os lembretes no app do celular (Configurações, "testar"
+confere a entrega). Está no mesmo `testar-teste-gratis.mjs`.
+
 ## O convite de notificações (e o fim do "Você está aí?")
 
 O Foco, os blocos da agenda e a sessão de cartões contam direto, sem

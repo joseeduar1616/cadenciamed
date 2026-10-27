@@ -26,6 +26,7 @@
  */
 import {
   json, corpoJson, quemPede, ehDono, contaDeServico, tokenDeAcesso, BASE_FIRESTORE,
+  DONOS, uidPeloEmail,
 } from "./_comum.js";
 import {
   gerarChavesVapid, publicaDaPrivada, autorizacaoVapid, cifrarParaAparelho,
@@ -157,6 +158,39 @@ async function aparelhosDaPessoa(token, uid) {
   if (!r.ok) return [];
   const j = await r.json().catch(() => null);
   return ((j || {}).documents || []).map((d) => lerAparelho(d.name, d.fields || {}));
+}
+
+/* ── um aviso avulso, agora ───────────────────────────────────────────
+ *
+ * Fora da batida de hora em hora: entrega na hora, em todos os aparelhos
+ * que a pessoa assinou nos lembretes. Aparelho morto é apagado no caminho,
+ * como na batida. Devolve em quantos chegou.
+ */
+export async function avisarPessoa(token, uid, aviso, opcoes = { ttl: 86400, urgencia: "high" }) {
+  const aparelhos = await aparelhosDaPessoa(token, uid);
+  if (!aparelhos.length) return 0;
+  const { privada } = await chavesDoSite(token);
+  let enviados = 0;
+  for (const ap of aparelhos) {
+    const res = await entregar(privada, ap, aviso, opcoes);
+    if (res.morto) await apagarDoc(token, `https://firestore.googleapis.com/v1/${ap.nome}`);
+    if (res.ok) enviados += 1;
+  }
+  return enviados;
+}
+
+/* Aviso para quem cuida do site: cada e-mail em DONOS, pelos aparelhos
+   que essa pessoa assinou nos lembretes. Quem nunca ligou os lembretes no
+   celular não tem aparelho assinado e não recebe, e isso é esperado: não
+   há outro canal aqui. Nunca lança: avisar é um extra, não pode derrubar
+   a rota que chamou. */
+export async function avisarDonos(token, aviso) {
+  let enviados = 0;
+  for (const email of DONOS) {
+    const uid = await uidPeloEmail(token, email).catch(() => null);
+    if (uid) enviados += await avisarPessoa(token, uid, aviso).catch(() => 0);
+  }
+  return enviados;
 }
 
 /* ── a batida de hora em hora ─────────────────────────────────────────
