@@ -1,0 +1,68 @@
+# Olha o histórico dos dados de uma conta no banco e, se pedido, traz uma
+# versão de volta. O Firestore guarda 7 dias (PITR, ligado pelo
+# firestore.yml). O script está em fonte/recuperar-dados.mjs e imprime só
+# resumos (contagens e datas), nunca o conteúdo.
+#
+# Roda à mão (Actions › Recuperar dados de uma conta › Run workflow) com o
+# e-mail da conta e, para voltar no tempo, o instante escolhido. Também
+# roda sozinho quando este arquivo muda no main, com os valores abaixo.
+name: Recuperar dados de uma conta
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/recuperar-dados.yml
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "E-mail da conta"
+        required: true
+        default: "joseeduardo1616@gmail.com"
+      quando:
+        description: "Instante para voltar (minuto cheio, ex. 2026-10-27T12:00:00Z). Vazio = só olhar."
+        required: false
+        default: ""
+
+concurrency:
+  group: recuperar-dados
+  cancel-in-progress: false
+
+env:
+  PROJETO: cadencia-7c1f1
+  EMAIL: ${{ github.event.inputs.email || 'joseeduardo1616@gmail.com' }}
+  QUANDO: ${{ github.event.inputs.quando || '' }}
+
+jobs:
+  recuperar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Conferir se há conta de serviço
+        env:
+          TEM: ${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' }}
+        run: |
+          if [ "$TEM" != "true" ]; then
+            echo "::error::Falta o segredo FIREBASE_SERVICE_ACCOUNT em Settings › Secrets and variables › Actions."
+            exit 1
+          fi
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Ler o histórico (e voltar, se QUANDO estiver definido)
+        run: |
+          set -euo pipefail
+          TOKEN="$(gcloud auth print-access-token)"
+          echo "::add-mask::$TOKEN"
+          export TOKEN
+          node fonte/recuperar-dados.mjs
