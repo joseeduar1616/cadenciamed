@@ -54,6 +54,24 @@ caso('empate de conteúdo: vale a conta',
   { existe: true, daCache: false, primeira: true, mesmoAparelho: false,
     atualizadoEm: 1000, stampLocal: 0, riquezaLocal: 50, riquezaNuvem: 50 }, 'baixar');
 
+/* ── reencontro: o aparelho já conhecia a conta ───────────────────────
+ * O caso que apagou uma semana de estudo: um aparelho parado, com uma
+ * cópia velha e cheia, abriu a página, viu a conta pela "primeira vez"
+ * daquela sessão e ganhou na riqueza. Se ele já sincronizou esta conta
+ * antes (stampLocal > 0) e a conta andou desde então, o que ele tem é
+ * velho, por mais que pareça. */
+caso('aparelho que já sincronizou esta conta, e a conta mudou depois: baixa, mesmo com mais conteúdo aqui',
+  { existe: true, daCache: false, primeira: true, mesmoAparelho: false,
+    atualizadoEm: 9000, stampLocal: 1000, riquezaLocal: 900, riquezaNuvem: 1 }, 'baixar');
+
+caso('aparelho que já sincronizou esta conta, e a conta não mudou desde então: nada a fazer',
+  { existe: true, daCache: false, primeira: true, mesmoAparelho: false,
+    atualizadoEm: 1000, stampLocal: 1000, riquezaLocal: 900, riquezaNuvem: 1 }, 'ignorar');
+
+caso('a conta voltou no tempo por uma recuperação: o aparelho baixa a versão recuperada',
+  { existe: true, daCache: false, primeira: true, mesmoAparelho: false,
+    atualizadoEm: 9000, stampLocal: 8000, riquezaLocal: 600, riquezaNuvem: 590 }, 'baixar');
+
 /* ── ecos e versões velhas ────────────────────────────────────────── */
 caso('o que este mesmo aparelho acabou de escrever volta e é ignorado',
   { existe: true, daCache: false, primeira: false, mesmoAparelho: true,

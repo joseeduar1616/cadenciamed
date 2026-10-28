@@ -5,6 +5,21 @@
 const NUVEM_CFG = (typeof window !== "undefined" && window.CADENCIA_FIREBASE) || null;
 const FB_VERSAO = (typeof window !== "undefined" && window.CADENCIA_FIREBASE_VERSAO) || "10.12.2";
 const CHAVE_BACKUP = "cadencia:v3:antes-da-nuvem";
+/* Até onde este aparelho e a conta se viram pela última vez: o atualizadoEm
+   da última versão que este aparelho mandou ou baixou, por conta. Fica no
+   aparelho porque a decisão de quem vence no reencontro depende disto, e
+   antes ela recomeçava do zero a cada abertura da página. */
+const CHAVE_STAMP = "cadencia:v3:nuvem-stamp";
+function lerStamp(uid) {
+  try {
+    const s = JSON.parse(window.localStorage.getItem(CHAVE_STAMP) || "null");
+    return s && s.uid === uid ? Number(s.em) || 0 : 0;
+  } catch (e) { return 0; }
+}
+function gravarStamp(uid, em) {
+  try { window.localStorage.setItem(CHAVE_STAMP, JSON.stringify({ uid, em: Number(em) || 0 })); }
+  catch (e) { /* sem espaço: a regra volta a tratar como primeiro encontro */ }
+}
 
 /* De onde abre o login do Google.
  *
@@ -102,8 +117,15 @@ function decidirNuvem(e) {
   if (e.mesmoAparelho) return "ignorar";
   /* Versão mais velha do que a que já temos em mãos. */
   if (Number(e.atualizadoEm || 0) <= Number(e.stampLocal || 0)) return "ignorar";
-  /* Primeiro encontro com mais conteúdo aqui do que lá: o aparelho ganha, e
-     manda o que tem para a conta. */
+  /* Este aparelho já tinha se encontrado com esta conta, e a conta mudou
+     desde então (por outro aparelho, ou por uma recuperação). Então o que
+     está aqui é uma versão velha, por mais cheia que pareça: vale a conta.
+     Foi assim que uma cópia de setembro, guardada num aparelho parado,
+     passou por cima de uma semana de estudo gravada por outro. A cópia
+     daqui é guardada antes de ser substituída (versões anteriores). */
+  if (e.primeira && Number(e.stampLocal || 0) > 0) return "baixar";
+  /* Primeiro encontro de verdade (este aparelho nunca viu esta conta) com
+     mais conteúdo aqui do que lá: o aparelho ganha, e manda o que tem. */
   if (e.primeira && Number(e.riquezaLocal) > Number(e.riquezaNuvem)) return "manter-local";
   return "baixar";
 }
@@ -165,7 +187,7 @@ function useNuvem(data, setData, notify, pronto, pro) {
           if (!vivo) return;
           setUsuario(u ? { uid: u.uid, email: u.email } : null);
           setEstado(u ? "conectado" : "deslogado");
-          if (!u) stamp.current = 0;
+          stamp.current = u ? lerStamp(u.uid) : 0;
           /* Guarda o vínculo entre e-mail e conta. É por aqui que a função
              de compra descobre quem pagou, já que a plataforma só informa
              o e-mail do comprador. */
@@ -191,6 +213,7 @@ function useNuvem(data, setData, notify, pronto, pro) {
         atualizadoEm: stamp.current,
         dispositivo: disp.current,
       });
+      gravarStamp(usuario.uid, stamp.current);
       setUltima(Date.now());
       setErro("");
     } catch (e) {
@@ -271,6 +294,7 @@ function useNuvem(data, setData, notify, pronto, pro) {
         }
         veioDaNuvem.current = true;
         stamp.current = Number(d.atualizadoEm);
+        gravarStamp(usuario.uid, stamp.current);
         setData((p) => ({ ...novo, theme: p.theme, layout: p.layout }));
         setUltima(Date.now());
         notify(era ? "Dados da sua conta carregados." : "Atualizado a partir de outro aparelho.");
