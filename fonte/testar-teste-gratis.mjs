@@ -280,6 +280,21 @@ const texto = (pag) => pag.evaluate(() => document.body.innerText);
     await pag.waitForTimeout(400);
     if (!(await pag.locator('[data-teste="aviso-teste-gratis"]:visible').count())) ok('em "Entrar" (conta que já existe), o aviso some');
     else falha('o aviso aparece também no Entrar');
+
+    /* esqueci a senha, direto da página de entrada */
+    const esqueci = pag.locator('[data-teste="esqueci-senha"]:visible').first();
+    if (await esqueci.count()) {
+      await esqueci.click();
+      await pag.waitForTimeout(400);
+      const semSenha = !(await pag.locator('input[type="password"]:visible').count());
+      const botao = await pag.locator('button:has-text("Enviar link"):visible').count();
+      if (semSenha && botao) ok('"esqueci a senha" na entrada: só o e-mail e o botão de enviar o link');
+      else falha('modo esqueci a senha: campo de senha ' + (semSenha ? 'sumiu' : 'continua') + ', botão ' + botao);
+      await pag.locator('button:has-text("Enviar link"):visible').first().click();
+      await pag.waitForTimeout(300);
+      if (/Escreva seu e-mail/.test(await texto(pag))) ok('sem e-mail, pede o e-mail em vez de mandar nada');
+      else falha('enviar link sem e-mail não avisou');
+    } else falha('não há "esqueci a senha" na página de entrada');
   }
   await ctx.close();
 }

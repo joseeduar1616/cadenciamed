@@ -1651,7 +1651,7 @@ function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar, tema, mudarT
    * tem a saída no fim da página — e quem faz a conta depois traz junto o
    * que já anotou, porque os dados são deste aparelho até o primeiro
    * envio. */
-  const [modo, setModo] = useState("criar");      // criar | entrar
+  const [modo, setModo] = useState("criar");      // criar | entrar | senha
   const [f, setF] = useState({ nome: "", email: "", senha: "", cupom: "" });
   const [manter, setManter] = useState(true);
   const [msg, setMsg] = useState("");
@@ -1670,6 +1670,16 @@ function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar, tema, mudarT
 
   const enviar = async () => {
     if (!f.email.trim()) { setMsg("Escreva seu e-mail."); return; }
+    /* Esqueci a senha: só o e-mail. O link de redefinição chega por ele, e
+       quem está aqui fora, sem conseguir entrar, não tem outro caminho
+       (o de Configurações só existe para quem já está dentro). */
+    if (modo === "senha") {
+      setMsg(""); setOcupado(true);
+      const e = await nuvem.recuperar(f.email);
+      setOcupado(false);
+      setMsg(e || "Enviei um link de redefinição para o seu e-mail. Se não chegar em um minuto, veja o spam.");
+      return;
+    }
     if (!f.senha) { setMsg("Escreva sua senha."); return; }
     setMsg(""); setOcupado(true);
     const e = modo === "entrar"
@@ -1794,7 +1804,14 @@ function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar, tema, mudarT
   const campos = (
     <div className="flex flex-col gap-4">
       {modo === "criar" ? <AvisoTesteGratis compacto /> : null}
-      {!conectando ? (
+      {modo === "senha" ? (
+        <div style={{ fontSize: 14.5, lineHeight: 1.6, color: T.dim }}>
+          Escreva o e-mail da sua conta. Você recebe um link para criar uma
+          senha nova. Se entrou com o Google, não tem senha: use o botão do
+          Google em "Entrar".
+        </div>
+      ) : null}
+      {!conectando && modo !== "senha" ? (
         <>
           <BotaoGoogle onClick={entrarGoogle} disabled={ocupado} cheio />
           <OuSeparador />
@@ -1811,12 +1828,14 @@ function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar, tema, mudarT
           onChange={(e) => set("email", e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") enviar(); }} />
       </Field>
-      <Field label="Senha">
-        <TextInput type="password" value={f.senha} placeholder="mínimo 6 caracteres"
-          autoComplete={modo === "criar" ? "new-password" : "current-password"}
-          onChange={(e) => set("senha", e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") enviar(); }} />
-      </Field>
+      {modo !== "senha" ? (
+        <Field label="Senha">
+          <TextInput type="password" value={f.senha} placeholder="mínimo 6 caracteres"
+            autoComplete={modo === "criar" ? "new-password" : "current-password"}
+            onChange={(e) => set("senha", e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") enviar(); }} />
+        </Field>
+      ) : null}
       {modo === "criar" ? (
         <Field label="Cupom (opcional)">
           <TextInput value={f.cupom} placeholder="Se você recebeu um código" autoCapitalize="none"
@@ -1844,14 +1863,26 @@ function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar, tema, mudarT
         </label>
       ) : null}
       {msg ? (
-        <div style={{ fontSize: 14.5, lineHeight: 1.5, color: T.bad }}>{msg}</div>
+        <div data-teste="entrada-msg" style={{ fontSize: 14.5, lineHeight: 1.5, color: /^Enviei/.test(msg) ? T.ok : T.bad }}>{msg}</div>
       ) : null}
       <button type="button" className="pe-cta pe-cheio w-full" onClick={enviar}
         disabled={ocupado || conectando}>
         {ocupado ? "Aguarde…" : conectando ? "Conectando…"
-          : modo === "entrar" ? "Entrar" : "Criar conta"}
+          : modo === "entrar" ? "Entrar" : modo === "senha" ? "Enviar link" : "Criar conta"}
         <ArrowUpRight size={16} />
       </button>
+      {/* O "esqueci a senha" fica junto do Entrar, onde a pessoa está quando
+          descobre que não lembra. Fora do Entrar ele some. */}
+      {modo === "entrar" ? (
+        <div className="text-center" style={{ marginTop: -4 }}>
+          <button type="button" data-teste="esqueci-senha"
+            onClick={() => { setModo("senha"); setMsg(""); }}
+            style={{
+              background: "none", border: "none", color: T.faint, fontSize: 13.5,
+              cursor: "pointer", textDecoration: "underline",
+            }}>esqueci a senha</button>
+        </div>
+      ) : null}
     </div>
   );
 
@@ -2025,9 +2056,9 @@ function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar, tema, mudarT
           }}>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <Label>{modo === "entrar" ? "Já tenho conta" : "Criar conta"}</Label>
+                <Label>{modo === "entrar" ? "Já tenho conta" : modo === "senha" ? "Esqueci a senha" : "Criar conta"}</Label>
                 <h2 className="pe-t pe-t2" style={{ fontSize: 27, marginTop: 8 }}>
-                  {modo === "entrar" ? "Entrar" : "Começo rápido"}
+                  {modo === "entrar" ? "Entrar" : modo === "senha" ? "Senha nova" : "Começo rápido"}
                 </h2>
               </div>
               <button type="button" aria-label="Fechar" onClick={fecharEntrar}
@@ -2042,13 +2073,21 @@ function Onboarding({ onDone, theme, toggleTheme, nuvem, aoLiberar, tema, mudarT
             <div className="mt-6">{campos}</div>
             <div className="mt-5 text-center">
               <button type="button"
-                onClick={() => { setModo(modo === "entrar" ? "criar" : "entrar"); setMsg(""); }}
+                onClick={() => { setModo(modo === "criar" ? "entrar" : "criar"); setMsg(""); }}
                 style={{
                   background: "none", border: "none", color: T.faint, fontSize: 13.5,
                   cursor: "pointer", textDecoration: "underline",
                 }}>
-                {modo === "entrar" ? "ainda não tenho conta" : "já tenho conta"}
+                {modo === "criar" ? "já tenho conta" : "ainda não tenho conta"}
               </button>
+              {modo === "senha" ? (
+                <button type="button"
+                  onClick={() => { setModo("entrar"); setMsg(""); }}
+                  style={{
+                    background: "none", border: "none", color: T.faint, fontSize: 13.5,
+                    cursor: "pointer", textDecoration: "underline", marginLeft: 14,
+                  }}>voltar para entrar</button>
+              ) : null}
             </div>
           </Card>
         </div>
@@ -2135,7 +2174,7 @@ function SecaoConta({
               ) : (
                 <>
                   <div className="flex gap-2 flex-wrap">
-                    {[["criar", "Criar conta"], ["entrar", "Entrar"]].map(([k, lb]) => (
+                    {[["criar", "Criar conta"], ["entrar", "Entrar"], ["senha", "Esqueci a senha"]].map(([k, lb]) => (
                       <button key={k} type="button" onClick={() => { setModo(k); setMsg(""); }}
                         className="toque-larg rounded-full px-4 py-2"
                         style={{
