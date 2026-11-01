@@ -128,15 +128,18 @@ const mensagemDeAudio = (base64) => ({
  * Fora do React de propósito: WebSocket, microfone e reprodução têm
  * vida própria, e um re-render não pode reabrir nada disso.
  */
+/* Roda dentro do AudioWorklet, não na página: por isso é texto. O método
+   "process" e o "registerProcessor" são do escopo do worklet (o conferidor
+   de nomes do pacote não os conhece, daí a forma com colchetes e globalThis). */
 const CODIGO_CAPTURA = `
 class CadenciaCaptura extends AudioWorkletProcessor {
-  process(entradas) {
+  ["process"](entradas) {
     const c = entradas[0] && entradas[0][0];
     if (c && c.length) this.port.postMessage(new Float32Array(c));
     return true;
   }
 }
-registerProcessor("cadencia-captura", CadenciaCaptura);`;
+globalThis.registerProcessor("cadencia-captura", CadenciaCaptura);`;
 
 class SessaoAoVivo {
   constructor(avisos) {
@@ -535,7 +538,10 @@ function AssistenteDeVoz({ nuvem, notify, data, today, ver }) {
             ...(estreita
               ? { left: 0, right: 0, bottom: 0, maxHeight: "82dvh", borderRadius: "22px 22px 0 0" }
               : { right: 18, bottom: 22, width: 390, maxWidth: "calc(100vw - 36px)", maxHeight: "min(640px, calc(100dvh - 44px))", borderRadius: 22 }),
-            background: T.card, border: `1px solid ${T.line}`, boxShadow: T.shadow, overflow: "hidden",
+            /* Fundo quase opaco, com desfoque: o cartão comum do tema neon é
+               translúcido e a conversa ficaria por cima do texto da página. */
+            background: "color-mix(in srgb, var(--bg) 90%, var(--card3))", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)",
+            border: `1px solid ${T.line2 || T.line}`, boxShadow: T.shadow, overflow: "hidden",
           }}>
           <div className="px-5 pt-4 pb-3 flex items-start justify-between gap-3" style={{ borderBottom: `1px solid ${T.line}` }}>
             <div style={{ minWidth: 0 }}>
