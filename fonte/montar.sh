@@ -56,6 +56,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   python3 extrair_plano_mes.py
   python3 extrair_anexo.py
   python3 extrair_jogo.py
+  python3 extrair_voz.py
   echo "── teste no navegador ──────────────────────────────"
   python3 montar_teste.py > /dev/null
   node testar.mjs
@@ -91,6 +92,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-importar-figuras.mjs
   node testar-relogio-virar.mjs
   node testar-nuvem.mjs
+  node testar-voz.mjs
   node testar-lotes.mjs
   node testar-revisao.mjs
   node testar-semana.mjs

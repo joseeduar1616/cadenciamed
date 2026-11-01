@@ -37,6 +37,7 @@ fonte/_aula.mjs
 fonte/_treino.mjs
 fonte/_jogo.mjs
 fonte/_plano_mes.mjs
+fonte/_voz.mjs
 
 # refeitos por material/capturar.mjs e material/gerar.mjs
 material/capturas/

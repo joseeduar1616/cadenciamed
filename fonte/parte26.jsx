@@ -402,8 +402,102 @@ function PlanoDaMentoria({ data, setData, today, notify, ocupado, perguntar }) {
 const reconhecedorDeFala = () => (typeof window !== "undefined"
   && (window.SpeechRecognition || window.webkitSpeechRecognition)) || null;
 
+/* ── o que a voz diz ──────────────────────────────────────────────────
+ *
+ * A síntese lê o que recebe ao pé da letra: "19:30" vira "dezenove dois
+ * pontos trinta", "R$ 39" vira "erre cifrão trinta e nove", "ex.:" vira
+ * "ex", e um asterisco é lido como asterisco. Tudo abaixo converte o texto
+ * da mentoria para o jeito que uma pessoa falaria ao telefone. É puro de
+ * propósito (sem navegador): o testar-voz.mjs confere caso a caso.
+ */
+const MESES_FALADOS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho",
+  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+
+const ABREVIACOES_FALADAS = [
+  [/\bex\.\s*:?/gi, "por exemplo:"],
+  [/\bp\.\s*ex\./gi, "por exemplo"],
+  [/\betc\./gi, "etcétera"],
+  [/\bobs\.\s*:?/gi, "observação:"],
+  [/\bn[.º°]\s?º?/gi, "número "],
+  [/\bnº/gi, "número "],
+  [/\baprox\./gi, "aproximadamente"],
+  [/\bp[aá]g\./gi, "página"],
+  [/\bvs\.?\b/gi, "versus"],
+  [/\bp\//gi, "para "],
+  [/\bc\//gi, "com "],
+  [/\bs\//gi, "sem "],
+  [/\bqtd\.?\b/gi, "quantidade"],
+  [/\bseg\.(?=\s|$)/gi, "segunda"],
+  [/\bter\.(?=\s|$)/gi, "terça"],
+  [/\bqua\.(?=\s|$)/gi, "quarta"],
+  [/\bqui\.(?=\s|$)/gi, "quinta"],
+  [/\bsex\.(?=\s|$)/gi, "sexta"],
+  [/\bs[aá]b\.(?=\s|$)/gi, "sábado"],
+  [/\bdom\.(?=\s|$)/gi, "domingo"],
+];
+
+const minutosFalados = (mm) => {
+  const m = Number(mm);
+  if (!m) return "";
+  return m < 10 ? ` e ${m}` : ` e ${m}`;
+};
+
+/* Horário por extenso, como se fala: 19:00 → "19 horas", 19:30 → "19 e
+   30", 7h → "7 horas", 2h30 → "2 horas e 30", 45min → "45 minutos". */
+function falarHorarios(t) {
+  return t
+    .replace(/\b([01]?\d|2[0-3])\s*[:h]\s*([0-5]\d)\b(?!\s*min)/gi, (_, h, m) => (Number(m) ? `${Number(h)}${minutosFalados(m)}` : `${Number(h)} horas`))
+    .replace(/\b([01]?\d|2[0-3])\s*h(?![a-zà-ú])/gi, (_, h) => `${Number(h)} horas`)
+    .replace(/\b(\d+)\s*min\b\.?/gi, (_, m) => `${m} ${Number(m) === 1 ? "minuto" : "minutos"}`)
+    .replace(/\b(\d+)\s*s(?:eg)?\b\.?(?=\s|$)/gi, (_, n) => `${n} ${Number(n) === 1 ? "segundo" : "segundos"}`);
+}
+
+/* Datas: 10/03/2027 → "10 de março de 2027"; 10/03 → "10 de março". */
+function falarDatas(t) {
+  return t.replace(/\b(0?[1-9]|[12]\d|3[01])\/(0?[1-9]|1[0-2])(?:\/(\d{4}|\d{2}))?\b/g, (tudo, d, m, a) => {
+    const mes = MESES_FALADOS[Number(m) - 1];
+    if (!mes) return tudo;
+    const ano = a ? ` de ${a.length === 2 ? `20${a}` : a}` : "";
+    return `${Number(d)} de ${mes}${ano}`;
+  });
+}
+
+/* Dinheiro e porcentagem: R$ 39 → "39 reais"; R$ 39,90 → "39 reais e 90
+   centavos"; 58% → "58 por cento". */
+function falarValores(t) {
+  return t
+    .replace(/R\$\s*(\d{1,3}(?:\.\d{3})*|\d+)(?:,(\d{2}))?/g, (_, r, c) => {
+      const reais = r.replace(/\./g, "");
+      const base = `${reais} ${reais === "1" ? "real" : "reais"}`;
+      return c && Number(c) ? `${base} e ${Number(c)} centavos` : base;
+    })
+    .replace(/(\d)\s*%/g, "$1 por cento")
+    .replace(/(\d)\s*[xX]\s*(?=\d|\s|$)/g, "$1 vezes ")
+    .replace(/(\d)\s*[-–]\s*(\d)/g, "$1 a $2");
+}
+
+/* Símbolos que a voz lê errado ou com nome: viram palavra ou pausa. */
+function falarSimbolos(t) {
+  return t
+    .replace(/https?:\/\/\S+|www\.\S+/gi, "o link")
+    .replace(/\s*[—–]\s*|\s+-\s+/g, ", ")
+    .replace(/\s*\.\.\.|…/g, ".")
+    .replace(/\s*&\s*/g, " e ")
+    .replace(/\s*\+\s*/g, " mais ")
+    .replace(/\s*≥\s*/g, " maior ou igual a ")
+    .replace(/\s*≤\s*/g, " menor ou igual a ")
+    .replace(/\s*=\s*/g, " igual a ")
+    .replace(/([a-zà-ú])\s*\/\s*([a-zà-ú])/gi, "$1 ou $2")
+    .replace(/\s*\(\s*/g, ", ").replace(/\s*\)\s*([.,!?;:])?/g, (_, p) => (p ? p : ", "))
+    .replace(/[“”"'«»]/g, "")
+    .replace(/[#*_`~>|^\\{}\[\]<]/g, "")
+    .replace(/\s*,\s*,+/g, ",").replace(/,\s*([.!?;:])/g, "$1")
+    .replace(/\s+([.,!?;:])/g, "$1");
+}
+
 function textoParaFalar(md) {
-  return String(md || "")
+  let t = String(md || "")
+    .replace(/<(ouvi|opcoes|plano|perfil)>[\s\S]*?<\/\1>/gi, " ")
     .replace(/```[\s\S]*?```/g, " ")
     .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
     .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
@@ -415,38 +509,90 @@ function textoParaFalar(md) {
       .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, "")
       .trim())
     .filter(Boolean)
-    .map((l) => (/[.!?:;]$/.test(l) ? l : `${l}.`))
-    .join(" ")
-    .replace(/\s+/g, " ")
-    .trim();
+    .map((l) => (/[.!?:;,]$/.test(l) ? l : `${l}.`))
+    .join(" ");
+  for (const [re, por] of ABREVIACOES_FALADAS) t = t.replace(re, por);
+  t = falarValores(falarDatas(falarHorarios(t)));
+  t = falarSimbolos(t);
+  return t.replace(/\s+/g, " ").replace(/\s+([.,!?;:])/g, "$1").trim();
 }
 
+/* Uma frase por vez, de até uns 220 caracteres: o Chrome corta em silêncio
+   uma fala longa depois de uns quinze segundos, e a pausa natural entre
+   frases é o que faz parecer conversa e não leitura. */
 function frasesParaFalar(t) {
-  const partes = String(t || "").match(/[^.!?]+[.!?]*\s*/g) || [];
+  const partes = String(t || "").match(/[^.!?;]+[.!?;]*\s*/g) || [];
   const saida = [];
   let atual = "";
   for (const p of partes) {
     if (atual && (atual + p).length > 220) { saida.push(atual.trim()); atual = p; } else atual += p;
   }
   if (atual.trim()) saida.push(atual.trim());
-  return saida;
+  return saida.map((f) => f.replace(/;$/, ".")).filter(Boolean);
 }
 
-function vozBrasileira() {
+/* ── qual voz ──────────────────────────────────────────────────────────
+ *
+ * Não existe "a voz do site": a síntese usa as vozes instaladas no
+ * aparelho, e cada sistema traz as suas. A escolha é por nota: feminina,
+ * em português do Brasil, e natural (as "Online (Natural)" do Edge, a do
+ * Google no Chrome, a Luciana no iPhone e no Mac). Vozes masculinas e as
+ * robóticas de compatibilidade só entram quando não há outra. Os nomes
+ * vêm do que cada sistema oferece hoje; uma voz nova sem nome conhecido
+ * ainda entra, só sem o bônus.
+ */
+const VOZES_FEMININAS = /francisca|thalita|yara|elza|let[ií]cia|brenda|manuela|giovanna|leila|luciana|fernanda|vit[oó]ria|camila|maria|helo[ií]sa|raquel|paula|joana|female|feminin|mulher/i;
+const VOZES_MASCULINAS = /ant[oô]nio|daniel|donato|f[aá]bio|humberto|j[uú]lio|nicolau|val[eé]rio|felipe|ricardo|joaquim|mac[eé]rio|male|masculin|homem/i;
+const VOZES_NATURAIS = /natural|neural|online|premium|enhanced|wavenet|neural2|journey|studio/i;
+const VOZES_ROBOTICAS = /compact|espeak|eloquence|pico|flite/i;
+
+function escolherVoz(vozes) {
+  const lista = (vozes || []).filter((v) => v && typeof v.lang === "string");
+  const br = lista.filter((v) => /^pt[-_]BR/i.test(v.lang));
+  const pt = br.length ? br : lista.filter((v) => /^pt/i.test(v.lang));
+  if (!pt.length) return null;
+  const nota = (v) => {
+    const n = String(v.name || "");
+    let p = 0;
+    if (VOZES_FEMININAS.test(n)) p += 40;
+    if (VOZES_MASCULINAS.test(n)) p -= 60;
+    if (VOZES_NATURAIS.test(n)) p += 20;
+    if (/google/i.test(n)) p += 10;      // no Chrome, a voz do Google em pt-BR é feminina e limpa
+    if (VOZES_ROBOTICAS.test(n)) p -= 30;
+    if (v.default) p += 1;
+    return p;
+  };
+  return pt.map((v, i) => ({ v, i, p: nota(v) })).sort((a, b) => b.p - a.p || a.i - b.i)[0].v;
+}
+
+/* As vozes chegam depois da página, por um aviso (voiceschanged); a lista
+   fica guardada para a chamada não começar com a voz errada. */
+let vozesGuardadas = [];
+function vozesDisponiveis() {
   const ss = typeof window !== "undefined" && window.speechSynthesis;
-  const vozes = (ss && ss.getVoices && ss.getVoices()) || [];
-  const br = vozes.filter((v) => /^pt[-_]BR/i.test(v.lang));
-  const pt = br.length ? br : vozes.filter((v) => /^pt/i.test(v.lang));
-  for (const re of [/natural|neural|online/i, /google/i, /luciana|francisca|thalita|maria/i]) {
-    const v = pt.find((x) => re.test(x.name));
-    if (v) return v;
-  }
-  return pt[0] || null;
+  const agora = (ss && typeof ss.getVoices === "function" && ss.getVoices()) || [];
+  if (agora.length) vozesGuardadas = agora;
+  return vozesGuardadas;
 }
+function prepararVozes() {
+  const ss = typeof window !== "undefined" && window.speechSynthesis;
+  if (!ss) return;
+  vozesDisponiveis();
+  if (typeof ss.addEventListener === "function" && !ss.__cadenciaOuvindo) {
+    ss.__cadenciaOuvindo = true;
+    ss.addEventListener("voiceschanged", vozesDisponiveis);
+  }
+}
+const vozBrasileira = () => escolherVoz(vozesDisponiveis());
 
-/* Fala o texto e chama aoFim quando acabar. Devolve como cancelar. Cada
-   frase tem um prazo de segurança: em alguns aparelhos o "terminou" da
-   síntese simplesmente não chega, e a ligação ficaria muda para sempre. */
+/* ── falar ─────────────────────────────────────────────────────────────
+ *
+ * Fala o texto e chama aoFim quando acabar. Devolve como cancelar. Cada
+ * frase tem um prazo de segurança: em alguns aparelhos o "terminou" da
+ * síntese simplesmente não chega, e a ligação ficaria muda para sempre.
+ * Uma voz que falha (as naturais dependem de rede) é trocada pela padrão
+ * do aparelho na mesma frase, em vez de a chamada seguir muda.
+ */
 function falarEmVoz(texto, aoFim) {
   const ss = window.speechSynthesis;
   const frases = frasesParaFalar(textoParaFalar(texto));
@@ -455,25 +601,39 @@ function falarEmVoz(texto, aoFim) {
     return () => {};
   }
   try { ss.cancel(); } catch (e) { /* segue */ }
-  const voz = vozBrasileira();
+  let voz = vozBrasileira();
+  const natural = !!(voz && VOZES_NATURAIS.test(String(voz.name || "")));
   let cancelado = false;
   let i = 0;
   let prazo = null;
   const guardadas = [];   // sem referência, o Chrome às vezes descarta a fala no meio
+  const dizer = (frase, deNovo) => {
+    const u = new window.SpeechSynthesisUtterance(frase);
+    u.lang = "pt-BR";
+    if (voz) u.voice = voz;
+    /* Ritmo de conversa: a voz natural já tem o seu; a comum fica um
+       pouco mais ágil para não arrastar. Tom neutro, sem agudo forçado. */
+    u.rate = natural ? 1 : 1.04;
+    u.pitch = 1;
+    u.onend = proxima;
+    u.onerror = (ev) => {
+      const erro = ev && ev.error;
+      if (cancelado || erro === "interrupted" || erro === "canceled") return;
+      if (voz && !deNovo) { voz = null; dizer(frase, true); return; }
+      proxima();
+    };
+    guardadas.push(u);
+    window.clearTimeout(prazo);
+    prazo = window.setTimeout(proxima, Math.max(5000, frase.length * 110));
+    /* Depois de um cancel o Chrome às vezes fica pausado e não fala. */
+    try { if (ss.paused && ss.resume) ss.resume(); } catch (e) { /* segue */ }
+    ss.speak(u);
+  };
   const proxima = () => {
     window.clearTimeout(prazo);
     if (cancelado) return;
     if (i >= frases.length) { if (aoFim) aoFim(); return; }
-    const frase = frases[i++];
-    const u = new window.SpeechSynthesisUtterance(frase);
-    u.lang = "pt-BR";
-    if (voz) u.voice = voz;
-    u.rate = 1.05;
-    u.onend = proxima;
-    u.onerror = proxima;
-    guardadas.push(u);
-    prazo = window.setTimeout(proxima, Math.max(5000, frase.length * 110));
-    ss.speak(u);
+    dizer(frases[i++], false);
   };
   proxima();
   return () => { cancelado = true; window.clearTimeout(prazo); try { ss.cancel(); } catch (e) { /* segue */ } };
@@ -483,6 +643,7 @@ function falarEmVoz(texto, aoFim) {
    A primeira resposta da mentoria chega depois de uma ida à rede, fora do
    toque, e ficaria muda. Uma fala vazia no próprio toque destrava o resto. */
 function destravarVoz() {
+  prepararVozes();
   try {
     const ss = window.speechSynthesis;
     if (!ss || typeof window.SpeechSynthesisUtterance !== "function") return;
@@ -669,6 +830,7 @@ function ChamadaDeVoz({ perguntar, temConversa, opcoes, aoEncerrar }) {
   /* ── a ligação ───────────────────────────────────────────────────── */
   useEffect(() => {
     aberta.current = true;
+    prepararVozes();
     (async () => {
       try {
         if (navigator.wakeLock && document.visibilityState === "visible") trava.current = await navigator.wakeLock.request("screen");
@@ -712,6 +874,7 @@ function ChamadaDeVoz({ perguntar, temConversa, opcoes, aoEncerrar }) {
       {estado === "ouvindo" && usarGravacao.current ? (
         <Mini style={{ marginTop: 4 }}>gravando: toque em "Terminei de falar" quando acabar</Mini>
       ) : null}
+      <Mini style={{ marginTop: 4 }}>você está falando com a assistente virtual do Cadência Med</Mini>
       <div className="mt-3" style={{ minHeight: 44, maxWidth: 520, fontSize: 14.5, lineHeight: 1.6, color: legenda ? T.ink : T.dim }}>
         {legenda ? `“${legenda}”` : estado === "falando" ? textoParaFalar(resposta).slice(0, 320) : ""}
       </div>
