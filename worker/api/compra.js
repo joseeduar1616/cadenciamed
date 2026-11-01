@@ -43,6 +43,18 @@ function interpretar(corpo) {
   return null;
 }
 
+/* Compara os dois em tempo constante: um "!==" comum desiste no primeiro
+   caractere diferente, e o tempo de resposta contaria, letra a letra, até
+   onde o palpite acertou. */
+function mesmoSegredo(a, b) {
+  const x = String(a || ""); const y = String(b || "");
+  let dif = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i += 1) {
+    dif |= (x.charCodeAt(i % (x.length || 1)) || 0) ^ (y.charCodeAt(i % (y.length || 1)) || 0);
+  }
+  return dif === 0;
+}
+
 export async function onRequest({ request, env }) {
   if (request.method !== "POST") return new Response("Método não permitido", { status: 405 });
 
@@ -60,7 +72,7 @@ export async function onRequest({ request, env }) {
   }
   const url = new URL(request.url);
   const enviado = url.searchParams.get("segredo") || request.headers.get("x-segredo") || "";
-  if (enviado !== segredo) return new Response("não autorizado", { status: 401 });
+  if (!mesmoSegredo(enviado, segredo)) return new Response("não autorizado", { status: 401 });
 
   const conta = contaDeServico(env);
   if (!conta) return new Response("conta de serviço ausente ou inválida", { status: 500 });

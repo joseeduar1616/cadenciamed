@@ -976,7 +976,12 @@ export default function Cadencia() {
         input,select,textarea,button{font-family:inherit}
         input::placeholder,textarea::placeholder{color:var(--ghost)}
         input:focus,select:focus,textarea:focus{border-color:var(--line2)!important}
-        button:focus-visible,input:focus-visible{outline:2px solid var(--neon);outline-offset:3px;border-radius:8px}
+        button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible,summary:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--neon);outline-offset:3px;border-radius:8px}
+        /* Quem pediu menos movimento no aparelho não ganha brilho pulsando,
+           partícula nem transição longa: a tela chega pronta. */
+        @media (prefers-reduced-motion: reduce){
+          *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+        }
         ::-webkit-scrollbar{width:9px;height:9px}
         ::-webkit-scrollbar-track{background:transparent}
         ::-webkit-scrollbar-thumb{background:var(--card3);border-radius:9px}

@@ -41,9 +41,16 @@ export function validadeDoPlano(plano) {
   return Date.now() + (DIAS[plano] || DIAS.mensal) * 86400000;
 }
 
+/* Toda resposta das rotas é por pessoa (vem com token): nunca pode ficar
+   guardada num proxy nem no navegador, e nunca deve ser lida como outro
+   tipo de arquivo. */
 export const json = (corpo, status = 200) => new Response(JSON.stringify(corpo), {
   status,
-  headers: { "Content-Type": "application/json; charset=utf-8" },
+  headers: {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+  },
 });
 
 /* base64url a partir de bytes ou de texto, sem depender do Buffer. */

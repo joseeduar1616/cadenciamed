@@ -84,6 +84,9 @@ function desembrulhar(u) {
 const PROIBIDOS = [
   /^localhost$/i, /^127\./, /^0\./, /^10\./, /^192\.168\./, /^169\.254\./,
   /^172\.(1[6-9]|2\d|3[01])\./, /\.internal$/i, /^\[?::1\]?$/,
+  /* a faixa de operadora (100.64/10), a rede local em IPv6 (fc00::/7) e um
+     IPv4 interno escrito como IPv6 (::ffff:10.0.0.1) */
+  /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./, /^\[?f[cd][0-9a-f]{2}:/i, /^\[?::ffff:/i,
 ];
 
 /* ── figura que mora dentro do Notion ─────────────────────────────────

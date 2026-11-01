@@ -1822,6 +1822,66 @@ No `teste.html` a janela só aparece com `cm-teste-faculdade` no localStorage
 Testes: `testar-colegas.mjs`, o trecho novo do `testar-salas.mjs` e
 `testar-faculdade-tela.mjs`.
 
+## A voz da mentoria (chamada de voz)
+
+A chamada de voz da Mentoria de estudo (`parte26.jsx`, `ChamadaDeVoz`) não
+usa serviço de voz pago: quem fala é a síntese do próprio aparelho (Web
+Speech API, `speechSynthesis`), e quem ouve é o reconhecimento do navegador
+ou, onde ele não existe, a gravação que vai ao servidor junto do pedido
+(`INSTRUCOES_AUDIO`, em `_metodos.js`). Não há provedor nem modelo para
+configurar: cada sistema traz as suas vozes.
+
+**Qual voz.** `escolherVoz(vozes)` dá nota a cada voz instalada e fica com a
+melhor: português do Brasil antes de Portugal; nome feminino conhecido
+(Francisca e Thalita "Online (Natural)" no Edge, a do Google no Chrome,
+Luciana no iPhone e no Mac, Maria no Windows antigo) ganha ponto; voz
+natural/neural ganha ponto; nome masculino (Antonio, Daniel, Felipe…) e voz
+robótica de compatibilidade (compact, espeak) perdem. Sem voz em português,
+devolve nada e a fala sai na voz padrão do aparelho, que é pior do que
+ficar muda só no computador de quem nunca instalou pt-BR. A lista de vozes
+chega depois da página (`voiceschanged`), por isso `prepararVozes()` roda no
+toque que abre a chamada e no início dela.
+
+**O que ela diz.** `textoParaFalar()` converte o texto da IA para o jeito
+que se fala: tira markdown, emoji, link e os blocos `<opcoes>`/`<plano>`;
+horários (19:30 → "19 e 30", 7h → "7 horas", 45 min → "45 minutos"), datas
+(10/03/2027 → "10 de março de 2027"), dinheiro (R$ 39,90 → "39 reais e 90
+centavos"), porcentagem, intervalos (20-30 → "20 a 30"), abreviações (ex.:,
+etc., nº, dias da semana, p/, c/) e símbolos (travessão e parênteses viram
+pausa, barra entre palavras vira "ou"). `frasesParaFalar()` corta em falas
+de até 220 caracteres nas pontas das frases, porque o Chrome cala uma fala
+longa depois de uns quinze segundos. Ritmo 1,0 nas vozes naturais e 1,04
+nas comuns, tom neutro (pitch 1). Se a voz escolhida falhar numa frase (as
+naturais dependem de rede), a mesma frase é repetida na voz padrão em vez de
+a chamada seguir muda. O servidor recebe `INSTRUCOES_VOZ`: frases curtas,
+sem lista nem sigla, números e horários por extenso, sem repetir a mesma
+abertura, e dizer que é a assistente virtual se perguntarem.
+
+**Microfone e turnos.** O microfone fica desligado enquanto ela fala (senão
+ela ouviria a si mesma); "Interromper e falar" cancela a fala e abre o
+microfone. Permissão negada, navegador sem microfone e três silêncios
+seguidos viram aviso na tela e estado "Em pausa", nunca erro. A tela diz
+que se trata da assistente virtual do Cadência Med.
+
+Testes: `testar-voz.mjs` (o texto falado e a escolha da voz, sem
+navegador; o `extrair_voz.py` copia as funções puras para `_voz.mjs`) e
+`testar-chamada-voz.mjs` (o ciclo da ligação no Chromium, com voz,
+microfone e IA de mentira). Nenhum dos dois OUVE o áudio: o som depende da
+voz instalada em cada aparelho, e só dá para conferir de ouvido no próprio
+celular ou computador.
+
+## Cabeçalhos de segurança
+
+O `publicar.py` escreve o `_headers` com um bloco `/*` para todos os
+arquivos: `X-Content-Type-Options: nosniff`, `Referrer-Policy:
+strict-origin-when-cross-origin`, `X-Frame-Options: SAMEORIGIN`,
+`Permissions-Policy` (câmera e microfone só para o próprio site; a chamada
+de voz e a foto do prato usam) e `Strict-Transport-Security` por um ano.
+Sem CSP de propósito: o site tem script embutido e CDN, e uma CSP errada
+derruba tudo calada. As respostas das rotas `/api` (`json()` em `_comum.js`)
+saem com `Cache-Control: no-store` e `nosniff`, porque toda resposta é por
+pessoa.
+
 ## Domínio
 
 Ao acrescentar ou trocar de domínio, três lugares precisam saber, não só a

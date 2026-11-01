@@ -133,7 +133,21 @@ if os.path.exists(EXTRA):
 # ── cabeçalhos, no formato que o Cloudflare Pages lê ──────────────────────
 # O HTML nunca fica em cache, então publicar já aparece na hora. Ícones e o
 # leitor de banco do Anki mudam pouco e podem ficar guardados.
-CABECALHOS = """/index.html
+#
+# O bloco /* vale para tudo: nenhum arquivo é adivinhado como outro tipo
+# (nosniff), o endereço completo não vaza para sites de fora (Referrer),
+# o site não é posto dentro de página alheia (X-Frame), câmera e microfone
+# só para o próprio site (a chamada de voz e a foto do prato usam), e o
+# navegador passa a exigir https por um ano (HSTS). Sem CSP de propósito:
+# o site tem script embutido e CDN, e uma CSP errada derruba tudo calada.
+CABECALHOS = """/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: SAMEORIGIN
+  Permissions-Policy: camera=(self), microphone=(self), geolocation=(), payment=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+
+/index.html
   Cache-Control: no-cache, no-store, must-revalidate
 
 /
