@@ -38,6 +38,8 @@ fonte/_treino.mjs
 fonte/_jogo.mjs
 fonte/_plano_mes.mjs
 fonte/_voz.mjs
+fonte/_voz_ao_vivo.mjs
+fonte/_amostra-voz-ao-vivo.wav
 
 # refeitos por material/capturar.mjs e material/gerar.mjs
 material/capturas/

@@ -1870,6 +1870,64 @@ microfone e IA de mentira). Nenhum dos dois OUVE o áudio: o som depende da
 voz instalada em cada aparelho, e só dá para conferir de ouvido no próprio
 celular ou computador.
 
+## A assistente por voz (Gemini Live)
+
+Um botão flutuante, em qualquer aba do app, abre uma conversa falada em
+tempo real com a assistente virtual do site (`parte39.jsx`,
+`AssistenteDeVoz`). É outra coisa, separada da Mentoria por voz: aqui a
+voz e a escuta são do **Gemini Live** (Google), por WebSocket direto do
+navegador, com a voz **Zephyr** (feminina), `pt-BR`, resposta em áudio,
+legendas dos dois lados e detecção de fala do servidor, que é o que deixa
+a pessoa interromper falando por cima. Dá para desligar o microfone e
+conversar escrevendo. A tela diz o tempo inteiro que é uma inteligência
+artificial.
+
+**A chave fica no servidor.** O botão pede a `/api/voz` (`worker/api/voz.js`)
+um **token efêmero** (`v1alpha/auth_tokens`): vale para uma sessão, precisa
+ser usado em dois minutos, expira em meia hora e vai trancado (`fieldMask`)
+com o modelo, a voz, o idioma, a instrução de sistema e a transcrição. O
+navegador recebe só a URL do WebSocket restrito (`BidiGenerateContentConstrained`)
+e o nome do modelo para o `setup`; com o token não dá para trocar a persona
+nem usar a cota para outra coisa. Quem pode: logado com plano em dia (ou o
+dono), e cada sessão gasta 3 pontos do teto diário (`CUSTO.voz`, em
+`_limites.js`). Sem `GEMINI_API_KEY`, a rota responde 503 e o botão some.
+
+**O que ela sabe** está em `worker/api/_site.js`: a persona (jovem adulta,
+simpática, pt-BR neutro, respostas curtas, um pouco mais rápida, sem lista
+nem sigla, números por extenso, diz que é IA, não dá conduta clínica nem
+cita curso) e o conhecimento do site (abas, planos, teste grátis, cupom,
+senha, dados, suporte), mais o pouco de contexto que o aparelho manda
+(nome, prova, dias que faltam, plano), tratado como dado e não instrução.
+
+**O modelo.** A Live API muda de nome com frequência. A rota lista os
+modelos da chave e escolhe o melhor com `bidiGenerateContent` e áudio
+nativo (`escolherModeloAoVivo`), guardando por uma hora. Para forçar um,
+cadastre `GEMINI_LIVE_MODELO` nas variáveis do Worker; para outra voz
+feminina, `GEMINI_LIVE_VOZ` (Zephyr, Leda, Kore ou Aoede). O dono pode ver a
+lista pela própria rota, com `acao: "modelos"`.
+
+**Áudio.** Microfone com cancelamento de eco, em AudioWorklet (ou
+ScriptProcessor onde não houver), reamostrado para PCM 16 bits a 16 mil
+(`audio/pcm;rate=16000`), em pedaços de 100 ms. A resposta chega em PCM a
+24 mil e é encadeada em `AudioBufferSource`s sem buraco; `interrupted`
+descarta a fila na hora. O `AudioContext` nasce no toque que abre a
+assistente, por causa do iPhone.
+
+Testes: `testar-voz-ao-vivo.mjs` (áudio, mensagens e a rota, sem Google;
+`extrair_voz_ao_vivo.py` copia o miolo puro para `_voz_ao_vivo.mjs`),
+`testar-assistente-voz-tela.mjs` (o ciclo no Chromium, com WebSocket e
+microfone de mentira) e `testar-voz-ao-vivo-real.mjs`, que liga de
+verdade com `GEMINI_API_KEY` no ambiente, conversa por texto e grava a
+resposta em `_amostra-voz-ao-vivo.wav` para ouvir a voz. Só este último
+gasta cota, e só ele prova o timbre.
+
+**Limites e custo (conferir na página de preços da Google antes de abrir
+para todo mundo).** A Live API tem nível gratuito com poucas sessões
+simultâneas e cota por minuto; acima disso cobra por token de áudio de
+entrada e de saída, e um minuto de conversa consome muito mais tokens do
+que uma pergunta de texto. O teto diário por pessoa e o token de uma
+sessão só são o freio do lado do site.
+
 ## Cabeçalhos de segurança
 
 O `publicar.py` escreve o `_headers` com um bloco `/*` para todos os

@@ -1427,6 +1427,13 @@ export default function Cadencia() {
       {/* O bloco da agenda que está contando, visível em qualquer aba. */}
       <BarraBlocoAtivo irPara={setTab} />
 
+      {/* A assistente virtual por voz (Gemini Live), em qualquer aba. Só
+          aparece para quem está logado e com o assistente liberado; o
+          servidor confere de novo ao abrir a sessão (ver parte39.jsx). */}
+      {!needsOnboarding && ready ? (
+        <AssistenteDeVoz nuvem={nuvem} notify={notify} data={data} today={today} ver={ver} />
+      ) : null}
+
       {/* Primeira vez neste aparelho: convida a ligar as notificações
           (uma vez só por aparelho — ver parte21.jsx). */}
       {!needsOnboarding && ready ? (

@@ -38,6 +38,9 @@ export const CUSTO = {
   "refeicao-ia": 2,
   /* O plano do mês inteiro, do PDF: entrada e saída longas, mas uma vez por mês. */
   "plano-ia": 4,
+  /* Uma sessão da assistente por voz (Gemini Live): o token vale para uma
+     ligação de até meia hora, cobrada pela Google por minuto de áudio. */
+  voz: 3,
   /* A prova é comentada em lotes, e cada lote é uma chamada de verdade ao
      modelo. É a rota mais cara do site, com folga. */
   "provas-ia": 12,
