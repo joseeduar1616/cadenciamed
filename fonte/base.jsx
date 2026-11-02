@@ -19,6 +19,7 @@ import {
   Utensils, Droplets, Footprints, Scale, FileSpreadsheet, Salad, BedDouble, Beef,
   Wallet, PiggyBank, Receipt, Presentation, CircleHelp, PartyPopper, PencilLine, ZoomIn, Heart, UserPlus,
   Gamepad2, Crown, Star, Volume2, VolumeX,
+  ClipboardList,
 } from "lucide-react";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip,

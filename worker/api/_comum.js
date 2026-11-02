@@ -254,6 +254,12 @@ export const RECURSOS = [
   { id: "cartoes", nome: "Cartões", padrao: "pro" },
   { id: "revisoes", nome: "Revisões", padrao: "pro" },
   { id: "provas", nome: "Provas", padrao: "pro" },
+  /* O banco de questões: provas de residência com gabarito comentado,
+     para treinar por área, especialidade, tema, prova e ano. Nasce só do
+     dono porque nasce vazio: o dono põe as provas e, quando houver o
+     bastante, libera para quem assina no painel de acessos (regra "pro").
+     A rota /api/banco confere o plano por conta própria. */
+  { id: "banco", nome: "Banco de questões", padrao: "dono" },
   { id: "cronograma", nome: "Cronograma", padrao: "todos" },
   { id: "rotina", nome: "Agenda", padrao: "todos" },
   { id: "amigos", nome: "Amigos", padrao: "todos" },

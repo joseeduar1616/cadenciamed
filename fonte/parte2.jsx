@@ -33,6 +33,10 @@ const DEFAULTS = {
   rolagem: { modo: "mentoria", ate: "", semLugar: [] },
   /* Caderno de erros (parte29): uma ficha por questão errada. */
   erros: [],
+  /* Banco de questões (parte40): o que a pessoa respondeu, por questão.
+     "C1CL" = marcou C, acertou (1), área CL. Compacto de propósito: são
+     milhares de questões, e tudo isto vai junto no documento da conta. */
+  banco: { r: {} },
   /* Folha em branco por aula (parte30): as caixas, o que foi escrito e a
      conferência. A conversa com a IA não fica; o resultado fica. */
   folhas: {},
@@ -375,6 +379,17 @@ function planoDoMesNormalizado(tr, { o, a, txt, num }) {
   return { meta, semana, cardapio, comidas, diario };
 }
 
+/* As respostas do banco de questões, como podem ser guardadas: chave de
+   questão válida, valor no formato curto, e só as mais recentes, para o
+   documento da conta não estourar o limite do Firestore. */
+const MAX_RESPOSTAS_BANCO = 6000;
+function limparBanco(v) {
+  const r = (v && typeof v === "object" && v.r && typeof v.r === "object" && !Array.isArray(v.r)) ? v.r : {};
+  const boas = Object.entries(r)
+    .filter(([k, x]) => /^[a-z0-9]{3,40}-\d{1,4}$/.test(k) && typeof x === "string" && /^[A-F-][01](CL|CI|GO|PE|PR|--)$/.test(x));
+  return { r: Object.fromEntries(boas.slice(-MAX_RESPOSTAS_BANCO)) };
+}
+
 function normalize(raw) {
   const d = raw && typeof raw === "object" ? raw : {};
   const g = d.goals || {}, p = d.pomo || {}, pr = d.profile || {};
@@ -431,6 +446,7 @@ function normalize(raw) {
        página: o que não for copiado aqui se perde. */
     blocos: obj(d.blocos),
     erros: limparErros(d.erros),
+    banco: limparBanco(d.banco),
     folhas: limparFolhas(d.folhas),
     financas: limparFinancas(d.financas),
     estudos: limparEstudos(d.estudos),

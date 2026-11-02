@@ -35,7 +35,7 @@
 const GRUPOS_DE_ABAS = [
   { nome: "Todo dia", abas: ["foco", "cronograma", "cartoes", "assistente", "rotina", "amigos"] },
   { nome: "Estudar", abas: ["hoje", "estudo", "materias", "clinico", "temas"] },
-  { nome: "Fixar", abas: ["revisoes", "erros", "provas"] },
+  { nome: "Fixar", abas: ["revisoes", "erros", "banco", "provas"] },
   { nome: "Acompanhar", abas: ["desempenho", "progresso", "metas", "simulados"] },
   { nome: "Com outras pessoas", abas: ["mentor"] },
   { nome: "Você", abas: ["motivacao", "treino", "financeiro", "planos", "config"] },
@@ -72,7 +72,7 @@ const ICONE_ABA = {
   assistente: Sparkles, cartoes: Layers, revisoes: RotateCcw,
   rotina: CalendarClock, amigos: Users, mentor: User,
   metas: Flame, desempenho: BarChart3, treino: Dumbbell, financeiro: Wallet, simulados: Flag,
-  provas: FileText, erros: NotebookPen,
+  provas: FileText, erros: NotebookPen, banco: ClipboardList,
   progresso: TrendingUp, planos: Zap, config: Settings2, estudo: Presentation, motivacao: Heart,
 };
 
@@ -775,6 +775,7 @@ export default function Cadencia() {
     revisoes: "a escada de revisão", rotina: "a semana e o Google Agenda",
     amigos: "quem estuda com você", mentor: "os seus alunos",
     metas: "simulados, provas e hábitos", desempenho: "acerto por área e matéria",
+    banco: "questões de prova, por tema e ano",
     provas: "prova enviada vira gabarito comentado",
     erros: "o erro de hoje é o acerto da prova",
     treino: "academia, fora da conta do estudo", financeiro: "as suas contas, só para você", simulados: "acerto contra os amigos",
@@ -825,6 +826,7 @@ export default function Cadencia() {
     { id: "cartoes", label: "Cartões", acc: "var(--neon)", badge: cartoesHoje },
     { id: "revisoes", label: "Revisões", acc: "var(--ok)", badge: late.length },
     { id: "erros", label: "Caderno de erros", acc: "var(--warn)", badge: (data.erros || []).filter((e) => e.prox <= today).length },
+    ...(ver.banco ? [{ id: "banco", label: "Banco de questões", acc: "var(--a-CI)" }] : []),
     ...(ver.provas ? [{ id: "provas", label: "Provas", acc: "var(--warn)" }] : []),
     { id: "rotina", label: "Agenda", acc: "var(--a-PE)" },
     { id: "amigos", label: "Amigos", acc: "var(--neon2)", badge: duelosEsperando },
@@ -1328,6 +1330,7 @@ export default function Cadencia() {
               {tab === "metas" && pro && <Metas {...{ data, setData, today, qWeek, notify, ladder, gcal }} />}
               {tab === "mentor" && mentorInfo.mentor && <Mentor {...{ nuvem, notify, mentorInfo }} />}
               {tab === "desempenho" && <Desempenho {...{ data, today, addSession, delSession, notify }} />}
+              {tab === "banco" && ver.banco && <BancoDeQuestoes {...{ data, setData, today, notify, nuvem, souDono }} />}
               {tab === "provas" && ver.provas && <Provas {...{ nuvem, notify }} />}
               {tab === "erros" && <CadernoErros {...{ data, setData, today, notify, nuvem, subjects }} />}
               {tab === "treino" && ver.treino && <Treino {...{ data, setData, notify, today, nuvem }} />}

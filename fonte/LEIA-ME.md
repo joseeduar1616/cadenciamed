@@ -1870,6 +1870,61 @@ microfone e IA de mentira). Nenhum dos dois OUVE o áudio: o som depende da
 voz instalada em cada aparelho, e só dá para conferir de ouvido no próprio
 celular ou computador.
 
+## Banco de questões
+
+A aba **Banco de questões** (`parte40.jsx`, `BancoDeQuestoes`; grupo Fixar,
+recurso `banco`, padrão "dono" enquanto o banco é montado; liberar para quem assina é mudar a regra para "pro" no painel de acessos) é um acervo de questões de prova de
+residência com gabarito comentado, para treinar filtrando por **área,
+especialidade, tema, prova (banca) e ano**, e também "só as que não
+respondi" e "só as que errei". A questão aparece fechada; depois da
+escolha vêm a resposta, o comentário de TODAS as alternativas, a segurança
+e a fonte do comentário, e um botão que manda a errada para o caderno de
+erros. O que a pessoa respondeu fica em `data.banco.r` (passa pelo
+`normalize()`, `limparBanco` no `parte2.jsx`) num formato curto, `"C1CL"`
+= marcou C, acertou, área CL, no máximo 6000 respostas, para o documento
+da conta não estourar o limite do Firestore.
+
+**De onde vêm as questões.** Das provas oficiais que o dono comenta e
+publica na aba Provas (PDF da banca → `/api/provas-ia` → conferência →
+publicar com código). No fim da aba Banco, o dono vê o painel "Montar o
+banco": escolhe uma prova publicada, informa a banca e o ano, cola o
+**gabarito oficial** e clica em classificar. A rota `/api/banco`
+(`worker/api/banco.js`, ação `indexar`) lê a prova, pede à IA só a
+**classificação** (área, especialidade da lista do `curriculo.js`, tema
+curto), em lotes de 25, e grava uma questão por documento em
+`banco/{codigo}-{numero}`, mais o resumo da prova em `banco_provas/{codigo}`
+(contagens por área, especialidade e tema, divergentes, anuladas). Refazer
+apaga o que a prova tinha antes; `remover` tira a prova inteira. Nada aqui
+cria questão nem atribui a uma banca uma questão que não estava na prova.
+
+**O gabarito oficial manda.** `lerGabarito` aceita "1-A 2-C", "01 – B",
+"1) D", "Questão 3: anulada", asterisco ou X para anulada, e só a
+sequência de letras. A resposta que conta para acerto é a oficial; quando
+o comentário da IA defende outra letra, a questão fica marcada como
+divergente e a tela avisa em vez de escolher em silêncio. Sem gabarito
+colado, vale a do comentário, e a tela diz isso.
+
+**Leitura.** Só com plano em dia (ou o dono), conferido na rota. As coleções
+`banco` e `banco_provas` são fechadas nas regras do Firestore. A busca usa
+só filtros de igualdade e ordem pelo nome do documento (sem índice
+composto para criar), 20 por página, com cursor; o resumo das provas fica
+5 minutos em memória no Worker.
+
+**Figuras.** As provas publicadas guardam o texto, não a imagem (ela fica
+no aparelho de quem comentou). Questão com `[[img:...]]` aparece com um
+aviso no lugar da figura e fica marcada (`figura`) no banco.
+
+**Tamanho e custo.** Cada prova entra a partir do PDF oficial que o dono
+envia. Comentar custa uma chamada à IA a cada 20 questões
+(`/api/provas-ia`), e classificar, uma a cada 25. Para chegar a milhares
+de questões é preciso enviar as provas uma a uma; a camada gratuita do
+Gemini limita quantas chamadas cabem por dia.
+
+Testes: `testar-banco.mjs` (gabarito, classificação, permissões, lotes,
+divergência, busca e paginação, com Firestore e IA de mentira) e
+`testar-banco-tela.mjs index.html` (aba, filtros encadeados, treino,
+caderno de erros, painel do dono e celular, no Chromium).
+
 ## A assistente por voz (Gemini Live)
 
 Um botão flutuante, em qualquer aba do app, abre uma conversa falada em

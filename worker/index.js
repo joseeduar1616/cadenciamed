@@ -37,6 +37,7 @@ import { onRequest as folhaIa } from "./api/folha-ia.js";
 import { onRequest as estudoIa } from "./api/estudo-ia.js";
 import { onRequest as motivacaoIa } from "./api/motivacao-ia.js";
 import { onRequest as voz } from "./api/voz.js";
+import { onRequest as banco } from "./api/banco.js";
 
 const ROTAS = {
   "/api/assistente": assistente,
@@ -69,6 +70,7 @@ const ROTAS = {
   "/api/estudo-ia": estudoIa,
   "/api/motivacao-ia": motivacaoIa,
   "/api/voz": voz,
+  "/api/banco": banco,
 };
 
 /* ── quem pode chamar de outro endereço ────────────────────────────────

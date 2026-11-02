@@ -123,6 +123,17 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // O banco de questões, em banco/{codigo}-{numero}, e o resumo de cada
+    // prova que entrou nele, em banco_provas/{codigo}. Fechados para o
+    // navegador: é conteúdo do plano pago, e listar a coleção pelo console
+    // entregaria o acervo inteiro. Quem lê e grava é a rota /api/banco.
+    match /banco/{id} {
+      allow read, write: if false;
+    }
+    match /banco_provas/{codigo} {
+      allow read, write: if false;
+    }
+
     // Papel de mentor e a lista de alunos de cada mentor (por uid, vindo
     // de emails/{uid}). Só o servidor mexe aqui: /api/cupom concede o
     // papel ao resgatar um cupom de mentor, e /api/mentor adiciona, remove e lê
