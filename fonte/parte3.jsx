@@ -124,9 +124,13 @@ function decidirNuvem(e) {
      passou por cima de uma semana de estudo gravada por outro. A cópia
      daqui é guardada antes de ser substituída (versões anteriores). */
   if (e.primeira && Number(e.stampLocal || 0) > 0) return "baixar";
-  /* Primeiro encontro de verdade (este aparelho nunca viu esta conta) com
-     mais conteúdo aqui do que lá: o aparelho ganha, e manda o que tem. */
-  if (e.primeira && Number(e.riquezaLocal) > Number(e.riquezaNuvem)) return "manter-local";
+  /* Existindo documento na conta, a conta vence SEMPRE, mesmo no primeiro
+     encontro e mesmo com mais conteúdo aqui. Antes o aparelho "mais cheio"
+     ganhava, e foi assim, duas vezes, que uma cópia de setembro parada num
+     aparelho sem marca de sincronização apagou semanas de estudo gravadas
+     por outro (a marca só existe em quem sincronizou depois dela nascer).
+     O que estava aqui não se perde: vai para as versões anteriores antes
+     de ser substituído, e a pessoa pode voltar para ele de propósito. */
   return "baixar";
 }
 
@@ -275,11 +279,6 @@ function useNuvem(data, setData, notify, pronto, pro) {
       primeira = false;
 
       if (oQue === "ignorar") return;
-      if (oQue === "manter-local") {
-        notify("Mantive os dados deste aparelho e enviei para a conta.");
-        enviar();
-        return;
-      }
       {
         /* O que estava neste aparelho vira uma versão guardada ANTES de
            a conta escrever por cima. Vale para toda carga vinda da nuvem,
@@ -297,7 +296,11 @@ function useNuvem(data, setData, notify, pronto, pro) {
         gravarStamp(usuario.uid, stamp.current);
         setData((p) => ({ ...novo, theme: p.theme, layout: p.layout }));
         setUltima(Date.now());
-        notify(era ? "Dados da sua conta carregados." : "Atualizado a partir de outro aparelho.");
+        notify(era
+          ? (riqueza(dataRef.current) > riqueza(novo)
+            ? "Dados da sua conta carregados. O que estava neste aparelho ficou guardado em Versões anteriores, em Configurações."
+            : "Dados da sua conta carregados.")
+          : "Atualizado a partir de outro aparelho.");
       }
     }, () => setErro("Não consegui ler os dados na nuvem."));
     return parar;

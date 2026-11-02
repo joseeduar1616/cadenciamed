@@ -43,10 +43,14 @@ caso('aparelho vazio encontra conta com dados: baixa',
   { existe: true, daCache: false, primeira: true, mesmoAparelho: false,
     atualizadoEm: 1000, stampLocal: 0, riquezaLocal: 0, riquezaNuvem: 900 }, 'baixar');
 
-/* ── aparelho cheio achando a conta pobre ─────────────────────────── */
-caso('aparelho com mais conteúdo que a conta: o aparelho ganha e sobe',
+/* ── aparelho cheio achando a conta pobre ───────────────────────────
+ * Já foi "o aparelho ganha". Duas vezes uma cópia velha e cheia, num
+ * aparelho sem marca de sincronização, passou por cima de semanas de
+ * estudo. Existindo documento na conta, a conta vence; o que estava no
+ * aparelho vai para as versões anteriores, e a pessoa decide. */
+caso('aparelho com mais conteúdo que a conta, sem nunca ter sincronizado: ainda assim baixa (a cópia local vai para as versões)',
   { existe: true, daCache: false, primeira: true, mesmoAparelho: false,
-    atualizadoEm: 1000, stampLocal: 0, riquezaLocal: 900, riquezaNuvem: 3 }, 'manter-local');
+    atualizadoEm: 1000, stampLocal: 0, riquezaLocal: 900, riquezaNuvem: 3 }, 'baixar');
 
 /* Empate não conta como vitória do aparelho: na dúvida vale a conta, que é
    o que os outros aparelhos também vão ver. */
