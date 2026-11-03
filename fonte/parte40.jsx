@@ -118,7 +118,7 @@ function QuestaoDoBanco({ q, resposta, aoResponder, aoProxima, aoCaderno, n, tot
       <div className="flex items-center gap-2 flex-wrap" data-teste="banco-meta">
         <Mini style={{ fontFamily: F_MONO }}>{n} de {total}{temProxima ? "+" : ""}</Mini>
         <span style={{ fontSize: 12, fontWeight: 700, borderRadius: 99, padding: "2px 10px", background: soft("var(--neon)", 14), color: T.ink }}>
-          {q.instituicao} {q.ano}{q.numero ? ` · questão ${q.numero}` : ""}
+          {q.autoral ? "Autoral Cadência Med" : `${q.instituicao} ${q.ano || ""}`}{q.numero ? ` · questão ${q.numero}` : ""}
         </span>
         {q.area ? <span style={{ fontSize: 12, fontWeight: 600, borderRadius: 99, padding: "2px 10px", background: soft(aColor(q.area), 16), color: aColor(q.area) }}>{aLabel(q.area)}</span> : null}
         {q.esp ? <span style={{ fontSize: 12, color: T.dim }}>{q.esp}</span> : null}
@@ -160,7 +160,8 @@ function QuestaoDoBanco({ q, resposta, aoResponder, aoProxima, aoCaderno, n, tot
           <div style={{ fontSize: 16, fontWeight: 800, color: q.anulada ? T.warn : acertou ? "var(--ok)" : "var(--bad)" }}>
             {q.anulada ? "Questão anulada pela banca." : acertou ? "Você acertou." : `Você marcou ${LETRAS_BANCO[escolhi]}. A resposta é ${LETRAS_BANCO[certa]}.`}
           </div>
-          {q.oficial >= 0 ? <Mini>Gabarito oficial da banca: {LETRAS_BANCO[q.oficial]}.</Mini> : <Mini>Sem gabarito oficial cadastrado: a resposta é a do comentário.</Mini>}
+          {q.autoral ? <Mini data-teste="banco-autoral">Questão autoral do Cadência Med, escrita com base nas diretrizes citadas abaixo. Não saiu de prova de banca.</Mini>
+            : q.oficial >= 0 ? <Mini>Gabarito oficial da banca: {LETRAS_BANCO[q.oficial]}.</Mini> : <Mini>Sem gabarito oficial cadastrado: a resposta é a do comentário.</Mini>}
           {q.divergente ? (
             <div className="rounded-xl px-3.5 py-2.5" data-teste="banco-divergente" style={{ fontSize: 13.5, lineHeight: 1.6, color: T.ink, background: soft("var(--warn)", 12), border: `1px solid ${soft("var(--warn)", 40)}` }}>
               O gabarito oficial é {LETRAS_BANCO[q.oficial]}, mas o comentário abaixo de cada alternativa defende {LETRAS_BANCO[q.certaIA]}. Pode ser conduta que mudou depois da prova, ou erro do comentário: confira na fonte antes de decorar.
@@ -377,7 +378,7 @@ function BancoDeQuestoes({ data, setData, today, notify, nuvem, souDono }) {
       marquei: `${LETRAS_BANCO[i]}) ${q.alternativas[i] || ""}`,
       certa: `${LETRAS_BANCO[q.certa]}) ${q.alternativas[q.certa] || ""}`,
       porque: q.comentarios[q.certa] || "",
-      fonte: `${q.instituicao} ${q.ano}`,
+      fonte: q.autoral ? "Banco Cadência Med (autoral)" : `${q.instituicao} ${q.ano}`,
       motivo: "lacuna",
     });
     if (!ficha) return;

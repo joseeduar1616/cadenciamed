@@ -1,0 +1,48 @@
+# Põe no banco de questões um lote de questões autorais do Cadência Med.
+#
+# Os lotes ficam em fonte/banco-autoral/, cifrados com a chave pública da
+# conta de serviço: o repositório é público, e só o fluxo, com o segredo
+# FIREBASE_SERVICE_ACCOUNT, consegue abrir. Detalhes em fonte/importar-banco.mjs.
+name: Importar questões autorais
+
+on:
+  # Lote novo no main entra sozinho. O push também registra o fluxo (o ramo
+  # padrão do repositório não é o main).
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/importar-banco.yml
+      - fonte/importar-banco.mjs
+      - fonte/banco-autoral/**
+  workflow_dispatch:
+
+concurrency:
+  group: importar-banco
+  cancel-in-progress: false
+
+jobs:
+  importar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Conferir se há conta de serviço
+        env:
+          TEM: ${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' }}
+        run: |
+          if [ "$TEM" != "true" ]; then
+            echo "::error::Falta o segredo FIREBASE_SERVICE_ACCOUNT em Settings › Secrets and variables › Actions."
+            exit 1
+          fi
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Importar
+        run: node fonte/importar-banco.mjs

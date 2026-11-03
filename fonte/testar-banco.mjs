@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 /* Testa o banco de questões (/api/banco) sem Firebase e sem IA de verdade.
  *
  * O que se prova: o gabarito oficial colado do PDF da banca é lido nos
@@ -121,6 +122,22 @@ const pedir = async (corpo) => {
   for (const a of CURSO) { (doCurso[a.area] = doCurso[a.area] || []); if (!doCurso[a.area].includes(a.esp)) doCurso[a.area].push(a.esp); }
   if (JSON.stringify(Object.keys(doCurso).sort().map((k) => [k, doCurso[k]])) === JSON.stringify(Object.keys(B.ESPECIALIDADES).sort().map((k) => [k, B.ESPECIALIDADES[k]]))) ok('as especialidades do banco são exatamente as do cronograma (curriculo.js)');
   else falha('especialidades do banco divergem do cronograma: ' + JSON.stringify(B.ESPECIALIDADES));
+}
+
+/* ── 2b. questão autoral ─────────────────────────────────────────────── */
+{
+  const doc = (autoral) => ({ name: 'projects/x/databases/(default)/documents/banco/autoral-7', fields: {
+    prova: { stringValue: 'autoral' }, instituicao: { stringValue: 'Cadência Med (autoral)' }, ano: { integerValue: '0' }, numero: { integerValue: '7' },
+    area: { stringValue: 'PR' }, esp: { stringValue: 'SUS' }, tema: { stringValue: 'Princípios do SUS' },
+    ...(autoral ? { autoral: { booleanValue: true } } : {}),
+    q: { stringValue: JSON.stringify({ enunciado: 'e', alternativas: ['a', 'b', 'c', 'd', 'e'], comentarios: ['1', '2', '3', '4', '5'], certa: 3 }) },
+  } });
+  const q = B.questaoDoBanco(doc(true)), r = B.questaoDoBanco(doc(false));
+  if (q && q.autoral === true && q.certa === 3 && q.oficial === -1 && r && r.autoral === false) ok('questão autoral vem marcada como autoral, com a resposta do comentário');
+  else falha('autoral: ' + JSON.stringify([q, r]));
+  const tela = readFileSync(new URL('./parte40.jsx', import.meta.url), 'utf8');
+  if (/q\.autoral \? "Autoral Cadência Med"/.test(tela) && /Não saiu de prova de banca/.test(tela)) ok('a tela mostra a autoral como autoral, nunca como prova de banca');
+  else falha('a tela não marca a questão autoral');
 }
 
 /* ── 3. filtros da busca ─────────────────────────────────────────────── */

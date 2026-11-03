@@ -231,6 +231,8 @@ export function questaoDoBanco(d) {
     divergente: booleano(f.divergente),
     fonte: q.fonte || "", seguranca: q.seguranca || "media", avisos: q.avisos || "",
     figura: booleano(f.figura),
+    /* escrita pelo Cadência Med, não saiu de prova de banca */
+    autoral: booleano(f.autoral),
   };
 }
 
