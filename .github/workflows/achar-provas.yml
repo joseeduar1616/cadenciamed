@@ -7,6 +7,13 @@
 name: Achar provas oficiais
 
 on:
+  # O push registra o fluxo (o ramo padrão do repositório não é o main) e já
+  # roda uma vez com as páginas padrão abaixo.
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/achar-provas.yml
   workflow_dispatch:
     inputs:
       paginas:
@@ -23,8 +30,8 @@ jobs:
     steps:
       - name: Listar PDFs
         env:
-          PAGINAS: ${{ github.event.inputs.paginas }}
-          FILTRO: ${{ github.event.inputs.filtro }}
+          PAGINAS: ${{ github.event.inputs.paginas || 'https://www.gov.br/inep/pt-br/areas-de-atuacao/avaliacao-e-exames-educacionais/revalida/provas-e-gabaritos https://www.gov.br/ebserh/pt-br/ensino-e-pesquisa/enare https://conhecimento.fgv.br/concursos/enare24 https://conhecimento.fgv.br/concursos/enare25 https://www.fuvest.br/residencia-medica/ https://www.amrigs.org.br/ https://www.aremg.org.br/' }}
+          FILTRO: ${{ github.event.inputs.filtro || 'prova|gabarito|caderno|objetiva|questo' }}
         run: |
           set -uo pipefail
           python3 - <<'PY'
