@@ -1,0 +1,65 @@
+# Procura PDFs de provas e gabaritos nas páginas oficiais das bancas.
+#
+# Só lista: abre cada página dada, segue até dois níveis de links da mesma
+# página e imprime os endereços de PDF que parecem prova ou gabarito de
+# residência médica. Não baixa nem grava nada. Serve para escolher o que
+# o importador do banco de questões vai buscar.
+name: Achar provas oficiais
+
+on:
+  workflow_dispatch:
+    inputs:
+      paginas:
+        description: "Endereços das páginas, separados por espaço"
+        required: true
+      filtro:
+        description: "Palavras que o link do PDF precisa ter (regex, sem acento)"
+        required: false
+        default: "prova|gabarito|caderno|objetiva"
+
+jobs:
+  achar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Listar PDFs
+        env:
+          PAGINAS: ${{ github.event.inputs.paginas }}
+          FILTRO: ${{ github.event.inputs.filtro }}
+        run: |
+          set -uo pipefail
+          python3 - <<'PY'
+          import os, re, urllib.request, urllib.parse, ssl
+          ua = {"User-Agent": "Mozilla/5.0 (compatible; CadenciaMed-indexador/1.0)"}
+          filtro = re.compile(os.environ.get("FILTRO") or "prova|gabarito", re.I)
+          vistos, pdfs = set(), {}
+          def abrir(u):
+              try:
+                  r = urllib.request.urlopen(urllib.request.Request(u, headers=ua), timeout=25)
+                  tipo = r.headers.get("Content-Type", "")
+                  if "html" not in tipo: return ""
+                  return r.read(3_000_000).decode("utf-8", "ignore")
+              except Exception as e:
+                  print("  falhou", u, type(e).__name__, str(e)[:80]); return ""
+          def links(base, html):
+              for m in re.finditer(r'href=["\']([^"\'#]+)', html, re.I):
+                  yield urllib.parse.urljoin(base, m.group(1).strip())
+          for pagina in os.environ["PAGINAS"].split():
+              print("==", pagina)
+              fila = [(pagina, 0)]
+              host = urllib.parse.urlparse(pagina).netloc
+              while fila:
+                  u, nivel = fila.pop(0)
+                  if u in vistos or len(vistos) > 400: continue
+                  vistos.add(u)
+                  html = abrir(u)
+                  for l in links(u, html):
+                      ll = urllib.parse.unquote(l).lower()
+                      if ll.endswith(".pdf") or ".pdf?" in ll:
+                          if filtro.search(ll): pdfs.setdefault(l, u)
+                      elif nivel < 2 and urllib.parse.urlparse(l).netloc == host and l.startswith("http"):
+                          if re.search(r"resid|prova|gabarit|enare|edital|processo|selet|exame", ll):
+                              fila.append((l, nivel + 1))
+          print()
+          print(f"{len(pdfs)} PDFs encontrados em {len(vistos)} páginas")
+          for l in sorted(pdfs): print("PDF", l)
+          PY
