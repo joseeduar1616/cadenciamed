@@ -169,6 +169,9 @@ class SessaoAoVivo {
   /* O AudioContext nasce no toque que abre a assistente: fora de um
      toque, o iPhone cria o contexto suspenso e nada toca. */
   prepararAudio() {
+    /* No iPhone, sem isto o áudio da página fica mudo com a chave de
+       silencioso ligada (Safari 16.4 em diante); play-and-record porque o microfone fica aberto. */
+    try { if (navigator.audioSession && navigator.audioSession.type !== "play-and-record") navigator.audioSession.type = "play-and-record"; } catch (e) { /* Safari antigo */ }
     if (this.ctx) return this.ctx;
     const Ctx = window.AudioContext || window.webkitAudioContext;
     this.ctx = new Ctx();

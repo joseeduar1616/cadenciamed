@@ -649,17 +649,53 @@ function falarEmVoz(texto, aoFim) {
  * texto inteiro. Se a rota falhar (sem chave, limite do dia, rede), o que
  * falta é dito pela voz do aparelho, como antes: a ligação nunca fica muda.
  */
-let contextoFalaMentora = null;
+/* No iPhone, o áudio da página (Web Audio) fica mudo com a chave de
+   silencioso ligada; um <audio> comum, não. A voz do aparelho tocava no
+   silencioso e a da mentora não, e parecia que ela não falava. Então a
+   fala vai num <audio>, destravado no toque que abre a chamada, e a página
+   avisa o Safari (audioSession) que é fala e escuta (play-and-record), que o silencioso não cala. */
+function modoReproducao() {
+  try { if (navigator.audioSession && navigator.audioSession.type !== "play-and-record") navigator.audioSession.type = "play-and-record"; } catch (e) { /* Safari antigo */ }
+}
+
+/* PCM de 16 bits (o que o Gemini TTS devolve) num arquivo WAV. */
+function wavDePcm(base64, taxa) {
+  const pcm = base64ParaBytes(base64);
+  const cab = new ArrayBuffer(44);
+  const v = new DataView(cab);
+  const escrever = (o, t) => { for (let i = 0; i < t.length; i += 1) v.setUint8(o + i, t.charCodeAt(i)); };
+  const r = Number(taxa) || 24000;
+  escrever(0, "RIFF"); v.setUint32(4, 36 + pcm.byteLength, true); escrever(8, "WAVE");
+  escrever(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, r, true); v.setUint32(28, r * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  escrever(36, "data"); v.setUint32(40, pcm.byteLength, true);
+  return new Blob([cab, pcm], { type: "audio/wav" });
+}
+
+const WAV_SILENCIO = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAwF0AAIC7AAACABAAZGF0YQAAAAA=";
+let elementoFalaMentora = null;
 function audioDaMentora() {
   try {
-    if (!contextoFalaMentora) {
-      const C = window.AudioContext || window.webkitAudioContext;
-      if (!C) return null;
-      contextoFalaMentora = new C();
+    modoReproducao();
+    if (!elementoFalaMentora) {
+      if (typeof window.Audio !== "function") return null;
+      elementoFalaMentora = new window.Audio();
+      elementoFalaMentora.preload = "auto";
+      elementoFalaMentora.setAttribute("playsinline", "");
     }
-    if (contextoFalaMentora.state === "suspended" && contextoFalaMentora.resume) contextoFalaMentora.resume().catch(() => {});
-    return contextoFalaMentora;
+    return elementoFalaMentora;
   } catch (e) { return null; }
+}
+/* Chamado dentro do toque: um play() curto e mudo destrava o elemento para
+   os play() que vêm depois, fora do toque, quando a resposta chegar. */
+function destravarAudioDaMentora() {
+  const a = audioDaMentora();
+  if (!a) return;
+  try {
+    a.src = WAV_SILENCIO;
+    const p = a.play();
+    if (p && p.catch) p.catch(() => {});
+  } catch (e) { /* segue: a voz do aparelho é a reserva */ }
 }
 
 function pedacosDaFala(texto) {
@@ -675,12 +711,12 @@ function pedacosDaFala(texto) {
 }
 
 function falarComVozDaMentora(texto, nuvem, aoFim) {
-  const ctx = audioDaMentora();
+  const el = audioDaMentora();
   const pedacos = pedacosDaFala(texto);
-  if (!ctx || !pedacos.length || !nuvem || !nuvem.usuario) return falarEmVoz(texto, aoFim);
+  if (!el || !pedacos.length || !nuvem || !nuvem.usuario) return falarEmVoz(texto, aoFim);
   let cancelado = false;
   let cancelarAparelho = null;
-  const fontes = new Set();
+  let urlAtual = "";
   const pedidos = [];
   const pedir = (i) => {
     if (!pedidos[i]) {
@@ -694,19 +730,21 @@ function falarComVozDaMentora(texto, nuvem, aoFim) {
     }
     return pedidos[i];
   };
-  const tocar = (dados) => new Promise((pronto) => {
-    const f32 = pcm16ParaFloat32(base64ParaBytes(dados.audio));
-    if (!f32.length) { pronto(); return; }
-    const buf = ctx.createBuffer(1, f32.length, Number(dados.taxa) || 24000);
-    buf.getChannelData(0).set(f32);
-    const fonte = ctx.createBufferSource();
-    fonte.buffer = buf;
-    fonte.connect(ctx.destination);
+  /* Toca um pedaço e resolve quando acabar. Se o navegador recusar o
+     play (não destravou), rejeita, e o resto vai pela voz do aparelho. */
+  const tocar = (dados) => new Promise((pronto, recusou) => {
+    if (urlAtual) { try { URL.revokeObjectURL(urlAtual); } catch (e) { /* segue */ } }
+    urlAtual = URL.createObjectURL(wavDePcm(dados.audio, dados.taxa));
+    let acabou = false;
+    const fim = () => { if (acabou) return; acabou = true; window.clearTimeout(prazo); el.onended = null; el.onerror = null; pronto(); };
+    const segundos = (base64ParaBytes(dados.audio).byteLength / 2) / (Number(dados.taxa) || 24000);
     /* prazo de segurança, como na voz do aparelho: o "terminou" às vezes não chega */
-    const prazo = window.setTimeout(() => { fontes.delete(fonte); pronto(); }, buf.duration * 1000 + 1500);
-    fonte.onended = () => { window.clearTimeout(prazo); fontes.delete(fonte); pronto(); };
-    fontes.add(fonte);
-    fonte.start();
+    const prazo = window.setTimeout(fim, segundos * 1000 + 2500);
+    el.onended = fim;
+    el.onerror = () => { if (acabou) return; acabou = true; window.clearTimeout(prazo); recusou(new Error("áudio")); };
+    el.src = urlAtual;
+    const p = el.play();
+    if (p && p.catch) p.catch((e) => { if (acabou) return; acabou = true; window.clearTimeout(prazo); recusou(e); });
   });
   (async () => {
     for (let i = 0; i < pedacos.length; i += 1) {
@@ -721,14 +759,19 @@ function falarComVozDaMentora(texto, nuvem, aoFim) {
         return;
       }
       if (cancelado) return;
-      await tocar(dados);
+      try {
+        await tocar(dados);
+      } catch (e) {
+        if (cancelado) return;
+        cancelarAparelho = falarEmVoz(pedacos.slice(i).join(" "), aoFim);
+        return;
+      }
     }
     if (!cancelado && aoFim) aoFim();
   })();
   return () => {
     cancelado = true;
-    for (const f of fontes) { try { f.onended = null; f.stop(); } catch (e) { /* já parou */ } }
-    fontes.clear();
+    try { el.onended = null; el.pause(); } catch (e) { /* já parou */ }
     if (cancelarAparelho) cancelarAparelho();
   };
 }
@@ -738,7 +781,7 @@ function falarComVozDaMentora(texto, nuvem, aoFim) {
    toque, e ficaria muda. Uma fala vazia no próprio toque destrava o resto. */
 function destravarVoz() {
   prepararVozes();
-  audioDaMentora();   // o áudio da voz da mentora também só destrava num toque
+  destravarAudioDaMentora();   // o áudio da voz da mentora também só destrava num toque
   try {
     const ss = window.speechSynthesis;
     if (!ss || typeof window.SpeechSynthesisUtterance !== "function") return;

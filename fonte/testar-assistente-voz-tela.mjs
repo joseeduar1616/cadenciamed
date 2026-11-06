@@ -60,6 +60,9 @@ function falsos() {
     localStorage.setItem('cadencia:v3:convite-notificacoes-aparelho', 'teste');
     if (!localStorage.getItem('cadencia:v3')) localStorage.setItem('cadencia:v3', JSON.stringify({ profile: { name: 'Teste', onboarded: true, examDate: '2027-03-10' }, theme: 'dark' }));
   } catch (e) { /* noop */ }
+  window.__wavTocados = 0;
+  const playOriginal = HTMLMediaElement.prototype.play;
+  HTMLMediaElement.prototype.play = function () { if (/^blob:/.test(this.src)) window.__wavTocados += 1; return playOriginal.apply(this, arguments); };
   window.__ws = [];
   window.__enviado = [];
   const silencio = btoa(String.fromCharCode.apply(null, new Uint8Array(4800)));
@@ -283,6 +286,10 @@ const enviados = (pag) => pag.evaluate(() => window.__enviado);
     const fala = pedidosVoz.find((p) => p.acao === 'falar');
     if (fala && /Vamos montar a sua semana/.test(fala.texto) && fala.token) ok('a resposta da Mentoria é falada pela voz da Google (a mesma da assistente), com o token da conta');
     else falha('fala da mentoria: ' + JSON.stringify(pedidosVoz).slice(0, 300));
+    const voltou = await esperar(pag, async () => /Ouvindo|Pode falar/i.test(await pag.evaluate(() => (document.querySelector('[data-teste="estado-voz"]') || {}).innerText || '')), 8000);
+    const tocou = await pag.evaluate(() => window.__wavTocados || 0);
+    if (voltou && tocou >= 1) ok('o áudio da fala toca até o fim (num <audio>, que o silencioso do iPhone não cala) e a chamada volta a ouvir');
+    else falha('a fala não tocou no <audio> (' + tocou + ') ou não voltou a ouvir: ' + await pag.evaluate(() => (document.querySelector('[data-teste="estado-voz"]') || {}).innerText || ''));
   } else falha('não achei a chamada de voz da Mentoria');
   await ctx.close();
 }
