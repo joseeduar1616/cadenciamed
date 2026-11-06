@@ -102,15 +102,22 @@ function lerMensagemAoVivo(m) {
       if (d && d.data && /^audio\/pcm/.test(String(d.mimeType || ""))) {
         const taxa = Number((/rate=(\d+)/.exec(d.mimeType) || [])[1]) || TAXA_SAIDA;
         eventos.push({ tipo: "audio", base64: d.data, taxa });
-      } else if (p && typeof p.text === "string" && p.text) {
-        eventos.push({ tipo: "disse", texto: p.text });
       }
+      /* Texto dentro do modelTurn NÃO é o que ela fala: nos modelos de
+         áudio nativo é o raciocínio dela, em inglês ("**Considering the
+         user's request**..."). Era isso que aparecia na tela. A legenda vem
+         só da transcrição do áudio (outputTranscription), logo abaixo. */
     }
     if (sc.inputTranscription && sc.inputTranscription.text) eventos.push({ tipo: "ouvi", texto: sc.inputTranscription.text });
     if (sc.outputTranscription && sc.outputTranscription.text) eventos.push({ tipo: "disse", texto: sc.outputTranscription.text });
     if (sc.turnComplete) eventos.push({ tipo: "fimDaVez" });
   }
   if (m.goAway) eventos.push({ tipo: "vaiEncerrar", em: Number((m.goAway.timeLeft || "").replace(/s$/, "")) || 0 });
+  /* A mentora pediu para fazer algo no painel (registrar sessão, pendência,
+     item do plano): quem faz é a página, que responde com o resultado. */
+  if (m.toolCall && Array.isArray(m.toolCall.functionCalls) && m.toolCall.functionCalls.length) {
+    eventos.push({ tipo: "ferramenta", chamadas: m.toolCall.functionCalls.filter((c) => c && c.name).slice(0, 10) });
+  }
   return eventos;
 }
 
@@ -216,7 +223,17 @@ class SessaoAoVivo {
     if (e.tipo === "ouvi") { if (a.aoOuvir) a.aoOuvir(e.texto); return; }
     if (e.tipo === "disse") { if (a.aoDizer) a.aoDizer(e.texto); return; }
     if (e.tipo === "fimDaVez") { if (a.aoFimDaVez) a.aoFimDaVez(); return; }
-    if (e.tipo === "vaiEncerrar") { if (a.aoAvisoDeFim) a.aoAvisoDeFim(e.em); }
+    if (e.tipo === "vaiEncerrar") { if (a.aoAvisoDeFim) a.aoAvisoDeFim(e.em); return; }
+    if (e.tipo === "ferramenta") {
+      let respostas = [];
+      try { respostas = a.aoFerramenta ? a.aoFerramenta(e.chamadas) : []; } catch (x) { respostas = []; }
+      const porId = new Map(respostas.map((r) => [r.id, r]));
+      this.enviar({
+        toolResponse: {
+          functionResponses: e.chamadas.map((c) => porId.get(c.id) || { id: c.id, name: c.name, response: { ok: false, resultado: "não consegui fazer isso no painel" } }),
+        },
+      });
+    }
   }
 
   enviar(obj) {
@@ -340,6 +357,45 @@ class SessaoAoVivo {
   }
 }
 
+/* ── o que a mentora faz no painel ────────────────────────────────────
+ *
+ * As ferramentas da sessão ao vivo (FERRAMENTAS_DA_MENTORA, worker/api/
+ * voz.js) chegam aqui. Sessão e pendência passam pelo mesmo conferidor das
+ * ações do Assistente escrito (aplicarAcoesNoPainel, parte9); item do plano
+ * passa pelo do Meu plano (parte41). A resposta volta para ela confirmar em
+ * voz o que ficou registrado, ou dizer por que não deu.
+ */
+function executarFerramentasDaMentora(chamadas, { data, setData, subjects, today }) {
+  const respostas = [];
+  for (const c of chamadas || []) {
+    const a = (c && c.args) || {};
+    const responder = (ok, resultado) => respostas.push({ id: c.id, name: c.name, response: { ok, resultado } });
+    if (c.name === "registrar_sessao") {
+      const materia = acharMateriaPorNome(a.materia, subjects);
+      setData((p) => aplicarAcoesNoPainel(p, [{
+        tipo: "sessao", data: a.data, materia: a.materia, tipoSessao: a.tipo,
+        minutos: a.minutos, questoes: a.questoes, acertos: a.acertos,
+      }], subjects).novo);
+      responder(true, `sessão registrada em ${materia ? materia.title : String(a.materia || "estudo")}${materia ? ", e a aula ficou marcada como feita" : ""}`);
+    } else if (c.name === "adicionar_pendencia") {
+      if (!String(a.texto || "").trim()) { responder(false, "faltou o texto da pendência"); continue; }
+      setData((p) => aplicarAcoesNoPainel(p, [{ tipo: "tarefa", texto: a.texto }], subjects).novo);
+      responder(true, "pendência adicionada em Hoje");
+    } else if (c.name === "atualizar_item_do_plano") {
+      const plano = data && data.planoArquivo;
+      if (!plano) { responder(false, "a pessoa ainda não mandou um plano em Meu plano"); continue; }
+      const item = acharItemDoPlano(plano, a.titulo, today);
+      if (!item) { responder(false, "não achei esse item no plano; pergunte qual é"); continue; }
+      const situacao = a.situacao === "feito" ? "feito" : a.situacao === "parcial" ? "parcial" : "pendente";
+      setData((p) => ({ ...p, planoArquivo: atualizarItemPlano(p.planoArquivo, item.id, situacao, { minutos: a.minutos }, today) }));
+      responder(true, `item "${item.titulo}" marcado como ${situacao === "feito" ? "feito" : situacao === "parcial" ? "feito em parte" : "não feito"}; o plano se reajusta sozinho`);
+    } else {
+      responder(false, "ferramenta desconhecida");
+    }
+  }
+  return respostas;
+}
+
 /* ── a tela ──────────────────────────────────────────────────────────── */
 
 const ROTULO_VOZ_AO_VIVO = {
@@ -359,7 +415,11 @@ const diasAte = (iso, hoje) => {
   return Number.isFinite(d) ? d : null;
 };
 
-function AssistenteDeVoz({ nuvem, notify, data, today, ver }) {
+function AssistenteDeVoz({ nuvem, notify, data, today, ver, setData, subjects, pegarResumo }) {
+  /* As ferramentas rodam com os dados de agora, não com os da hora em que
+     a conversa abriu. */
+  const atual = useRef({});
+  atual.current = { data, setData, subjects, today };
   const [aberta, setAberta] = useState(false);
   const [estado, setEstado] = useState("fechada");
   const [falas, setFalas] = useState([]);        // { de: "eu" | "ela", texto, cortada }
@@ -426,6 +486,12 @@ function AssistenteDeVoz({ nuvem, notify, data, today, ver }) {
       aoInterromper: () => { fecharUltima("ela", true); emRepouso(); },
       aoFimDaVez: () => { fecharUltima("ela"); fecharUltima("eu"); if (!falandoRef.current) emRepouso(); },
       aoAvisoDeFim: () => setAviso("Esta conversa está chegando ao tempo máximo. Dá para encerrar e ligar de novo."),
+      aoFerramenta: (chamadas) => {
+        const r = executarFerramentasDaMentora(chamadas, atual.current);
+        const feitas = r.filter((x) => x.response.ok).length;
+        if (feitas && notify) notify(feitas === 1 ? "A mentora registrou no seu painel." : `A mentora registrou ${feitas} coisas no seu painel.`);
+        return r;
+      },
       aoFechar: () => { if (estadoRef.current !== "encerrada" && estadoRef.current !== "erro") { setAviso("A conversa encerrou. Toque em Ligar de novo para continuar."); encerrar("encerrada"); } },
     });
     sessao.current = s;
@@ -447,6 +513,9 @@ function AssistenteDeVoz({ nuvem, notify, data, today, ver }) {
       prova: (data && data.profile && data.profile.examDate) || "",
       faltam: diasAte(data && data.profile && data.profile.examDate, today),
       plano: nuvem && nuvem.sincroniza ? "plano completo ou teste grátis em dia" : "sem plano completo",
+      /* Tudo o que o painel sabe do estudo dela: é o que faz da assistente a
+         mentora, e não um atendimento sobre o site. */
+      resumo: pegarResumo ? String(pegarResumo() || "").slice(0, 14000) : "",
     };
     const { dados, erro } = await chamarApi(ROTA_VOZ, { token, acao: "sessao", contexto }, "A assistente por voz");
     if (!sessao.current) return;
@@ -468,7 +537,7 @@ function AssistenteDeVoz({ nuvem, notify, data, today, ver }) {
     if (!comMic) s.desligarMicrofone();
     emRepouso();
     /* Ela se apresenta primeiro. Esta vez não aparece na conversa. */
-    s.enviar(mensagemDeTexto("Oi! Se apresente em uma frase, dizendo que é a assistente virtual do Cadência Med, e pergunte como pode ajudar."));
+    s.enviar(mensagemDeTexto("Oi! Se apresente em uma frase como a mentora do Cadência Med, a assistente virtual do site. Se a SITUAÇÃO DO ESTUDO estiver aí, diga em uma frase a coisa mais importante que você vê para hoje. Depois pergunte por onde quer começar."))
     mudar("pensando");
   };
 
@@ -545,7 +614,7 @@ function AssistenteDeVoz({ nuvem, notify, data, today, ver }) {
           }}>
           <div className="px-5 pt-4 pb-3 flex items-start justify-between gap-3" style={{ borderBottom: `1px solid ${T.line}` }}>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 16, fontWeight: 700, color: T.ink }}>Assistente por voz</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: T.ink }}>Mentora por voz</div>
               <Mini style={{ marginTop: 2 }}>inteligência artificial do Cadência Med, não é uma pessoa</Mini>
             </div>
             <button type="button" aria-label="Fechar" onClick={fechar} className="toque"

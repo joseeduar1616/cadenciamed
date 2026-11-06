@@ -33,7 +33,7 @@
  * nenhum cai no último, em vez de sumir.
  */
 const GRUPOS_DE_ABAS = [
-  { nome: "Todo dia", abas: ["foco", "cronograma", "cartoes", "assistente", "rotina", "amigos"] },
+  { nome: "Todo dia", abas: ["foco", "meuplano", "cronograma", "cartoes", "assistente", "rotina", "amigos"] },
   { nome: "Estudar", abas: ["hoje", "estudo", "materias", "clinico", "temas"] },
   { nome: "Fixar", abas: ["revisoes", "erros", "banco", "provas"] },
   { nome: "Acompanhar", abas: ["desempenho", "progresso", "metas", "simulados"] },
@@ -72,7 +72,7 @@ const ICONE_ABA = {
   assistente: Sparkles, cartoes: Layers, revisoes: RotateCcw,
   rotina: CalendarClock, amigos: Users, mentor: User,
   metas: Flame, desempenho: BarChart3, treino: Dumbbell, financeiro: Wallet, simulados: Flag,
-  provas: FileText, erros: NotebookPen, banco: ClipboardList,
+  provas: FileText, erros: NotebookPen, banco: ClipboardList, meuplano: ListTodo,
   progresso: TrendingUp, planos: Zap, config: Settings2, estudo: Presentation, motivacao: Heart,
 };
 
@@ -281,6 +281,7 @@ export default function Cadencia() {
   const saveRef = useRef(null);
   const firstRef = useRef(true);
   const ultimoSalvo = useRef(null);
+  const salvarPendente = useRef(false);
   const tentativas = useRef(0);
 
   const notify = useCallback((m) => {
@@ -319,13 +320,17 @@ export default function Cadencia() {
     if (!ready) return undefined;
     if (firstRef.current) { firstRef.current = false; return undefined; }
     const texto = JSON.stringify(data);
-    if (texto === ultimoSalvo.current) return undefined;
+    const dadosDoTexto = data;
+    const capturadoEm = Date.now();
+    if (texto === ultimoSalvo.current) { quandoSalvarLocal(dadosDoTexto, capturadoEm); return undefined; }
     let cancelado = false;
     const tentar = async (n) => {
       if (cancelado) return;
       try {
         await gravarBruto(KEY, texto);
         ultimoSalvo.current = texto;
+        salvarPendente.current = false;
+        quandoSalvarLocal(dadosDoTexto, capturadoEm);
         tentativas.current = 0;
         setAvisoDisco("");
       } catch (e) {
@@ -337,9 +342,35 @@ export default function Cadencia() {
         } else setAvisoDisco(diagnostico(e));
       }
     };
+    salvarPendente.current = true;
     saveRef.current = window.setTimeout(() => tentar(1), 1500);
     return () => { cancelado = true; if (saveRef.current) window.clearTimeout(saveRef.current); };
   }, [data, ready]);
+
+  /* Fechar o app ou trocar de aba grava na hora o que estava esperando os
+     1,5 s do salvamento: o celular pode matar a página logo em seguida. */
+  const dadosParaFechar = useRef(data);
+  dadosParaFechar.current = data;
+  useEffect(() => {
+    if (!ready) return undefined;
+    /* Só quando há mudança esperando para ser gravada: gravar sempre
+       passaria por cima do que outra aba do site acabou de salvar. */
+    const guardarJa = () => {
+      if (document.visibilityState === "visible" || !salvarPendente.current) return;
+      const dados = dadosParaFechar.current;
+      const capturadoEm = Date.now();
+      const texto = JSON.stringify(dados);
+      if (texto === ultimoSalvo.current) return;
+      salvarPendente.current = false;
+      gravarBruto(KEY, texto).then(() => { ultimoSalvo.current = texto; quandoSalvarLocal(dados, capturadoEm); }).catch(() => {});
+    };
+    document.addEventListener("visibilitychange", guardarJa);
+    window.addEventListener("pagehide", guardarJa);
+    return () => {
+      document.removeEventListener("visibilitychange", guardarJa);
+      window.removeEventListener("pagehide", guardarJa);
+    };
+  }, [ready]);
 
   /* Uma cópia guardada por meio dia de uso, sem ninguém pedir.
    *
@@ -797,6 +828,20 @@ export default function Cadencia() {
      aqui pelo mesmo motivo dos lembretes: é a raiz que sabe quantas
      revisões estão atrasadas, e é preciso atualizar isso a cada abertura
      mesmo que a pessoa nunca abra Configurações. */
+  /* O plano pronto (Meu plano) se reajusta com qualquer aba aberta. */
+  usePlanoAutomatico(data, setData, today);
+
+  /* O que a mentora por voz enxerga: o mesmo resumo do Assistente escrito,
+     calculado só na hora em que a conversa abre. */
+  const resumoParaMentora = () => {
+    try {
+      return [
+        resumoParaIA({ subjects, ladder, data, today, totals, minWeek, qWeek, totalBonus: ativo.totalBonus }),
+        resumoDoPlanoParaIA(data.planoArquivo, today),
+      ].filter(Boolean).join("\n\n");
+    } catch (e) { return ""; }
+  };
+
   usePushDoDia({
     nuvem,
     ligado: !!(data.lembretes && data.lembretes.push && data.lembretes.push.ligado),
@@ -821,6 +866,7 @@ export default function Cadencia() {
     { id: "materias", label: "Matérias", acc: "var(--a-GO)" },
     ...(subjectsClinico.length ? [{ id: "clinico", label: "Ciclo clínico", acc: "var(--ok)" }] : []),
     { id: "cronograma", label: "Cronograma", acc: "var(--a-PE)" },
+    ...(ver.meuplano ? [{ id: "meuplano", label: "Meu plano", acc: "var(--neon)" }] : []),
     { id: "temas", label: "Temas", acc: "var(--a-CI)" },
     ...(ver.assistente ? [{ id: "assistente", label: "Assistente", acc: "var(--neon)" }] : []),
     { id: "cartoes", label: "Cartões", acc: "var(--neon)", badge: cartoesHoje },
@@ -1293,7 +1339,7 @@ export default function Cadencia() {
                 {OLHOS[tab] ? <span className="capa-olho">{OLHOS[tab]}</span> : null}
                 <h1 className="capa-t">{(TABS.find((t) => t.id === tab) || {}).label || ""}</h1>
               </div>
-              {tab === "hoje" && <Hoje {...{ data, setData, today, minToday, minWeek, qWeek, streak, late, done, bonusDone, addSession, delSession, notify, go: setTab, blocosHoje, projecao: pro ? projecao : null, pro, verPlanos: () => setTab("planos"), cartoesHoje, plano: assinatura.plano, emTeste: assinatura.emTeste, testeAcabou: assinatura.testeAcabou }} />}
+              {tab === "hoje" && <Hoje {...{ data, setData, today, minToday, minWeek, qWeek, streak, late, done, bonusDone, addSession, delSession, notify, go: setTab, blocosHoje, projecao: pro ? projecao : null, pro, verPlanos: () => setTab("planos"), cartoesHoje, verMeuPlano: !!ver.meuplano, plano: assinatura.plano, emTeste: assinatura.emTeste, testeAcabou: assinatura.testeAcabou }} />}
               {tab === "foco" && <Foco {...{ data, setData, today, P, subjectId: pomoSubject, setSubjectId: setPomoSubject }} />}
               {tab === "materias" && <Materias {...{ sessions: data.sessions, reviews: data.reviews, today, addSession, marcarDificuldade, subjects: subjectsResidencia, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, folhas: data.folhas, salvarAnotacao, notify, setData, nuvem, pastas: data.pastas, vazioEm: subjectsClinico.length ? "clinico" : null, irPara: setTab }} />}
               {tab === "clinico" && <Materias {...{ sessions: data.sessions, reviews: data.reviews, today, addSession, marcarDificuldade, subjects: subjectsClinico, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, folhas: data.folhas, salvarAnotacao, notify, setData, nuvem, pastas: data.pastas, irPara: setTab }} />}
@@ -1331,6 +1377,7 @@ export default function Cadencia() {
               {tab === "mentor" && mentorInfo.mentor && <Mentor {...{ nuvem, notify, mentorInfo }} />}
               {tab === "desempenho" && <Desempenho {...{ data, today, addSession, delSession, notify }} />}
               {tab === "banco" && ver.banco && <BancoDeQuestoes {...{ data, setData, today, notify, nuvem, souDono }} />}
+              {tab === "meuplano" && ver.meuplano && <MeuPlano {...{ data, setData, today, notify, nuvem }} abrirAssistente={ver.assistente ? () => setTab("assistente") : null} />}
               {tab === "provas" && ver.provas && <Provas {...{ nuvem, notify }} />}
               {tab === "erros" && <CadernoErros {...{ data, setData, today, notify, nuvem, subjects }} />}
               {tab === "treino" && ver.treino && <Treino {...{ data, setData, notify, today, nuvem }} />}
@@ -1434,7 +1481,8 @@ export default function Cadencia() {
           aparece para quem está logado e com o assistente liberado; o
           servidor confere de novo ao abrir a sessão (ver parte39.jsx). */}
       {!needsOnboarding && ready ? (
-        <AssistenteDeVoz nuvem={nuvem} notify={notify} data={data} today={today} ver={ver} />
+        <AssistenteDeVoz nuvem={nuvem} notify={notify} data={data} today={today} ver={ver}
+          setData={setData} subjects={subjects} pegarResumo={resumoParaMentora} />
       ) : null}
 
       {/* Primeira vez neste aparelho: convida a ligar as notificações

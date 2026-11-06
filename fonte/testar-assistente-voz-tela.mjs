@@ -73,6 +73,14 @@ function falsos() {
       const m = JSON.parse(s);
       window.__enviado.push(m);
       if (m.setup) setTimeout(() => this.manda({ setupComplete: {} }), 10);
+      if (m.clientContent && /registra/.test(m.clientContent.turns[0].parts[0].text)) {
+        setTimeout(() => this.manda({ toolCall: { functionCalls: [
+          { id: 'f1', name: 'registrar_sessao', args: { materia: 'pneumonia', tipo: 'Questões', minutos: 40, questoes: 30, acertos: 24 } },
+          { id: 'f2', name: 'adicionar_pendencia', args: { texto: 'refazer as questões de pneumonia' } },
+          { id: 'f3', name: 'atualizar_item_do_plano', args: { titulo: 'cardio', situacao: 'feito' } },
+        ] } }), 30);
+        return;
+      }
       if (m.clientContent) {
         const t = m.clientContent.turns[0].parts[0].text;
         setTimeout(() => {
@@ -100,6 +108,7 @@ const navegador = await chromium.launch({
   ...(fs.existsSync(CHROME) ? { executablePath: CHROME } : {}),
 });
 const errosDaPagina = [];
+const btoaNode = (u8) => Buffer.from(u8).toString('base64');
 const RECURSOS = { assistente: true, cartoes: true, revisoes: true, provas: true, cronograma: true, rotina: true, amigos: true, metas: true, desempenho: true, simulados: true, progresso: true, treino: false };
 
 async function abrir({ logado, largura = 1280, respostaVoz }) {
@@ -114,8 +123,15 @@ async function abrir({ logado, largura = 1280, respostaVoz }) {
   await ctx.route('**/api/**', (rr) => {
     const u = rr.request().url();
     if (u.includes('/api/plano')) return rr.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, pro: true, plano: 'anual', validoAte: Date.now() + 86400000, recursos: RECURSOS }) });
+    if (u.includes('/api/assistente')) {
+      return rr.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ texto: 'Oi, Zé! Vamos montar a sua semana. A que horas você costuma dormir?', opcoes: [], perfil: {}, plano: null, cortado: false }) });
+    }
     if (u.includes('/api/voz')) {
-      pedidosVoz.push(JSON.parse(rr.request().postData() || '{}'));
+      const corpoVoz = JSON.parse(rr.request().postData() || '{}');
+      pedidosVoz.push(corpoVoz);
+      if (corpoVoz.acao === 'falar') {
+        return rr.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, audio: btoaNode(new Uint8Array(9600)), taxa: 24000, voz: 'Zephyr' }) });
+      }
       const r = respostaVoz || { status: 200, corpo: { ok: true, url: 'wss://gemini.falso/ws?access_token=auth_tokens%2Fabc', setup: { model: 'models/gemini-falso-native-audio' }, modelo: 'gemini-falso-native-audio', voz: 'Zephyr', entrada: { taxa: 16000 }, saida: { taxa: 24000 } } };
       return rr.fulfill({ status: r.status, contentType: 'application/json', body: JSON.stringify(r.corpo) });
     }
@@ -220,6 +236,54 @@ const enviados = (pag) => pag.evaluate(() => window.__enviado);
   const fechado = await pag.evaluate(() => window.__ws[0].readyState);
   if (fechado === 3 && !(await pag.locator('[data-teste="assistente-voz"]').count()) && await pag.locator('[data-teste="abrir-assistente-voz"]').count()) ok('encerrar fecha o WebSocket, fecha o painel e devolve o botão');
   else falha('encerrar: readyState=' + fechado);
+  await ctx.close();
+}
+
+/* ── a mentora registra no painel o que a pessoa contou ──────────────── */
+{
+  const { ctx, pag, pedidosVoz } = await abrir({ logado: true });
+  await pag.locator('[data-teste="abrir-assistente-voz"]').click();
+  await esperar(pag, async () => /Ouvindo/.test(await estado(pag)));
+  const ctxVoz = (pedidosVoz[0] || {}).contexto || {};
+  if (/PROGRESSO GERAL/.test(ctxVoz.resumo || '') && /REVISÕES ATRASADAS/.test(ctxVoz.resumo || '')) ok('a mentora recebe a situação do estudo (o mesmo resumo do Assistente) ao abrir a conversa');
+  else falha('resumo para a mentora: ' + JSON.stringify(ctxVoz).slice(0, 300));
+  await pag.locator('[data-teste="assistente-voz"] input[placeholder="Ou escreva aqui…"]').fill('registra 30 questões de pneumonia');
+  await pag.locator('[data-teste="assistente-voz"] button[aria-label="Enviar"]').click();
+  await esperar(pag, async () => (await enviados(pag)).some((m) => m.toolResponse));
+  const resp = ((await enviados(pag)).find((m) => m.toolResponse) || {}).toolResponse || {};
+  const fr = resp.functionResponses || [];
+  if (fr.length === 3 && fr[0].id === 'f1' && fr[0].response.ok && fr[1].response.ok) ok('as ferramentas pedidas pela mentora voltam respondidas, uma por pedido, com o mesmo id');
+  else falha('toolResponse: ' + JSON.stringify(resp));
+  if (fr[2] && fr[2].response.ok === false && /Meu plano/.test(fr[2].response.resultado)) ok('sem plano mandado, o item do plano volta recusado com o motivo (ela não finge que marcou)');
+  else falha('item do plano sem plano: ' + JSON.stringify(fr[2]));
+  await pag.waitForTimeout(1900);
+  const d = await pag.evaluate(() => JSON.parse(localStorage.getItem('cadencia:v3') || '{}'));
+  const sess = (d.sessions || []).find((x) => x.questions === 30);
+  if (sess && sess.correct === 24 && sess.minutes === 40 && sess.kind === 'Questões') ok('a sessão contada por voz entra no painel com questões, acertos e tempo');
+  else falha('sessão por voz: ' + JSON.stringify(d.sessions));
+  if ((d.tasks || []).some((t) => /refazer as questões de pneumonia/.test(t.text))) ok('e a pendência pedida por voz aparece em Hoje');
+  else falha('pendência por voz: ' + JSON.stringify(d.tasks));
+  await ctx.close();
+}
+
+/* ── a chamada da Mentoria fala com a mesma voz (Zephyr) ─────────────── */
+{
+  const { ctx, pag, pedidosVoz } = await abrir({ logado: true });
+  await pag.evaluate(() => localStorage.setItem('cadencia:v3:assistente-modo', 'mentoria'));
+  await pag.reload({ waitUntil: 'load' });
+  await pag.waitForTimeout(1800);
+  const menu = pag.locator('button[aria-label="Abrir menu"]').first();
+  if (await menu.count() && await menu.isVisible()) { await menu.click(); await pag.waitForTimeout(300); }
+  await pag.locator('nav button:has-text("Assistente")').first().click();
+  await pag.waitForTimeout(700);
+  const botao = pag.locator('main button:has-text("Chamada de voz")');
+  if (await botao.count()) {
+    await botao.first().click();
+    await esperar(pag, async () => pedidosVoz.some((p) => p.acao === 'falar'), 8000);
+    const fala = pedidosVoz.find((p) => p.acao === 'falar');
+    if (fala && /Vamos montar a sua semana/.test(fala.texto) && fala.token) ok('a resposta da Mentoria é falada pela voz da Google (a mesma da assistente), com o token da conta');
+    else falha('fala da mentoria: ' + JSON.stringify(pedidosVoz).slice(0, 300));
+  } else falha('não achei a chamada de voz da Mentoria');
   await ctx.close();
 }
 

@@ -55,3 +55,4 @@ fonte/_anexo.mjs
 # gerados por social/carrossel.py (o que vai ao ar fica em social/publicado/)
 social/saida/
 social/node_modules
+fonte/_plano.mjs

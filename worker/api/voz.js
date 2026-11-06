@@ -90,11 +90,53 @@ async function modeloAoVivo(env) {
   return nome;
 }
 
+/* O que a mentora pode fazer no painel, por voz. Ela só pede: quem faz é o
+   navegador da própria pessoa, que confere cada campo (aplicarAcoesNoPainel,
+   parte9.jsx) antes de gravar, como já faz com as ações do Assistente. */
+export const FERRAMENTAS_DA_MENTORA = [{
+  functionDeclarations: [
+    {
+      name: "registrar_sessao",
+      description: "Registra uma sessão de estudo que a pessoa CONTOU que já fez (aula, questões, revisão, flashcards, apostila). Uma chamada por matéria e por dia. Nunca invente minutos, questões ou acertos.",
+      parameters: {
+        type: "OBJECT",
+        properties: {
+          materia: { type: "STRING", description: "O assunto, do jeito que a pessoa falou (o painel acha a aula mais parecida)." },
+          tipo: { type: "STRING", enum: ["Aula", "Apostila", "Questões", "Revisão", "Flashcards", "Prática clínica"] },
+          minutos: { type: "INTEGER", description: "Só se a pessoa disse quanto tempo levou." },
+          questoes: { type: "INTEGER", description: "Só em sessão de questões." },
+          acertos: { type: "INTEGER", description: "Só se a pessoa disse." },
+          data: { type: "STRING", description: "AAAA-MM-DD do dia em que estudou; vazio é hoje. Nunca no futuro." },
+        },
+        required: ["materia", "tipo"],
+      },
+    },
+    {
+      name: "adicionar_pendencia",
+      description: "Põe uma pendência na lista de Hoje, quando a pessoa pedir para lembrar de algo.",
+      parameters: { type: "OBJECT", properties: { texto: { type: "STRING" } }, required: ["texto"] },
+    },
+    {
+      name: "atualizar_item_do_plano",
+      description: "Marca um item do plano de estudo da pessoa como feito, feito em parte ou não feito, quando ela contar. O plano se reajusta sozinho depois.",
+      parameters: {
+        type: "OBJECT",
+        properties: {
+          titulo: { type: "STRING", description: "O item, do jeito que a pessoa falou ou como aparece no plano." },
+          situacao: { type: "STRING", enum: ["feito", "parcial", "nao_feito"] },
+          minutos: { type: "INTEGER", description: "Quanto tempo ela gastou, se disse." },
+        },
+        required: ["titulo", "situacao"],
+      },
+    },
+  ],
+}];
+
 const rfc3339 = (ms) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z");
 
 /* A configuração da sessão, trancada no token. O navegador só manda o
    nome do modelo no setup; o resto vem daqui. */
-export function configuracaoDaSessao({ modelo, voz, instrucao }) {
+export function configuracaoDaSessao({ modelo, voz, instrucao, semFerramentas }) {
   const nativo = /native-audio/.test(modelo);
   const setup = {
     model: `models/${modelo}`,
@@ -127,6 +169,7 @@ export function configuracaoDaSessao({ modelo, voz, instrucao }) {
     },
     /* Conversa longa não estoura a janela: o começo vai sendo resumido. */
     contextWindowCompression: { slidingWindow: {} },
+    ...(semFerramentas ? {} : { tools: FERRAMENTAS_DA_MENTORA }),
   };
   const fieldMask = [
     "model",
@@ -134,6 +177,7 @@ export function configuracaoDaSessao({ modelo, voz, instrucao }) {
     ...(nativo ? ["generationConfig.enableAffectiveDialog"] : []),
     "systemInstruction", "inputAudioTranscription", "outputAudioTranscription",
     "realtimeInputConfig", "contextWindowCompression",
+    ...(semFerramentas ? [] : ["tools"]),
   ].join(",");
   return { setup, fieldMask };
 }
@@ -157,6 +201,56 @@ async function criarToken(env, setup, fieldMask) {
     return { erro: motivo, status: r.status };
   }
   return { nome: j.name };
+}
+
+/* ── falar com a voz da Google (TTS) ─────────────────────────────────
+ *
+ * A chamada da Mentoria conversa por texto com a rota do assistente (é lá
+ * que mora a entrevista, o perfil e o plano), e só a fala vem daqui: o
+ * texto da resposta vira áudio na MESMA voz da assistente ao vivo, em vez
+ * da voz do aparelho. Volta PCM de 16 bits a 24 mil, em base64. */
+const MAX_FALA = 900;
+export function escolherModeloDeFala(modelos, forcado) {
+  if (forcado && !/[^a-z0-9.\-]/i.test(forcado)) return String(forcado).replace(/^models\//, "");
+  const lista = (Array.isArray(modelos) ? modelos : [])
+    .map((m) => ({ nome: String((m && m.name) || "").replace(/^models\//, ""), metodos: (m && m.supportedGenerationMethods) || [] }))
+    .filter((m) => /tts/.test(m.nome) && m.metodos.indexOf("generateContent") >= 0);
+  if (!lista.length) return "gemini-2.5-flash-preview-tts";
+  const nota = (n) => (/flash/.test(n) ? 100 : 0) + (/pro/.test(n) ? -50 : 0) + (/preview/.test(n) ? -1 : 0)
+    + (Number(((/(\d+)\.(\d+)/.exec(n)) || [])[1] || 0) * 10) + Number(((/(\d+)\.(\d+)/.exec(n)) || [])[2] || 0);
+  return lista.sort((a, b) => nota(b.nome) - nota(a.nome))[0].nome;
+}
+let cacheFala = { em: 0, nome: "" };
+async function modeloDeFala(env) {
+  if (env.GEMINI_TTS_MODELO) return escolherModeloDeFala([], env.GEMINI_TTS_MODELO);
+  if (cacheFala.nome && Date.now() - cacheFala.em < 3600000) return cacheFala.nome;
+  let lista = [];
+  try {
+    const r = await fetch(`${BASE}/v1beta/models?pageSize=200`, { headers: { "x-goog-api-key": env.GEMINI_API_KEY } });
+    if (r.ok) lista = ((await r.json()) || {}).models || [];
+  } catch (e) { /* sem lista: o nome conhecido */ }
+  cacheFala = { em: Date.now(), nome: escolherModeloDeFala(lista, "") };
+  return cacheFala.nome;
+}
+
+async function falar(env, texto, voz) {
+  const modelo = await modeloDeFala(env);
+  const r = await fetch(`${BASE}/v1beta/models/${modelo}:generateContent`, {
+    method: "POST",
+    headers: { "x-goog-api-key": env.GEMINI_API_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: `Fale em português do Brasil, como uma mentora jovem, acolhedora e natural conversando ao telefone, num ritmo um pouco mais ágil que o de leitura: ${texto}` }] }],
+      generationConfig: {
+        responseModalities: ["AUDIO"],
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voz } } },
+      },
+    }),
+  });
+  const j = await r.json().catch(() => null);
+  const parte = (((((j || {}).candidates || [])[0] || {}).content || {}).parts || []).find((p) => p && p.inlineData && p.inlineData.data);
+  if (!r.ok || !parte) return { erro: (j && j.error && j.error.message) || `HTTP ${r.status}`, status: r.status };
+  const taxa = Number((/rate=(\d+)/.exec(parte.inlineData.mimeType || "") || [])[1]) || 24000;
+  return { audio: parte.inlineData.data, taxa, modelo };
 }
 
 export async function onRequest({ request, env }) {
@@ -183,6 +277,21 @@ export async function onRequest({ request, env }) {
     return json({ ok: true, aoVivo: todos, escolhido: escolherModeloAoVivo((j || {}).models || [], env.GEMINI_LIVE_MODELO) });
   }
 
+  const voz = VOZES_FEMININAS.indexOf(env.GEMINI_LIVE_VOZ) >= 0 ? env.GEMINI_LIVE_VOZ : VOZ_PADRAO;
+
+  if (acao === "falar") {
+    const texto = String(corpo.texto || "").replace(/\s+/g, " ").trim().slice(0, MAX_FALA);
+    if (!texto) return json({ erro: "Nada para falar." }, 400);
+    const pode = await podeUsar(pessoa, env, "voz-fala");
+    if (!pode.ok) return json({ erro: pode.erro }, 403);
+    const f = await falar(env, texto, voz);
+    if (f.erro) {
+      console.error("voz: fala recusada", f.status, f.erro);
+      return json({ erro: "Não consegui gerar a fala agora." }, 502);
+    }
+    return json({ ok: true, audio: f.audio, taxa: f.taxa, voz });
+  }
+
   if (acao !== "sessao") return json({ erro: "Ação desconhecida." }, 400);
 
   /* Plano em dia (ou dono) e o teto diário: uma sessão vale os pontos de
@@ -191,11 +300,17 @@ export async function onRequest({ request, env }) {
   if (!pode.ok) return json({ erro: pode.erro }, 403);
 
   const modelo = await modeloAoVivo(env);
-  const voz = VOZES_FEMININAS.indexOf(env.GEMINI_LIVE_VOZ) >= 0 ? env.GEMINI_LIVE_VOZ : VOZ_PADRAO;
   const instrucao = instrucaoDaAssistente(corpo.contexto || {});
   const { setup, fieldMask } = configuracaoDaSessao({ modelo, voz, instrucao });
 
-  const t = await criarToken(env, setup, fieldMask);
+  let t = await criarToken(env, setup, fieldMask);
+  /* Modelo que não aceita ferramentas na sessão: abre sem elas (ela conversa
+     e orienta, só não registra no painel), em vez de não abrir. */
+  if (t.erro && t.status === 400) {
+    const sem = configuracaoDaSessao({ modelo, voz, instrucao, semFerramentas: true });
+    const t2 = await criarToken(env, sem.setup, sem.fieldMask);
+    if (!t2.erro) { console.error("voz: sessão aberta sem ferramentas", t.erro); t = t2; }
+  }
   if (t.erro) {
     console.error("voz: token recusado", t.status, t.erro);
     const motivo = t.status === 400 || t.status === 404

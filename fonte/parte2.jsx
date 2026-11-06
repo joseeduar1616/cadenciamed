@@ -37,6 +37,7 @@ const DEFAULTS = {
      "C1CL" = marcou C, acertou (1), área CL. Compacto de propósito: são
      milhares de questões, e tudo isto vai junto no documento da conta. */
   banco: { r: {} },
+  planoArquivo: null,
   /* Folha em branco por aula (parte30): as caixas, o que foi escrito e a
      conferência. A conversa com a IA não fica; o resultado fica. */
   folhas: {},
@@ -447,6 +448,7 @@ function normalize(raw) {
     blocos: obj(d.blocos),
     erros: limparErros(d.erros),
     banco: limparBanco(d.banco),
+    planoArquivo: limparPlanoArquivo(d.planoArquivo),
     folhas: limparFolhas(d.folhas),
     financas: limparFinancas(d.financas),
     estudos: limparEstudos(d.estudos),

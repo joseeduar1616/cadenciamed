@@ -1983,6 +1983,61 @@ entrada e de saída, e um minuto de conversa consome muito mais tokens do
 que uma pergunta de texto. O teto diário por pessoa e o token de uma
 sessão só são o freio do lado do site.
 
+## Meu plano (plano pronto, reajustado sozinho)
+
+Aba "Meu plano" (recurso `meuplano`, padrão "pro"). A pessoa manda o plano
+de estudo que já tem; `textoDoArquivoDoPlano` (parte41) tira o texto (PDF,
+Word, PowerPoint, planilha .xlsx, CSV, texto, foto) e `/api/plano-estudo`
+(worker/api/plano-estudo.js) devolve uma linha por item: QUANDO | TIPO |
+MINUTOS | AULA | FIXO | TITULO. QUANDO pode ser data, `S<semana>-<dia>` ou
+`D<número>`; a conversão para o calendário é feita no servidor
+(`dataDoQuando`), a partir do "começa em" da tela. A IA só copia: o que o
+arquivo não diz fica 0 ou vazio.
+
+O reajuste (`reajustarPlano`) é conta, não IA, roda no aparelho a cada
+mudança (`usePlanoAutomatico`, na raiz) e é determinístico, para os dois
+aparelhos chegarem ao mesmo resultado:
+- cada dia aguenta o tempo que o próprio plano dava para ele (`capacidade`)
+  mais a `folga` escolhida; dia sem nada no plano é descanso e continua;
+- nada vai para antes da data do plano, item fixo não sai do lugar, e a
+  ordem do plano se mantém (o atrasado empurra os seguintes);
+- `ritmo` = tempo real sobre o previsto nos itens feitos com tempo
+  (precisa de 3; limitado entre 60% e 180%);
+- aula marcada no cronograma e sessão de questões da matéria dão o item
+  por feito (`marcarPeloPainel`, marca `auto`); o que a pessoa marcou à mão
+  o site não desfaz.
+
+Testes: `testar-meu-plano.mjs` (motor, via `_plano.mjs` do
+`extrair_plano.py`, e as linhas da IA) e `testar-meu-plano-tela.mjs`.
+
+## A mentora: o cérebro do site
+
+A assistente flutuante (parte39) é a mentora. Ao abrir, ela recebe a
+situação do estudo (`resumoParaIA` + `resumoDoPlanoParaIA`, até 14 mil
+caracteres, marcada como dado na instrução) e tem ferramentas na sessão ao
+vivo (`FERRAMENTAS_DA_MENTORA`, em voz.js, trancadas no token):
+`registrar_sessao`, `adicionar_pendencia` e `atualizar_item_do_plano`. Quem
+grava é a página (`executarFerramentasDaMentora`), pelo mesmo conferidor do
+Assistente escrito (`aplicarAcoesNoPainel`, parte9). O texto que o modelo
+de áudio nativo manda no modelTurn é raciocínio, em inglês, e nunca vira
+legenda: a legenda vem só da transcrição do áudio.
+
+A chamada da Mentoria (parte26) fala com a mesma voz (Zephyr): `/api/voz`
+ação `falar` (Gemini TTS, 1 ponto), pedaço por pedaço, com a voz do
+aparelho de reserva se a rota falhar.
+
+## Sincronização entre aparelhos (base, junção e transação)
+
+Cada aparelho guarda a "base" (`cadencia:v3:nuvem-base`): a versão da conta
+de onde partiu. No reencontro, se mudou algo aqui desde a base, sobe (conta
+na mesma versão) ou junta (`mesclarDados`, três vias, item a item nas
+listas com id). Subir é uma transação (`runTransaction`): se outro aparelho
+gravou no meio, junta antes de gravar. A base nunca fica à frente do que
+está salvo no aparelho (disco primeiro, base depois), e esconder ou fechar
+a página grava e sobe na hora. Sem rede, fica pendente e sobe quando a rede
+volta. Testes: `testar-nuvem.mjs` (regras e junção) e
+`testar-sincronia-tela.mjs` (dois aparelhos com um Firestore de mentira).
+
 ## Cabeçalhos de segurança
 
 O `publicar.py` escreve o `_headers` com um bloco `/*` para todos os

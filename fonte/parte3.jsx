@@ -21,6 +21,49 @@ function gravarStamp(uid, em) {
   catch (e) { /* sem espaço: a regra volta a tratar como primeiro encontro */ }
 }
 
+/* A base: a versão da conta de onde este aparelho partiu (a última que
+   ele mandou ou baixou), guardada inteira. É com ela que o reencontro sabe
+   o que mudou aqui e o que mudou lá, e junta em vez de substituir. */
+const CHAVE_BASE = "cadencia:v3:nuvem-base";
+function lerBase(uid, em) {
+  try {
+    const s = JSON.parse(window.localStorage.getItem(CHAVE_BASE) || "null");
+    if (!s || s.uid !== uid || Number(s.em) !== Number(em) || !em) return null;
+    return normalize(JSON.parse(s.dados));
+  } catch (e) { return null; }
+}
+function gravarBase(uid, em, dadosTexto) {
+  try { window.localStorage.setItem(CHAVE_BASE, JSON.stringify({ uid, em: Number(em) || 0, dados: dadosTexto })); }
+  catch (e) {
+    /* sem espaço: sem base, o reencontro volta às regras antigas (baixar) */
+    try { window.localStorage.removeItem(CHAVE_BASE); } catch (e2) { /* noop */ }
+  }
+}
+
+/* A base só é gravada depois que o salvamento normal do aparelho (parte8)
+   gravou no disco aquela versão dos dados, ou uma posterior. Se a base
+   ficasse à frente do disco (app fechado entre um e outro), o reencontro
+   leria a diferença como coisa apagada aqui. O salvamento avisa por
+   quandoSalvarLocal; a nuvem pede por esperarParaGravarBase. */
+let baseEsperando = null;
+let salvoLocal = { dados: null, capturadoEm: 0 };
+function conferirBaseEsperando() {
+  const b = baseEsperando;
+  if (!b) return;
+  if (salvoLocal.dados === b.dados || salvoLocal.capturadoEm >= b.capturaEm) {
+    baseEsperando = null;
+    gravarBase(b.uid, b.em, b.texto);
+  }
+}
+function quandoSalvarLocal(dados, capturadoEm) {
+  salvoLocal = { dados, capturadoEm: Number(capturadoEm) || Date.now() };
+  conferirBaseEsperando();
+}
+function esperarParaGravarBase(uid, em, texto, dados, capturaEm) {
+  baseEsperando = { uid, em, texto, dados, capturaEm };
+  conferirBaseEsperando();
+}
+
 /* De onde abre o login do Google.
  *
  * O padrão do Firebase é o domínio dele (cadencia-7c1f1.firebaseapp.com):
@@ -113,6 +156,18 @@ function decidirNuvem(e) {
   /* O servidor confirma que a conta nunca guardou nada: este aparelho é o
      primeiro, e o que ele tem é o que passa a valer. */
   if (!e.existe) return e.primeira ? "subir" : "esperar";
+  /* Este aparelho sabe de qual versão da conta partiu (guardou a "base"
+     no último envio ou na última carga) e mudou coisas desde então que
+     ainda não subiram: a pessoa fechou o app antes do envio, ficou sem
+     rede, ou o outro aparelho escreveu no meio. Se a conta continua na
+     versão de onde ele partiu, é só subir. Se a conta andou, junta: o que
+     mudou aqui entra por cima da conta, e o que mudou lá fica. Nada é
+     substituído inteiro. Sem base guardada (aparelho de antes desta
+     regra), seguem as regras de baixo, que nunca escrevem às cegas. */
+  if (e.temBase) {
+    if (Number(e.atualizadoEm || 0) <= Number(e.stampLocal || 0)) return e.mudouAqui ? "subir" : "ignorar";
+    return e.mudouAqui ? "mesclar" : "baixar";
+  }
   /* Eco do que este mesmo aparelho acabou de escrever. */
   if (e.mesmoAparelho) return "ignorar";
   /* Versão mais velha do que a que já temos em mãos. */
@@ -132,6 +187,87 @@ function decidirNuvem(e) {
      O que estava aqui não se perde: vai para as versões anteriores antes
      de ser substituído, e a pessoa pode voltar para ele de propósito. */
   return "baixar";
+}
+
+/* ── juntar dois aparelhos ─────────────────────────────────────────────
+ *
+ * Junção de três vias: a base (a versão da conta de onde este aparelho
+ * partiu), o que está aqui e o que está na conta. Para cada parte dos
+ * dados: se só um lado mexeu, vale esse lado; se os dois mexeram, desce um
+ * nível. Listas com id (sessões, agenda, cartões, erros...) se juntam item
+ * a item: o que foi criado em qualquer lado fica, o que foi apagado num
+ * lado e não mexido no outro sai, e o item mexido dos dois lados fica com
+ * a versão da conta. Valor simples mexido dos dois lados: vale a conta (o
+ * que estava aqui vai para as versões anteriores antes, pelo useNuvem).
+ */
+const SO_DO_APARELHO = ["theme", "layout"];
+const igualJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const ehObjeto = (x) => !!x && typeof x === "object" && !Array.isArray(x);
+const listaComId = (x) => Array.isArray(x) && x.every((i) => ehObjeto(i) && i.id !== undefined && i.id !== null)
+  && new Set(x.map((i) => String(i.id))).size === x.length;
+
+function mesclarValor(b, l, n, fundo) {
+  if (igualJson(l, b)) return n;
+  if (igualJson(n, b) || igualJson(l, n)) return l;
+  if (fundo > 5) return n;
+  if (ehObjeto(l) && ehObjeto(n)) return mesclarObjeto(ehObjeto(b) ? b : {}, l, n, fundo + 1);
+  if (listaComId(l) && listaComId(n) && (b === undefined || listaComId(b))) return mesclarLista(b || [], l, n, fundo + 1);
+  if (Array.isArray(l) && Array.isArray(n)) {
+    /* lista sem id: fica a da conta, mais o que foi acrescentado aqui */
+    const base = Array.isArray(b) ? b.map((x) => JSON.stringify(x)) : [];
+    const lá = n.map((x) => JSON.stringify(x));
+    return [...n, ...l.filter((x) => { const j = JSON.stringify(x); return base.indexOf(j) < 0 && lá.indexOf(j) < 0; })];
+  }
+  return n;
+}
+
+function mesclarObjeto(b, l, n, fundo) {
+  const saida = {};
+  const chaves = [...new Set([...Object.keys(n || {}), ...Object.keys(l || {})])];
+  for (const k of chaves) {
+    const temB = b && Object.prototype.hasOwnProperty.call(b, k);
+    const temL = Object.prototype.hasOwnProperty.call(l, k);
+    const temN = Object.prototype.hasOwnProperty.call(n, k);
+    if (temL && temN) { saida[k] = mesclarValor(temB ? b[k] : undefined, l[k], n[k], fundo); continue; }
+    if (temL) {
+      /* só aqui: nasceu aqui, ou foi apagado lá (sai, se aqui ninguém mexeu) */
+      if (!temB || !igualJson(l[k], b[k])) saida[k] = l[k];
+      continue;
+    }
+    if (!temB || !igualJson(n[k], b[k])) saida[k] = n[k];
+  }
+  return saida;
+}
+
+function mesclarLista(b, l, n, fundo) {
+  const porId = (x) => new Map(x.map((i) => [String(i.id), i]));
+  const B = porId(b), L = porId(l), N = porId(n);
+  const saida = [];
+  for (const i of n) {
+    const id = String(i.id);
+    if (L.has(id)) saida.push(mesclarValor(B.get(id), L.get(id), i, fundo));
+    else if (!B.has(id) || !igualJson(i, B.get(id))) saida.push(i);   // apagado aqui sem mexer lá: sai
+  }
+  for (const i of l) {
+    const id = String(i.id);
+    if (N.has(id)) continue;
+    if (!B.has(id) || !igualJson(i, B.get(id))) saida.push(i);          // criado aqui, ou mexido aqui
+  }
+  return saida;
+}
+
+function mesclarDados(base, local, nuvem) {
+  const b = ehObjeto(base) ? base : {}, l = ehObjeto(local) ? local : {}, n = ehObjeto(nuvem) ? nuvem : {};
+  const semAparelho = (x) => { const c = { ...x }; for (const k of SO_DO_APARELHO) delete c[k]; return c; };
+  const junto = mesclarObjeto(semAparelho(b), semAparelho(l), semAparelho(n), 0);
+  for (const k of SO_DO_APARELHO) if (l[k] !== undefined) junto[k] = l[k];
+  return junto;
+}
+
+/* Este aparelho mudou alguma coisa desde a base? Tema e layout não contam. */
+function mudouDesdeBase(base, local) {
+  const semAparelho = (x) => { const c = { ...(x || {}) }; for (const k of SO_DO_APARELHO) delete c[k]; return c; };
+  return !igualJson(semAparelho(base), semAparelho(local));
 }
 
 function useNuvem(data, setData, notify, pronto, pro) {
@@ -208,22 +344,77 @@ function useNuvem(data, setData, notify, pronto, pro) {
     return () => { vivo = false; };
   }, []);
 
+  /* Subir é uma transação: lê a conta, e se outro aparelho gravou depois
+     da versão de onde este partiu, junta as duas (mesclarDados, com a base)
+     antes de gravar. Antes era um setDoc cego: dois aparelhos gravando
+     quase ao mesmo tempo, o último apagava o que o primeiro tinha feito.
+     Sem rede a transação falha na hora; a mudança fica marcada como
+     pendente e sobe quando a rede volta ou a página volta a aparecer. */
+  const enviando = useRef(false);
+  const maisUm = useRef(false);
+  const pendente = useRef(false);
   const enviar = useCallback(async () => {
     if (!sdk || !usuario) return;
+    if (tmr.current) { window.clearTimeout(tmr.current); tmr.current = null; }
+    if (enviando.current) { maisUm.current = true; return; }
+    enviando.current = true;
+    const F = sdk.F;
+    const ref = F.doc(sdk.db, "usuarios", usuario.uid);
+    const local = dataRef.current;
+    const capturaEm = Date.now();
+    const deOnde = stamp.current;
+    const em = Date.now();
     try {
-      stamp.current = Date.now();
-      await sdk.F.setDoc(sdk.F.doc(sdk.db, "usuarios", usuario.uid), {
-        dados: JSON.stringify(dataRef.current),
-        atualizadoEm: stamp.current,
-        dispositivo: disp.current,
-      });
-      gravarStamp(usuario.uid, stamp.current);
+      let r;
+      if (typeof F.runTransaction === "function") {
+        r = await F.runTransaction(sdk.db, async (t) => {
+          const snap = await t.get(ref);
+          let dados = local;
+          let juntou = false;
+          if (snap.exists()) {
+            const d = snap.data() || {};
+            if (Number(d.atualizadoEm || 0) > deOnde && d.dados) {
+              let nuvem = null;
+              try { nuvem = normalize(JSON.parse(d.dados)); } catch (e) { /* conta ilegível: vale o daqui */ }
+              /* Sem base guardada, a base vazia faz a junção somar as duas
+                 listas: nada se perde (no pior caso, algo apagado volta). */
+              if (nuvem) { dados = normalize(mesclarDados(lerBase(usuario.uid, deOnde) || {}, local, nuvem)); juntou = true; }
+            }
+          }
+          const texto = JSON.stringify(dados);
+          t.set(ref, { dados: texto, atualizadoEm: em, dispositivo: disp.current });
+          return { texto, juntou, dados };
+        });
+      } else {
+        const texto = JSON.stringify(local);
+        await F.setDoc(ref, { dados: texto, atualizadoEm: em, dispositivo: disp.current });
+        r = { texto, juntou: false, dados: local };
+      }
+      stamp.current = em;
+      /* A base espera o disco alcançar esta versão (esperarParaGravarBase). */
+      let estado = r.dados;
+      if (r.juntou) {
+        guardarVersao(local, "antes de juntar com outro aparelho");
+        const mexeuNoMeio = dataRef.current !== local;
+        estado = mexeuNoMeio ? normalize(mesclarDados(local, dataRef.current, r.dados)) : r.dados;
+        if (!mexeuNoMeio) veioDaNuvem.current = true;
+        setData(estado);
+        notifyRef.current("Juntei o que você fez neste aparelho com o que veio do outro.");
+      }
+      gravarStamp(usuario.uid, em);
+      if (r.juntou) esperarParaGravarBase(usuario.uid, em, r.texto, estado, Date.now());
+      else esperarParaGravarBase(usuario.uid, em, r.texto, local, capturaEm);
+      pendente.current = false;
       setUltima(Date.now());
       setErro("");
     } catch (e) {
-      setErro("Não consegui salvar na nuvem. Os dados seguem salvos neste aparelho.");
+      pendente.current = true;
+      setErro("Não consegui salvar na nuvem agora. Os dados seguem salvos neste aparelho e sobem quando a conexão voltar.");
+    } finally {
+      enviando.current = false;
+      if (maisUm.current) { maisUm.current = false; window.setTimeout(() => enviar(), 50); }
     }
-  }, [sdk, usuario]);
+  }, [sdk, usuario, setData]);
 
   /* Mede quanto conteúdo real existe, para decidir quem vence no primeiro
      encontro entre este aparelho e a conta. */
@@ -264,11 +455,13 @@ function useNuvem(data, setData, notify, pronto, pro) {
       let novo = null;
       try { novo = normalize(JSON.parse(d.dados)); } catch (e) { return; }
 
+      const base = lerBase(usuario.uid, stamp.current);
       const oQue = decidirNuvem({
         existe: true, daCache, primeira: era,
         mesmoAparelho: d.dispositivo === disp.current,
         atualizadoEm: Number(d.atualizadoEm || 0), stampLocal: stamp.current,
         riquezaLocal: riqueza(dataRef.current), riquezaNuvem: riqueza(novo),
+        temBase: !!base, mudouAqui: !!base && mudouDesdeBase(base, dataRef.current),
       });
 
       /* O documento existe: a partir daqui o aparelho sabe o que a conta
@@ -279,6 +472,30 @@ function useNuvem(data, setData, notify, pronto, pro) {
       primeira = false;
 
       if (oQue === "ignorar") return;
+      /* Uma subida em andamento já vai ler a conta e juntar: o eco dela
+         mesma se ignora, e o que outro aparelho gravou no meio pede só mais
+         uma subida, que junta de novo. Sem isso as duas coisas mexeriam nos
+         dados ao mesmo tempo. */
+      if (enviando.current) {
+        if (d.dispositivo !== disp.current) maisUm.current = true;
+        return;
+      }
+      if (oQue === "subir") { enviar(); return; }
+      if (oQue === "mesclar") {
+        /* O que estava aqui vira versão guardada, a junção vira o estado, e
+           a conta passa a ser a nova base: o envio automático sobe a junção
+           logo depois (ela difere da conta pelo que só existia aqui). */
+        guardarVersao(dataRef.current, "antes de juntar com outro aparelho");
+        const junto = normalize(mesclarDados(base, dataRef.current, novo));
+        stamp.current = Number(d.atualizadoEm);
+        const emJunto = stamp.current;
+        setData(junto);
+        gravarStamp(usuario.uid, emJunto);
+        esperarParaGravarBase(usuario.uid, emJunto, d.dados, junto, Date.now());
+        setUltima(Date.now());
+        notify("Juntei o que você fez neste aparelho com o que veio do outro.");
+        return;
+      }
       {
         /* O que estava neste aparelho vira uma versão guardada ANTES de
            a conta escrever por cima. Vale para toda carga vinda da nuvem,
@@ -293,8 +510,11 @@ function useNuvem(data, setData, notify, pronto, pro) {
         }
         veioDaNuvem.current = true;
         stamp.current = Number(d.atualizadoEm);
-        gravarStamp(usuario.uid, stamp.current);
-        setData((p) => ({ ...novo, theme: p.theme, layout: p.layout }));
+        const emBaixado = stamp.current;
+        const baixado = { ...novo, theme: dataRef.current.theme, layout: dataRef.current.layout };
+        setData(baixado);
+        gravarStamp(usuario.uid, emBaixado);
+        esperarParaGravarBase(usuario.uid, emBaixado, d.dados, baixado, Date.now());
         setUltima(Date.now());
         notify(era
           ? (riqueza(dataRef.current) > riqueza(novo)
@@ -317,6 +537,33 @@ function useNuvem(data, setData, notify, pronto, pro) {
     tmr.current = window.setTimeout(enviar, 2500);
     return () => { if (tmr.current) window.clearTimeout(tmr.current); };
   }, [data, sdk, usuario, pronto, pro, enviar]);
+
+  /* Fechar o app, trocar de aba ou bloquear o celular manda na hora o que
+     estava esperando o envio automático. Antes, quem mexia e fechava em
+     menos de 2,5 s deixava a mudança só no aparelho, e o outro nunca via. */
+  useEffect(() => {
+    if (!sdk || !usuario || !pro) return undefined;
+    const agora = () => {
+      if (!ouviuNuvem.current) return;
+      if (document.visibilityState === "visible") {
+        /* voltou para a tela com coisa que não tinha subido */
+        if (pendente.current) enviar();
+        return;
+      }
+      if (tmr.current || pendente.current) enviar();
+    };
+    const voltouRede = () => { if (ouviuNuvem.current && (pendente.current || tmr.current)) enviar(); };
+    const teimoso = window.setInterval(() => { if (pendente.current && ouviuNuvem.current) enviar(); }, 30000);
+    document.addEventListener("visibilitychange", agora);
+    window.addEventListener("pagehide", agora);
+    window.addEventListener("online", voltouRede);
+    return () => {
+      window.clearInterval(teimoso);
+      document.removeEventListener("visibilitychange", agora);
+      window.removeEventListener("pagehide", agora);
+      window.removeEventListener("online", voltouRede);
+    };
+  }, [sdk, usuario, pro, enviar]);
 
   /* "Manter conectado" escolhe onde a sessão fica guardada: no disco, e aí
      ela sobrevive a fechar o navegador, ou só na aba, e aí some ao fechar.

@@ -16,9 +16,11 @@ if inicio not in s or fim not in s:
     raise SystemExit('não achei a regra de sincronização no parte3.jsx')
 corpo = s[s.index(inicio):s.index(fim)].rstrip()
 
-if 'function decidirNuvem' not in corpo:
+if 'function decidirNuvem' not in corpo or 'function mesclarDados' not in corpo:
     raise SystemExit('não achei decidirNuvem no trecho extraído')
 corpo = corpo.replace('function decidirNuvem', 'export function decidirNuvem', 1)
+corpo = corpo.replace('function mesclarDados', 'export function mesclarDados', 1)
+corpo = corpo.replace('function mudouDesdeBase', 'export function mudouDesdeBase', 1)
 
 open('_nuvem.mjs', 'w', encoding='utf-8').write(
     '/* Cópia automática, refeita pelo extrair_nuvem.py a cada build.\n'

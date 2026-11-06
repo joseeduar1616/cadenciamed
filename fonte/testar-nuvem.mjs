@@ -16,7 +16,7 @@ const erros = [];
 const ok = (m) => passos.push('ok   ' + m);
 const falha = (m) => { passos.push('FALHA ' + m); erros.push(m); };
 
-const { decidirNuvem } = await import('./_nuvem.mjs');
+const { decidirNuvem, mesclarDados, mudouDesdeBase } = await import('./_nuvem.mjs');
 
 const caso = (nome, entrada, esperado) => {
   const r = decidirNuvem(entrada);
@@ -98,6 +98,85 @@ caso('fora do primeiro encontro, a conta mais nova sempre vence, mesmo com menos
 caso('documento existente vindo do cache ainda é decidido normalmente',
   { existe: true, daCache: true, primeira: true, mesmoAparelho: false,
     atualizadoEm: 1000, stampLocal: 0, riquezaLocal: 0, riquezaNuvem: 400 }, 'baixar');
+
+/* ── com base guardada: subir o que ficou para trás, juntar no reencontro ── */
+caso('mexeu aqui, fechou antes do envio, e a conta continua na mesma versão: sobe ao reabrir',
+  { existe: true, daCache: false, primeira: true, mesmoAparelho: true,
+    atualizadoEm: 1000, stampLocal: 1000, temBase: true, mudouAqui: true }, 'subir');
+caso('sem nada mudado aqui e a conta na mesma versão: ignora',
+  { existe: true, daCache: false, primeira: true, mesmoAparelho: true,
+    atualizadoEm: 1000, stampLocal: 1000, temBase: true, mudouAqui: false }, 'ignorar');
+caso('a conta andou (outro aparelho) e aqui não mudou nada: baixa',
+  { existe: true, daCache: false, primeira: false, mesmoAparelho: false,
+    atualizadoEm: 2000, stampLocal: 1000, temBase: true, mudouAqui: false }, 'baixar');
+caso('a conta andou e aqui também mudou: junta, não substitui',
+  { existe: true, daCache: false, primeira: true, mesmoAparelho: false,
+    atualizadoEm: 2000, stampLocal: 1000, temBase: true, mudouAqui: true }, 'mesclar');
+caso('sem base (aparelho de antes desta regra): a conta mais nova vence como antes',
+  { existe: true, daCache: false, primeira: true, mesmoAparelho: false,
+    atualizadoEm: 2000, stampLocal: 1000, temBase: false, mudouAqui: true }, 'baixar');
+caso('conta nova continua subindo, com ou sem base',
+  { existe: false, daCache: false, primeira: true, temBase: true, mudouAqui: true }, 'subir');
+caso('"não existe" do cache continua sem fazer nada, com ou sem base',
+  { existe: false, daCache: true, primeira: true, temBase: true, mudouAqui: true }, 'esperar');
+
+{
+  const sessao = (id, min) => ({ id, date: '2026-11-06', minutes: min });
+  const base = {
+    theme: 'dark', profile: { name: 'Zé' },
+    sessions: [sessao('a', 30), sessao('b', 40)],
+    marks: { cardio: { aula: false }, nefro: { aula: true } },
+    flash: [{ id: 'c1', frente: 'x', prox: '2026-11-06' }, { id: 'c2', frente: 'y', prox: '2026-11-06' }],
+    goals: { weekly: 600 },
+    pomoLog: [{ date: '2026-11-05', mins: 25 }],
+  };
+  /* no celular: sessão nova, cartão c1 revisado, aula de cardio marcada, tema claro */
+  const celular = JSON.parse(JSON.stringify(base));
+  celular.theme = 'light';
+  celular.sessions.push(sessao('cel', 50));
+  celular.flash[0].prox = '2026-11-10';
+  celular.marks.cardio.aula = true;
+  celular.pomoLog.push({ date: '2026-11-06', mins: 25 });
+  /* no computador (já na conta): outra sessão nova, sessão b apagada, cartão c2 revisado, meta mudada */
+  const conta = JSON.parse(JSON.stringify(base));
+  conta.sessions = [sessao('a', 30), sessao('pc', 90)];
+  conta.flash[1].prox = '2026-11-12';
+  conta.goals.weekly = 720;
+  conta.pomoLog.push({ date: '2026-11-06', mins: 50 });
+  const j = mesclarDados(base, celular, conta);
+  const ids = j.sessions.map((x) => x.id).sort().join(',');
+  if (ids === 'a,cel,pc') ok('sessões: as duas novas ficam, e a apagada no computador sai');
+  else falha('sessões juntadas: ' + ids);
+  if (j.flash.find((c) => c.id === 'c1').prox === '2026-11-10' && j.flash.find((c) => c.id === 'c2').prox === '2026-11-12') ok('cartões: a revisão feita em cada aparelho fica');
+  else falha('cartões juntados: ' + JSON.stringify(j.flash));
+  if (j.marks.cardio.aula === true && j.marks.nefro.aula === true) ok('aulas: a marcada no celular fica, a que já estava fica');
+  else falha('aulas juntadas: ' + JSON.stringify(j.marks));
+  if (j.goals.weekly === 720) ok('o que só o computador mudou fica');
+  else falha('meta: ' + j.goals.weekly);
+  if (j.pomoLog.length === 3) ok('lista sem id: a da conta, mais o que entrou só aqui');
+  else falha('pomoLog: ' + JSON.stringify(j.pomoLog));
+  if (j.theme === 'light') ok('tema é do aparelho e não viaja');
+  else falha('tema: ' + j.theme);
+
+  /* o mesmo campo mexido dos dois lados: vale a conta */
+  const l2 = { ...base, profile: { name: 'José' } }, n2 = { ...base, profile: { name: 'Zezinho' } };
+  if (mesclarDados(base, l2, n2).profile.name === 'Zezinho') ok('mesmo campo mudado nos dois: vale a conta (o daqui vai para as versões)');
+  else falha('conflito de campo');
+
+  /* apagado aqui, sem mexer lá: sai; apagado aqui mas mexido lá: fica */
+  const l3 = { ...base, flash: [base.flash[1]] };
+  const n3 = JSON.parse(JSON.stringify(base));
+  if (mesclarDados(base, l3, n3).flash.length === 1) ok('cartão apagado neste aparelho sai da conta');
+  else falha('apagar cartão');
+  const n4 = JSON.parse(JSON.stringify(base)); n4.flash[0].frente = 'editado lá';
+  if (mesclarDados(base, l3, n4).flash.some((c) => c.frente === 'editado lá')) ok('mas se o outro aparelho editou o mesmo cartão, ele fica');
+  else falha('apagar x editar');
+
+  if (!mudouDesdeBase(base, { ...base, theme: 'light', layout: 'x' })) ok('trocar só o tema não conta como mudança a subir');
+  else falha('tema contou como mudança');
+  if (mudouDesdeBase(base, celular)) ok('mudança de verdade conta');
+  else falha('mudança não detectada');
+}
 
 console.log(passos.join('\n'));
 console.log('\n' + (erros.length ? `${erros.length} PROBLEMA(S):\n` + erros.join('\n') : 'nenhum erro'));

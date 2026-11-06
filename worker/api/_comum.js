@@ -260,6 +260,9 @@ export const RECURSOS = [
      bastante, libera para quem assina no painel de acessos (regra "pro").
      A rota /api/banco confere o plano por conta própria. */
   { id: "banco", nome: "Banco de questões", padrao: "dono" },
+  /* Meu plano: o plano de estudo pronto que a pessoa já tem, lido do
+     arquivo pela IA e reajustado sozinho com o que ela fez. */
+  { id: "meuplano", nome: "Meu plano", padrao: "pro" },
   { id: "cronograma", nome: "Cronograma", padrao: "todos" },
   { id: "rotina", nome: "Agenda", padrao: "todos" },
   { id: "amigos", nome: "Amigos", padrao: "todos" },

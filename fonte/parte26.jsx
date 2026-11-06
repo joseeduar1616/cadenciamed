@@ -391,7 +391,9 @@ function PlanoDaMentoria({ data, setData, today, notify, ocupado, perguntar }) {
  * e vai em áudio para o servidor, que a manda ao Gemini junto com o pedido
  * — uma ida só, que ouve e responde (ver _metodos.js, INSTRUCOES_AUDIO).
  *
- * FALAR. A síntese de voz do aparelho, em pt-BR, frase por frase: o Chrome
+ * FALAR. Com a voz da mentora (a mesma Zephyr da assistente da tela, pelo
+ * Gemini TTS; ver falarComVozDaMentora). Sem ela, a síntese de voz do
+ * aparelho, em pt-BR, frase por frase: o Chrome
  * corta em silêncio uma fala longa depois de uns quinze segundos, e frase
  * curta não chega lá. Antes de falar o texto perde o markdown — asterisco
  * lido em voz alta é ruído.
@@ -639,11 +641,104 @@ function falarEmVoz(texto, aoFim) {
   return () => { cancelado = true; window.clearTimeout(prazo); try { ss.cancel(); } catch (e) { /* segue */ } };
 }
 
+/* ── falar com a voz da mentora (a mesma da assistente da tela) ────────
+ *
+ * A resposta vira áudio na voz da Google (Zephyr, Gemini TTS, pela rota
+ * /api/voz, ação "falar"), pedaço por pedaço: enquanto um toca, o próximo
+ * já está sendo gerado, e a fala começa depois do primeiro pedaço, não do
+ * texto inteiro. Se a rota falhar (sem chave, limite do dia, rede), o que
+ * falta é dito pela voz do aparelho, como antes: a ligação nunca fica muda.
+ */
+let contextoFalaMentora = null;
+function audioDaMentora() {
+  try {
+    if (!contextoFalaMentora) {
+      const C = window.AudioContext || window.webkitAudioContext;
+      if (!C) return null;
+      contextoFalaMentora = new C();
+    }
+    if (contextoFalaMentora.state === "suspended" && contextoFalaMentora.resume) contextoFalaMentora.resume().catch(() => {});
+    return contextoFalaMentora;
+  } catch (e) { return null; }
+}
+
+function pedacosDaFala(texto) {
+  const frases = frasesParaFalar(textoParaFalar(texto));
+  const pedacos = [];
+  let atual = "";
+  for (const f of frases) {
+    if (atual && (atual.length + f.length + 1 > 420)) { pedacos.push(atual); atual = ""; }
+    atual = atual ? `${atual} ${f}` : f;
+  }
+  if (atual) pedacos.push(atual);
+  return pedacos.slice(0, 10);
+}
+
+function falarComVozDaMentora(texto, nuvem, aoFim) {
+  const ctx = audioDaMentora();
+  const pedacos = pedacosDaFala(texto);
+  if (!ctx || !pedacos.length || !nuvem || !nuvem.usuario) return falarEmVoz(texto, aoFim);
+  let cancelado = false;
+  let cancelarAparelho = null;
+  const fontes = new Set();
+  const pedidos = [];
+  const pedir = (i) => {
+    if (!pedidos[i]) {
+      pedidos[i] = (async () => {
+        const token = await pegarTokenDaConta(nuvem);
+        const { dados, erro } = await chamarApi(ROTA_VOZ, { token, acao: "falar", texto: pedacos[i] }, "A voz da mentoria");
+        if (erro || !dados || !dados.audio) throw new Error(erro || "sem áudio");
+        return dados;
+      })();
+      pedidos[i].catch(() => {});
+    }
+    return pedidos[i];
+  };
+  const tocar = (dados) => new Promise((pronto) => {
+    const f32 = pcm16ParaFloat32(base64ParaBytes(dados.audio));
+    if (!f32.length) { pronto(); return; }
+    const buf = ctx.createBuffer(1, f32.length, Number(dados.taxa) || 24000);
+    buf.getChannelData(0).set(f32);
+    const fonte = ctx.createBufferSource();
+    fonte.buffer = buf;
+    fonte.connect(ctx.destination);
+    /* prazo de segurança, como na voz do aparelho: o "terminou" às vezes não chega */
+    const prazo = window.setTimeout(() => { fontes.delete(fonte); pronto(); }, buf.duration * 1000 + 1500);
+    fonte.onended = () => { window.clearTimeout(prazo); fontes.delete(fonte); pronto(); };
+    fontes.add(fonte);
+    fonte.start();
+  });
+  (async () => {
+    for (let i = 0; i < pedacos.length; i += 1) {
+      if (cancelado) return;
+      let dados;
+      try {
+        dados = await pedir(i);
+        if (i + 1 < pedacos.length) pedir(i + 1);
+      } catch (e) {
+        if (cancelado) return;
+        cancelarAparelho = falarEmVoz(pedacos.slice(i).join(" "), aoFim);
+        return;
+      }
+      if (cancelado) return;
+      await tocar(dados);
+    }
+    if (!cancelado && aoFim) aoFim();
+  })();
+  return () => {
+    cancelado = true;
+    for (const f of fontes) { try { f.onended = null; f.stop(); } catch (e) { /* já parou */ } }
+    fontes.clear();
+    if (cancelarAparelho) cancelarAparelho();
+  };
+}
+
 /* No iPhone a voz só sai se a PRIMEIRA fala começar dentro de um toque.
    A primeira resposta da mentoria chega depois de uma ida à rede, fora do
    toque, e ficaria muda. Uma fala vazia no próprio toque destrava o resto. */
 function destravarVoz() {
   prepararVozes();
+  audioDaMentora();   // o áudio da voz da mentora também só destrava num toque
   try {
     const ss = window.speechSynthesis;
     if (!ss || typeof window.SpeechSynthesisUtterance !== "function") return;
@@ -670,7 +765,7 @@ const ROTULO_ESTADO_VOZ = {
   pausado: "Em pausa",
 };
 
-function ChamadaDeVoz({ perguntar, temConversa, opcoes, aoEncerrar }) {
+function ChamadaDeVoz({ perguntar, temConversa, opcoes, aoEncerrar, nuvem }) {
   const [estado, setEstado] = useState("iniciando");
   const [legenda, setLegenda] = useState("");
   const [resposta, setResposta] = useState("");
@@ -685,6 +780,8 @@ function ChamadaDeVoz({ perguntar, temConversa, opcoes, aoEncerrar }) {
   const trava = useRef(null);
   const perguntarRef = useRef(perguntar);
   perguntarRef.current = perguntar;
+  const nuvemRef = useRef(nuvem);
+  nuvemRef.current = nuvem;
 
   const mudar = (e) => { estadoRef.current = e; setEstado(e); };
 
@@ -706,7 +803,7 @@ function ChamadaDeVoz({ perguntar, temConversa, opcoes, aoEncerrar }) {
     setLegenda("");
     setResposta(j.texto || "");
     mudar("falando");
-    pararFala.current = falarEmVoz(j.texto || "", () => { if (aberta.current && estadoRef.current === "falando") ouvir(); });
+    pararFala.current = falarComVozDaMentora(j.texto || "", nuvemRef.current, () => { if (aberta.current && estadoRef.current === "falando") ouvir(); });
   };
 
   const semFala = () => {
@@ -962,7 +1059,7 @@ function Mentoria({ data, setData, subjects, ladder, today, totals, minWeek, qWe
   const m = data.mentoria || {};
   const perfil = m.perfil || {};
   const sabidas = DIMENSOES_MENTORIA.filter(([k]) => perfil[k]).length;
-  const podeChamar = typeof window !== "undefined" && !!window.speechSynthesis
+  const podeChamar = typeof window !== "undefined" && !!(window.speechSynthesis || window.AudioContext || window.webkitAudioContext)
     && (!!reconhecedorDeFala() || (typeof window.MediaRecorder === "function" && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)));
 
   useEffect(() => { guardarConversaMentoria(msgs); }, [msgs]);
@@ -1161,7 +1258,7 @@ function Mentoria({ data, setData, subjects, ladder, today, totals, minWeek, qWe
         </div>
 
         {emChamada ? (
-          <ChamadaDeVoz perguntar={perguntar} temConversa={msgs.length > 0} opcoes={opcoes}
+          <ChamadaDeVoz perguntar={perguntar} temConversa={msgs.length > 0} opcoes={opcoes} nuvem={nuvem}
             aoEncerrar={() => setEmChamada(false)} />
         ) : null}
 

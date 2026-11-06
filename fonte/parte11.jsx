@@ -165,7 +165,7 @@ const ROTA_PLANO = "/api/plano";
    As duas listas não podem divergir, e é isso que o testar-recursos.mjs
    confere a cada build. */
 const RECURSOS_PADRAO = {
-  assistente: "pro", cartoes: "pro", revisoes: "pro", provas: "pro", banco: "dono",
+  assistente: "pro", cartoes: "pro", revisoes: "pro", provas: "pro", banco: "dono", meuplano: "pro",
   cronograma: "todos", rotina: "todos", amigos: "todos", metas: "todos",
   desempenho: "todos", simulados: "todos", progresso: "todos",
   estudo: "pro", motivacao: "pro", treino: "dono", financeiro: "dono",

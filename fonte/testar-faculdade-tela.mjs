@@ -231,6 +231,9 @@ if (await janela.isVisible().catch(() => false)) {
   if (await janela.isVisible().catch(() => false)) ok('quem ainda não preencheu vê a janela de novo na próxima entrada');
   else falha('não perguntou de novo para quem não preencheu');
   await pag.locator('[data-teste="faculdade-depois"]').click();
+  /* o app grava 1,5 s depois da mudança (e na hora, se a página for
+     fechada); mexer no disco antes disso seria apagado pela gravação */
+  await pag.waitForTimeout(1900);
 } else falha('a janela não voltou para testar "Agora não"');
 
 /* quem só pôs a especialidade já preencheu: não pergunta */

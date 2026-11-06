@@ -25,7 +25,7 @@ python3 gerar_legais.py
 echo "── juntando os pedaços ─────────────────────────────"
 cat base.jsx parte2.jsx parte3.jsx parte10.jsx parte11.jsx parte13.jsx \
     parte12.jsx parte17.jsx parte4.jsx parte5.jsx parte6.jsx parte7.jsx parte9.jsx \
-    parte14.jsx parte15.jsx parte16.jsx parte18.jsx parte19.jsx parte25.jsx parte20.jsx parte21.jsx parte22.jsx parte23.jsx parte24.jsx parte27.jsx parte28.jsx parte29.jsx parte30.jsx parte31.jsx parte32.jsx parte33.jsx parte34.jsx parte38.jsx parte35.jsx parte36.jsx parte37.jsx parte39.jsx parte40.jsx parte26.jsx parte8.jsx > app.jsx
+    parte14.jsx parte15.jsx parte16.jsx parte18.jsx parte19.jsx parte25.jsx parte20.jsx parte21.jsx parte22.jsx parte23.jsx parte24.jsx parte27.jsx parte28.jsx parte29.jsx parte30.jsx parte31.jsx parte32.jsx parte33.jsx parte34.jsx parte38.jsx parte35.jsx parte36.jsx parte37.jsx parte39.jsx parte40.jsx parte41.jsx parte26.jsx parte8.jsx > app.jsx
 
 echo "── compilando ──────────────────────────────────────"
 npx esbuild main.jsx --bundle --minify --format=iife --loader:.jsx=jsx \
@@ -58,6 +58,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   python3 extrair_jogo.py
   python3 extrair_voz.py
   python3 extrair_voz_ao_vivo.py
+  python3 extrair_plano.py
   echo "── teste no navegador ──────────────────────────────"
   python3 montar_teste.py > /dev/null
   node testar.mjs
@@ -88,6 +89,8 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-chamada-voz.mjs
   node testar-assistente-voz-tela.mjs
   node testar-banco-tela.mjs index.html
+  node testar-meu-plano-tela.mjs teste.html
+  node testar-sincronia-tela.mjs teste.html
   node testar-pendentes-tela.mjs
   node testar-bloco-iniciar.mjs
   node testar-caderno-erros.mjs
@@ -98,6 +101,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-voz.mjs
   node testar-voz-ao-vivo.mjs
   node testar-banco.mjs
+  node testar-meu-plano.mjs
   node testar-lotes.mjs
   node testar-revisao.mjs
   node testar-semana.mjs

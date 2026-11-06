@@ -549,7 +549,7 @@ function LogForm({ today, addSession, notify, onDone }) {
   );
 }
 
-function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, done, bonusDone, addSession, delSession, notify, go, blocosHoje, projecao, pro, verPlanos, cartoesHoje, plano, emTeste, testeAcabou }) {
+function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, done, bonusDone, addSession, delSession, notify, go, blocosHoje, projecao, pro, verPlanos, cartoesHoje, verMeuPlano, plano, emTeste, testeAcabou }) {
   const [openLog, setOpenLog] = useState(false);
   const [newTask, setNewTask] = useState("");
   const ativo = useAtivo();
@@ -580,6 +580,8 @@ function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, do
       {/* O dia em uma olhada, como a "Visão geral" da Easy: a saudação, o
           quanto já foi, e as atividades com o botão para ir fazer. */}
       <PainelDoDia {...{ data, today, minToday, late, blocosHoje, cartoesHoje, go }} />
+      {/* O plano pronto que a pessoa mandou (Meu plano): o que ele pede hoje. */}
+      {verMeuPlano && data.planoArquivo ? <PlanoDeHoje data={data} setData={setData} today={today} onAbrir={() => go("meuplano")} /> : null}
       {/* um motivo do painel de motivação por dia, para lembrar por quê */}
       <MotivoDoDia data={data} today={today} go={go} />
 

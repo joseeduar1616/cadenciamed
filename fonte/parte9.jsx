@@ -23,6 +23,58 @@ function dataDaSessaoIA(v) {
   return s;
 }
 
+/* As ações que a IA pede no painel (tarefa, rever, bloco, sessão), já
+   conferidas campo a campo. Pura: o Assistente escrito e a mentora por voz
+   (parte39, pelas ferramentas da sessão ao vivo) passam pelo mesmo lugar. */
+function aplicarAcoesNoPainel(p, lista, subjects) {
+  const novo = { ...p };
+  let feitas = 0;
+  for (const a of lista) {
+    if (!a || typeof a !== "object") continue;
+    if (a.tipo === "tarefa" && a.texto) {
+      novo.tasks = [{ id: uid(), text: String(a.texto).slice(0, 200), done: false }, ...(novo.tasks || [])];
+      feitas += 1;
+    } else if (a.tipo === "rever" && a.texto) {
+      novo.rever = [{ id: uid(), text: String(a.texto).slice(0, 200), done: false }, ...(novo.rever || [])];
+      feitas += 1;
+    } else if (a.tipo === "bloco" && a.titulo && a.inicio && a.fim) {
+      const cat = BLOCK_IDS.indexOf(a.categoria) >= 0 ? a.categoria : "Estudo";
+      novo.routine = [...(novo.routine || []), {
+        id: uid(), day: Math.min(6, Math.max(0, Number(a.dia) || 0)),
+        label: String(a.titulo).slice(0, 60), type: cat,
+        start: String(a.inicio), end: String(a.fim),
+      }];
+      feitas += 1;
+    } else if (a.tipo === "sessao") {
+      const dia = dataDaSessaoIA(a.data);
+      const materia = acharMateriaPorNome(a.materia, subjects);
+      const minutos = Math.max(0, Math.floor(Number(a.minutos) || 0));
+      const questoes = Math.max(0, Math.floor(Number(a.questoes) || 0));
+      const acertos = Math.min(questoes, Math.max(0, Math.floor(Number(a.acertos) || 0)));
+      const tipoSessao = KINDS.indexOf(a.tipoSessao) >= 0 ? a.tipoSessao : (questoes ? "Questões" : "Aula");
+      novo.sessions = [{
+        id: uid(), date: dia, subjectId: materia ? materia.id : null,
+        area: materia ? materia.area : null,
+        topic: materia ? materia.title : String(a.materia || "Estudo").slice(0, 80),
+        kind: tipoSessao, minutes: minutos, questions: questoes, correct: acertos,
+        notes: "assistente", createdAt: Date.now(),
+      }, ...(novo.sessions || [])];
+      /* mesma regra do checkbox de aula concluída em Matérias/Temas: só
+         grava a data na primeira vez, para não apagar quando o assunto
+         já tinha sido marcado antes numa data diferente */
+      if (materia) {
+        const rec = (novo.marks || {})[materia.id] || {};
+        novo.marks = {
+          ...(novo.marks || {}),
+          [materia.id]: { ...rec, aula: true, date: rec.date || dia },
+        };
+      }
+      feitas += 1;
+    }
+  }
+  return { novo, feitas };
+}
+
 function resumoParaIA({ subjects, ladder, data, today, totals, minWeek, qWeek, totalBonus }) {
   const porEsp = new Map();
   for (const s of subjects) {
@@ -105,7 +157,7 @@ COMPROMISSOS COM DATA
 ${daFrente}
 
 PENDÊNCIAS ABERTAS: ${pendencias}
-LISTA "PRECISO REVER": ${rever}
+LISTA "PRECISO REVER": ${rever}${data.planoArquivo ? `\n\n${resumoDoPlanoParaIA(data.planoArquivo, today)}` : ""}
 ${cronograma}`;
 }
 
@@ -1242,51 +1294,9 @@ function Assistente({ data, setData, subjects, ladder, today, totals, minWeek, q
 
     let feitas = 0;
     setData((p) => {
-      const novo = { ...p };
-      for (const a of lista) {
-        if (!a || typeof a !== "object") continue;
-        if (a.tipo === "tarefa" && a.texto) {
-          novo.tasks = [{ id: uid(), text: String(a.texto).slice(0, 200), done: false }, ...(novo.tasks || [])];
-          feitas += 1;
-        } else if (a.tipo === "rever" && a.texto) {
-          novo.rever = [{ id: uid(), text: String(a.texto).slice(0, 200), done: false }, ...(novo.rever || [])];
-          feitas += 1;
-        } else if (a.tipo === "bloco" && a.titulo && a.inicio && a.fim) {
-          const cat = BLOCK_IDS.indexOf(a.categoria) >= 0 ? a.categoria : "Estudo";
-          novo.routine = [...(novo.routine || []), {
-            id: uid(), day: Math.min(6, Math.max(0, Number(a.dia) || 0)),
-            label: String(a.titulo).slice(0, 60), type: cat,
-            start: String(a.inicio), end: String(a.fim),
-          }];
-          feitas += 1;
-        } else if (a.tipo === "sessao") {
-          const dia = dataDaSessaoIA(a.data);
-          const materia = acharMateriaPorNome(a.materia, subjects);
-          const minutos = Math.max(0, Math.floor(Number(a.minutos) || 0));
-          const questoes = Math.max(0, Math.floor(Number(a.questoes) || 0));
-          const acertos = Math.min(questoes, Math.max(0, Math.floor(Number(a.acertos) || 0)));
-          const tipoSessao = KINDS.indexOf(a.tipoSessao) >= 0 ? a.tipoSessao : (questoes ? "Questões" : "Aula");
-          novo.sessions = [{
-            id: uid(), date: dia, subjectId: materia ? materia.id : null,
-            area: materia ? materia.area : null,
-            topic: materia ? materia.title : String(a.materia || "Estudo").slice(0, 80),
-            kind: tipoSessao, minutes: minutos, questions: questoes, correct: acertos,
-            notes: "assistente", createdAt: Date.now(),
-          }, ...(novo.sessions || [])];
-          /* mesma regra do checkbox de aula concluída em Matérias/Temas: só
-             grava a data na primeira vez, para não apagar quando o assunto
-             já tinha sido marcado antes numa data diferente */
-          if (materia) {
-            const rec = (novo.marks || {})[materia.id] || {};
-            novo.marks = {
-              ...(novo.marks || {}),
-              [materia.id]: { ...rec, aula: true, date: rec.date || dia },
-            };
-          }
-          feitas += 1;
-        }
-      }
-      return novo;
+      const r = aplicarAcoesNoPainel(p, lista, subjects);
+      feitas = r.feitas;
+      return r.novo;
     });
     return { limpo: texto.replace(m[0], "").trim(), feitas };
   }, [setData, subjects]);
