@@ -85,6 +85,21 @@ function guardarConversaMentoria(msgs) {
   } catch (e) { /* sem espaço no aparelho: a conversa só não fica guardada */ }
 }
 
+/* Qual conversa guardada está aberta (o id no servidor, /api/conversas).
+   Cada conversa da mentoria fica separada, como no Assistente, e o perfil
+   e o plano continuam valendo para todas: são da pessoa, não da conversa. */
+const CHAVE_ID_CONVERSA_MENTORIA = "cadencia:v3:mentoria-conversa-id";
+function lerIdConversaMentoria() {
+  try { return String(window.localStorage.getItem(CHAVE_ID_CONVERSA_MENTORIA) || "").slice(0, 60); }
+  catch (e) { return ""; }
+}
+function guardarIdConversaMentoria(id) {
+  try {
+    if (id) window.localStorage.setItem(CHAVE_ID_CONVERSA_MENTORIA, id);
+    else window.localStorage.removeItem(CHAVE_ID_CONVERSA_MENTORIA);
+  } catch (e) { /* segue */ }
+}
+
 const minutosDe = (h) => {
   const m = /^(\d{2}):(\d{2})$/.exec(String(h || ""));
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
@@ -1097,6 +1112,8 @@ function Mentoria({ data, setData, subjects, ladder, today, totals, minWeek, qWe
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState("");
   const [emChamada, setEmChamada] = useState(false);
+  const [conversaId, setConversaId] = useState(lerIdConversaMentoria);
+  const [verConversas, setVerConversas] = useState(false);
   const caixa = useRef(null);
   const ocupadoRef = useRef(false);
   const m = data.mentoria || {};
@@ -1106,6 +1123,46 @@ function Mentoria({ data, setData, subjects, ladder, today, totals, minWeek, qWe
     && (!!reconhecedorDeFala() || (typeof window.MediaRecorder === "function" && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)));
 
   useEffect(() => { guardarConversaMentoria(msgs); }, [msgs]);
+  useEffect(() => { guardarIdConversaMentoria(conversaId); }, [conversaId]);
+
+  /* Guarda no servidor depois de cada resposta, e depois do que a chamada
+     de voz anexou. Em fila: a primeira gravação devolve o id, e as
+     seguintes precisam dele (senão viravam duas conversas). O que acabou de
+     ser aberto da lista não é regravado. */
+  const idRef = useRef(conversaId);
+  idRef.current = conversaId;
+  const filaRef = useRef(Promise.resolve());
+  const salvoRef = useRef(msgs);
+  useEffect(() => {
+    if (!msgs.length || ocupado || msgs === salvoRef.current) return undefined;
+    if (msgs[msgs.length - 1].papel !== "claude") return undefined;
+    const t = window.setTimeout(() => {
+      const lista = msgs;
+      salvoRef.current = lista;
+      filaRef.current = filaRef.current.then(async () => {
+        const j = await falarComConversas(nuvem, { acao: "salvar", modo: "mentoria", id: idRef.current || undefined, mensagens: lista });
+        if (!j.erro && j.id && !idRef.current) { idRef.current = j.id; setConversaId(j.id); }
+      }).catch(() => {});
+    }, 600);
+    return () => window.clearTimeout(t);
+  }, [msgs, ocupado, nuvem]);
+
+  const abrirConversa = useCallback(async (id) => {
+    const j = await falarComConversas(nuvem, { acao: "abrir", id });
+    if (j.erro) { notify(j.erro); return; }
+    const lista = (j.mensagens || []).slice(-MAX_MSGS_MENTORIA);
+    salvoRef.current = lista;
+    idRef.current = j.id || id;
+    setMsgs(lista); setConversaId(j.id || id); setOpcoes([]); setErro(""); setVerConversas(false);
+  }, [nuvem, notify]);
+
+  /* Conversa nova: a tela limpa, mas o que ela já sabe (perfil) e o plano
+     ficam. Para apagar isso existe o "recomeçar do zero". */
+  const novaConversa = () => {
+    salvoRef.current = [];
+    idRef.current = "";
+    setMsgs([]); setConversaId(""); setOpcoes([]); setErro(""); setVerConversas(false);
+  };
 
   /* Mesma regra da conversa comum: rola a caixa, não a página, e só se a
      pessoa já estava no fim — quem subiu para reler fica onde está. */
@@ -1138,7 +1195,7 @@ function Mentoria({ data, setData, subjects, ladder, today, totals, minWeek, qWe
         token,
         modo: "mentoria",
         contexto: [
-          resumoParaIA({ subjects, ladder, data, today, totals, minWeek, qWeek, totalBonus: ativo.totalBonus }),
+          resumoParaIA({ subjects, ladder, data, today, totals, minWeek, qWeek, totalBonus: ativo.totalBonus, planoCompleto: true }),
           pendentesParaIA(data, today),
           cadernoParaIA(data.erros, ativo.byId || {}),
         ].filter(Boolean).join("\n\n"),
@@ -1182,10 +1239,41 @@ function Mentoria({ data, setData, subjects, ladder, today, totals, minWeek, qWe
     } finally { ocupadoRef.current = false; setOcupado(false); }
   }, [msgs, ocupado, nuvem, subjects, ladder, data, today, totals, minWeek, qWeek, ativo.totalBonus, m.perfil, m.plano, setData, notify]);
 
+  /* A Chamada de voz é a mesma conversa ao vivo da assistente da tela
+     (parte39), em modo mentoria: a mesma voz, interromper falando por cima,
+     e ela guarda no perfil e pede o plano pelas ferramentas. Onde a
+     conversa ao vivo não está disponível, segue a chamada antiga. */
+  const abrirChamada = () => {
+    if (typeof window !== "undefined" && window.__cadenciaVozAoVivo) {
+      window.dispatchEvent(new CustomEvent("cadencia:ligar-voz", { detail: { modo: "mentoria" } }));
+      return;
+    }
+    destravarVoz();
+    setEmChamada(true);
+  };
+
+  /* O que a conversa ao vivo usa daqui: perguntar à mentoria escrita (para
+     montar o plano), anexar o que foi falado e ler o que já foi conversado. */
+  const perguntarRef = useRef(perguntar);
+  perguntarRef.current = perguntar;
+  const msgsRef = useRef(msgs);
+  msgsRef.current = msgs;
+  useEffect(() => {
+    window.__cadenciaMentoria = {
+      /* espera a tela redesenhar: o que a voz acabou de guardar no perfil
+         (na mesma leva de ferramentas) precisa ir junto no pedido */
+      perguntar: (t) => new Promise((pronto) => window.setTimeout(pronto, 120)).then(() => perguntarRef.current(t, { voz: true })),
+      anexar: (lista) => setMsgs((atual) => [...atual, ...lista].slice(-MAX_MSGS_MENTORIA)),
+      conversa: () => msgsRef.current.slice(-12).map((x) => `${x.papel === "user" ? "Pessoa" : "Mentoria"}: ${String(x.texto || "").slice(0, 600)}`).join("\n"),
+    };
+    return () => { if (window.__cadenciaMentoria && window.__cadenciaMentoria.anexar) window.__cadenciaMentoria = null; };
+  }, []);
+
   /* Recomeçar apaga o que a mentoria sabe e o plano, mas NÃO tira nada
      da Agenda: isso é decisão separada, no botão do plano. */
   const recomecar = () => {
-    setMsgs([]); setOpcoes([]); setErro("");
+    salvoRef.current = []; idRef.current = "";
+    setMsgs([]); setOpcoes([]); setErro(""); setConversaId("");
     setData((pp) => ({ ...pp, mentoria: { ...(pp.mentoria || {}), perfil: {}, plano: null, planoEm: 0, feitos: {} } }));
   };
 
@@ -1238,10 +1326,20 @@ function Mentoria({ data, setData, subjects, ladder, today, totals, minWeek, qWe
       <Card className="flex flex-col" style={{ minHeight: 380 }}>
         <div className="px-5 sm:px-6 pt-4 pb-3 flex items-center justify-between gap-2 flex-wrap"
           style={{ borderBottom: `1px solid ${T.line}` }}>
-          <Mini>{msgs.length ? "a entrevista fica guardada neste aparelho" : "a entrevista leva uns dez minutos, escrevendo ou por voz"}</Mini>
+          <Mini style={{ minWidth: 0, flex: "1 1 160px" }}>{msgs.length
+            ? (conversaId ? "conversa guardada na sua conta" : "conversa nova · é guardada na primeira resposta")
+            : "a entrevista leva uns dez minutos, escrevendo ou por voz"}</Mini>
           <div className="flex gap-2 flex-wrap">
+            <Btn size="sm" tone={verConversas ? "primary" : "quiet"} onClick={() => setVerConversas(!verConversas)}>
+              <Folder size={14} /> Conversas
+            </Btn>
+            {msgs.length && !emChamada ? (
+              <Btn size="sm" tone="outline" onClick={novaConversa} disabled={ocupado}>
+                <MessageSquarePlus size={14} /> Nova
+              </Btn>
+            ) : null}
             {!emChamada ? (
-              <Btn size="sm" tone="primary" disabled={ocupado || !podeChamar} onClick={() => { destravarVoz(); setEmChamada(true); }}
+              <Btn size="sm" tone="primary" disabled={ocupado || !podeChamar} onClick={abrirChamada}
                 title={podeChamar ? "Conversar com a mentoria falando" : "Este navegador não tem microfone ou voz"}>
                 <Phone size={14} /> Chamada de voz
               </Btn>
@@ -1251,6 +1349,12 @@ function Mentoria({ data, setData, subjects, ladder, today, totals, minWeek, qWe
             ) : null}
           </div>
         </div>
+
+        {verConversas ? (
+          <PainelDeConversas nuvem={nuvem} notify={notify} modo="mentoria" conversaId={conversaId} cor="var(--neon2)"
+            aoAbrir={abrirConversa} aoNova={novaConversa} aoFechar={() => setVerConversas(false)}
+            aoApagar={(id) => { if (id === conversaId) novaConversa(); }} />
+        ) : null}
 
         <div ref={caixa} className="flex-1 px-5 sm:px-6 py-5 flex flex-col gap-4"
           style={{ maxHeight: 520, overflowY: "auto", overscrollBehavior: "contain" }}>
@@ -1272,7 +1376,7 @@ function Mentoria({ data, setData, subjects, ladder, today, totals, minWeek, qWe
                 </Btn>
               </div>
               {podeChamar && !emChamada ? (
-                <button type="button" onClick={() => { destravarVoz(); setEmChamada(true); }} disabled={ocupado}
+                <button type="button" onClick={abrirChamada} disabled={ocupado}
                   className="mt-3 toque-larg"
                   style={{ background: "none", border: "none", color: "var(--neon2)", cursor: "pointer", fontSize: 14, fontWeight: 600, fontFamily: F_UI }}>
                   ou começar por chamada de voz

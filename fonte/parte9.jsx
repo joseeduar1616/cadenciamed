@@ -75,7 +75,24 @@ function aplicarAcoesNoPainel(p, lista, subjects) {
   return { novo, feitas };
 }
 
-function resumoParaIA({ subjects, ladder, data, today, totals, minWeek, qWeek, totalBonus }) {
+/* A sequência do cronograma, na ordem em que a pessoa estuda: onde ela
+   parou e o que vem a seguir. Só a contagem por especialidade não dizia
+   QUAL aula vem depois, e a IA escolhia temas por conta própria. */
+function sequenciaParaIA(subjects, quantas = 25) {
+  const lista = subjects || [];
+  if (!lista.length) return "";
+  let ultima = -1;
+  lista.forEach((s, i) => { if (s.aula) ultima = i; });
+  const proximas = lista.filter((s) => !s.aula).slice(0, quantas)
+    .map((s) => `- ${s.bloco ? `bloco ${s.bloco} · ` : ""}${s.esp}: ${s.titulo}`).join("\n");
+  const paradas = lista.slice(0, Math.max(0, ultima)).filter((s) => !s.aula).length;
+  return `SEQUÊNCIA DO CRONOGRAMA (a ordem que a pessoa segue)
+Última aula marcada: ${ultima >= 0 ? `${lista[ultima].esp}: ${lista[ultima].titulo} (${ultima + 1}ª de ${lista.length})` : "nenhuma ainda"}${paradas ? `; ${paradas} aulas anteriores a ela ficaram sem marcar` : ""}
+Próximas aulas, na ordem:
+${proximas || "todas feitas"}`;
+}
+
+function resumoParaIA({ subjects, ladder, data, today, totals, minWeek, qWeek, totalBonus, planoCompleto }) {
   const porEsp = new Map();
   for (const s of subjects) {
     const k = `${aLabel(s.area)} · ${s.esp}`;
@@ -147,6 +164,8 @@ Acerto geral: ${totals.pct === null ? "sem questões lançadas" : totals.pct + "
 POR ESPECIALIDADE (feitas/total)
 ${especialidades}
 
+${sequenciaParaIA(subjects)}
+
 REVISÕES ATRASADAS OU PARA HOJE
 ${atrasadas}
 
@@ -157,7 +176,7 @@ COMPROMISSOS COM DATA
 ${daFrente}
 
 PENDÊNCIAS ABERTAS: ${pendencias}
-LISTA "PRECISO REVER": ${rever}${data.planoArquivo ? `\n\n${resumoDoPlanoParaIA(data.planoArquivo, today)}` : ""}
+LISTA "PRECISO REVER": ${rever}${data.planoArquivo ? `\n\n${planoCompleto ? planoDetalhadoParaIA(data.planoArquivo, today) : resumoDoPlanoParaIA(data.planoArquivo, today)}` : ""}
 ${cronograma}`;
 }
 
@@ -1221,7 +1240,7 @@ function Assistente({ data, setData, subjects, ladder, today, totals, minWeek, q
   const aberta = useMemo(lerConversaAberta, []);
   const [msgs, setMsgs] = useState(aberta.msgs);
   const [conversaId, setConversaId] = useState(aberta.id);
-  const [historico, setHistorico] = useState(null);     // null = fechado; [] = aberto
+  const [historico, setHistorico] = useState(false);    // a lista de conversas aberta
   const [carregandoHist, setCarregandoHist] = useState(false);
   const [txt, setTxt] = useState("");
   const [ocupado, setOcupado] = useState(false);
@@ -1250,18 +1269,9 @@ function Assistente({ data, setData, subjects, ladder, today, totals, minWeek, q
   /* Guarda no servidor depois de cada resposta. O id volta na primeira
      vez, e daí em diante a mesma conversa é atualizada. */
   const guardarNoServidor = useCallback(async (lista, id) => {
-    const j = await falarComConversas(nuvem, { acao: "salvar", id: id || undefined, mensagens: lista });
+    const j = await falarComConversas(nuvem, { acao: "salvar", modo: "conversa", id: id || undefined, mensagens: lista });
     if (!j.erro && j.id) setConversaId(j.id);
   }, [nuvem]);
-
-  const abrirHistorico = useCallback(async () => {
-    if (historico) { setHistorico(null); return; }
-    setCarregandoHist(true);
-    const j = await falarComConversas(nuvem, { acao: "listar" });
-    setCarregandoHist(false);
-    if (j.erro) { notify(j.erro); return; }
-    setHistorico(j.conversas || []);
-  }, [historico, nuvem, notify]);
 
   const abrirConversa = useCallback(async (id) => {
     setCarregandoHist(true);
@@ -1270,19 +1280,16 @@ function Assistente({ data, setData, subjects, ladder, today, totals, minWeek, q
     if (j.erro) { notify(j.erro); return; }
     setMsgs(j.mensagens || []);
     setConversaId(j.id || id);
-    setHistorico(null);
+    setHistorico(false);
     setErro("");
   }, [nuvem, notify]);
 
-  const apagarConversa = useCallback(async (id) => {
-    const j = await falarComConversas(nuvem, { acao: "apagar", id });
-    if (j.erro) { notify(j.erro); return; }
-    setHistorico((h) => (h || []).filter((c) => c.id !== id));
+  const conversaApagada = (id) => {
     if (id === conversaId) { setMsgs([]); setConversaId(""); }
-  }, [nuvem, notify, conversaId]);
+  };
 
   const novaConversa = () => {
-    setMsgs([]); setConversaId(""); setErro(""); setHistorico(null);
+    setMsgs([]); setConversaId(""); setErro(""); setHistorico(false);
   };
 
   const aplicarAcoes = useCallback((texto) => {
@@ -1413,8 +1420,8 @@ function Assistente({ data, setData, subjects, ladder, today, totals, minWeek, q
               : "nenhuma conversa aberta"}
           </Mini>
           <div className="flex items-center gap-2">
-            <Btn size="sm" tone={historico ? "primary" : "quiet"} onClick={abrirHistorico} disabled={carregandoHist}>
-              <History size={14} /> {carregandoHist && !historico ? "abrindo…" : "Histórico"}
+            <Btn size="sm" tone={historico ? "primary" : "quiet"} onClick={() => setHistorico(!historico)} disabled={carregandoHist}>
+              <Folder size={14} /> {carregandoHist ? "abrindo…" : "Conversas"}
             </Btn>
             <Btn size="sm" tone="outline" onClick={novaConversa} disabled={!msgs.length || ocupado}>
               <MessageSquarePlus size={14} /> Nova
@@ -1423,34 +1430,9 @@ function Assistente({ data, setData, subjects, ladder, today, totals, minWeek, q
         </div>
 
         {historico ? (
-          <div className="px-5 sm:px-6 py-4 flex flex-col gap-2" style={{ borderBottom: `1px solid ${T.line}`, maxHeight: 340, overflowY: "auto" }}>
-            {historico.length === 0 ? (
-              <Mini>Nenhuma conversa guardada ainda. Elas aparecem aqui depois da primeira resposta.</Mini>
-            ) : historico.map((c) => (
-              <div key={c.id} className="flex items-center gap-2 rounded-xl"
-                style={{
-                  background: c.id === conversaId ? soft("var(--neon)", 12) : T.card2,
-                  border: `1px solid ${c.id === conversaId ? soft("var(--neon)", 40) : T.line}`,
-                }}>
-                <button type="button" onClick={() => abrirConversa(c.id)}
-                  className="flex-1 min-w-0 text-left px-3.5 py-2.5"
-                  style={{ background: "none", border: "none", cursor: "pointer", color: T.ink }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {c.titulo || "Conversa"}
-                  </div>
-                  <Mini style={{ marginTop: 2 }}>
-                    {quandoFoiConversa(c.atualizadoEm)} · {c.mensagens} mensage{c.mensagens === 1 ? "m" : "ns"}
-                  </Mini>
-                </button>
-                <button type="button" aria-label={`Apagar a conversa ${c.titulo}`} title="Apagar esta conversa"
-                  onClick={() => apagarConversa(c.id)}
-                  className="flex items-center justify-center rounded-full"
-                  style={{ width: 30, height: 30, marginRight: 8, flexShrink: 0, background: "none", border: `1px solid ${T.line}`, color: T.ghost, cursor: "pointer" }}>
-                  <Trash2 size={13} />
-                </button>
-              </div>
-            ))}
-          </div>
+          <PainelDeConversas nuvem={nuvem} notify={notify} modo="conversa" conversaId={conversaId}
+            aoAbrir={abrirConversa} aoApagar={conversaApagada} aoNova={novaConversa}
+            aoFechar={() => setHistorico(false)} />
         ) : null}
 
         <div ref={conversa} className="flex-1 px-5 sm:px-6 py-5 flex flex-col gap-4"
@@ -1572,7 +1554,257 @@ function Assistente({ data, setData, subjects, ladder, today, totals, minWeek, q
 
       {msgs.length ? (
         <div className="flex justify-center">
-          <Btn tone="outline" size="sm" onClick={() => { setMsgs([]); setErro(""); }}>limpar conversa</Btn>
+          <Btn tone="outline" size="sm" onClick={novaConversa} disabled={ocupado}>começar outra conversa</Btn>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* ── as conversas guardadas, por pastas ─────────────────────────────────
+ *
+ * Igual aos apps de IA: cada conversa fica separada, com nome, e a pessoa
+ * agrupa em pastas. Serve ao Assistente e à Mentoria; "modo" separa as
+ * listas das duas. Quem guarda é o servidor (/api/conversas), então a
+ * lista é a mesma no celular e no computador.
+ *
+ * Nada de window.prompt/confirm: no app instalado do iPhone eles somem.
+ * Renomear e criar pasta são campos na própria linha; apagar pasta pede
+ * um segundo toque. */
+function PainelDeConversas({ nuvem, notify, modo, conversaId, cor = "var(--neon)", aoAbrir, aoApagar, aoNova, aoFechar }) {
+  const [lista, setLista] = useState(null);
+  const [pastas, setPastas] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  const [fechadas, setFechadas] = useState({});
+  const [menu, setMenu] = useState("");          // id da conversa com as ações abertas
+  const [editando, setEditando] = useState(null); // { tipo: "conversa"|"pasta"|"nova", id, valor }
+  const [apagandoPasta, setApagandoPasta] = useState("");
+
+  const recarregar = useCallback(async () => {
+    setCarregando(true);
+    const j = await falarComConversas(nuvem, { acao: "listar", modo });
+    setCarregando(false);
+    if (j.erro) { notify(j.erro); setLista([]); return; }
+    setLista(j.conversas || []);
+    setPastas(Array.isArray(j.pastas) ? j.pastas : []);
+  }, [nuvem, notify, modo]);
+
+  useEffect(() => { recarregar(); }, [recarregar]);
+
+  const pedir = async (corpo) => {
+    const j = await falarComConversas(nuvem, corpo);
+    if (j.erro) { notify(j.erro); return null; }
+    return j;
+  };
+
+  const confirmarEdicao = async () => {
+    const e = editando;
+    if (!e) return;
+    const valor = String(e.valor || "").trim();
+    setEditando(null);
+    if (!valor) return;
+    if (e.tipo === "nova") {
+      const j = await pedir({ acao: "criarPasta", nome: valor });
+      if (j) setPastas(Array.isArray(j.pastas) ? j.pastas : (p) => [...p, valor]);
+    } else if (e.tipo === "pasta") {
+      if (valor === e.id) return;
+      const j = await pedir({ acao: "renomearPasta", de: e.id, para: valor });
+      if (j) await recarregar();
+    } else {
+      const j = await pedir({ acao: "renomear", id: e.id, titulo: valor });
+      if (j) setLista((l) => (l || []).map((c) => (c.id === e.id ? { ...c, titulo: j.titulo || valor } : c)));
+    }
+  };
+
+  const mover = async (id, pasta) => {
+    if (pasta === "__nova") { setEditando({ tipo: "nova", id: "", valor: "", moverId: id }); return; }
+    const j = await pedir({ acao: "mover", id, pasta });
+    if (!j) return;
+    setLista((l) => (l || []).map((c) => (c.id === id ? { ...c, pasta } : c)));
+    if (pasta && !pastas.includes(pasta)) setPastas((p) => [...p, pasta]);
+    setMenu("");
+  };
+
+  const apagar = async (id) => {
+    const j = await pedir({ acao: "apagar", id });
+    if (!j) return;
+    setLista((l) => (l || []).filter((c) => c.id !== id));
+    setMenu("");
+    if (aoApagar) aoApagar(id);
+  };
+
+  const apagarPasta = async (nome) => {
+    if (apagandoPasta !== nome) { setApagandoPasta(nome); return; }
+    setApagandoPasta("");
+    const j = await pedir({ acao: "apagarPasta", nome });
+    if (j) await recarregar();
+  };
+
+  /* Criar pasta a partir do "mover para > nova pasta": cria e já move. */
+  const confirmarNovaPasta = async () => {
+    const e = editando;
+    if (e && e.tipo === "nova" && e.moverId && String(e.valor || "").trim()) {
+      const nome = String(e.valor).trim();
+      setEditando(null);
+      await mover(e.moverId, nome);
+      return;
+    }
+    await confirmarEdicao();
+  };
+
+  const campo = (rotulo) => (
+    <form className="flex items-center gap-1.5 flex-1 min-w-0"
+      onSubmit={(ev) => { ev.preventDefault(); confirmarNovaPasta(); }}>
+      <input autoFocus value={editando.valor} maxLength={editando.tipo === "conversa" ? 80 : 40}
+        aria-label={rotulo}
+        onChange={(ev) => setEditando({ ...editando, valor: ev.target.value })}
+        onKeyDown={(ev) => { if (ev.key === "Escape") setEditando(null); }}
+        className="flex-1 min-w-0 rounded-lg px-3"
+        style={{ minHeight: 36, background: T.bg, border: `1px solid ${T.line}`, color: T.ink, fontSize: 14, fontFamily: F_UI }} />
+      <button type="submit" aria-label="Confirmar" title="Confirmar"
+        className="flex items-center justify-center rounded-full"
+        style={{ width: 32, height: 32, background: soft(cor, 18), border: "none", color: T.ink, cursor: "pointer", flexShrink: 0 }}>
+        <Check size={14} />
+      </button>
+      <button type="button" aria-label="Cancelar" title="Cancelar" onClick={() => setEditando(null)}
+        className="flex items-center justify-center rounded-full"
+        style={{ width: 32, height: 32, background: "none", border: `1px solid ${T.line}`, color: T.dim, cursor: "pointer", flexShrink: 0 }}>
+        <X size={14} />
+      </button>
+    </form>
+  );
+
+  const iconeBtn = (rotulo, icone, onClick, extra = {}) => (
+    <button type="button" aria-label={rotulo} title={rotulo} onClick={onClick}
+      className="flex items-center justify-center rounded-full"
+      style={{ width: 30, height: 30, flexShrink: 0, background: "none", border: `1px solid ${T.line}`, color: T.ghost, cursor: "pointer", ...extra }}>
+      {icone}
+    </button>
+  );
+
+  const linha = (c) => {
+    const aberta = c.id === conversaId;
+    const emEdicao = editando && editando.tipo === "conversa" && editando.id === c.id;
+    return (
+      <div key={c.id} className="rounded-xl" data-conversa={c.id}
+        style={{
+          background: aberta ? soft(cor, 12) : T.card2,
+          border: `1px solid ${aberta ? soft(cor, 40) : T.line}`,
+        }}>
+        <div className="flex items-center gap-2" style={{ padding: emEdicao ? "8px 10px" : 0 }}>
+          {emEdicao ? campo("Nome da conversa") : (
+            <>
+              <button type="button" onClick={() => aoAbrir(c.id)}
+                className="flex-1 min-w-0 text-left px-3.5 py-2.5"
+                style={{ background: "none", border: "none", cursor: "pointer", color: T.ink }}>
+                <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {c.titulo || "Conversa"}
+                </div>
+                <Mini style={{ marginTop: 2 }}>
+                  {quandoFoiConversa(c.atualizadoEm)} · {c.mensagens} mensage{c.mensagens === 1 ? "m" : "ns"}
+                </Mini>
+              </button>
+              {iconeBtn(menu === c.id ? "Fechar as opções" : `Opções da conversa ${c.titulo || ""}`.trim(),
+                menu === c.id ? <X size={13} /> : <Settings2 size={13} />,
+                () => setMenu(menu === c.id ? "" : c.id), { marginRight: 8 })}
+            </>
+          )}
+        </div>
+        {menu === c.id && !emEdicao ? (
+          <div className="flex items-center gap-2 flex-wrap px-3 pb-3">
+            <Btn size="sm" tone="quiet" onClick={() => setEditando({ tipo: "conversa", id: c.id, valor: c.titulo || "" })}>
+              <PencilLine size={13} /> Renomear
+            </Btn>
+            <label className="flex items-center gap-1.5" style={{ fontSize: 13, color: T.dim }}>
+              <FolderInput size={13} />
+              <select value={c.pasta || ""} aria-label="Mover para a pasta"
+                onChange={(ev) => mover(c.id, ev.target.value)}
+                className="rounded-lg px-2"
+                style={{ minHeight: 32, background: T.bg, border: `1px solid ${T.line}`, color: T.ink, fontSize: 13, fontFamily: F_UI, maxWidth: 170 }}>
+                <option value="">Sem pasta</option>
+                {pastas.map((p) => <option key={p} value={p}>{p}</option>)}
+                <option value="__nova">+ nova pasta…</option>
+              </select>
+            </label>
+            <Btn size="sm" tone="quiet" onClick={() => apagar(c.id)} aria-label={`Apagar a conversa ${c.titulo || ""}`.trim()}>
+              <Trash2 size={13} /> Apagar
+            </Btn>
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
+  const conversas = lista || [];
+  const semPasta = conversas.filter((c) => !c.pasta || !pastas.includes(c.pasta));
+  const grupos = pastas.map((p) => [p, conversas.filter((c) => c.pasta === p)]);
+
+  return (
+    <div className="px-5 sm:px-6 py-4 flex flex-col gap-3" role="region" aria-label="Conversas guardadas"
+      style={{ borderBottom: `1px solid ${T.line}`, maxHeight: 460, overflowY: "auto", overscrollBehavior: "contain" }}>
+      <div className="flex items-center gap-2 flex-wrap">
+        <Btn size="sm" tone="primary" onClick={aoNova}><MessageSquarePlus size={14} /> Nova conversa</Btn>
+        <Btn size="sm" tone="outline" onClick={() => setEditando({ tipo: "nova", id: "", valor: "" })}>
+          <FolderPlus size={14} /> Nova pasta
+        </Btn>
+        <div style={{ flex: 1 }} />
+        {iconeBtn("Fechar as conversas", <X size={13} />, aoFechar)}
+      </div>
+
+      {editando && editando.tipo === "nova" ? (
+        <div className="flex items-center gap-2">
+          <Folder size={15} style={{ color: cor, flexShrink: 0 }} />
+          {campo(editando.moverId ? "Nome da nova pasta (a conversa vai para ela)" : "Nome da nova pasta")}
+        </div>
+      ) : null}
+
+      {carregando && lista === null ? <Mini>abrindo…</Mini> : null}
+      {lista !== null && !conversas.length && !pastas.length ? (
+        <Mini>Nenhuma conversa guardada ainda. Cada conversa nova aparece aqui depois da primeira resposta.</Mini>
+      ) : null}
+
+      {grupos.map(([nome, itens]) => {
+        const fechada = !!fechadas[nome];
+        const emEdicao = editando && editando.tipo === "pasta" && editando.id === nome;
+        return (
+          <div key={`pasta-${nome}`} className="flex flex-col gap-2" data-pasta={nome}>
+            <div className="flex items-center gap-2">
+              {emEdicao ? (
+                <>
+                  <Folder size={15} style={{ color: cor, flexShrink: 0 }} />
+                  {campo("Novo nome da pasta")}
+                </>
+              ) : (
+                <>
+                  <button type="button" aria-expanded={!fechada}
+                    onClick={() => setFechadas((f) => ({ ...f, [nome]: !fechada }))}
+                    className="flex items-center gap-2 flex-1 min-w-0 text-left toque-larg"
+                    style={{ background: "none", border: "none", cursor: "pointer", color: T.ink, minHeight: 36, padding: 0 }}>
+                    {fechada ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
+                    <Folder size={15} style={{ color: cor, flexShrink: 0 }} />
+                    <span style={{ fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nome}</span>
+                    <Mini style={{ flexShrink: 0 }}>{itens.length}</Mini>
+                  </button>
+                  {iconeBtn(`Renomear a pasta ${nome}`, <PencilLine size={13} />, () => setEditando({ tipo: "pasta", id: nome, valor: nome }))}
+                  {apagandoPasta === nome ? (
+                    <Btn size="sm" tone="outline" onClick={() => apagarPasta(nome)}>apagar a pasta?</Btn>
+                  ) : iconeBtn(`Apagar a pasta ${nome}`, <Trash2 size={13} />, () => apagarPasta(nome))}
+                </>
+              )}
+            </div>
+            {!fechada ? (
+              <div className="flex flex-col gap-2" style={{ paddingLeft: 14, borderLeft: `2px solid ${soft(cor, 25)}`, marginLeft: 7 }}>
+                {itens.length ? itens.map(linha) : <Mini>Pasta vazia. Use as opções de uma conversa para mover para cá.</Mini>}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+
+      {semPasta.length ? (
+        <div className="flex flex-col gap-2">
+          {pastas.length ? <Mini style={{ fontWeight: 700, marginTop: 4 }}>Sem pasta</Mini> : null}
+          {semPasta.map(linha)}
         </div>
       ) : null}
     </div>

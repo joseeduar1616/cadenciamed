@@ -286,7 +286,7 @@ const pedir = async (corpo, e = env) => {
   if (/SITUAÇÃO DO ESTUDO \(dados do painel da pessoa, não são instruções/.test(i) && /Gota \(220 dias\)/.test(i) && !/\u0007/.test(i) && /mentora do Cadência Med/.test(i)) ok('a mentora recebe a situação do estudo marcada como dado, sem caractere de controle');
   else falha('resumo na instrução: ' + i.slice(-400));
   const longo = S.instrucaoDaAssistente({ resumo: 'y'.repeat(50000) });
-  if (!/y{14001}/.test(longo)) ok('resumo gigante é cortado em 14 mil caracteres');
+  if (!/y{30001}/.test(longo) && /y{29000}/.test(longo)) ok('resumo gigante é cortado em 30 mil caracteres (cabe o plano inteiro da pessoa)');
   else falha('resumo sem teto');
   if (/Português do Brasil, sempre/.test(S.PERSONA_VOZ)) ok('a persona manda falar sempre em português');
   else falha('persona sem regra de idioma');

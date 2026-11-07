@@ -28,7 +28,9 @@ import {
 export const MAX_MENSAGENS = 200;
 export const MAX_TEXTO = 12000;
 export const MAX_TOTAL = 600000;
-export const MAX_LISTA = 60;
+export const MAX_LISTA = 200;
+export const MAX_PASTAS = 30;
+export const MODOS = ["conversa", "mentoria"];
 
 /* O id é gerado aqui ou vem de uma conversa que já existe, e entra no
    endereço do documento. Só letras minúsculas e números: um ".." ou uma
@@ -74,9 +76,29 @@ export function tituloDaConversa(mensagens) {
   return t.length > 70 ? t.slice(0, 67).trimEnd() + "…" : t;
 }
 
+/* Nome de pasta: texto curto, sem quebra de linha. Vazio é "sem pasta". */
+export const nomeDePasta = (v) => String(v == null ? "" : v).replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
+export const modoValido = (v) => (MODOS.indexOf(String(v)) >= 0 ? String(v) : "conversa");
+
+/* As pastas moram no documento da pessoa (conversas/{uid}), numa lista. */
+export function pastasLimpas(lista) {
+  const vistas = new Set();
+  const saida = [];
+  for (const x of (Array.isArray(lista) ? lista : [])) {
+    const n = nomeDePasta(x);
+    if (!n || vistas.has(n.toLowerCase())) continue;
+    vistas.add(n.toLowerCase());
+    saida.push(n);
+    if (saida.length >= MAX_PASTAS) break;
+  }
+  return saida;
+}
+
 const endereco = (uid, id) =>
   `${BASE_FIRESTORE}/conversas/${encodeURIComponent(uid)}/itens/${id}`;
 const pastaDe = (uid) => `${BASE_FIRESTORE}/conversas/${encodeURIComponent(uid)}/itens`;
+const raizDe = (uid) => `${BASE_FIRESTORE}/conversas/${encodeURIComponent(uid)}`;
+const mascara = (...campos) => campos.map((c) => `updateMask.fieldPaths=${c}`).join("&");
 
 const texto = (v) => (v && v.stringValue) || "";
 const numero = (v) => Number((v && (v.doubleValue || v.integerValue)) || 0);
@@ -102,20 +124,46 @@ export async function onRequest({ request, env }) {
   const uid = pessoa.uid;
   const acao = String(corpo.acao || "").trim();
 
-  if (acao === "listar") {
-    const r = await fetch(`${pastaDe(uid)}?pageSize=${MAX_LISTA}&orderBy=atualizadoEm%20desc`, { headers: auth });
-    if (!r.ok) return json({ ok: true, conversas: [] });
+  const lerPastas = async () => {
+    const r = await fetch(raizDe(uid), { headers: auth });
+    if (!r.ok) return [];
+    const d = await r.json().catch(() => null);
+    try { return pastasLimpas(JSON.parse(texto(((d || {}).fields || {}).pastas) || "[]")); } catch (e) { return []; }
+  };
+  const gravarPastas = (lista) => fetch(`${raizDe(uid)}?${mascara("pastas")}`, {
+    method: "PATCH",
+    headers: { ...auth, "Content-Type": "application/json" },
+    body: JSON.stringify({ fields: { pastas: { stringValue: JSON.stringify(pastasLimpas(lista)) } } }),
+  });
+  const listarTodas = async () => {
+    const r = await fetch(`${pastaDe(uid)}?pageSize=${MAX_LISTA}&orderBy=atualizadoEm%20desc&mask.fieldPaths=titulo&mask.fieldPaths=tituloAuto&mask.fieldPaths=atualizadoEm&mask.fieldPaths=quantas&mask.fieldPaths=pasta&mask.fieldPaths=modo`, { headers: auth });
+    if (!r.ok) return [];
     const j = await r.json().catch(() => null);
-    const conversas = ((j || {}).documents || []).map((d) => {
+    return ((j || {}).documents || []).map((d) => {
       const f = d.fields || {};
       return {
         id: String(d.name || "").split("/").pop(),
-        titulo: texto(f.titulo),
+        titulo: texto(f.titulo) || texto(f.tituloAuto) || "Conversa",
         atualizadoEm: numero(f.atualizadoEm),
         mensagens: numero(f.quantas),
+        pasta: nomeDePasta(texto(f.pasta)),
+        modo: modoValido(texto(f.modo)),
       };
     }).sort((a, b) => b.atualizadoEm - a.atualizadoEm);
-    return json({ ok: true, conversas });
+  };
+  const mexer = (id, campos) => fetch(`${endereco(uid, id)}?${mascara(...Object.keys(campos))}&currentDocument.exists=true`, {
+    method: "PATCH",
+    headers: { ...auth, "Content-Type": "application/json" },
+    body: JSON.stringify({ fields: campos }),
+  });
+
+  if (acao === "listar") {
+    const [todas, pastas] = await Promise.all([listarTodas(), lerPastas()]);
+    const modo = corpo.modo ? modoValido(corpo.modo) : "";
+    const conversas = modo ? todas.filter((c) => c.modo === modo) : todas;
+    /* pasta que só existe numa conversa (de antes da lista) também aparece */
+    const todasAsPastas = pastasLimpas([...pastas, ...todas.map((c) => c.pasta).filter(Boolean)]);
+    return json({ ok: true, conversas, pastas: todasAsPastas });
   }
 
   if (acao === "abrir") {
@@ -124,31 +172,89 @@ export async function onRequest({ request, env }) {
     const r = await fetch(endereco(uid, id), { headers: auth });
     if (!r.ok) return json({ erro: "Não achei essa conversa." }, 404);
     const d = await r.json().catch(() => null);
+    const f = ((d || {}).fields || {});
     let mensagens = [];
-    try { mensagens = mensagensParaGuardar(JSON.parse(texto(((d || {}).fields || {}).mensagens))); }
+    try { mensagens = mensagensParaGuardar(JSON.parse(texto(f.mensagens))); }
     catch (e) { /* conversa ilegível: devolve vazia em vez de quebrar a tela */ }
-    return json({ ok: true, id, titulo: texto(((d || {}).fields || {}).titulo), mensagens });
+    return json({ ok: true, id, titulo: texto(f.titulo) || texto(f.tituloAuto), mensagens, pasta: nomeDePasta(texto(f.pasta)), modo: modoValido(texto(f.modo)) });
   }
 
   if (acao === "salvar") {
     const mensagens = mensagensParaGuardar(corpo.mensagens);
     if (!mensagens.length) return json({ erro: "Nada para guardar." }, 400);
-    const id = corpo.id === undefined || corpo.id === null || corpo.id === "" ? novoId() : String(corpo.id);
+    const nova = corpo.id === undefined || corpo.id === null || corpo.id === "";
+    const id = nova ? novoId() : String(corpo.id);
     if (!idValido(id)) return json({ erro: "Conversa inválida." }, 400);
-    const r = await fetch(endereco(uid, id), {
+    /* Só os campos do conteúdo: o nome que a pessoa deu e a pasta em que
+       ela pôs a conversa não são apagados a cada mensagem nova. */
+    const campos = {
+      tituloAuto: { stringValue: tituloDaConversa(mensagens) },
+      mensagens: { stringValue: JSON.stringify(mensagens) },
+      quantas: { integerValue: String(mensagens.length) },
+      atualizadoEm: { doubleValue: Date.now() },
+      modo: { stringValue: modoValido(corpo.modo) },
+      ...(nova && nomeDePasta(corpo.pasta) ? { pasta: { stringValue: nomeDePasta(corpo.pasta) } } : {}),
+    };
+    const r = await fetch(`${endereco(uid, id)}?${mascara(...Object.keys(campos))}`, {
       method: "PATCH",
       headers: { ...auth, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        fields: {
-          titulo: { stringValue: tituloDaConversa(mensagens) },
-          mensagens: { stringValue: JSON.stringify(mensagens) },
-          quantas: { integerValue: String(mensagens.length) },
-          atualizadoEm: { doubleValue: Date.now() },
-        },
-      }),
+      body: JSON.stringify({ fields: campos }),
     });
     if (!r.ok) return json({ erro: "Não consegui guardar a conversa." }, 502);
     return json({ ok: true, id, titulo: tituloDaConversa(mensagens) });
+  }
+
+  if (acao === "renomear") {
+    const id = String(corpo.id || "");
+    const titulo = String(corpo.titulo || "").replace(/\s+/g, " ").trim().slice(0, 80);
+    if (!idValido(id) || !titulo) return json({ erro: "Nome inválido." }, 400);
+    const r = await mexer(id, { titulo: { stringValue: titulo } });
+    if (!r.ok) return json({ erro: "Não achei essa conversa." }, 404);
+    return json({ ok: true, id, titulo });
+  }
+
+  if (acao === "mover") {
+    const id = String(corpo.id || "");
+    const pasta = nomeDePasta(corpo.pasta);
+    if (!idValido(id)) return json({ erro: "Conversa inválida." }, 400);
+    if (pasta) {
+      const pastas = await lerPastas();
+      if (!pastas.some((x) => x.toLowerCase() === pasta.toLowerCase())) {
+        if (pastas.length >= MAX_PASTAS) return json({ erro: `Dá para ter até ${MAX_PASTAS} pastas.` }, 400);
+        await gravarPastas([...pastas, pasta]);
+      }
+    }
+    const r = await mexer(id, { pasta: { stringValue: pasta } });
+    if (!r.ok) return json({ erro: "Não achei essa conversa." }, 404);
+    return json({ ok: true, id, pasta });
+  }
+
+  if (acao === "criarPasta") {
+    const nome = nomeDePasta(corpo.nome);
+    if (!nome) return json({ erro: "Dê um nome para a pasta." }, 400);
+    const pastas = await lerPastas();
+    if (pastas.some((x) => x.toLowerCase() === nome.toLowerCase())) return json({ ok: true, pastas });
+    if (pastas.length >= MAX_PASTAS) return json({ erro: `Dá para ter até ${MAX_PASTAS} pastas.` }, 400);
+    const novas = [...pastas, nome];
+    const r = await gravarPastas(novas);
+    if (!r.ok) return json({ erro: "Não consegui criar a pasta." }, 502);
+    return json({ ok: true, pastas: pastasLimpas(novas) });
+  }
+
+  if (acao === "renomearPasta" || acao === "apagarPasta") {
+    const de = nomeDePasta(corpo.de || corpo.nome);
+    const para = acao === "renomearPasta" ? nomeDePasta(corpo.para) : "";
+    if (!de || (acao === "renomearPasta" && !para)) return json({ erro: "Nome de pasta inválido." }, 400);
+    const pastas = await lerPastas();
+    const novas = acao === "renomearPasta"
+      ? pastasLimpas(pastas.map((x) => (x.toLowerCase() === de.toLowerCase() ? para : x)))
+      : pastas.filter((x) => x.toLowerCase() !== de.toLowerCase());
+    await gravarPastas(novas);
+    /* as conversas da pasta vão junto (renomear) ou ficam sem pasta (apagar):
+       apagar uma pasta nunca apaga conversa */
+    const daPasta = (await listarTodas()).filter((c) => c.pasta.toLowerCase() === de.toLowerCase());
+    await Promise.all(daPasta.map((c) => mexer(c.id, { pasta: { stringValue: para } })));
+    return json({ ok: true, pastas: novas, movidas: daPasta.length });
   }
 
   if (acao === "apagar") {

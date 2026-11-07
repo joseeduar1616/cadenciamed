@@ -836,8 +836,7 @@ export default function Cadencia() {
   const resumoParaMentora = () => {
     try {
       return [
-        resumoParaIA({ subjects, ladder, data, today, totals, minWeek, qWeek, totalBonus: ativo.totalBonus }),
-        resumoDoPlanoParaIA(data.planoArquivo, today),
+        resumoParaIA({ subjects, ladder, data, today, totals, minWeek, qWeek, totalBonus: ativo.totalBonus, planoCompleto: true }),
       ].filter(Boolean).join("\n\n");
     } catch (e) { return ""; }
   };

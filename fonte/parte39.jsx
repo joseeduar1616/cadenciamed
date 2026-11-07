@@ -228,14 +228,19 @@ class SessaoAoVivo {
     if (e.tipo === "fimDaVez") { if (a.aoFimDaVez) a.aoFimDaVez(); return; }
     if (e.tipo === "vaiEncerrar") { if (a.aoAvisoDeFim) a.aoAvisoDeFim(e.em); return; }
     if (e.tipo === "ferramenta") {
-      let respostas = [];
-      try { respostas = a.aoFerramenta ? a.aoFerramenta(e.chamadas) : []; } catch (x) { respostas = []; }
-      const porId = new Map(respostas.map((r) => [r.id, r]));
-      this.enviar({
-        toolResponse: {
-          functionResponses: e.chamadas.map((c) => porId.get(c.id) || { id: c.id, name: c.name, response: { ok: false, resultado: "não consegui fazer isso no painel" } }),
-        },
-      });
+      /* Pode demorar (montar o plano chama a rota da mentoria): a resposta
+         vai quando terminar, e ela espera. */
+      const responder = (respostas) => {
+        const porId = new Map((respostas || []).map((r) => [r.id, r]));
+        this.enviar({
+          toolResponse: {
+            functionResponses: e.chamadas.map((c) => porId.get(c.id) || { id: c.id, name: c.name, response: { ok: false, resultado: "não consegui fazer isso no painel" } }),
+          },
+        });
+      };
+      let r;
+      try { r = a.aoFerramenta ? a.aoFerramenta(e.chamadas) : []; } catch (x) { r = []; }
+      Promise.resolve(r).then(responder, () => responder([]));
     }
   }
 
@@ -370,6 +375,7 @@ class SessaoAoVivo {
  */
 function executarFerramentasDaMentora(chamadas, { data, setData, subjects, today }) {
   const respostas = [];
+  const esperas = [];
   for (const c of chamadas || []) {
     const a = (c && c.args) || {};
     const responder = (ok, resultado) => respostas.push({ id: c.id, name: c.name, response: { ok, resultado } });
@@ -392,11 +398,30 @@ function executarFerramentasDaMentora(chamadas, { data, setData, subjects, today
       const situacao = a.situacao === "feito" ? "feito" : a.situacao === "parcial" ? "parcial" : "pendente";
       setData((p) => ({ ...p, planoArquivo: atualizarItemPlano(p.planoArquivo, item.id, situacao, { minutos: a.minutos }, today) }));
       responder(true, `item "${item.titulo}" marcado como ${situacao === "feito" ? "feito" : situacao === "parcial" ? "feito em parte" : "não feito"}; o plano se reajusta sozinho`);
+    } else if (c.name === "guardar_no_perfil") {
+      const campo = String(a.campo || "");
+      const valor = String(a.valor || "").replace(/\s+/g, " ").trim().slice(0, 500);
+      if (!DIMENSOES_MENTORIA.some(([k]) => k === campo) || !valor) { responder(false, "assunto ou resposta inválidos"); continue; }
+      setData((p) => {
+        const mm = p.mentoria || {};
+        return { ...p, mentoria: { ...mm, perfil: { ...(mm.perfil || {}), [campo]: valor } } };
+      });
+      responder(true, "guardado no perfil");
+    } else if (c.name === "montar_plano") {
+      const mentoria = typeof window !== "undefined" ? window.__cadenciaMentoria : null;
+      if (!mentoria || !mentoria.perguntar) { responder(false, "para montar o plano, a pessoa precisa estar na aba Assistente, em Mentoria"); continue; }
+      const pedido = String(a.pedido || "").trim();
+      esperas.push(mentoria.perguntar(`Pela chamada de voz já contei o que você precisava. Monte agora o meu plano com o que está no perfil.${pedido ? ` Pedido: ${pedido.slice(0, 300)}` : ""}`)
+        .then((j) => {
+          if (j && j.plano) responder(true, `plano montado e já na tela. Resumo do que você escreveu: ${String(j.texto || "").replace(/\s+/g, " ").slice(0, 500)}`);
+          else if (j) responder(false, `a mentoria ainda não montou: ${String(j.texto || "").replace(/\s+/g, " ").slice(0, 400)}`);
+          else responder(false, "a mentoria não respondeu agora; tente de novo daqui a pouco");
+        }, () => responder(false, "a mentoria não respondeu agora")));
     } else {
       responder(false, "ferramenta desconhecida");
     }
   }
-  return respostas;
+  return esperas.length ? Promise.all(esperas).then(() => respostas) : respostas;
 }
 
 /* ── a tela ──────────────────────────────────────────────────────────── */
@@ -465,7 +490,25 @@ function AssistenteDeVoz({ nuvem, notify, data, today, ver, setData, subjects, p
     return [...lista.slice(0, -1), { ...ultima, fechada: true, cortada: !!cortada }];
   });
 
+  /* "conversa" (o botão flutuante) ou "mentoria" (a Chamada de voz da
+     Mentoria, que abre esta mesma conversa ao vivo). */
+  const [modo, setModo] = useState("conversa");
+  const modoRef = useRef("conversa");
+  const falasRef = useRef([]);
+  falasRef.current = falas;
+
+  /* O que foi falado na mentoria entra na conversa escrita dela, para
+     continuar de onde parou, por escrito ou numa próxima ligação. */
+  const levarParaAMentoria = () => {
+    if (modoRef.current !== "mentoria") return;
+    const m = typeof window !== "undefined" ? window.__cadenciaMentoria : null;
+    const lista = falasRef.current.filter((f) => String(f.texto || "").trim())
+      .map((f) => ({ papel: f.de === "eu" ? "user" : "claude", texto: String(f.texto).trim() }));
+    if (m && m.anexar && lista.length) m.anexar(lista);
+  };
+
   const encerrar = useCallback((motivo) => {
+    levarParaAMentoria();
     if (sessao.current) { sessao.current.fechar(); sessao.current = null; }
     micRef.current = false; setMicLigado(false);
     mudar(motivo === "erro" ? "erro" : "encerrada");
@@ -473,7 +516,10 @@ function AssistenteDeVoz({ nuvem, notify, data, today, ver, setData, subjects, p
 
   useEffect(() => () => { if (sessao.current) sessao.current.fechar(); }, []);
 
-  const ligar = async () => {
+  const ligar = async (qual) => {
+    if (sessao.current) { levarParaAMentoria(); sessao.current.fechar(); sessao.current = null; }
+    const m = qual === "mentoria" ? "mentoria" : "conversa";
+    modoRef.current = m; setModo(m);
     setAviso(""); setFalas([]);
     setAberta(true);
     mudar("conectando");
@@ -489,12 +535,11 @@ function AssistenteDeVoz({ nuvem, notify, data, today, ver, setData, subjects, p
       aoInterromper: () => { fecharUltima("ela", true); emRepouso(); },
       aoFimDaVez: () => { fecharUltima("ela"); fecharUltima("eu"); if (!falandoRef.current) emRepouso(); },
       aoAvisoDeFim: () => setAviso("Esta conversa está chegando ao tempo máximo. Dá para encerrar e ligar de novo."),
-      aoFerramenta: (chamadas) => {
-        const r = executarFerramentasDaMentora(chamadas, atual.current);
-        const feitas = r.filter((x) => x.response.ok).length;
+      aoFerramenta: (chamadas) => Promise.resolve(executarFerramentasDaMentora(chamadas, atual.current)).then((r) => {
+        const feitas = r.filter((x) => x.response.ok && x.name !== "guardar_no_perfil").length;
         if (feitas && notify) notify(feitas === 1 ? "A mentora registrou no seu painel." : `A mentora registrou ${feitas} coisas no seu painel.`);
         return r;
-      },
+      }),
       aoFechar: () => { if (estadoRef.current !== "encerrada" && estadoRef.current !== "erro") { setAviso("A conversa encerrou. Toque em Ligar de novo para continuar."); encerrar("encerrada"); } },
     });
     sessao.current = s;
@@ -519,6 +564,11 @@ function AssistenteDeVoz({ nuvem, notify, data, today, ver, setData, subjects, p
       /* Tudo o que o painel sabe do estudo dela: é o que faz da assistente a
          mentora, e não um atendimento sobre o site. */
       resumo: pegarResumo ? String(pegarResumo() || "").slice(0, 14000) : "",
+      ...(m === "mentoria" ? {
+        modo: "mentoria",
+        perfil: (data && data.mentoria && data.mentoria.perfil) || {},
+        conversa: ((typeof window !== "undefined" && window.__cadenciaMentoria && window.__cadenciaMentoria.conversa) ? window.__cadenciaMentoria.conversa() : "").slice(-5000),
+      } : {}),
     };
     const { dados, erro } = await chamarApi(ROTA_VOZ, { token, acao: "sessao", contexto }, "A assistente por voz");
     if (!sessao.current) return;
@@ -540,7 +590,9 @@ function AssistenteDeVoz({ nuvem, notify, data, today, ver, setData, subjects, p
     if (!comMic) s.desligarMicrofone();
     emRepouso();
     /* Ela se apresenta primeiro. Esta vez não aparece na conversa. */
-    s.enviar(mensagemDeTexto("Oi! Se apresente em uma frase como a mentora do Cadência Med, a assistente virtual do site. Se a SITUAÇÃO DO ESTUDO estiver aí, diga em uma frase a coisa mais importante que você vê para hoje. Depois pergunte por onde quer começar."))
+    s.enviar(mensagemDeTexto(m === "mentoria"
+      ? "Oi! Estamos na mentoria de estudo, por voz. Em uma frase, diga o que você já vê no meu painel e no meu perfil. Depois faça a primeira pergunta da entrevista que ainda falta, ou, se o perfil já estiver completo, pergunte o que eu quero ajustar no plano."
+      : "Oi! Se apresente em uma frase como a mentora do Cadência Med, a assistente virtual do site. Se a SITUAÇÃO DO ESTUDO estiver aí, diga em uma frase a coisa mais importante que você vê para hoje. Depois pergunte por onde quer começar."))
     mudar("pensando");
   };
 
@@ -581,6 +633,18 @@ function AssistenteDeVoz({ nuvem, notify, data, today, ver, setData, subjects, p
 
   const fechar = () => { encerrar("encerrada"); setAberta(false); mudar("fechada"); };
 
+  /* A Chamada de voz da Mentoria abre esta conversa (evento no próprio toque,
+     para o iPhone liberar áudio e microfone). */
+  const ligarRef = useRef(ligar);
+  ligarRef.current = ligar;
+  useEffect(() => {
+    if (!podeMostrar) { try { window.__cadenciaVozAoVivo = false; } catch (e) { /* noop */ } return undefined; }
+    window.__cadenciaVozAoVivo = true;
+    const abrir = (ev) => ligarRef.current((ev && ev.detail && ev.detail.modo) || "conversa");
+    window.addEventListener("cadencia:ligar-voz", abrir);
+    return () => { window.__cadenciaVozAoVivo = false; window.removeEventListener("cadencia:ligar-voz", abrir); };
+  }, [podeMostrar]);
+
   if (!podeMostrar) return null;
 
   const ativa = ["conectando", "ouvindo", "falando", "pensando", "mudo"].includes(estado);
@@ -590,7 +654,7 @@ function AssistenteDeVoz({ nuvem, notify, data, today, ver, setData, subjects, p
   return (
     <>
       {!aberta ? (
-        <button type="button" onClick={ligar} aria-label="Falar com a assistente virtual" data-teste="abrir-assistente-voz"
+        <button type="button" onClick={() => ligar("conversa")} aria-label="Falar com a assistente virtual" data-teste="abrir-assistente-voz"
           className="toque brilhar"
           style={{
             position: "fixed", right: 18, bottom: 22, zIndex: 61,
@@ -617,7 +681,7 @@ function AssistenteDeVoz({ nuvem, notify, data, today, ver, setData, subjects, p
           }}>
           <div className="px-5 pt-4 pb-3 flex items-start justify-between gap-3" style={{ borderBottom: `1px solid ${T.line}` }}>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 16, fontWeight: 700, color: T.ink }}>Mentora por voz</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: T.ink }}>{modo === "mentoria" ? "Mentoria por voz" : "Mentora por voz"}</div>
               <Mini style={{ marginTop: 2 }}>inteligência artificial do Cadência Med, não é uma pessoa</Mini>
             </div>
             <button type="button" aria-label="Fechar" onClick={fechar} className="toque"
@@ -664,7 +728,7 @@ function AssistenteDeVoz({ nuvem, notify, data, today, ver, setData, subjects, p
                 </Btn>
               ) : null}
               {estado === "falando" ? <Btn size="sm" onClick={interromper}><VolumeX size={14} /> Interromper</Btn> : null}
-              {estado === "encerrada" || estado === "erro" ? <Btn size="sm" tone="primary" onClick={ligar}><AudioLines size={14} /> Ligar de novo</Btn> : null}
+              {estado === "encerrada" || estado === "erro" ? <Btn size="sm" tone="primary" onClick={() => ligar(modoRef.current)}><AudioLines size={14} /> Ligar de novo</Btn> : null}
               <button type="button" onClick={fechar} className="toque-larg rounded-full px-3 inline-flex items-center gap-1.5"
                 style={{ minHeight: 34, marginLeft: "auto", background: soft("var(--bad)", 12), border: `1px solid ${soft("var(--bad)", 45)}`, color: T.bad, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: F_UI }}>
                 <PhoneOff size={13} /> Encerrar

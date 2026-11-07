@@ -140,6 +140,24 @@ const achar = (p, t) => p.itens.find((i) => i.titulo === t);
   else falha('resumo para IA: ' + txt);
 }
 
+/* A mentora recebe o plano INTEIRO, na ordem, com os títulos do arquivo:
+   é o que impede que ela monte outro plano do jeito dela. */
+{
+  const itens = [];
+  for (let n = 0; n < 6; n += 1) itens.push({ data: mais(SEG, n), tipo: n === 5 ? 'simulado' : 'aula', minutos: 60, titulo: `Tema ${n + 1} do plano`, fixo: n === 5 });
+  let p = P.reajustarPlano(P.limparPlanoArquivo({ nome: 'Plano do José', itens: itens.map((i, n) => ({ ...i, id: `p${n}`, ordem: n, dataOriginal: i.data })) }), {}, SEG).plano;
+  p = P.atualizarItemPlano(p, 'p0', 'feito', {}, SEG);
+  const txt = P.planoDetalhadoParaIA(p, SEG);
+  const pos = [2, 3, 4, 5, 6].map((n) => txt.indexOf(`Tema ${n} do plano`));
+  if (pos.every((x, i) => x > 0 && (i === 0 || x > pos[i - 1]))) ok('o plano detalhado traz todos os itens pendentes, na ordem do plano');
+  else falha('ordem do plano detalhado: ' + txt);
+  if (/ÚLTIMOS FEITOS: Tema 1 do plano/.test(txt) && /data fixa/.test(txt) && /É ele que manda/.test(txt)) ok('e diz onde a pessoa parou, o que tem data fixa, e que o plano dela manda');
+  else falha('plano detalhado: ' + txt);
+  const curto = P.planoDetalhadoParaIA(p, SEG, 120);
+  if (/e mais \d+ itens depois destes/.test(curto)) ok('plano grande demais é cortado com aviso de quantos itens faltaram');
+  else falha('teto do plano detalhado: ' + curto);
+}
+
 /* O que fica guardado na conta é conferido. */
 {
   if (P.limparPlanoArquivo({ itens: [{ titulo: 'x', dataOriginal: 'ontem' }] }) === null) ok('item sem data válida não entra');

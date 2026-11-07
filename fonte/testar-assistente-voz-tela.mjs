@@ -76,6 +76,13 @@ function falsos() {
       const m = JSON.parse(s);
       window.__enviado.push(m);
       if (m.setup) setTimeout(() => this.manda({ setupComplete: {} }), 10);
+      if (m.clientContent && /^mentoria:/.test(m.clientContent.turns[0].parts[0].text)) {
+        setTimeout(() => this.manda({ toolCall: { functionCalls: [
+          { id: 'm1', name: 'guardar_no_perfil', args: { campo: 'sono', valor: 'dorme à meia-noite' } },
+          { id: 'm2', name: 'montar_plano', args: {} },
+        ] } }), 30);
+        return;
+      }
       if (m.clientContent && /registra/.test(m.clientContent.turns[0].parts[0].text)) {
         setTimeout(() => this.manda({ toolCall: { functionCalls: [
           { id: 'f1', name: 'registrar_sessao', args: { materia: 'pneumonia', tipo: 'Questões', minutos: 40, questoes: 30, acertos: 24 } },
@@ -123,10 +130,12 @@ async function abrir({ logado, largura = 1280, respostaVoz }) {
   });
   await ctx.route('https://accounts.google.com/gsi/client', (rr) => rr.fulfill({ status: 200, contentType: 'text/javascript', body: '' }));
   const pedidosVoz = [];
+  const pedidosAssistente = [];
   await ctx.route('**/api/**', (rr) => {
     const u = rr.request().url();
     if (u.includes('/api/plano')) return rr.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, pro: true, plano: 'anual', validoAte: Date.now() + 86400000, recursos: RECURSOS }) });
     if (u.includes('/api/assistente')) {
+      pedidosAssistente.push(JSON.parse(rr.request().postData() || '{}'));
       return rr.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ texto: 'Oi, Zé! Vamos montar a sua semana. A que horas você costuma dormir?', opcoes: [], perfil: {}, plano: null, cortado: false }) });
     }
     if (u.includes('/api/voz')) {
@@ -144,7 +153,7 @@ async function abrir({ logado, largura = 1280, respostaVoz }) {
   pag.on('pageerror', (e) => errosDaPagina.push(e.message));
   await pag.goto(ENDERECO, { waitUntil: 'load' });
   await pag.waitForTimeout(1800);
-  return { ctx, pag, pedidosVoz };
+  return { ctx, pag, pedidosVoz, pedidosAssistente };
 }
 const esperar = async (pag, fn, ms = 6000) => {
   const ate = Date.now() + ms;
@@ -269,9 +278,9 @@ const enviados = (pag) => pag.evaluate(() => window.__enviado);
   await ctx.close();
 }
 
-/* ── a chamada da Mentoria fala com a mesma voz (Zephyr) ─────────────── */
+/* ── a chamada da Mentoria é a mesma conversa ao vivo, em modo mentoria ── */
 {
-  const { ctx, pag, pedidosVoz } = await abrir({ logado: true });
+  const { ctx, pag, pedidosVoz, pedidosAssistente } = await abrir({ logado: true });
   await pag.evaluate(() => localStorage.setItem('cadencia:v3:assistente-modo', 'mentoria'));
   await pag.reload({ waitUntil: 'load' });
   await pag.waitForTimeout(1800);
@@ -282,14 +291,35 @@ const enviados = (pag) => pag.evaluate(() => window.__enviado);
   const botao = pag.locator('main button:has-text("Chamada de voz")');
   if (await botao.count()) {
     await botao.first().click();
-    await esperar(pag, async () => pedidosVoz.some((p) => p.acao === 'falar'), 8000);
-    const fala = pedidosVoz.find((p) => p.acao === 'falar');
-    if (fala && /Vamos montar a sua semana/.test(fala.texto) && fala.token) ok('a resposta da Mentoria é falada pela voz da Google (a mesma da assistente), com o token da conta');
-    else falha('fala da mentoria: ' + JSON.stringify(pedidosVoz).slice(0, 300));
-    const voltou = await esperar(pag, async () => /Ouvindo|Pode falar/i.test(await pag.evaluate(() => (document.querySelector('[data-teste="estado-voz"]') || {}).innerText || '')), 8000);
-    const tocou = await pag.evaluate(() => window.__wavTocados || 0);
-    if (voltou && tocou >= 1) ok('o áudio da fala toca até o fim (num <audio>, que o silencioso do iPhone não cala) e a chamada volta a ouvir');
-    else falha('a fala não tocou no <audio> (' + tocou + ') ou não voltou a ouvir: ' + await pag.evaluate(() => (document.querySelector('[data-teste="estado-voz"]') || {}).innerText || ''));
+    await esperar(pag, async () => /Ouvindo/.test(await estado(pag)), 8000);
+    const sessaoVoz = pedidosVoz.find((p) => p.acao === 'sessao') || {};
+    if (sessaoVoz.contexto && sessaoVoz.contexto.modo === 'mentoria' && /PROGRESSO GERAL/.test(sessaoVoz.contexto.resumo || '')) ok('a Chamada de voz da Mentoria abre a conversa ao vivo (a mesma voz da assistente), em modo mentoria e com o painel');
+    else falha('sessão da mentoria: ' + JSON.stringify(sessaoVoz).slice(0, 300));
+    if (/Mentoria por voz/.test(await painel(pag)) && !pedidosVoz.some((p) => p.acao === 'falar')) ok('o painel diz que é a Mentoria por voz, e nada passa pela fala antiga');
+    else falha('painel da mentoria: ' + (await painel(pag)).slice(0, 200));
+    const intro = (await enviados(pag)).find((m) => m.clientContent);
+    if (intro && /mentoria de estudo/.test(intro.clientContent.turns[0].parts[0].text)) ok('ela começa pela entrevista da mentoria');
+    else falha('início da mentoria: ' + JSON.stringify(intro));
+    /* ela guarda no perfil e pede o plano */
+    await pag.locator('[data-teste="assistente-voz"] input[placeholder="Ou escreva aqui…"]').fill('mentoria: durmo meia-noite');
+    await pag.locator('[data-teste="assistente-voz"] button[aria-label="Enviar"]').click();
+    await esperar(pag, async () => (await enviados(pag)).filter((m) => m.toolResponse).length >= 1, 9000);
+    await pag.waitForTimeout(1900);
+    const d = await pag.evaluate(() => JSON.parse(localStorage.getItem('cadencia:v3') || '{}'));
+    if (d.mentoria && d.mentoria.perfil && /meia-noite/.test(d.mentoria.perfil.sono || '')) ok('o que a pessoa conta por voz vai para o perfil da mentoria');
+    else falha('perfil por voz: ' + JSON.stringify(d.mentoria));
+    const monta = pedidosAssistente.find((p) => p.modo === 'mentoria' && /Monte agora o meu plano/.test(JSON.stringify(p.mensagens || [])));
+    if (monta && monta.perfil && /meia-noite/.test(monta.perfil.sono || '')) ok('montar o plano chama a mentoria escrita, com o perfil que a voz guardou');
+    else falha('montar plano: ' + JSON.stringify(pedidosAssistente).slice(0, 300));
+    const resp = (await enviados(pag)).filter((m) => m.toolResponse).pop();
+    const fr = (resp && resp.toolResponse.functionResponses) || [];
+    if (fr.length === 2 && fr.every((r) => r.id)) ok('as duas ferramentas da entrevista voltam respondidas para ela');
+    else falha('respostas da entrevista: ' + JSON.stringify(resp));
+    await pag.locator('[data-teste="assistente-voz"] button:has-text("Encerrar")').click();
+    await pag.waitForTimeout(400);
+    const conversa = await pag.evaluate(() => JSON.parse(localStorage.getItem('cadencia:v3:mentoria-conversa') || '[]'));
+    if (conversa.some((m) => /durmo meia-noite/.test(m.texto))) ok('ao encerrar, o que foi falado entra na conversa escrita da mentoria');
+    else falha('conversa da mentoria depois da ligação: ' + JSON.stringify(conversa).slice(0, 300));
   } else falha('não achei a chamada de voz da Mentoria');
   await ctx.close();
 }

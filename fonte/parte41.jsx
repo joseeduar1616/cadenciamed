@@ -336,6 +336,35 @@ HOJE NO PLANO: ${hojeTxt}.
 PRÓXIMOS: ${proximos || "nada pendente"}.`;
 }
 
+/* O plano INTEIRO para a mentora: o resumo acima diz como está; isto diz o
+   que vem, item por item, na ordem e com os títulos do arquivo. Sem isto a
+   mentora só sabia "12 de 80 feitos" e montava o plano do jeito dela. Os
+   feitos entram só como os últimos cinco, para ela saber onde a pessoa
+   parou; o que está pendente vai todo, até o teto. */
+function planoDetalhadoParaIA(plano, hoje, teto = 16000) {
+  if (!plano || !Array.isArray(plano.itens) || !plano.itens.length) return "";
+  const cabeca = resumoDoPlanoParaIA(plano, hoje);
+  const ordenar = (a, b) => a.data.localeCompare(b.data) || a.ordem - b.ordem;
+  const feitos = plano.itens.filter((i) => i.situacao === "feito").sort(ordenar).slice(-5)
+    .map((i) => `${i.titulo} (${ROTULO_TIPO_PLANO[i.tipo]})`).join("; ");
+  const pendentes = plano.itens.filter((i) => i.situacao !== "feito").sort(ordenar);
+  const linhas = [];
+  let usado = 0;
+  let dia = "";
+  for (const i of pendentes) {
+    const cab = i.data !== dia ? `${i.data.split("-").reverse().join("/")}${i.data === hoje ? " (hoje)" : ""}:` : "";
+    dia = i.data;
+    const l = `${cab ? `${cab}\n` : ""}- ${i.titulo} · ${ROTULO_TIPO_PLANO[i.tipo]} · ${minutosDoItemPlano(i)} min${i.situacao === "parcial" ? " · feito em parte" : ""}${i.fixo ? " · data fixa" : ""}`;
+    if (usado + l.length > teto) { linhas.push(`(e mais ${pendentes.length - linhas.length} itens depois destes)`); break; }
+    linhas.push(l);
+    usado += l.length + 1;
+  }
+  return `${cabeca}
+ÚLTIMOS FEITOS: ${feitos || "nenhum ainda"}
+O PLANO DA PESSOA, ITEM POR ITEM, NA ORDEM. É ele que manda: o que estudar, em que ordem e em que dia.
+${linhas.join("\n") || "nada pendente"}`;
+}
+
 /* ── a tela ──────────────────────────────────────────────────────────── */
 
 /* Fica na raiz do app: o plano se reajusta com qualquer aba aberta,

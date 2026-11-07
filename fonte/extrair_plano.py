@@ -14,7 +14,7 @@ if inicio not in s or fim not in s:
     raise SystemExit('não achei o motor do plano no parte41.jsx')
 corpo = s[s.index(inicio):s.index(fim)].rstrip()
 for nome in ['limparPlanoArquivo', 'planoDosItensLidos', 'reajustarPlano', 'acharItemDoPlano',
-             'atualizarItemPlano', 'resumoDoPlanoParaIA', 'minutosDoItemPlano', 'marcarPeloPainel', 'ritmoDoPlano']:
+             'atualizarItemPlano', 'resumoDoPlanoParaIA', 'planoDetalhadoParaIA', 'minutosDoItemPlano', 'marcarPeloPainel', 'ritmoDoPlano']:
     if f'function {nome}(' not in corpo:
         raise SystemExit(f'não achei {nome} no motor do plano')
     corpo = corpo.replace(f'function {nome}(', f'export function {nome}(', 1)

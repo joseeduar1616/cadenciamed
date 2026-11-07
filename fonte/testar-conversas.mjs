@@ -51,7 +51,16 @@ globalThis.fetch = async (url, opcoes = {}) => {
   }
   if (metodo === 'GET') return BANCO[caminho] ? json(BANCO[caminho]) : json({}, 404);
   if (metodo === 'DELETE') { delete BANCO[caminho]; return json({}); }
-  BANCO[caminho] = JSON.parse(opcoes.body);
+  /* PATCH com updateMask grava só os campos da máscara, como o Firestore */
+  const q = new URL(u).searchParams;
+  const campos = q.getAll('updateMask.fieldPaths');
+  const corpoP = JSON.parse(opcoes.body);
+  if (q.get('currentDocument.exists') === 'true' && !BANCO[caminho]) return json({}, 404);
+  if (campos.length) {
+    const antes = (BANCO[caminho] || {}).fields || {};
+    const novos = Object.fromEntries(campos.map((c) => [c, corpoP.fields[c]]).filter(([, v]) => v !== undefined));
+    BANCO[caminho] = { fields: { ...antes, ...novos } };
+  } else BANCO[caminho] = corpoP;
   return json({ name: caminho });
 };
 
@@ -173,6 +182,46 @@ if (lista.length === 2 && lista[0].titulo === 'segunda') ok('a lista vem da mais
 else falha('lista: ' + JSON.stringify(lista));
 if (lista.every((c) => !('mensagens' in c) || typeof c.mensagens === 'number')) ok('e traz só o resumo, não o texto de todas as conversas');
 else falha('a lista trouxe o texto inteiro');
+
+/* ── pastas, nome, modo ───────────────────────────────────────────────── */
+BANCO = {};
+como('ana@x.com', 'uid-ana');
+let a1 = (await pedir({ acao: 'salvar', modo: 'conversa', mensagens: [{ papel: 'user', texto: 'dúvida de cardio' }] })).corpo.id;
+await new Promise((res) => setTimeout(res, 5));
+let a2 = (await pedir({ acao: 'salvar', modo: 'mentoria', mensagens: [{ papel: 'user', texto: 'quero começar a mentoria' }] })).corpo.id;
+r = await pedir({ acao: 'criarPasta', nome: '  Cardiologia  ' });
+if (r.corpo.ok && JSON.stringify(r.corpo.pastas) === '["Cardiologia"]') ok('criar pasta (nome limpo)');
+else falha('criar pasta: ' + JSON.stringify(r.corpo));
+r = await pedir({ acao: 'criarPasta', nome: 'cardiologia' });
+if (r.corpo.pastas.length === 1) ok('pasta com o mesmo nome não duplica');
+else falha('pasta duplicada');
+r = await pedir({ acao: 'mover', id: a1, pasta: 'Cardiologia' });
+r = await pedir({ acao: 'renomear', id: a1, titulo: 'IC descompensada' });
+await pedir({ acao: 'salvar', id: a1, modo: 'conversa', mensagens: [{ papel: 'user', texto: 'dúvida de cardio' }, { papel: 'claude', texto: 'resposta' }] });
+r = await pedir({ acao: 'listar', modo: 'conversa' });
+const c1 = (r.corpo.conversas || []).find((c) => c.id === a1);
+if (c1 && c1.pasta === 'Cardiologia' && c1.titulo === 'IC descompensada' && c1.mensagens === 2) ok('mensagem nova não apaga a pasta nem o nome que a pessoa deu');
+else falha('depois de salvar de novo: ' + JSON.stringify(c1));
+if ((r.corpo.conversas || []).every((c) => c.modo === 'conversa') && r.corpo.pastas.includes('Cardiologia')) ok('a lista separa as conversas do Assistente das da Mentoria, e traz as pastas');
+else falha('lista por modo: ' + JSON.stringify(r.corpo));
+r = await pedir({ acao: 'listar', modo: 'mentoria' });
+if ((r.corpo.conversas || []).length === 1 && r.corpo.conversas[0].id === a2) ok('a Mentoria tem as conversas dela');
+else falha('lista da mentoria: ' + JSON.stringify(r.corpo));
+r = await pedir({ acao: 'renomearPasta', de: 'Cardiologia', para: 'Cardio' });
+r = await pedir({ acao: 'listar' });
+if (r.corpo.pastas.includes('Cardio') && !r.corpo.pastas.includes('Cardiologia') && r.corpo.conversas.find((c) => c.id === a1).pasta === 'Cardio') ok('renomear a pasta leva as conversas junto');
+else falha('renomear pasta: ' + JSON.stringify(r.corpo));
+r = await pedir({ acao: 'apagarPasta', nome: 'Cardio' });
+r = await pedir({ acao: 'listar' });
+if (!r.corpo.pastas.length && r.corpo.conversas.find((c) => c.id === a1) && r.corpo.conversas.find((c) => c.id === a1).pasta === '') ok('apagar a pasta não apaga a conversa: ela fica sem pasta');
+else falha('apagar pasta: ' + JSON.stringify(r.corpo));
+r = await pedir({ acao: 'renomear', id: 'naoexiste123', titulo: 'x' });
+if (r.status === 404) ok('renomear conversa que não existe não cria uma vazia');
+else falha('renomear inexistente: ' + r.status);
+como('bia@x.com', 'uid-bia');
+r = await pedir({ acao: 'mover', id: a1, pasta: 'Invasão' });
+if (r.status === 404 && !Object.keys(BANCO).some((k) => k.startsWith('conversas/uid-bia/itens/'))) ok('outra pessoa não move conversa alheia (o id só vale dentro da pasta de quem pede)');
+else falha('mover de outra pessoa: ' + r.status + ' ' + JSON.stringify(Object.keys(BANCO)));
 
 /* ── sem conta ────────────────────────────────────────────────────────── */
 QUEM = null;
