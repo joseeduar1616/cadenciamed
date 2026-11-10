@@ -115,6 +115,58 @@ if (JSON.stringify(sujo) === JSON.stringify([7, 30, 60, 120, 180])) {
 if (diasDoTopico(null, null, null).length === 0) ok('sem escada nenhuma, devolve lista vazia sem estourar');
 else falha('escada nula não deu lista vazia');
 
+/* ── a fila do dia e a recuperação do atraso ──────────────────────────── */
+{
+  const { recuperarTopico, filaDeRevisao, cotaDeRevisao } = await import('./_revisao.mjs');
+  const OITO = [1, 3, 6, 10, 15, 22, 41, 88].map((d) => ({ d }));
+  const mais = (iso, n) => { const d = new Date(`${iso}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const vencimentos = (rec) => { const dias = diasDoTopico(OITO, rec, 0); return OITO.map((st, i) => ((rec.done || {})[String(st.d)] ? 'feito' : mais(rec.anchor, dias[i]))); };
+  const ANTIGA = mais(HOJE, -220);
+
+  /* aula nunca revisada, 220 dias atrás: os oito degraus vencidos */
+  const dif = recuperarTopico({ anchor: ANTIGA }, OITO, 0, ANTIGA, 'dificil', HOJE);
+  const vd = vencimentos(dif);
+  if (dif.done['1'] === HOJE && !dif.done['3'] && vd[1] > HOJE && vd.slice(1).every((x) => x > HOJE)) ok('uma revisão recupera a aula: vale pelo primeiro degrau, e nenhum outro fica vencido');
+  else falha('recuperar difícil: ' + JSON.stringify(dif) + ' ' + vd.join(','));
+
+  const bom = recuperarTopico({ anchor: ANTIGA }, OITO, 0, ANTIGA, 'ok', HOJE);
+  const fac = recuperarTopico({ anchor: ANTIGA }, OITO, 0, ANTIGA, 'facil', HOJE);
+  if (bom.done['3'] === HOJE && !bom.done['6'] && fac.done['6'] === HOJE && !fac.done['10']) ok('lembrou bem, pula um degrau; lembrou de cara, pula dois');
+  else falha('saltos: ' + JSON.stringify(bom.done) + ' / ' + JSON.stringify(fac.done));
+  const vf = vencimentos(fac);
+  if (vf[3] > HOJE && vf[3] <= mais(HOJE, 12)) ok('o degrau seguinte conta de hoje, com o intervalo entre os dois degraus (e não 220 dias atrás)');
+  else falha('próximo degrau: ' + vf.join(','));
+
+  const err = recuperarTopico({ anchor: ANTIGA, done: { 1: ANTIGA } }, OITO, 0, ANTIGA, 'errei', HOJE);
+  if (err.anchor === HOJE && Object.keys(err.done).length === 0) ok('não lembrou: recomeça de hoje, como já era');
+  else falha('errei: ' + JSON.stringify(err));
+
+  /* só um degrau vencido: não pula além do que venceu */
+  const um = { anchor: mais(HOJE, -3), done: { 1: mais(HOJE, -2) } };
+  const r1 = recuperarTopico(um, OITO, 0, um.anchor, 'facil', HOJE);
+  if (r1.done['3'] === HOJE && !r1.done['6'] && r1.done['1'] === mais(HOJE, -2)) ok('com um degrau só vencido, marca esse e guarda o histórico dos anteriores');
+  else falha('um degrau: ' + JSON.stringify(r1));
+
+  const emDia = { anchor: HOJE };
+  if (recuperarTopico(emDia, OITO, 0, HOJE, 'ok', HOJE) && !recuperarTopico(emDia, OITO, 0, HOJE, 'ok', HOJE).recuperado) ok('aula em dia não é mexida');
+  else falha('aula em dia foi mexida');
+
+  /* a ordem da fila */
+  const linhas = [
+    { id: 'velha-facil', late: [1, 2], overdueBy: 200 },
+    { id: 'velha-dificil', late: [1, 2], overdueBy: 150 },
+    { id: 'fresca', late: [1], overdueBy: 2 },
+    { id: 'em-dia', late: [], overdueBy: 0 },
+    { id: 'velha-fraca', late: [1], overdueBy: 100 },
+  ];
+  const fila = filaDeRevisao(linhas, { 'velha-dificil': { dificuldade: 9 }, 'velha-facil': { dificuldade: 2 }, 'velha-fraca': { perf: 40 } }).map((r) => r.id);
+  if (fila.join(',') === 'fresca,velha-dificil,velha-fraca,velha-facil') ok('a fila traz primeiro o que venceu há pouco, depois o mais difícil e o de pior desempenho, e deixa de fora o que está em dia');
+  else falha('ordem da fila: ' + fila.join(','));
+
+  if (cotaDeRevisao(undefined) === 5 && cotaDeRevisao(0) === 5 && cotaDeRevisao(999) === 30 && cotaDeRevisao('8') === 8) ok('a cota por dia tem padrão e teto');
+  else falha('cota');
+}
+
 console.log(passos.join('\n'));
 console.log('\n' + (erros.length ? `${erros.length} PROBLEMA(S):\n` + erros.join('\n') : 'nenhum erro'));
 if (erros.length) process.exitCode = 1;

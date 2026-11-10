@@ -122,7 +122,7 @@ const DEFAULTS = {
      quantos cartões por dia. */
   baralhoCfg: {},
   /* esquema da escada de revisão espaçada, escolhido em Revisões */
-  revisao: { esquema: "cadencia", dias: [7, 21, 60, 150] },
+  revisao: { esquema: "cadencia", dias: [7, 21, 60, 150], cota: 5 },
   /* As respostas do teste de memória e a escada que saiu dele. Guardadas
      como número, não como rótulo: é o que deixa trocar o texto de uma
      pergunta sem invalidar o perfil de quem já respondeu. */
@@ -621,6 +621,8 @@ function normalize(raw) {
     revisao: {
       esquema: ESQUEMAS.some((e) => e.id === rv.esquema) ? rv.esquema : "cadencia",
       dias: limparDias(rv.dias).length ? limparDias(rv.dias) : DEFAULTS.revisao.dias,
+      /* quantas aulas a fila de revisão traz por dia */
+      cota: cotaDeRevisao(rv.cota),
     },
     perfilMemoria: (() => {
       const pm = obj(d.perfilMemoria);
@@ -1061,7 +1063,10 @@ function Num({ children, size = 34, color = T.ink, weight = 600 }) {
   );
 }
 
-function Btn({ children, onClick, tone = "quiet", disabled, className = "", title, size = "md" }) {
+/* "style" e o resto (aria-*, data-*) passam para o botão: antes eram
+   descartados em silêncio, e quem escrevia <Btn style={...}> ou
+   <Btn aria-label="..."> não via efeito nenhum. */
+function Btn({ children, onClick, tone = "quiet", disabled, className = "", title, size = "md", style, ...resto }) {
   /* O primário usa a classe .btn-neon (no estilo geral, em parte8.jsx),
      que é a mesma gradiente do botão da página de entrada — inclusive a
      inversão no tema claro, onde as duas cores de acento são escuras e a
@@ -1082,7 +1087,7 @@ function Btn({ children, onClick, tone = "quiet", disabled, className = "", titl
     (c) => typeof c === "string" || typeof c === "number",
   );
   return (
-    <button type="button" title={title} aria-label={soIcone ? title : undefined}
+    <button type="button" title={title} aria-label={soIcone ? title : undefined} {...resto}
       onClick={onClick} disabled={disabled}
       className={`inline-flex items-center justify-center gap-2 rounded-full ${tone === "primary" ? "btn-neon " : ""}${className}`}
       style={{
@@ -1097,6 +1102,7 @@ function Btn({ children, onClick, tone = "quiet", disabled, className = "", titl
         fontFamily: F_UI, fontSize: size === "sm" ? 14 : 15, fontWeight: 600,
         opacity: disabled ? 0.35 : 1, cursor: disabled ? "not-allowed" : "pointer",
         transition: "opacity .15s", whiteSpace: "nowrap",
+        ...(style || {}),
       }}>
       {children}
     </button>

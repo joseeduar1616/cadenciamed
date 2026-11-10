@@ -230,7 +230,15 @@ if (await aba.count() === 0) {
   const guardado = await pag.evaluate(() => JSON.stringify(Object.fromEntries(Object.entries(localStorage))));
   await pag.reload({ waitUntil: 'load' });
   if (await pag.evaluate(() => localStorage.getItem('cadencia:v3') === null)) {
-    await pag.evaluate((g) => { for (const [k, v] of Object.entries(JSON.parse(g))) localStorage.setItem(k, v); }, guardado);
+    /* Repor ANTES de o app da página nova rodar, e não por trás do app que
+       já está aberto: o app grava o estado dele ao sair da página (é o que
+       garante a sincronização), e passaria por cima do que foi reposto. O
+       window.name sobrevive ao recarregar e faz a reposição valer uma vez. */
+    await pag.addInitScript((g) => {
+      if (window.name === 'cm-reposto') return;
+      window.name = 'cm-reposto';
+      for (const [k, v] of Object.entries(JSON.parse(g))) localStorage.setItem(k, v);
+    }, guardado);
     await pag.reload({ waitUntil: 'load' });
   }
   await pag.waitForTimeout(2200);

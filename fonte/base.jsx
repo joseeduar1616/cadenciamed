@@ -1223,6 +1223,93 @@ function depoisDaRevisao(rec, comoFoi, hoje) {
   return r;
 }
 
+/* ── a fila do dia e a recuperação do atraso ──────────────────────────
+ *
+ * Quem ficou meses sem revisar abre a aba e vê centenas de degraus
+ * vencidos: oito por aula, todos pedindo um clique. Ninguém sai disso
+ * clicando, e o paredão vira motivo para não abrir a aba.
+ *
+ * Duas regras resolvem.
+ *
+ * 1. A fila é por AULA, com cota por dia. Primeiro o que venceu há pouco
+ *    (ainda dá para salvar a lembrança), depois o que a pessoa marcou como
+ *    mais difícil, depois o mais antigo.
+ * 2. Uma revisão recupera a aula inteira. Ela vale pelo primeiro degrau
+ *    vencido (ou um ou dois à frente, se a pessoa lembrou bem), e os
+ *    degraus seguintes passam a contar DE HOJE. Os degraus pulados ficam
+ *    marcados na data de hoje, então o histórico não mente: houve uma
+ *    revisão hoje, não oito.
+ */
+const COTA_REVISAO_PADRAO = 5;
+const COTA_REVISAO_MIN = 1;
+const COTA_REVISAO_MAX = 30;
+
+function somarDiasRevisao(iso, n) {
+  const d = new Date(`${iso}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+function cotaDeRevisao(v) {
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) && n >= COTA_REVISAO_MIN ? Math.min(COTA_REVISAO_MAX, n) : COTA_REVISAO_PADRAO;
+}
+
+/* O tópico depois de UMA revisão que recupera os degraus vencidos. */
+function recuperarTopico(rec, degraus, perf, ancoraPadrao, comoFoi, hoje) {
+  const r0 = { ...(rec || {}) };
+  if (comoFoi === "errei") return depoisDaRevisao(r0, "errei", hoje);
+  const lista = degraus || [];
+  const ancora = r0.anchor || ancoraPadrao || hoje;
+  const feitos = { ...(r0.done || {}) };
+  for (const k of Object.keys(r0.undone || {})) delete feitos[k];
+  const antes = diasDoTopico(lista, r0, perf);
+  const vencidos = [];
+  lista.forEach((st, i) => {
+    if (!feitos[String(st.d)] && somarDiasRevisao(ancora, antes[i]) <= hoje) vencidos.push(i);
+  });
+  if (!vencidos.length) return r0;
+
+  const salto = comoFoi === "facil" ? 2 : comoFoi === "dificil" ? 0 : 1;
+  const alvo = Math.min(vencidos[0] + salto, vencidos[vencidos.length - 1]);
+  const r = depoisDaRevisao(r0, comoFoi, hoje);
+  const depois = diasDoTopico(lista, r, perf);
+  const done = { ...(r.done || {}) };
+  const undone = { ...(r.undone || {}) };
+  for (const i of vencidos) {
+    if (i > alvo) break;
+    const k = String(lista[i].d);
+    done[k] = hoje;
+    delete undone[k];
+  }
+  r.done = done;
+  r.undone = undone;
+  /* O degrau "alvo" passa a vencer hoje: o seguinte conta daqui. */
+  r.anchor = somarDiasRevisao(hoje, -depois[alvo]);
+  r.recuperado = hoje;
+  return r;
+}
+
+/* A fila de revisão: uma linha por aula com degrau vencido, na ordem em
+   que vale a pena revisar. "linhas" é a escada pronta (uma por aula, com
+   late e overdueBy); "extras" traz o que a escada não sabe: dificuldade
+   declarada e desempenho da matéria. */
+function filaDeRevisao(linhas, extras) {
+  const de = extras || {};
+  const peso = (r) => {
+    const e = de[r.id] || {};
+    const dif = Number.isFinite(Number(e.dificuldade)) ? Number(e.dificuldade) : 5;
+    const fraco = Number(e.perf) > 0 && Number(e.perf) < 60 ? 2 : 0;
+    return dif + fraco;
+  };
+  return (linhas || []).filter((r) => r.late && r.late.length > 0)
+    .map((r) => ({ ...r, fresca: r.overdueBy <= 7, peso: peso(r) }))
+    .sort((a, b) => (Number(b.fresca) - Number(a.fresca))
+      || (b.peso - a.peso)
+      || (b.overdueBy - a.overdueBy)
+      || String(a.id).localeCompare(String(b.id)));
+}
+
 /* ── a semana montada a partir do tempo que existe ────────────────────
  *
  * O cronograma que não cabe na semana da pessoa é abandonado na segunda

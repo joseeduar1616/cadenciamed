@@ -484,16 +484,19 @@ function SessionRow({ s, onDel, showDate }) {
     <div className="flex items-center gap-3 rounded-2xl px-4 py-3" style={{ background: T.card2 }}>
       <span style={{ width: 3, height: 26, borderRadius: 3, background: aColor(s.area), flexShrink: 0 }} />
       <div className="flex-1 min-w-0">
-        <div style={{ fontSize: 15, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.topic}</div>
+        {/* O título quebra em duas linhas em vez de virar "HIV e AIDS: Da P…":
+            no celular, o que identifica o lançamento é justamente o título. */}
+        <div style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.3, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{s.topic}</div>
         <Mini style={{ marginTop: 1 }}>
           {s.kind}{showDate ? ` · ${brDate(s.date)}` : ""}{s.questions ? ` · ${s.correct}/${s.questions}` : ""}{s.notes ? ` · ${s.notes}` : ""}
         </Mini>
       </div>
       {pct !== null ? <Num size={13.5} weight={600} color={pct >= 80 ? T.ok : pct >= 61 ? T.warn : T.bad}>{pct}%</Num> : null}
-      <Num size={14} color={T.dim} weight={500}>{fmtMin(s.minutes)}</Num>
+      {/* Lançamento só de questões não tem tempo: "0min" era ruído. */}
+      {s.minutes > 0 ? <Num size={14} color={T.dim} weight={500}>{fmtMin(s.minutes)}</Num> : null}
       {onDel ? (
-        <button type="button" onClick={onDel} aria-label="Excluir"
-          style={{ background: "none", border: "none", color: T.ghost, cursor: "pointer" }}><X size={14} /></button>
+        <button type="button" onClick={onDel} aria-label="Excluir" className="toque flex items-center justify-center"
+          style={{ background: "none", border: "none", color: T.ghost, cursor: "pointer", flexShrink: 0 }}><X size={14} /></button>
       ) : null}
     </div>
   );
@@ -549,7 +552,54 @@ function LogForm({ today, addSession, notify, onDone }) {
   );
 }
 
-function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, done, bonusDone, addSession, delSession, notify, go, blocosHoje, projecao, pro, verPlanos, cartoesHoje, verMeuPlano, plano, emTeste, testeAcabou }) {
+/* Sem a data da prova, o painel não sabe o prazo: a projeção de ritmo
+   some, a mentora monta o plano no escuro e o teste de memória pergunta o
+   que podia saber. É um campo só, pedido onde a pessoa já está. */
+function PedirDataDaProva({ data, setData, notify }) {
+  const [dia, setDia] = useState("");
+  const [fechado, setFechado] = useState(false);
+  if (fechado || (data.profile && data.profile.examDate)) return null;
+  const valido = /^\d{4}-\d{2}-\d{2}$/.test(dia) && dia > todayISO();
+  return (
+    <div data-teste="pedir-data-prova">
+    <Card className="px-5 sm:px-6 py-5">
+      <div className="flex items-start justify-between gap-3">
+        <H size={17} color="var(--neon2)" icon={<Flag size={15} />}>Quando é a sua prova?</H>
+        <button type="button" aria-label="Agora não" title="Agora não" onClick={() => setFechado(true)}
+          className="toque flex items-center justify-center"
+          style={{ background: "none", border: "none", color: T.ghost, cursor: "pointer", flexShrink: 0 }}><X size={15} /></button>
+      </div>
+      <Mini style={{ marginTop: 8, lineHeight: 1.6, display: "block" }}>
+        Com a data, o painel diz se o seu ritmo fecha o cronograma a tempo, e a mentora monta o plano com o prazo certo.
+      </Mini>
+      <div className="mt-3 flex items-center gap-2 flex-wrap">
+        <TextInput type="date" aria-label="Data da prova" value={dia} min={todayISO()}
+          onChange={(e) => setDia(e.target.value)} style={{ width: 190 }} />
+        <Btn tone="primary" disabled={!valido}
+          onClick={() => {
+            setData((p) => ({ ...p, profile: { ...p.profile, examDate: dia } }));
+            notify(`Data da prova guardada: faltam ${diffDays(todayISO(), dia)} dias.`);
+          }}>guardar</Btn>
+      </div>
+    </Card>
+    </div>
+  );
+}
+
+/* Tela de celular (mais estreita que o "estreita" do menu, que inclui
+   tablet): onde duas colunas ficam apertadas de verdade. */
+function useTelaDeCelular() {
+  const [celular, setCelular] = useState(() => typeof window !== "undefined" && window.innerWidth < 480);
+  useEffect(() => {
+    const medir = () => setCelular(window.innerWidth < 480);
+    medir();
+    window.addEventListener("resize", medir);
+    return () => window.removeEventListener("resize", medir);
+  }, []);
+  return celular;
+}
+
+function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, filaRevisao = [], revisadasHoje = 0, done, bonusDone, addSession, delSession, notify, go, blocosHoje, projecao, pro, verPlanos, cartoesHoje, verMeuPlano, plano, emTeste, testeAcabou }) {
   const [openLog, setOpenLog] = useState(false);
   const [newTask, setNewTask] = useState("");
   const ativo = useAtivo();
@@ -567,6 +617,7 @@ function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, do
   const cSem = useContagem(minWeek);
   const cQ = useContagem(qWeek);
   const cSeq = useContagem(streak);
+  const celular = useTelaDeCelular();
 
   const stats = [
     { v: fmtMin(cMin), pct: (minToday / data.goals.daily) * 100, l: "hoje", sub: `meta ${fmtMin(data.goals.daily)}`, c: "var(--a-CL)" },
@@ -580,23 +631,27 @@ function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, do
       {/* O dia em uma olhada, como a "Visão geral" da Easy: a saudação, o
           quanto já foi, e as atividades com o botão para ir fazer. */}
       <PainelDoDia {...{ data, today, minToday, late, blocosHoje, cartoesHoje, go }} />
+      <PedirDataDaProva data={data} setData={setData} notify={notify} />
       {/* O plano pronto que a pessoa mandou (Meu plano): o que ele pede hoje. */}
       {verMeuPlano && data.planoArquivo ? <PlanoDeHoje data={data} setData={setData} today={today} onAbrir={() => go("meuplano")} /> : null}
       {/* um motivo do painel de motivação por dia, para lembrar por quê */}
       <MotivoDoDia data={data} today={today} go={go} />
 
       <Card className="px-6 sm:px-8 py-7" brilho="var(--neon)" tilt>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-7">
+        {/* No celular o anel encolhe e o texto ganha a largura que sobra:
+            com o anel grande, "questões" e "seguidos" passavam por cima do
+            anel vizinho e saíam do cartão. */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-y-7" style={{ columnGap: celular ? 12 : 24 }}>
           {stats.map((s, i) => (
-            <div key={s.l} className="flex items-center gap-3.5">
-              <Medidor pct={s.pct} cor={s.c} tamanho={76} largura={6} atraso={i * 130}>
-                <span style={{ fontFamily: F_MONO, fontSize: 14, fontWeight: 700, color: s.c }}>
+            <div key={s.l} className="flex items-center min-w-0" style={{ gap: celular ? 10 : 14 }}>
+              <Medidor pct={s.pct} cor={s.c} tamanho={celular ? 52 : 76} largura={celular ? 5 : 6} atraso={i * 130}>
+                <span style={{ fontFamily: F_MONO, fontSize: celular ? 11.5 : 14, fontWeight: 700, color: s.c }}>
                   {Math.round(Math.min(999, s.pct))}%
                 </span>
               </Medidor>
               <div className="min-w-0">
-                <Num size={26} weight={700} color={T.ink}>{s.v}</Num>
-                <Label style={{ marginTop: 2 }}>{s.l}</Label>
+                <Num size={celular ? 20 : 26} weight={700} color={T.ink}>{s.v}</Num>
+                <Label style={{ marginTop: 2, ...(celular ? { letterSpacing: "0.06em", fontSize: 10.5 } : {}) }}>{s.l}</Label>
                 <Mini style={{ marginTop: 1 }}>{s.sub}</Mini>
               </div>
             </div>
@@ -701,8 +756,10 @@ function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, do
               <div key={b.id} className="flex items-center gap-3 rounded-2xl px-4 py-3 flex-wrap" style={{ background: T.card2 }}>
                 <span style={{ width: 3, height: 26, borderRadius: 3, background: BLOCKS[b.type] || T.faint, flexShrink: 0 }} />
                 <Num size={13} color={T.dim} weight={600}>{b.start}</Num>
-                <div className="flex-1 min-w-0">
-                  <div style={{ fontSize: 15, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.label}</div>
+                {/* 150 de base: no celular o título fica com a linha e o botão
+                    Iniciar desce, em vez de o título quebrar em cinco linhas. */}
+                <div className="min-w-0" style={{ flex: "1 1 150px" }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.3 }}>{b.label}</div>
                   <Mini style={{ marginTop: 1 }}>{b.type} · até {b.end}</Mini>
                 </div>
                 {!(data.blocos || {})[`${b.id}|${today}`]
@@ -717,15 +774,12 @@ function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, do
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
         <Card className="px-6 py-6 lg:col-span-3">
           <div className="flex items-center justify-between">
-            <H color="var(--warn)" icon={<RotateCcw size={16} />}>Revisões pedindo passagem</H>
-            {late.length ? <Btn size="sm" tone="outline" onClick={() => go("revisoes")}>ver todas <ChevronRight size={13} /></Btn> : null}
+            <H color="var(--warn)" icon={<RotateCcw size={16} />}>Para revisar hoje</H>
+            {late.length ? <Btn size="sm" tone="outline" onClick={() => go("revisoes")}>revisar <ChevronRight size={13} /></Btn> : null}
           </div>
           {/* ── o convite para ligar o lembrete ──────────────────────────
             * Fica aqui, e não escondido em Configurações, porque é aqui
             * que ele faz sentido: ao lado da revisão que já está atrasada.
-            * Quem chega a esta tela e vê conteúdo vencido é exatamente
-            * quem ganha alguma coisa sendo avisado antes.
-            *
             * Aparece uma vez por dia no máximo, e só com revisão atrasada
             * de verdade. Convite que aparece sempre vira paisagem, e o
             * navegador guarda para sempre quem clicou em "não". */}
@@ -733,21 +787,36 @@ function Hoje({ data, setData, today, minToday, minWeek, qWeek, streak, late, do
 
           {late.length === 0 ? (
             <Blank icon={<Check size={24} />} title="Nada atrasado" hint="Todos os degraus estão dentro do prazo." />
-          ) : (
-            <div className="mt-4 flex flex-col gap-2.5">
-              {late.slice(0, 6).map((r) => (
-                <div key={r.id} className="flex items-center gap-3 rounded-2xl px-4 py-3" style={{ background: T.card2 }}>
-                  <span style={{ width: 3, height: 26, borderRadius: 3, background: aColor(r.area), flexShrink: 0 }} />
-                  <div className="flex-1 min-w-0">
-                    <div style={{ fontSize: 15, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title}</div>
-                    <Mini style={{ marginTop: 1 }}>{ativo.byId[r.id] ? ativo.byId[r.id].esp : ""} · {r.late.map((x) => x.label).join(", ")}</Mini>
+          ) : (() => {
+            /* A cota do dia, e não a lista inteira: com meses de atraso, a
+               lista inteira só desanima. O resto está na aba Revisões. */
+            const cota = cotaDeRevisao((data.revisao || {}).cota);
+            const alvo = Math.min(cota, revisadasHoje + filaRevisao.length);
+            const deHoje = filaRevisao.slice(0, Math.max(0, alvo - revisadasHoje));
+            return (
+              <div className="mt-4 flex flex-col gap-2.5">
+                <Mini style={{ paddingLeft: 4 }}>
+                  {Math.min(revisadasHoje, alvo)} de {alvo} aula{alvo === 1 ? "" : "s"} hoje · {filaRevisao.length} na fila
+                </Mini>
+                {deHoje.length === 0 ? (
+                  <div className="rounded-2xl px-4 py-3" style={{ background: soft("var(--ok)", 12), color: T.ink, fontSize: 14.5 }}>
+                    Cota de hoje cumprida.
                   </div>
-                  <Num size={13} color={T.warn} weight={600}>{r.overdueBy > 0 ? `${r.overdueBy}d` : "hoje"}</Num>
-                </div>
-              ))}
-              {late.length > 6 ? <Label style={{ paddingLeft: 4 }}>e mais {late.length - 6}</Label> : null}
-            </div>
-          )}
+                ) : deHoje.map((r) => (
+                  <button key={r.id} type="button" onClick={() => go("revisoes")}
+                    className="flex items-center gap-3 rounded-2xl px-4 py-3 text-left"
+                    style={{ background: T.card2, border: "none", cursor: "pointer", color: T.ink, width: "100%" }}>
+                    <span style={{ width: 3, alignSelf: "stretch", minHeight: 26, borderRadius: 3, background: aColor(r.area), flexShrink: 0 }} />
+                    <div className="flex-1 min-w-0">
+                      <div style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.35 }}>{r.title}</div>
+                      <Mini style={{ marginTop: 1 }}>{ativo.byId[r.id] ? ativo.byId[r.id].esp : ""}</Mini>
+                    </div>
+                    <Num size={13} color={T.warn} weight={600}>{r.overdueBy > 0 ? `${r.overdueBy}d` : "hoje"}</Num>
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
         </Card>
 
         <Card className="px-6 py-6 lg:col-span-2">

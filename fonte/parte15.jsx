@@ -355,6 +355,11 @@ function Notion({ nuvem, subjects, data, setData, notify }) {
     );
   }
 
+  /* Sem a integração cadastrada no site, o cartão não serve para nada a
+     quem estuda: um botão apagado e um recado sobre variáveis do servidor.
+     Só o dono vê, porque é ele quem pode resolver. */
+  if (estado && !estado.configurado && !ehDono(nuvem && nuvem.usuario)) return null;
+
   return (
     <Card className="px-6 py-6" brilho="var(--neon2)">
       <H color="var(--neon2)" icon={<BookMarked size={16} />}>Cronograma do Notion</H>

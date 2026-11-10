@@ -228,8 +228,8 @@ const pm = pedidosIA.find((p) => p.modo === 'mentoria') || {};
 const ctxM = String(pm.contexto || '');
 if (/ITEM POR ITEM/.test(ctxM) && ctxM.indexOf('Cardiologia: insuficiência cardíaca') < ctxM.indexOf('30 questões de nefrologia') && ctxM.indexOf('30 questões de nefrologia') > 0) ok('a mentora recebe o plano da pessoa inteiro, na ordem, com os títulos do arquivo');
 else falha('plano no contexto da mentoria: ' + ctxM.slice(0, 300));
-if (/SEQUÊNCIA DO CRONOGRAMA/.test(ctxM) && /Próximas aulas, na ordem/.test(ctxM)) ok('e a sequência do cronograma, com as próximas aulas na ordem');
-else falha('sequência do cronograma ausente');
+if (/SEQUÊNCIA DO CRONOGRAMA/.test(ctxM) && /Próximas aulas, na ordem:\n- bloco 1 · Epidemiologia: Estudos Epidemiológicos/.test(ctxM) && !/undefined/.test(ctxM)) ok('e a sequência do cronograma, com as próximas aulas na ordem, pelo nome');
+else falha('sequência do cronograma: ' + (ctxM.match(/SEQUÊNCIA DO CRONOGRAMA[^]{0,300}/) || [''])[0]);
 
 await pag.locator('main button:has-text("Nova")').first().click();
 await pag.waitForTimeout(300);

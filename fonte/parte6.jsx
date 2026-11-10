@@ -460,7 +460,9 @@ const Leg = ({ color, t }) => (
  */
 function TesteDeMemoria({ data, setData, notify }) {
   const pm = data.perfilMemoria || {};
-  const [aberto, setAberto] = useState(!pm.aplicadoEm);
+  /* Aberto só para quem ainda não escolheu nada: quem já aplicou o teste
+     ou montou a escada do seu jeito veio aqui para revisar. */
+  const [aberto, setAberto] = useState(!pm.aplicadoEm && ((data.revisao || {}).esquema || "cadencia") === "cadencia");
   const [resp, setResp] = useState(() => ({ ...(pm.respostas || {}) }));
 
   /* A data da prova cadastrada no perfil ganha da pergunta de prazo: ela é
@@ -480,7 +482,7 @@ function TesteDeMemoria({ data, setData, notify }) {
   const usar = () => {
     setData((x) => ({
       ...x,
-      revisao: { esquema: "personalizado", dias },
+      revisao: { ...(x.revisao || {}), esquema: "personalizado", dias },
       perfilMemoria: { respostas: resp, dias, aplicadoEm: todayISO() },
     }));
     setAberto(false);
@@ -495,11 +497,13 @@ function TesteDeMemoria({ data, setData, notify }) {
     return (
       <Card className="px-6 py-5" brilho="var(--neon)">
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <H size={17} color="var(--neon)" icon={<Brain size={16} />}>Seu perfil de memória</H>
-          <Btn size="sm" tone="outline" onClick={() => setAberto(true)}>refazer o teste</Btn>
+          <H size={17} color="var(--neon)" icon={<Brain size={16} />}>{pm.aplicadoEm ? "Seu perfil de memória" : "Teste de memória"}</H>
+          <Btn size="sm" tone="outline" onClick={() => setAberto(true)}>{pm.aplicadoEm ? "refazer o teste" : "fazer o teste"}</Btn>
         </div>
         <Texto style={{ marginTop: 8 }}>
-          {emUso
+          {!pm.aplicadoEm
+            ? <>Seis perguntas sobre o seu jeito de lembrar, e sai uma escada de revisão calculada para você. A sua escada atual continua valendo até você trocar.</>
+            : emUso
             ? <>Suas revisões seguem a escada do seu teste de {brDate(pm.aplicadoEm)}:{" "}
                 <span style={{ fontFamily: F_MONO, color: T.ink }}>{pm.dias.map(rotuloDias).join(" · ")}</span></>
             : <>Você trocou de escada depois do teste. Refaça, ou volte a usar a dele quando quiser.</>}
@@ -512,7 +516,7 @@ function TesteDeMemoria({ data, setData, notify }) {
     <Card className="px-6 py-6" brilho="var(--neon)">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <H size={18} color="var(--neon)" icon={<Brain size={16} />}>Descubra a sua escada de revisão</H>
-        {pm.aplicadoEm ? <Btn size="sm" tone="quiet" onClick={() => setAberto(false)}>fechar</Btn> : null}
+        <Btn size="sm" tone="quiet" onClick={() => setAberto(false)}>fechar</Btn>
       </div>
       <Texto style={{ marginTop: 8 }}>
         Cada pessoa esquece num ritmo diferente, e uma escada que serve para uma
@@ -546,7 +550,7 @@ function TesteDeMemoria({ data, setData, notify }) {
         ))}
         {temData ? (
           <Mini style={{ lineHeight: 1.6 }}>
-            O prazo vem da data da sua prova, {brDate(prova)} — daqui a {diasProva} dias.
+            O prazo vem da data da sua prova, {brDate(prova)}, daqui a {diasProva} dias.
           </Mini>
         ) : null}
       </div>
@@ -633,7 +637,7 @@ function EsquemaRevisao({ data, setData, degraus, notify }) {
   const salvarDias = () => {
     const dias = limparDias(rascunho.split(/[^\d]+/));
     if (dias.length === 0) { notify("Escreva pelo menos um número de dias."); return; }
-    setData((p) => ({ ...p, revisao: { esquema: "personalizado", dias } }));
+    setData((p) => ({ ...p, revisao: { ...(p.revisao || {}), esquema: "personalizado", dias } }));
     setRascunho(dias.join(", "));
     notify(`Escada com ${dias.length} degrau${dias.length === 1 ? "" : "s"}.`);
   };
@@ -720,23 +724,134 @@ function EsquemaRevisao({ data, setData, degraus, notify }) {
    intervalo seria o mesmo para o que a pessoa lembrou de cara e para o que
    ela não lembrou de jeito nenhum. */
 const COMO_FOI = [
-  { id: "facil", rotulo: "fácil", cor: "var(--ok)", dica: "lembrei de cara — pode demorar mais a voltar" },
+  { id: "facil", rotulo: "fácil", cor: "var(--ok)", dica: "lembrei de cara: pode demorar mais a voltar" },
   { id: "ok", rotulo: "ok", cor: "var(--neon)", dica: "lembrei com esforço" },
-  { id: "dificil", rotulo: "difícil", cor: "var(--warn)", dica: "custou — volta mais cedo" },
+  { id: "dificil", rotulo: "difícil", cor: "var(--warn)", dica: "custou: volta mais cedo" },
   { id: "errei", rotulo: "não lembrei", cor: "var(--bad)", dica: "recomeça a contagem de hoje" },
 ];
 
-function Revisoes({ rows, toggleStep, resetCycle, marcarDificuldade, data, setData, degraus, notify }) {
+/* ── a fila de hoje ────────────────────────────────────────────────────
+ *
+ * O que a pessoa abre a aba para fazer: "o que eu reviso hoje?". Uma
+ * linha por aula, na ordem que vale a pena, até a cota do dia. Um toque
+ * em "Revisei" pergunta como foi, e essa única resposta recupera a aula
+ * inteira (ver recuperarTopico, em base.jsx). */
+function FilaDeRevisaoDeHoje({ fila, revisadasHoje, cota, recuperar, setCota, notify }) {
+  const ativo = useAtivo();
+  const [perguntando, setPerguntando] = useState("");
+  const [extra, setExtra] = useState(0);
+  const alvo = Math.min(cota + extra, revisadasHoje + fila.length);
+  const faltam = Math.max(0, alvo - revisadasHoje);
+  const deHoje = fila.slice(0, faltam);
+  const pct = alvo ? Math.min(100, Math.round((revisadasHoje / alvo) * 100)) : 100;
+  const dias = fila.length ? Math.ceil(fila.length / Math.max(1, cota)) : 0;
+
+  return (
+    <div data-teste="fila-revisao">
+    <Card className="px-5 sm:px-6 py-6" brilho="var(--ok)">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <H color="var(--ok)" icon={<ListChecks size={16} />}>Para revisar hoje</H>
+        <div className="flex items-center gap-2" role="group" aria-label="Aulas por dia">
+          <Mini>por dia</Mini>
+          <button type="button" aria-label="Menos aulas por dia" onClick={() => setCota(cota - 1)} disabled={cota <= 1}
+            className="flex items-center justify-center rounded-full"
+            style={{ width: 36, height: 36, background: T.card2, border: `1px solid ${T.line}`, color: T.ink, cursor: "pointer", fontSize: 18 }}>−</button>
+          <Num size={17} weight={700}>{cota}</Num>
+          <button type="button" aria-label="Mais aulas por dia" onClick={() => setCota(cota + 1)} disabled={cota >= COTA_REVISAO_MAX}
+            className="flex items-center justify-center rounded-full"
+            style={{ width: 36, height: 36, background: T.card2, border: `1px solid ${T.line}`, color: T.ink, cursor: "pointer", fontSize: 18 }}>+</button>
+        </div>
+      </div>
+
+      <div className="mt-4 flex items-baseline gap-2 flex-wrap">
+        <Num size={30} weight={700} color={pct >= 100 ? T.ok : T.ink}>{Math.min(revisadasHoje, alvo)}</Num>
+        <Texto style={{ margin: 0 }}>de {alvo} aula{alvo === 1 ? "" : "s"} hoje</Texto>
+      </div>
+      <div style={{ height: 6, borderRadius: 99, background: T.card3, marginTop: 8, overflow: "hidden" }}>
+        <div style={{ width: `${pct}%`, height: "100%", background: "var(--ok)", borderRadius: 99, transition: "width .4s" }} />
+      </div>
+      <Mini style={{ marginTop: 10, lineHeight: 1.6, display: "block" }}>
+        {fila.length === 0
+          ? "Nenhuma aula esperando revisão. Quando um degrau vencer, a aula aparece aqui."
+          : `${fila.length} aula${fila.length === 1 ? "" : "s"} na fila. Com ${cota} por dia, a fila zera em ${dias} dia${dias === 1 ? "" : "s"}. Uma revisão recupera a aula inteira: os próximos degraus passam a contar de hoje.`}
+      </Mini>
+
+      {deHoje.length ? (
+        <div className="mt-4 flex flex-col gap-2.5">
+          {deHoje.map((r) => {
+            const esp = ativo.byId[r.id] ? ativo.byId[r.id].esp : "";
+            const aberto = perguntando === r.id;
+            return (
+              <div key={r.id} className="rounded-2xl px-4 py-3" data-fila={r.id}
+                style={{ background: T.card2, border: `1px solid ${aberto ? soft("var(--ok)", 40) : "transparent"}` }}>
+                <div className="flex items-center gap-3">
+                  <span style={{ width: 3, alignSelf: "stretch", minHeight: 30, borderRadius: 3, background: aColor(r.area), flexShrink: 0 }} />
+                  <div className="flex-1 min-w-0">
+                    <div style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.35 }}>{r.title}</div>
+                    <Mini style={{ marginTop: 2 }}>
+                      {esp}{esp ? " · " : ""}{r.overdueBy > 0 ? `venceu há ${r.overdueBy} dia${r.overdueBy === 1 ? "" : "s"}` : "vence hoje"}
+                      {r.late.length > 1 ? ` · ${r.late.length} degraus` : ""}
+                    </Mini>
+                  </div>
+                  {!aberto ? (
+                    <Btn size="sm" tone="primary" onClick={() => setPerguntando(r.id)}><Check size={13} /> Revisei</Btn>
+                  ) : null}
+                </div>
+                {aberto ? (
+                  <div className="mt-3">
+                    <Label>Como foi?</Label>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {COMO_FOI.map((op) => (
+                        <Btn key={op.id} size="sm" tone="outline" title={op.dica}
+                          style={{ borderColor: soft(op.cor, 40), color: op.cor }}
+                          onClick={() => {
+                            recuperar(r.id, op.id);
+                            setPerguntando("");
+                            if (op.id === "errei") notify("Contagem reiniciada hoje: esse conteúdo volta amanhã.");
+                          }}>
+                          {op.rotulo}
+                        </Btn>
+                      ))}
+                      <Btn size="sm" tone="quiet" onClick={() => setPerguntando("")}>cancelar</Btn>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {fila.length > 0 && faltam === 0 ? (
+        <div className="mt-4 flex items-center gap-3 flex-wrap rounded-2xl px-4 py-3" style={{ background: soft("var(--ok)", 12), border: `1px solid ${soft("var(--ok)", 30)}` }}>
+          <Texto style={{ margin: 0, flex: "1 1 180px", color: T.ink }}>Cota de hoje cumprida. O resto da fila fica para os próximos dias.</Texto>
+          <Btn size="sm" tone="outline" onClick={() => setExtra((x) => x + cota)}>adiantar mais {Math.min(cota, fila.length)}</Btn>
+        </div>
+      ) : null}
+    </Card>
+    </div>
+  );
+}
+
+function Revisoes({ rows, toggleStep, resetCycle, marcarDificuldade, data, setData, degraus, notify, fila = [], revisadasHoje = 0, recuperarRevisao, setCotaRevisao }) {
   /* Qual degrau está esperando a resposta de "como foi". Guardado como
      "id do tópico|dia" porque o mesmo tópico tem vários degraus. */
   const [perguntando, setPerguntando] = useState("");
   const [onlyLate, setOnlyLate] = useState(false);
   const list = onlyLate ? rows.filter((r) => r.late.length > 0) : rows;
+  /* A escada de cada aula é o detalhe; a fila acima é o que se faz. Com
+     muitas aulas, a lista inteira nasce recolhida. */
+  const [verEscadas, setVerEscadas] = useState(rows.length <= 6);
+  const cota = cotaDeRevisao((data.revisao || {}).cota);
   const colunas = { gridTemplateColumns: `repeat(${Math.max(1, degraus.length)}, minmax(0, 1fr))` };
   const ativo = useAtivo();
 
   return (
     <div className="flex flex-col gap-4">
+      {rows.length && recuperarRevisao ? (
+        <FilaDeRevisaoDeHoje fila={fila} revisadasHoje={revisadasHoje} cota={cota}
+          recuperar={recuperarRevisao} setCota={setCotaRevisao} notify={notify} />
+      ) : null}
       <TesteDeMemoria data={data} setData={setData} notify={notify} />
       <EsquemaRevisao data={data} setData={setData} degraus={degraus} notify={notify} />
 
@@ -752,11 +867,23 @@ function Revisoes({ rows, toggleStep, resetCycle, marcarDificuldade, data, setDa
                 <Leg color={T.warn} t="vencido ou vence hoje" />
                 <Leg color={T.ghost} t="dentro do prazo" />
               </div>
-              <Btn size="sm" tone={onlyLate ? "primary" : "outline"} onClick={() => setOnlyLate((v) => !v)}>só os atrasados</Btn>
+              <div className="flex gap-2 flex-wrap">
+                {verEscadas ? (
+                  <Btn size="sm" tone={onlyLate ? "primary" : "outline"} onClick={() => setOnlyLate((v) => !v)}>só os atrasados</Btn>
+                ) : null}
+                <Btn size="sm" tone="outline" aria-expanded={verEscadas} onClick={() => setVerEscadas((v) => !v)}>
+                  {verEscadas ? "recolher as escadas" : `ver a escada de cada aula (${rows.length})`}
+                </Btn>
+              </div>
             </div>
+            {!verEscadas ? (
+              <Mini style={{ marginTop: 10, lineHeight: 1.6, display: "block" }}>
+                A escada mostra os degraus de cada aula, um por um, para quem quer marcar ou desmarcar um degrau específico.
+              </Mini>
+            ) : null}
           </Card>
 
-          {list.map((r) => (
+          {verEscadas && list.map((r) => (
             <Card key={r.id} className="px-5 sm:px-6 py-5">
               <div className="flex items-start gap-3.5">
                 <span style={{ width: 3, height: 32, borderRadius: 3, background: aColor(r.area), flexShrink: 0, marginTop: 2 }} />
@@ -792,7 +919,9 @@ function Revisoes({ rows, toggleStep, resetCycle, marcarDificuldade, data, setDa
                       }}>
                       <span className={active ? "breathe" : ""} style={{ width: 7, height: 7, borderRadius: 99, background: col, display: "block", boxShadow: active ? `0 0 10px ${col}` : "none" }} />
                       <span style={{ fontFamily: F_MONO, fontSize: 11.5, color: col }}>{st.label}</span>
-                      <span style={{ fontSize: 10.5, color: T.ghost }}>{brDate(st.on || st.due)}</span>
+                      <span style={{ fontSize: 10, color: T.ghost, whiteSpace: "nowrap" }}>
+                        {degraus.length > 5 ? brDate(st.on || st.due).slice(0, 5) : brDate(st.on || st.due)}
+                      </span>
                     </button>
                   );
                 })}

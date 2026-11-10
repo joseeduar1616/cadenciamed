@@ -17,7 +17,8 @@ if inicio not in s or fim not in s:
 corpo = s[s.index(inicio):s.index(fim)].rstrip()
 
 for alvo in ('function fatorDoTopico', 'function diasDoTopico', 'function depoisDaRevisao',
-             'const FATOR_MINIMO', 'const FATOR_MAXIMO'):
+             'const FATOR_MINIMO', 'const FATOR_MAXIMO', 'function recuperarTopico',
+             'function filaDeRevisao', 'function cotaDeRevisao', 'const COTA_REVISAO_PADRAO'):
     if alvo not in corpo:
         raise SystemExit(f'não achei {alvo} no trecho extraído')
     corpo = corpo.replace(alvo, 'export ' + alvo, 1)

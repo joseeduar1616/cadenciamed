@@ -516,7 +516,7 @@ function ListaRendas({ fin, gravar }) {
         <TextInput value={d} placeholder="Ex.: Salário" onChange={(e) => setD(e.target.value)} style={{ flex: 2, minWidth: 140 }} />
         <TextInput value={v} placeholder="Valor" inputMode="decimal" onChange={(e) => setV(e.target.value)} style={{ flex: 1, minWidth: 90 }}
           onKeyDown={(e) => { if (e.key === "Enter") add(); }} />
-        <Btn onClick={add}><Plus size={15} /></Btn>
+        <Btn onClick={add} title="Adicionar"><Plus size={15} /></Btn>
       </div>
     </Card>
   );
@@ -561,10 +561,10 @@ function ListaFixos({ fin, gravar }) {
         <TextInput value={d} placeholder="Ex.: Aluguel" onChange={(e) => setD(e.target.value)} style={{ flex: 2, minWidth: 140 }} />
         <TextInput value={v} placeholder="Valor" inputMode="decimal" onChange={(e) => setV(e.target.value)} style={{ flex: 1, minWidth: 90 }} />
         <TextInput value={dia} placeholder="Dia" inputMode="numeric" onChange={(e) => setDia(e.target.value)} style={{ width: 70 }} />
-        <select value={c} onChange={(e) => setC(e.target.value)} style={{ ...selectFin, flex: 1, minWidth: 140 }}>
+        <select value={c} aria-label="Categoria" onChange={(e) => setC(e.target.value)} style={{ ...selectFin, flex: 1, minWidth: 140 }}>
           {CATEGORIAS_FIN.map((x) => <option key={x} value={x}>{x}</option>)}
         </select>
-        <Btn onClick={add}><Plus size={15} /></Btn>
+        <Btn onClick={add} title="Adicionar"><Plus size={15} /></Btn>
       </div>
     </Card>
   );
@@ -592,11 +592,11 @@ function GastosDoMes({ fin, gravar, mes, r, today }) {
       <div className="mt-4 flex gap-2 flex-wrap">
         <TextInput value={d} placeholder="Ex.: Mercado" onChange={(e) => setD(e.target.value)} style={{ flex: 2, minWidth: 140 }} />
         <TextInput value={v} placeholder="Valor" inputMode="decimal" onChange={(e) => setV(e.target.value)} style={{ flex: 1, minWidth: 90 }} />
-        <TextInput type="date" value={dia || padrao} onChange={(e) => setDia(e.target.value)} style={{ width: 160 }} />
-        <select value={c} onChange={(e) => setC(e.target.value)} style={{ ...selectFin, flex: 1, minWidth: 140 }}>
+        <TextInput type="date" aria-label="Data do gasto" value={dia || padrao} onChange={(e) => setDia(e.target.value)} style={{ width: 160 }} />
+        <select value={c} aria-label="Categoria" onChange={(e) => setC(e.target.value)} style={{ ...selectFin, flex: 1, minWidth: 140 }}>
           {CATEGORIAS_FIN.map((x) => <option key={x} value={x}>{x}</option>)}
         </select>
-        <Btn onClick={add}><Plus size={15} /></Btn>
+        <Btn onClick={add} title="Adicionar"><Plus size={15} /></Btn>
       </div>
     </Card>
   );

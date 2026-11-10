@@ -220,6 +220,16 @@ function QuadroPendentes({ data, setData, today, notify }) {
     rolagem: { ...(p.rolagem || {}), semLugar: ((p.rolagem && p.rolagem.semLugar) || []).filter((x) => x.id !== id) },
   }));
 
+  /* Lista grande: tirar um por um era vinte toques. Dois toques tiram
+     todos (o segundo confirma, sem janela do navegador). */
+  const [confirmaTodos, setConfirmaTodos] = useState(false);
+  const descartarTodos = () => {
+    if (!confirmaTodos) { setConfirmaTodos(true); return; }
+    setConfirmaTodos(false);
+    setData((p) => ({ ...p, rolagem: { ...(p.rolagem || {}), semLugar: [] } }));
+    notify("Lista limpa. O que já estava remarcado na Agenda continua lá.");
+  };
+
   return (
     <Card className="px-5 sm:px-6 py-5">
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -248,7 +258,14 @@ function QuadroPendentes({ data, setData, today, notify }) {
       ) : null}
       {sem.length ? (
         <div className="mt-4">
-          <Label style={{ color: T.warn }}>Sem horário livre nos próximos 7 dias</Label>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <Label style={{ color: T.warn }}>Sem horário livre nos próximos 7 dias · {sem.length}</Label>
+            {sem.length > 2 ? (
+              <Btn size="sm" tone={confirmaTodos ? "danger" : "outline"} onClick={descartarTodos} data-teste="deixar-todos">
+                {confirmaTodos ? `tirar os ${sem.length} da lista?` : "deixar todos para lá"}
+              </Btn>
+            ) : null}
+          </div>
           <div className="mt-2 flex flex-col gap-1.5">
             {sem.map((x) => (
               <div key={x.id} className="flex items-center gap-3 rounded-xl px-3.5 py-2.5" style={{ background: T.card2 }}>

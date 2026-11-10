@@ -386,6 +386,13 @@ function executarFerramentasDaMentora(chamadas, { data, setData, subjects, today
         minutos: a.minutos, questoes: a.questoes, acertos: a.acertos,
       }], subjects).novo);
       responder(true, `sessão registrada em ${materia ? materia.title : String(a.materia || "estudo")}${materia ? ", e a aula ficou marcada como feita" : ""}`);
+    } else if (c.name === "registrar_revisao") {
+      const r = revisaoPelaIA(data || {}, { aula: a.aula, comoFoi: a.como_foi }, subjects);
+      if (!r.rec) { responder(false, r.motivo); continue; }
+      setData((p) => aplicarAcoesNoPainel(p, [{ tipo: "revisao", aula: a.aula, comoFoi: a.como_foi }], subjects).novo);
+      responder(true, r.comoFoi === "errei"
+        ? `revisão de ${r.materia.title} anotada como não lembrada: a contagem recomeça hoje e ela volta amanhã`
+        : `revisão de ${r.materia.title} registrada; os próximos degraus contam de hoje e ela saiu da fila`);
     } else if (c.name === "adicionar_pendencia") {
       if (!String(a.texto || "").trim()) { responder(false, "faltou o texto da pendência"); continue; }
       setData((p) => aplicarAcoesNoPainel(p, [{ tipo: "tarefa", texto: a.texto }], subjects).novo);

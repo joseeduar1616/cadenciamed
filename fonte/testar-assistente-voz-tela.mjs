@@ -58,7 +58,7 @@ function falsos() {
   try {
     localStorage.setItem('cm-sem-pergunta-faculdade', '1');
     localStorage.setItem('cadencia:v3:convite-notificacoes-aparelho', 'teste');
-    if (!localStorage.getItem('cadencia:v3')) localStorage.setItem('cadencia:v3', JSON.stringify({ profile: { name: 'Teste', onboarded: true, examDate: '2027-03-10' }, theme: 'dark' }));
+    if (!localStorage.getItem('cadencia:v3')) localStorage.setItem('cadencia:v3', JSON.stringify({ profile: { name: 'Teste', onboarded: true, examDate: '2027-03-10' }, theme: 'dark', marks: { 'epidemiologia-estudos-epidemiologicos': { aula: true, date: '2026-01-10' } } }));
   } catch (e) { /* noop */ }
   window.__wavTocados = 0;
   const playOriginal = HTMLMediaElement.prototype.play;
@@ -88,6 +88,7 @@ function falsos() {
           { id: 'f1', name: 'registrar_sessao', args: { materia: 'pneumonia', tipo: 'Questões', minutos: 40, questoes: 30, acertos: 24 } },
           { id: 'f2', name: 'adicionar_pendencia', args: { texto: 'refazer as questões de pneumonia' } },
           { id: 'f3', name: 'atualizar_item_do_plano', args: { titulo: 'cardio', situacao: 'feito' } },
+          { id: 'f4', name: 'registrar_revisao', args: { aula: 'estudos epidemiológicos', como_foi: 'facil' } },
         ] } }), 30);
         return;
       }
@@ -264,7 +265,7 @@ const enviados = (pag) => pag.evaluate(() => window.__enviado);
   await esperar(pag, async () => (await enviados(pag)).some((m) => m.toolResponse));
   const resp = ((await enviados(pag)).find((m) => m.toolResponse) || {}).toolResponse || {};
   const fr = resp.functionResponses || [];
-  if (fr.length === 3 && fr[0].id === 'f1' && fr[0].response.ok && fr[1].response.ok) ok('as ferramentas pedidas pela mentora voltam respondidas, uma por pedido, com o mesmo id');
+  if (fr.length === 4 && fr[0].id === 'f1' && fr[0].response.ok && fr[1].response.ok) ok('as ferramentas pedidas pela mentora voltam respondidas, uma por pedido, com o mesmo id');
   else falha('toolResponse: ' + JSON.stringify(resp));
   if (fr[2] && fr[2].response.ok === false && /Meu plano/.test(fr[2].response.resultado)) ok('sem plano mandado, o item do plano volta recusado com o motivo (ela não finge que marcou)');
   else falha('item do plano sem plano: ' + JSON.stringify(fr[2]));
@@ -273,6 +274,9 @@ const enviados = (pag) => pag.evaluate(() => window.__enviado);
   const sess = (d.sessions || []).find((x) => x.questions === 30);
   if (sess && sess.correct === 24 && sess.minutes === 40 && sess.kind === 'Questões') ok('a sessão contada por voz entra no painel com questões, acertos e tempo');
   else falha('sessão por voz: ' + JSON.stringify(d.sessions));
+  const rv = (d.reviews || {})['epidemiologia-estudos-epidemiologicos'] || {};
+  if (fr[3] && fr[3].id === 'f4' && fr[3].response.ok && /saiu da fila/.test(fr[3].response.resultado) && rv.recuperado && Object.keys(rv.done || {}).length >= 1) ok('a revisão contada por voz recupera a aula na escada (uma revisão, e ela sai da fila)');
+  else falha('revisão por voz: ' + JSON.stringify(fr[3]) + ' ' + JSON.stringify(rv));
   if ((d.tasks || []).some((t) => /refazer as questões de pneumonia/.test(t.text))) ok('e a pendência pedida por voz aparece em Hoje');
   else falha('pendência por voz: ' + JSON.stringify(d.tasks));
   await ctx.close();

@@ -733,7 +733,7 @@ function ModalDrive({ tituloAula, gerarBlob, sugestaoNome, notify, nuvem, onFech
                 onChange={(e) => setNovaPasta(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") criar(); }}
                 style={{ padding: "6px 10px", fontSize: 13 }} />
-              <Btn size="sm" tone="outline" onClick={criar}><FolderPlus size={14} /></Btn>
+              <Btn size="sm" tone="outline" onClick={criar} title="Criar pasta"><FolderPlus size={14} /></Btn>
             </div>
 
             <div className="flex items-center gap-2 pt-2" style={{ borderTop: `1px solid ${T.line}` }}>

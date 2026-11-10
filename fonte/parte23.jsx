@@ -443,7 +443,7 @@ function Provas({ nuvem, notify }) {
           <Texto style={{ marginTop: 10 }}>
             {qs.length} questões{resultado.noArquivo && resultado.noArquivo > qs.length
               ? ` de ${resultado.noArquivo} encontradas no arquivo` : ""}
-            {resultado.parcial ? " — e ainda vindo" : ""}. Tente responder antes de abrir o
+            {resultado.parcial ? ", e ainda vindo" : ""}. Tente responder antes de abrir o
             comentário: a questão só vira estudo se você pensar nela primeiro.
           </Texto>
           {/* O aviso fica aqui em cima, e não escondido no rodapé: quem

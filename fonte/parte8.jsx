@@ -182,14 +182,16 @@ function BarraLateral({ abas, atual, onEscolher, estreita, aberta, onFechar, abe
                 textShadow: on ? `0 0 18px ${t.acc}` : "none",
               }}>
               <Ic size={17} style={{ flexShrink: 0 }} />
-              {expandida ? <span className="flex-1 text-left">{t.label}</span> : null}
+              {/* min-w-0 e reticências: com nome comprido ("Caderno de erros"), o
+                  número do lado direito era empurrado para fora da barra. */}
+              {expandida ? <span className="flex-1 text-left min-w-0" style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{t.label}</span> : null}
               {expandida && trancada ? (
                 <span style={{ color: T.ghost, display: "inline-flex" }}><Cadeado tamanho={12} /></span>
               ) : null}
               {t.badge ? (
                 <span style={{
                   fontFamily: F_MONO, fontSize: 10, background: limpo ? "var(--btn)" : T.warn, color: limpo ? "#FFFFFF" : "var(--bg)",
-                  borderRadius: 99, padding: "1px 6px", fontWeight: 700,
+                  borderRadius: 99, padding: "1px 6px", fontWeight: 700, flexShrink: 0,
                   position: expandida ? "static" : "absolute", marginLeft: expandida ? 0 : 22,
                   marginTop: expandida ? 0 : -18,
                 }}>{t.badge}</span>
@@ -569,6 +571,21 @@ export default function Cadencia() {
   }, [subjects, data.reviews, minutesBySubject, today, degraus]);
 
   const late = ladder.filter((r) => r.late.length > 0);
+
+  /* A fila de revisão do dia: uma linha por aula, na ordem que vale a
+     pena, e quantas já foram revisadas hoje (para a cota). */
+  const filaRevisao = useMemo(() => {
+    const extras = {};
+    for (const s of subjects) {
+      const rec = data.reviews[s.id] || {};
+      extras[s.id] = { dificuldade: rec.dificuldade, perf: s.perf };
+    }
+    return filaDeRevisao(ladder, extras);
+  }, [ladder, subjects, data.reviews]);
+  const revisadasHoje = useMemo(
+    () => Object.values(data.reviews || {}).filter((r) => r && r.ultimaRevisao === today).length,
+    [data.reviews, today]
+  );
   const cartoesHoje = useMemo(
     () => (data.flash || []).filter((c) => (c.prox || today) <= today).length,
     [data.flash, today]
@@ -676,6 +693,21 @@ export default function Cadencia() {
       delete rec.facilidade;
       return { ...p, reviews: { ...p.reviews, [id]: rec } };
     });
+  }, []);
+  /* Uma revisão que recupera a aula inteira (fila do dia): ver
+     recuperarTopico, em base.jsx. */
+  const subjectsRef = useRef(subjects);
+  subjectsRef.current = subjects;
+  const recuperarRevisao = useCallback((id, comoFoi) => {
+    setData((p) => {
+      const s = subjectsRef.current.find((x) => x.id === id);
+      const rec = p.reviews[id] || {};
+      const novo = recuperarTopico(rec, degrausRef.current, s ? s.perf : 0, rec.anchor || (s && s.date) || todayISO(), comoFoi, todayISO());
+      return { ...p, reviews: { ...p.reviews, [id]: novo } };
+    });
+  }, []);
+  const setCotaRevisao = useCallback((n) => {
+    setData((p) => ({ ...p, revisao: { ...(p.revisao || {}), cota: cotaDeRevisao(n) } }));
   }, []);
   const resetCycle = useCallback((id) => {
     setData((p) => {
@@ -791,6 +823,9 @@ export default function Cadencia() {
   /* Menu lateral: no celular é gaveta que abre por cima; no computador
      fica fixo e só encolhe para a largura dos ícones. */
   const estreita = useTelaEstreita(false);
+  /* No celular, a marca grande fica só no Hoje; nas outras abas ela vai
+     pequena, na fileira dos botões. */
+  const marcaCompacta = estreita && tab !== "hoje";
   const [menuAberto, setMenuAberto] = useState(false);
   const [menuFixo, setMenuFixo] = useState(true);
   useEffect(() => { if (!estreita) setMenuAberto(false); }, [estreita]);
@@ -1275,8 +1310,19 @@ export default function Cadencia() {
                    podia pegar a cópia invisível e travar esperando ela
                    aparecer. */}
                 {estreita ? (
-                  <div className="flex items-center justify-between gap-3" style={{ marginBottom: 16 }}>
+                  <div className="flex items-center justify-between gap-3" style={{ marginBottom: marcaCompacta ? 4 : 16 }}>
                     <div className="flex items-center gap-3">{controlesEsquerda}</div>
+                    {/* No celular, fora do Hoje, a marca cabe nesta fileira: a
+                        marca grande tomava quase um terço da tela em toda aba,
+                        e o conteúdo começava lá embaixo. */}
+                    {marcaCompacta ? (
+                      <button type="button" onClick={() => setTab("hoje")} aria-label="Ir para Hoje"
+                        className="flex items-center justify-center"
+                        style={{ background: "none", border: "none", cursor: "pointer", padding: 0, minHeight: 40, flex: "1 1 auto", minWidth: 0 }}>
+                        <img src={MARCA} alt="Cadência Med" width="196" height="96" className="marca"
+                          style={{ display: "block", height: 38, width: "auto" }} />
+                      </button>
+                    ) : null}
                     <div className="flex items-center gap-2">{controlesDireita}</div>
                   </div>
                 ) : (
@@ -1293,6 +1339,7 @@ export default function Cadencia() {
                 {/* A marca é só a onda: o nome vem escrito logo abaixo, então
                     repetir o texto que existe dentro da logo ficaria dobrado.
                     É a logo do site, a mesma nos dois visuais. */}
+                {marcaCompacta ? null : (
                 <button type="button" onClick={() => setTab("hoje")} aria-label="Ir para Hoje"
                   className="flex flex-col items-center mx-auto"
                   style={{ background: "none", border: "none", cursor: "pointer", padding: "2px 0 0" }}>
@@ -1314,6 +1361,7 @@ export default function Cadencia() {
                     opacity: 0.8,
                   }} />
                 </button>
+                )}
               </div>
 
             </div>
@@ -1338,7 +1386,7 @@ export default function Cadencia() {
                 {OLHOS[tab] ? <span className="capa-olho">{OLHOS[tab]}</span> : null}
                 <h1 className="capa-t">{(TABS.find((t) => t.id === tab) || {}).label || ""}</h1>
               </div>
-              {tab === "hoje" && <Hoje {...{ data, setData, today, minToday, minWeek, qWeek, streak, late, done, bonusDone, addSession, delSession, notify, go: setTab, blocosHoje, projecao: pro ? projecao : null, pro, verPlanos: () => setTab("planos"), cartoesHoje, verMeuPlano: !!ver.meuplano, plano: assinatura.plano, emTeste: assinatura.emTeste, testeAcabou: assinatura.testeAcabou }} />}
+              {tab === "hoje" && <Hoje {...{ data, setData, today, minToday, minWeek, qWeek, streak, late, filaRevisao, revisadasHoje, done, bonusDone, addSession, delSession, notify, go: setTab, blocosHoje, projecao: pro ? projecao : null, pro, verPlanos: () => setTab("planos"), cartoesHoje, verMeuPlano: !!ver.meuplano, plano: assinatura.plano, emTeste: assinatura.emTeste, testeAcabou: assinatura.testeAcabou }} />}
               {tab === "foco" && <Foco {...{ data, setData, today, P, subjectId: pomoSubject, setSubjectId: setPomoSubject }} />}
               {tab === "materias" && <Materias {...{ sessions: data.sessions, reviews: data.reviews, today, addSession, marcarDificuldade, subjects: subjectsResidencia, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, folhas: data.folhas, salvarAnotacao, notify, setData, nuvem, pastas: data.pastas, vazioEm: subjectsClinico.length ? "clinico" : null, irPara: setTab }} />}
               {tab === "clinico" && <Materias {...{ sessions: data.sessions, reviews: data.reviews, today, addSession, marcarDificuldade, subjects: subjectsClinico, setMark, toggleBonus, minutes: minutesBySubject, done, bonusDone, anotacoes: data.anotacoes, folhas: data.folhas, salvarAnotacao, notify, setData, nuvem, pastas: data.pastas, irPara: setTab }} />}
@@ -1363,7 +1411,7 @@ export default function Cadencia() {
                   <Notion {...{ nuvem, subjects, data, setData, notify }} />
                 </div>
               )}
-              {tab === "revisoes" && pro && <Revisoes {...{ rows: ladder, toggleStep, resetCycle, marcarDificuldade, data, setData, degraus, notify }} />}
+              {tab === "revisoes" && pro && <Revisoes {...{ rows: ladder, toggleStep, resetCycle, marcarDificuldade, data, setData, degraus, notify, fila: filaRevisao, revisadasHoje, recuperarRevisao, setCotaRevisao }} />}
               {tab === "rotina" && pro && (
                 <div className="flex flex-col gap-5">
                   <MontarSemana {...{ data, setData, subjects, ladder, notify }} />

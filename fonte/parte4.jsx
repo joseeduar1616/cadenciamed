@@ -111,6 +111,7 @@ function CartaoBloco({ b, iso, estado, onAlternar, onRemover, minutosAgora }) {
         </div>
 
         <button type="button" aria-label="Remover bloco" onClick={() => onRemover(b)}
+          className="toque flex items-center justify-center"
           style={{ background: "none", border: "none", color: T.ghost, cursor: "pointer", padding: 4, flexShrink: 0 }}>
           <X size={14} />
         </button>
@@ -252,7 +253,7 @@ function MontarSemana({ data, setData, subjects, ladder, notify }) {
       </div>
       <Texto style={{ marginTop: 8 }}>
         Diga quanto tempo você tem e o Cadência reparte entre as especialidades, na
-        proporção da prioridade que você deu em Temas — pulando o que já terminou e
+        proporção da prioridade que você deu em Temas, pulando o que já terminou e
         puxando para a frente o que está com revisão atrasada.
       </Texto>
 

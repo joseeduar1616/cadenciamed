@@ -229,7 +229,7 @@ function Metas({ data, setData, today, qWeek, notify, ladder, gcal }) {
           <div className="mt-4 rounded-2xl px-4 py-3 flex items-center gap-3 flex-wrap"
             style={{ background: soft("var(--neon)", 12), border: `1px solid ${soft("var(--neon)", 30)}` }}>
             <Mini style={{ flex: 1, minWidth: 180, lineHeight: 1.6, color: T.ink }}>
-              O Google precisa da sua autorização. Toque no botão para abrir a janela dele —
+              O Google precisa da sua autorização. Toque no botão para abrir a janela dele:
               ela tem de nascer do seu toque, senão o navegador do iPhone a bloqueia.
             </Mini>
             <Btn size="sm" tone="primary" onClick={gcal.autorizarAgora}>Autorizar o Google</Btn>

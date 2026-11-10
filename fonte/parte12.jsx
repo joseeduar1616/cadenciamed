@@ -2029,7 +2029,9 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
                       background: T.card2,
                       boxShadow: selPasta ? `0 0 24px -14px var(--neon)` : "none",
                     }}>
-                    <div className="flex items-center gap-2 px-4 py-3">
+                    {/* flex-wrap: no celular o nome fica com a linha inteira e os
+                        botões descem, em vez de o nome virar "Pneumol…". */}
+                    <div className="flex items-center gap-2 px-4 py-3 flex-wrap">
                       <button type="button" aria-label={aberta ? "Fechar pasta" : "Abrir pasta"}
                         onClick={() => setAbertas((a) => ({ ...a, [p.nome]: !aberta }))}
                         className="toque flex items-center justify-center"
@@ -2053,8 +2055,8 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
                               setBaralhoAtivo("todos");
                               setPastaAtiva(selPasta ? "todas" : p.nome);
                             }}
-                            className="flex items-center gap-2.5 flex-1 min-w-0"
-                            style={{ background: "none", border: "none", cursor: "pointer", padding: 0, textAlign: "left" }}>
+                            className="flex items-center gap-2.5 min-w-0"
+                            style={{ background: "none", border: "none", cursor: "pointer", padding: 0, textAlign: "left", flex: "1 1 170px" }}>
                             <Layers size={15} style={{ color: p.nome === PASTA_SOLTA ? T.ghost : "var(--neon)", flexShrink: 0 }} />
                             {/* No celular o nome e a contagem não cabem lado a
                                 lado: a contagem desce para a segunda linha em
@@ -2076,7 +2078,7 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
                             </span>
                           </button>
                           {p.nome !== PASTA_SOLTA ? (
-                            <div className="flex items-center gap-1" style={{ flexShrink: 0 }}>
+                            <div className="flex items-center gap-1" style={{ flexShrink: 0, marginLeft: "auto" }}>
                               {souDono && p.total ? (
                                 <button type="button" aria-label={`Publicar a pasta ${p.nome}`}
                                   title="Publicar a pasta inteira, com os baralhos de dentro"
@@ -2481,6 +2483,7 @@ function Cartoes({ data, setData, subjects, today, notify, nuvem, souDono }) {
                       </Mini>
                     </div>
                     <button type="button" aria-label="Excluir cartão" onClick={() => apagar(c.id)}
+                      className="toque flex items-center justify-center"
                       style={{ background: "none", border: "none", color: T.ghost, cursor: "pointer", flexShrink: 0 }}>
                       <Trash2 size={14} />
                     </button>

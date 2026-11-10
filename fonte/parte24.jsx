@@ -658,7 +658,7 @@ function GravarAula({ subjectId, titulo, notify, nuvem, setData }) {
           </div>
           <Mini style={{ marginTop: 8, lineHeight: 1.6 }}>
             {estado.nivel > 0.05 || estado.pausado
-              ? "Ouvindo. Deixe a tela acesa e o app aberto — pode trocar de aba à vontade."
+              ? "Ouvindo. Deixe a tela acesa e o app aberto. Pode trocar de aba à vontade."
               : "Quase nenhum som chegando. Confira se o microfone não está coberto ou longe demais."}
             {" "}Trecho {estado.trecho + 1}, salvo no aparelho a cada 30 segundos.
           </Mini>
@@ -694,7 +694,7 @@ function GravarAula({ subjectId, titulo, notify, nuvem, setData }) {
                       </Btn>
                       {transcritos ? <Btn size="sm" tone="quiet" onClick={() => baixarTranscricao(g)}><FileText size={13} /> transcrição</Btn> : null}
                       <Btn size="sm" tone="quiet" onClick={() => baixarAudio(g)}><Download size={13} /> áudio</Btn>
-                      <Btn size="sm" tone="danger" disabled={!!emCurso} onClick={() => apagar(g)}><Trash2 size={13} /></Btn>
+                      <Btn size="sm" tone="danger" disabled={!!emCurso} onClick={() => apagar(g)} title="Apagar a gravação"><Trash2 size={13} /></Btn>
                     </div>
                   )}
                 </div>
@@ -740,8 +740,8 @@ function AvisoGravandoAula({ irPara }) {
         {estado.pausado ? "Aula pausada" : "Gravando a aula"} · <span style={{ fontFamily: F_MONO }}>{fmtDuracaoAula(gravadorAula.duracao())}</span>
       </button>
       {estado.pausado
-        ? <Btn size="sm" onClick={retomarGravacaoAula}><Play size={12} /></Btn>
-        : <Btn size="sm" tone="quiet" onClick={pausarGravacaoAula}><Pause size={12} /></Btn>}
+        ? <Btn size="sm" onClick={retomarGravacaoAula} title="Retomar a gravação"><Play size={12} /></Btn>
+        : <Btn size="sm" tone="quiet" onClick={pausarGravacaoAula} title="Pausar a gravação"><Pause size={12} /></Btn>}
       <Btn size="sm" tone="primary" onClick={() => pararGravacaoAula()}><CircleStop size={12} /> terminar</Btn>
     </div>
   );

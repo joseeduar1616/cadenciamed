@@ -113,6 +113,18 @@ export const FERRAMENTAS_DA_MENTORA = [{
       },
     },
     {
+      name: "registrar_revisao",
+      description: "Registra que a pessoa REVISOU uma aula da fila de revisão (aba Revisões), quando ela contar. Uma revisão recupera a aula inteira. Pergunte como foi se ela não disser.",
+      parameters: {
+        type: "OBJECT",
+        properties: {
+          aula: { type: "STRING", description: "A aula revisada, do jeito que a pessoa falou ou como aparece na fila." },
+          como_foi: { type: "STRING", enum: ["facil", "ok", "dificil", "errei"], description: "facil: lembrou de cara; ok: lembrou com esforço; dificil: custou; errei: não lembrou." },
+        },
+        required: ["aula", "como_foi"],
+      },
+    },
+    {
       name: "adicionar_pendencia",
       description: "Põe uma pendência na lista de Hoje, quando a pessoa pedir para lembrar de algo.",
       parameters: { type: "OBJECT", properties: { texto: { type: "STRING" } }, required: ["texto"] },

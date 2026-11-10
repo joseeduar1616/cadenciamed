@@ -363,8 +363,8 @@ function MontarDuelo({ dupla, nuvem, notify, aoComecar, aoFechar }) {
           <div>
             <Label>Estilo da banca · opcional</Label>
             <Texto style={{ marginTop: 6 }}>
-              Cole algumas questões da banca que você vai prestar. A IA copia só a FORMA —
-              tamanho do enunciado, vinheta clínica, jeito das alternativas — e escreve
+              Cole algumas questões da banca que você vai prestar. A IA copia só a forma das questões:
+              tamanho do enunciado, vinheta clínica e jeito das alternativas. Depois escreve
               sobre o material que você mandou acima. As questões coladas não entram no
               duelo.
             </Texto>

@@ -35,11 +35,17 @@ function atividadesDoDia({ data, today, minToday, late, blocosHoje, cartoesHoje 
       sub: total ? `${feitosHoje}/${total} cartões do dia revisados.${cartoesHoje ? "" : " Tudo em dia."}` : "Nenhum cartão vence hoje.",
     });
   }
-  const vencidas = (late || []).reduce((t, r) => t + ((r.late && r.late.length) || 0), 0);
+  /* A revisão do dia é a COTA da fila, e não "zerar tudo": com meses de
+     atraso, zerar num dia é impossível e o item nunca fechava. */
+  const naFila = (late || []).length;
+  const cota = cotaDeRevisao((data.revisao || {}).cota);
+  const revisadas = Object.values(data.reviews || {}).filter((r) => r && r.ultimaRevisao === today).length;
+  const alvo = Math.min(cota, revisadas + naFila);
   itens.push({
     id: "revisoes", titulo: "Revisões das aulas", aba: "revisoes", acao: "Revisar",
-    frac: vencidas ? 0 : 1,
-    sub: vencidas ? `${vencidas} revis${vencidas === 1 ? "ão vencida" : "ões vencidas"} em ${late.length} aula${late.length === 1 ? "" : "s"}.` : "Todas as revisões em dia.",
+    frac: alvo ? Math.min(1, revisadas / alvo) : 1,
+    sub: !naFila && !revisadas ? "Todas as revisões em dia."
+      : `${Math.min(revisadas, alvo)}/${alvo} aula${alvo === 1 ? "" : "s"} de hoje revisada${alvo === 1 ? "" : "s"}.${naFila ? ` ${naFila} na fila.` : " Fila zerada."}`,
   });
   const estudo = (blocosHoje || []).filter((b) => b && b.type !== "Descanso" && b.type !== "Pessoal");
   if (estudo.length) {

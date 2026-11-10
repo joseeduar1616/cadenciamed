@@ -299,7 +299,7 @@ function DiagnosticoGoogle({ nuvem }) {
           <Mini style={{ marginTop: 6, lineHeight: 1.6 }}>
             "sabe ligar" em não quer dizer GOOGLE_CLIENT_ID ou GOOGLE_CLIENT_SECRET
             faltando no Worker: é conserto de servidor. "sua conta ligada" em não com
-            "sabe ligar" em sim quer dizer que não falta nada no servidor — falta um
+            "sabe ligar" em sim quer dizer que não falta nada no servidor: falta um
             toque em "Ligar a conta de vez", no cartão azul da aba Agenda (o mesmo
             cartão aparece no fim da aba Metas).
           </Mini>
@@ -995,7 +995,7 @@ function ConviteNotificacoesAparelho({ data, setData, nuvem, notify }) {
             <ol style={{ margin: "10px 0 0", paddingLeft: 20, fontSize: 14.5, lineHeight: 1.75, color: T.dim }}>
               <li>No <b>Safari</b>, toque no quadrado com a seta para cima, o botão de <b>compartilhar</b>.</li>
               <li>Toque em <b>Adicionar à Tela de Início</b>.</li>
-              <li>Abra o Cadência pelo ícone — este convite aparece lá para ligar.</li>
+              <li>Abra o Cadência pelo ícone: este convite aparece lá para ligar.</li>
             </ol>
             <div className="mt-5 flex justify-end">
               <Btn tone="primary" onClick={() => fechar("instalar")}>Entendi</Btn>
@@ -1040,7 +1040,7 @@ function BaixarApp({ notify }) {
       <H size={18} color="var(--neon)" icon={<Download size={16} />}>Instalar o aplicativo</H>
       <Mini style={{ marginTop: 6 }}>
         iPhone, Android, Mac e PC: o passo a passo de cada um está em{" "}
-        <a href="/app" style={{ color: "var(--neon)" }}>cadenciamed.com.br/app</a> — é o endereço para mandar a quem
+        <a href="/app" style={{ color: "var(--neon)" }}>cadenciamed.com.br/app</a>, que é o endereço para mandar a quem
         quiser instalar.
       </Mini>
 
@@ -1106,7 +1106,7 @@ function BaixarApp({ notify }) {
           não achando. */}
       <Mini style={{ marginTop: 14, lineHeight: 1.65 }}>
         Não é um aplicativo de loja: é o próprio Cadência, instalado pelo navegador.
-        Na prática funciona igual, e tem uma vantagem — atualiza sozinho, sem você
+        Na prática funciona igual, e tem uma vantagem: atualiza sozinho, sem você
         precisar baixar nada de novo.
       </Mini>
     </Card>
@@ -1336,14 +1336,14 @@ function Lembretes({ data, setData, notify, nuvem }) {
               </div>
               <Mini style={{ marginTop: 10, lineHeight: 1.6 }}>
                 Cada aparelho assina o seu: ligar no celular não liga no computador. O
-                texto vai cifrado de ponta a ponta — ele passa pelo servidor do Google ou
+                texto vai cifrado de ponta a ponta: ele passa pelo servidor do Google ou
                 da Apple no caminho, e só o seu aparelho consegue abrir.
               </Mini>
             </div>
           ) : null}
 
           <Mini style={{ marginTop: 12, lineHeight: 1.6 }}>
-            O aviso imediato — o bloco que vai começar, o convite para um duelo — precisa
+            O aviso imediato, como o do bloco que vai começar ou o do convite para um duelo, precisa
             do site aberto numa aba ou instalado no celular. O aviso do dia, acima, chega
             de qualquer jeito.
           </Mini>
