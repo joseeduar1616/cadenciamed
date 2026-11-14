@@ -841,7 +841,8 @@ function Amigos({ nuvem, notify, data, setData, irPara }) {
   useEffect(() => {
     if (!atual) { setRanking(null); setCabecalho(null); setJuntos({ foco: null, jam: null }); return undefined; }
     carregarRanking(atual);
-    const t = setInterval(() => carregarRanking(atual, true), RITMO_RANKING);
+    /* só com a aba à frente: ranking de aba esquecida aberta é pedido à toa */
+    const t = setInterval(() => { if (!document.hidden) carregarRanking(atual, true); }, RITMO_RANKING);
     return () => clearInterval(t);
   }, [atual, carregarRanking]);
 

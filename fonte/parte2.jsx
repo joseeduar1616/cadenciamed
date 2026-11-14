@@ -683,11 +683,57 @@ function basesDeApi() {
 
 let baseQueRespondeu = null;
 
+/* ── o freio dos pedidos ───────────────────────────────────────────────
+ *
+ * O servidor tem um limite de pedidos por dia, somado de todo mundo. Um
+ * efeito em laço num aparelho só (um pedido por redesenho, por exemplo)
+ * gasta em horas o que era de todos, e aí o site inteiro fica sem /api até
+ * o dia virar. Este freio garante que nenhum aparelho passe de um teto,
+ * seja qual for o defeito: por rota em cinco minutos, no total em cinco
+ * minutos e no dia. Os tetos ficam bem acima do uso de verdade (um duelo
+ * ao vivo pergunta a cada segundo, e cabe).
+ */
+const FREIO_API = { janela: 5 * 60000, porRota: 320, total: 480, porDia: 6000 };
+const CHAVE_FREIO_API = "cadencia:v3:pedidos-do-dia";
+const pedidosRecentes = [];   // [instante, rota]
+let pedidosDoDia = null;      // { dia, n }
+
+function freioDaApi(caminho, agora = Date.now()) {
+  const rota = String(caminho || "").split("?")[0];
+  while (pedidosRecentes.length && agora - pedidosRecentes[0][0] > FREIO_API.janela) pedidosRecentes.shift();
+  const dia = new Date(agora).toISOString().slice(0, 10);
+  if (!pedidosDoDia || pedidosDoDia.dia !== dia) {
+    pedidosDoDia = { dia, n: 0 };
+    try {
+      const g = JSON.parse(window.localStorage.getItem(CHAVE_FREIO_API) || "null");
+      if (g && g.dia === dia && Number.isFinite(Number(g.n))) pedidosDoDia.n = Number(g.n);
+    } catch (e) { /* sem armazenamento, conta só nesta aba */ }
+  }
+  const daRota = pedidosRecentes.reduce((t, p) => t + (p[1] === rota ? 1 : 0), 0);
+  if (pedidosDoDia.n >= FREIO_API.porDia || pedidosRecentes.length >= FREIO_API.total || daRota >= FREIO_API.porRota) {
+    return false;
+  }
+  pedidosRecentes.push([agora, rota]);
+  pedidosDoDia.n += 1;
+  /* grava de dez em dez: o número exato não importa, o teto sim */
+  if (pedidosDoDia.n % 10 === 0) {
+    try { window.localStorage.setItem(CHAVE_FREIO_API, JSON.stringify(pedidosDoDia)); } catch (e) { /* segue */ }
+  }
+  return true;
+}
+
 /* Chama uma rota /api e devolve { dados } ou { erro }. */
 async function chamarApi(caminho, corpo, oQue, opcoes) {
   const metodo = (opcoes && opcoes.metodo) || "POST";
   const bases = baseQueRespondeu === null ? basesDeApi() : [baseQueRespondeu];
   let ultimo = { erro: `${oQue} não respondeu.` };
+  if (!freioDaApi(caminho)) {
+    return { erro: "Este aparelho fez pedidos demais ao servidor em pouco tempo. Espere alguns minutos e tente de novo." };
+  }
+  /* O endereço do próprio site respondeu com a página (não há servidor
+     atrás dele) e o endereço do servidor não deixou nem conectar: é o
+     servidor fora do ar, e não a internet da pessoa. */
+  let semServidorAqui = false;
 
   for (const base of bases) {
     let r;
@@ -700,7 +746,12 @@ async function chamarApi(caminho, corpo, oQue, opcoes) {
     } catch (e) {
       /* Rede fora do ar, ou o navegador barrou por CORS. Nos dois casos vale
          tentar o próximo endereço antes de desistir. */
-      ultimo = { erro: "Não consegui falar com o servidor. Verifique a conexão." };
+      ultimo = {
+        erro: semServidorAqui && (typeof navigator === "undefined" || navigator.onLine !== false)
+          ? "O servidor do site não está respondendo agora. Tente de novo em alguns minutos."
+          : "Não consegui falar com o servidor. Verifique a conexão.",
+        servidorFora: semServidorAqui,
+      };
       continue;
     }
     const lido = await lerRespostaDoServidor(r, oQue);
@@ -711,6 +762,7 @@ async function chamarApi(caminho, corpo, oQue, opcoes) {
       baseQueRespondeu = base;
       return lido;
     }
+    semServidorAqui = true;
     ultimo = lido;
   }
   return ultimo;

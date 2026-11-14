@@ -644,8 +644,12 @@ function Duplas({ nuvem, notify }) {
        no mesmo ritmo do ranking das salas. */
     /* Com duelo esperando, a lista recarrega rápido: é o que faz o convite
        aparecer para a outra pessoa sem ela ter de recarregar a página. */
-    const t = window.setInterval(carregar, 8000);
-    return () => window.clearInterval(t);
+    /* 20 s, e só com a aba à frente: de 8 em 8 segundos, com a aba esquecida
+       aberta, eram mais de dez mil pedidos por dia ao servidor. */
+    const t = window.setInterval(() => { if (!document.hidden) carregar(); }, 20000);
+    const aoVoltar = () => { if (!document.hidden) carregar(); };
+    document.addEventListener("visibilitychange", aoVoltar);
+    return () => { window.clearInterval(t); document.removeEventListener("visibilitychange", aoVoltar); };
   }, [meuUid, carregar]);
 
   if (!logado) return null;
@@ -702,7 +706,16 @@ function Duplas({ nuvem, notify }) {
  * relógio de qualquer jeito, e a notificação chegaria fora de hora, para
  * um duelo que já acabou.
  */
-const RITMO_CONVITE = 20000;
+/* De 20 em 20 segundos, em toda aba aberta de toda pessoa logada, este
+   pedido sozinho passava de quatro mil por dia por aba, e foi o maior
+   pedaço do que estourou o limite diário do servidor. Agora: quem tem dupla
+   é consultado a cada minuto e meio; quem não tem, a cada quinze minutos; e
+   aba parada (sem toque nem tecla há dez minutos) não pergunta nada até a
+   pessoa voltar a mexer. */
+const RITMO_CONVITE = 90000;
+const RITMO_CONVITE_SEM_DUPLA = 15 * 60000;
+const CONVITE_PARADO_DEMAIS = 10 * 60000;
+const CONVITE_MINIMO_ENTRE = 60000;
 
 function useConviteDeDuelo({ nuvem, notify, lembretes }) {
   const [esperando, setEsperando] = useState(0);
@@ -711,6 +724,10 @@ function useConviteDeDuelo({ nuvem, notify, lembretes }) {
   refNotify.current = notify;
   const refNuvem = useRef(nuvem);
   refNuvem.current = nuvem;
+  /* Entre uma consulta e outra: se a pessoa tem dupla (decide o ritmo) e
+     quando foi a última consulta (para não repetir em seguida). */
+  const temDupla = useRef(false);
+  const ultimaVez = useRef(0);
   const refLembretes = useRef(lembretes);
   refLembretes.current = lembretes;
   const uid = nuvem && nuvem.usuario ? nuvem.usuario.uid : "";
@@ -723,6 +740,7 @@ function useConviteDeDuelo({ nuvem, notify, lembretes }) {
       if (typeof document !== "undefined" && document.hidden) return;
       const j = await falarComDuplas(refNuvem.current, { acao: "listar" });
       if (!vivo || j.erro) return;
+      temDupla.current = (j.duplas || []).length > 0;
       /* Só conta o que espera POR MIM: o duelo que eu mesmo criei está
          esperando a outra pessoa, e avisar disso seria avisar do próprio
          clique. */
@@ -742,14 +760,40 @@ function useConviteDeDuelo({ nuvem, notify, lembretes }) {
       }
     };
 
-    olhar();
-    const t = window.setInterval(olhar, RITMO_CONVITE);
-    const aoVoltar = () => { if (!document.hidden) olhar(); };
+    let t = 0;
+    let ultimoToque = Date.now();
+    const olharEMarcar = async () => { ultimaVez.current = Date.now(); await olhar(); };
+    const agendar = () => {
+      t = window.setTimeout(async () => {
+        if (!vivo) return;
+        const parado = Date.now() - ultimoToque > CONVITE_PARADO_DEMAIS;
+        if (!document.hidden && !parado) await olharEMarcar();
+        if (vivo) agendar();
+      }, temDupla.current ? RITMO_CONVITE : RITMO_CONVITE_SEM_DUPLA);
+    };
+    const haPouco = () => Date.now() - ultimaVez.current < CONVITE_MINIMO_ENTRE;
+    /* Voltou a mexer depois de um tempo parado: confere na hora (uma vez). */
+    const tocou = () => {
+      const estavaParado = Date.now() - ultimoToque > CONVITE_PARADO_DEMAIS;
+      ultimoToque = Date.now();
+      if (estavaParado && !haPouco()) olharEMarcar();
+    };
+    const aoVoltar = () => {
+      if (document.hidden) return;
+      ultimoToque = Date.now();
+      if (!haPouco()) olharEMarcar();
+    };
+
+    olharEMarcar().then(() => { if (vivo) agendar(); });
     document.addEventListener("visibilitychange", aoVoltar);
+    window.addEventListener("pointerdown", tocou, { passive: true });
+    window.addEventListener("keydown", tocou, { passive: true });
     return () => {
       vivo = false;
-      window.clearInterval(t);
+      window.clearTimeout(t);
       document.removeEventListener("visibilitychange", aoVoltar);
+      window.removeEventListener("pointerdown", tocou);
+      window.removeEventListener("keydown", tocou);
     };
   }, [uid]);
 

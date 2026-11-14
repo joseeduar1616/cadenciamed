@@ -24,6 +24,9 @@ for nome in ('chamarApi', 'lerRespostaDoServidor'):
 # basesDeApi decide para onde a chamada vai, então o teste precisa dela para
 # conferir a ordem das tentativas.
 corpo = corpo.replace('function basesDeApi()', 'export function basesDeApi()')
+# o freio dos pedidos (teto por aparelho) é conferido sozinho
+corpo = corpo.replace('function freioDaApi(', 'export function freioDaApi(')
+corpo = corpo.replace('const FREIO_API =', 'export const FREIO_API =')
 
 open('_leitor.mjs', 'w', encoding='utf-8').write(
     '/* Cópia automática, refeita pelo extrair_leitor.py a cada build.\n'

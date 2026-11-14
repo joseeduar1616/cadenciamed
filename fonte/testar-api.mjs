@@ -118,6 +118,53 @@ else falha('corpo enviado: ' + JSON.stringify(recebido));
 if (recebido.headers['Content-Type'] === 'application/json') ok('manda o Content-Type que as rotas esperam');
 else falha('sem Content-Type');
 
+/* ── o servidor fora do ar não é "verifique a conexão" ─────────────────
+ * O endereço do próprio site devolve a página (não há servidor atrás dele)
+ * e o endereço do servidor nem deixa conectar (página de erro sem CORS, que
+ * o navegador transforma em falha de rede). Foi o que apareceu quando o
+ * servidor estourou o limite diário de pedidos. */
+{
+  const n = await import('./_leitor.mjs?fora=' + Date.now());
+  globalThis.fetch = async (url) => {
+    if (String(url).startsWith('https://')) throw new TypeError('Load failed');
+    return { ok: true, status: 200, text: async () => '<!DOCTYPE html><html><head></head><body>site</body></html>', headers: { get: () => 'text/html' } };
+  };
+  const r = await n.chamarApi('/api/acessos', {}, 'A lista');
+  if (/servidor do site não está respondendo/.test(r.erro || '') && r.servidorFora) ok('servidor fora do ar: a mensagem diz que é o servidor, e não a conexão da pessoa');
+  else falha('mensagem de servidor fora: ' + JSON.stringify(r));
+}
+
+/* ── o freio dos pedidos ───────────────────────────────────────────────
+ * Um efeito em laço num aparelho não pode gastar o limite diário de todo
+ * mundo: depois do teto, o pedido nem sai. */
+{
+  const n = await import('./_leitor.mjs?freio=' + Date.now());
+  let saiu = 0;
+  globalThis.fetch = async () => { saiu += 1; return { ok: true, status: 200, text: async () => '{"ok":true}', headers: { get: () => 'application/json' } }; };
+  let barrado = null;
+  for (let i = 0; i < n.FREIO_API.porRota + 40; i += 1) {
+    const r = await n.chamarApi('/api/duplas', { acao: 'listar' }, 'A lista');
+    if (r.erro && !barrado) barrado = { em: i, erro: r.erro };
+  }
+  if (barrado && barrado.em === n.FREIO_API.porRota && /pedidos demais/.test(barrado.erro) && saiu === n.FREIO_API.porRota) ok(`laço de pedidos na mesma rota é barrado no teto (${n.FREIO_API.porRota} em cinco minutos), sem sair para a rede`);
+  else falha('freio por rota: ' + JSON.stringify(barrado) + ' saíram ' + saiu);
+  const outra = await n.chamarApi('/api/plano', {}, 'O plano');
+  if (!outra.erro) ok('e as outras rotas continuam funcionando');
+  else falha('outra rota barrada junto: ' + JSON.stringify(outra));
+  const depois = n.freioDaApi('/api/duplas', Date.now() + n.FREIO_API.janela + 1000);
+  if (depois === true) ok('passada a janela de cinco minutos, a rota volta');
+  else falha('a rota não voltou depois da janela');
+  let total = 0;
+  /* um dia inteiro novo (amanhã, das 8h em diante), com os pedidos
+     espalhados: só o teto do dia pode segurar */
+  const t0 = Date.parse(new Date(Date.now() + 86400000).toISOString().slice(0, 10) + 'T08:00:00Z');
+  for (let i = 0; i < n.FREIO_API.porDia + 50; i += 1) {
+    if (n.freioDaApi(`/api/r${i % 40}`, t0 + i * 700)) total += 1;
+  }
+  if (total === n.FREIO_API.porDia) ok(`e o dia tem teto por aparelho (${n.FREIO_API.porDia})`);
+  else falha('teto do dia: passaram ' + total);
+}
+
 console.log(passos.join('\n'));
 console.log('\n' + (erros.length ? `${erros.length} PROBLEMA(S):\n` + erros.join('\n') : 'nenhum erro'));
 if (erros.length) process.exitCode = 1;

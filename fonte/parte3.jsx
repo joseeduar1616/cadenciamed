@@ -694,18 +694,36 @@ function useNuvem(data, setData, notify, pronto, pro) {
     } catch (e) { notify("Não consegui ler a cópia local."); }
   }, [setData, notify]);
 
-  /* Este objeto precisa manter a identidade entre renders.
+  /* Este objeto precisa manter a identidade entre renders, E ENTRE
+   * SINCRONIZAÇÕES.
    *
    * Sem o useMemo ele nascia novo a cada render, e quem o usa como
-   * dependência — as salas de amigos, os baralhos publicados — via uma
+   * dependência (as salas de amigos, os baralhos publicados) via uma
    * dependência sempre diferente: o efeito disparava, mudava estado,
-   * renderizava de novo, e recomeçava. Na tela isso aparecia como a aba
-   * recarregando sozinha sem parar, e por baixo era uma chamada por render
-   * ao servidor. */
-  return useMemo(() => ({
-    ligado: !!NUVEM_CFG, estado, usuario, erro, ultima, temBackup, sdk, sincroniza: !!pro, carregou,
-    entrar, cadastrar, comGoogle, recuperar, sair, enviar, restaurarBackup,
-  }), [estado, usuario, erro, ultima, temBackup, sdk, pro, carregou,
+   * renderizava de novo, e recomeçava.
+   *
+   * E com "estado", "erro", "ultima" e "temBackup" dentro das dependências
+   * ele nascia novo a cada sincronização, ou seja, a cada coisa que a
+   * pessoa marcava. Todo efeito da raiz com [nuvem] refazia o seu pedido ao
+   * servidor (a ligação do Google, as listas abertas): um cartão respondido
+   * virava um pedido a mais. Somado em todos os aparelhos, isso estourou o
+   * limite diário de pedidos do servidor e o site inteiro ficou sem /api.
+   *
+   * Agora a identidade só muda quando muda QUEM está logado. O que varia a
+   * cada sincronização é lido na hora, por getters: a raiz redesenha quando
+   * esses estados mudam, e a tela lê o valor novo no mesmo objeto. */
+  const volatil = useRef({});
+  volatil.current = { estado, erro, ultima, temBackup };
+  return useMemo(() => {
+    const o = {
+      ligado: !!NUVEM_CFG, usuario, sdk, sincroniza: !!pro, carregou,
+      entrar, cadastrar, comGoogle, recuperar, sair, enviar, restaurarBackup,
+    };
+    for (const campo of ["estado", "erro", "ultima", "temBackup"]) {
+      Object.defineProperty(o, campo, { enumerable: true, get: () => volatil.current[campo] });
+    }
+    return o;
+  }, [usuario, sdk, pro, carregou,
     entrar, cadastrar, comGoogle, recuperar, sair, enviar, restaurarBackup]);
 }
 
