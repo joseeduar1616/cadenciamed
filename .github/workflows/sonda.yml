@@ -1,0 +1,35 @@
+# Sonda: pergunta ao site publicado se o servidor (/api) responde, e mostra
+# o status e o começo de cada resposta. Só faz pedidos vazios, sem conta e
+# sem chave: o que volta é o erro público de cada rota ("entre na sua
+# conta"), ou a página de erro do Cloudflare quando o servidor caiu.
+#
+# Serve para diagnosticar de fora quando a tela diz "Não consegui falar com
+# o servidor". Roda na mão (Actions › Sonda do servidor › Run workflow).
+name: Sonda do servidor
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/sonda.yml
+
+jobs:
+  sonda:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Perguntar às rotas
+        run: |
+          for base in https://cadenciamed.com.br https://cadenciamed.joseeduardo1616.workers.dev; do
+            echo "=================== $base"
+            code=$(curl -sS -m 25 -o corpo.txt -w "%{http_code} %{content_type} %{time_total}s" "$base/" || echo "falhou")
+            echo "GET / -> $code"; head -c 120 corpo.txt | tr '\n' ' '; echo
+            for rota in plano acessos cupom saude assistente voz conversas google banco; do
+              code=$(curl -sS -m 25 -o corpo.txt -w "%{http_code} %{content_type} %{time_total}s" \
+                -X POST -H "Content-Type: application/json" -H "Origin: https://cadenciamed.com.br" \
+                -d '{}' -D cab.txt "$base/api/$rota" || echo "falhou")
+              echo "POST /api/$rota -> $code"
+              grep -i "^access-control-allow-origin\|^cf-ray\|^server:" cab.txt | tr '\r\n' '  '; echo
+              head -c 300 corpo.txt | tr '\n' ' '; echo; echo
+            done
+          done
