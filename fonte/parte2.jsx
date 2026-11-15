@@ -38,6 +38,8 @@ const DEFAULTS = {
      milhares de questões, e tudo isto vai junto no documento da conta. */
   banco: { r: {} },
   planoArquivo: null,
+  /* o que a mentora guarda sobre a pessoa, a pedido dela (parte9) */
+  lembrancas: [],
   /* Folha em branco por aula (parte30): as caixas, o que foi escrito e a
      conferência. A conversa com a IA não fica; o resultado fica. */
   folhas: {},
@@ -449,6 +451,7 @@ function normalize(raw) {
     erros: limparErros(d.erros),
     banco: limparBanco(d.banco),
     planoArquivo: limparPlanoArquivo(d.planoArquivo),
+    lembrancas: limparLembrancas(d.lembrancas),
     folhas: limparFolhas(d.folhas),
     financas: limparFinancas(d.financas),
     estudos: limparEstudos(d.estudos),

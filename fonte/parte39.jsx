@@ -393,6 +393,28 @@ function executarFerramentasDaMentora(chamadas, { data, setData, subjects, today
       responder(true, r.comoFoi === "errei"
         ? `revisão de ${r.materia.title} anotada como não lembrada: a contagem recomeça hoje e ela volta amanhã`
         : `revisão de ${r.materia.title} registrada; os próximos degraus contam de hoje e ela saiu da fila`);
+    } else if (c.name === "abrir_aba" || c.name === "controlar_foco") {
+      const mandar = typeof window !== "undefined" ? window.__cadenciaComando : null;
+      if (!mandar) { responder(false, "não consegui mexer na tela agora"); continue; }
+      const r = mandar(c.name === "abrir_aba"
+        ? { tipo: "aba", aba: String(a.aba || "") }
+        : { tipo: "foco", acao: a.acao === "pausar" ? "pausar" : "comecar", materia: String(a.materia || "") });
+      responder(!!(r && r.ok), (r && r.texto) || "não deu certo");
+    } else if (c.name === "concluir_pendencia") {
+      const alvo = acharPendencia((data || {}).tasks, a.texto);
+      if (!alvo) { responder(false, "não achei essa pendência aberta; pergunte qual é"); continue; }
+      setData((p) => aplicarAcoesNoPainel(p, [{ tipo: "concluir", texto: a.texto }], subjects).novo);
+      responder(true, `pendência "${alvo.text}" concluída`);
+    } else if (c.name === "lembrar") {
+      const t = String(a.texto || "").replace(/\s+/g, " ").trim();
+      if (!t) { responder(false, "faltou o que lembrar"); continue; }
+      setData((p) => aplicarAcoesNoPainel(p, [{ tipo: "lembrar", texto: t }], subjects).novo);
+      responder(true, "guardado na memória; aparece na aba Assistente, em Memória da mentora");
+    } else if (c.name === "esquecer") {
+      const alvo = acharLembranca((data || {}).lembrancas, a.texto);
+      if (!alvo) { responder(false, "não achei essa lembrança"); continue; }
+      setData((p) => aplicarAcoesNoPainel(p, [{ tipo: "esquecer", texto: a.texto }], subjects).novo);
+      responder(true, `esquecido: "${alvo.texto}"`);
     } else if (c.name === "adicionar_pendencia") {
       if (!String(a.texto || "").trim()) { responder(false, "faltou o texto da pendência"); continue; }
       setData((p) => aplicarAcoesNoPainel(p, [{ tipo: "tarefa", texto: a.texto }], subjects).novo);
@@ -431,6 +453,132 @@ function executarFerramentasDaMentora(chamadas, { data, setData, subjects, today
   return esperas.length ? Promise.all(esperas).then(() => respostas) : respostas;
 }
 
+/* ── "Ei, Cadência": chamar a mentora sem tocar em nada ───────────────
+ *
+ * Com a opção ligada, o navegador fica ouvindo (reconhecimento de fala do
+ * próprio navegador, o mesmo da chamada antiga) só para achar o chamado.
+ * Nada vai para o servidor do site enquanto ninguém chama: a conversa ao
+ * vivo (e o custo dela) só abre depois de "Ei, Cadência", já com o pedido
+ * que veio na mesma frase ("Ei, Cadência, abre os cartões").
+ *
+ * Só com a aba à frente, só neste aparelho (a escolha fica guardada aqui),
+ * e desligado enquanto a conversa está aberta, para ela não ouvir a si
+ * mesma. No iPhone o navegador não deixa ouvir o tempo todo nem tocar som
+ * sem toque: lá a opção nem aparece como disponível.
+ */
+const CHAVE_EI_CADENCIA = "cadencia:v3:ei-cadencia";
+const PADRAO_EI_CADENCIA = /(?:^|\s)(?:ei|hey|ey|oi|ok|ol[aá]|eh)[\s,]+(?:a\s+)?cad[eê]ncia(?:\s+med)?(?![a-zà-ú])[\s,.!?]*(.*)$/i;
+const PADRAO_E_CADENCIA = /^[eé][\s,]+cad[eê]ncia(?:\s+med)?(?![a-zà-ú])[\s,.!?]*(.*)$/i;
+
+/* O que veio depois do chamado (com os acentos como a pessoa falou), ou
+   { chamou: false }. */
+function pedidoDepoisDoChamado(texto) {
+  const t = String(texto == null ? "" : texto).replace(/\s+/g, " ").trim();
+  const m = PADRAO_EI_CADENCIA.exec(t) || PADRAO_E_CADENCIA.exec(t);
+  return m ? { chamou: true, pedido: m[1].trim().slice(0, 300) } : { chamou: false, pedido: "" };
+}
+
+const ehIphone = () => typeof navigator !== "undefined"
+  && (/iPad|iPhone|iPod/.test(navigator.userAgent || "") || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
+const podeEiCadencia = () => !!reconhecedorDeFala() && !ehIphone();
+
+function lerEiCadencia() {
+  try { return window.localStorage.getItem(CHAVE_EI_CADENCIA) === "1"; } catch (e) { return false; }
+}
+
+function useEiCadencia({ ligado, pausado, aoChamar, aoFalhar }) {
+  const [ouvindo, setOuvindo] = useState(false);
+  const refChamar = useRef(aoChamar);
+  refChamar.current = aoChamar;
+  const refFalhar = useRef(aoFalhar);
+  refFalhar.current = aoFalhar;
+
+  useEffect(() => {
+    const R = reconhecedorDeFala();
+    if (!ligado || pausado || !R) { setOuvindo(false); return undefined; }
+    let vivo = true;
+    let rec = null;
+    let tVolta = 0;
+    let tPedido = 0;
+    let chamado = null;
+    let falhas = 0;
+    let semVolta = false;
+
+    const parar = () => {
+      window.clearTimeout(tVolta); window.clearTimeout(tPedido);
+      if (rec) {
+        const r = rec;
+        rec = null;
+        r.onend = null; r.onresult = null; r.onerror = null; r.onstart = null;
+        try { r.abort(); } catch (e) { /* já parado */ }
+      }
+      setOuvindo(false);
+    };
+    const entregar = () => {
+      const c = chamado;
+      chamado = null;
+      if (!c || !vivo) return;
+      parar();
+      refChamar.current(c.pedido);
+    };
+    const comecar = () => {
+      if (!vivo || semVolta || rec || document.hidden) return;
+      try {
+        const r = new R();
+        r.lang = "pt-BR"; r.continuous = true; r.interimResults = true;
+        r.onstart = () => { if (vivo) setOuvindo(true); };
+        r.onresult = (ev) => {
+          falhas = 0;
+          for (let i = ev.resultIndex; i < ev.results.length; i += 1) {
+            const res = ev.results[i];
+            const achado = pedidoDepoisDoChamado(res && res[0] && res[0].transcript);
+            if (!achado.chamou) continue;
+            chamado = achado;
+            window.clearTimeout(tPedido);
+            if (res.isFinal) { entregar(); return; }
+            /* a frase ainda não fechou: espera o resto do pedido um pouco */
+            tPedido = window.setTimeout(entregar, 2200);
+          }
+        };
+        r.onerror = (ev) => {
+          const tipo = ev && ev.error;
+          if (tipo === "not-allowed" || tipo === "service-not-allowed" || tipo === "audio-capture") {
+            semVolta = true;
+            if (vivo) refFalhar.current(tipo);
+          } else falhas += 1;
+        };
+        r.onend = () => {
+          if (rec === r) rec = null;
+          setOuvindo(false);
+          if (!vivo || semVolta) return;
+          /* o navegador encerra sozinho depois de um tempo em silêncio */
+          tVolta = window.setTimeout(comecar, falhas > 3 ? 6000 : 500);
+        };
+        rec = r;
+        r.start();
+      } catch (e) {
+        rec = null;
+        tVolta = window.setTimeout(comecar, 4000);
+      }
+    };
+    const aoVisibilidade = () => { if (document.hidden) parar(); else comecar(); };
+    /* alguns navegadores só deixam começar a ouvir dentro de um toque */
+    const aoToque = () => { if (!rec) comecar(); };
+
+    comecar();
+    document.addEventListener("visibilitychange", aoVisibilidade);
+    window.addEventListener("pointerdown", aoToque, { passive: true });
+    return () => {
+      vivo = false;
+      parar();
+      document.removeEventListener("visibilitychange", aoVisibilidade);
+      window.removeEventListener("pointerdown", aoToque);
+    };
+  }, [ligado, pausado]);
+
+  return ouvindo;
+}
+
 /* ── a tela ──────────────────────────────────────────────────────────── */
 
 const ROTULO_VOZ_AO_VIVO = {
@@ -462,6 +610,9 @@ function AssistenteDeVoz({ nuvem, notify, data, today, ver, setData, subjects, p
   const [aviso, setAviso] = useState("");
   const [micLigado, setMicLigado] = useState(false);
   const [indisponivel, setIndisponivel] = useState(false);
+  /* Aberta pela voz, a conversa fica numa barrinha no topo, e não no painel. */
+  const [compacta, setCompacta] = useState(false);
+  const [eiLigado, setEiLigado] = useState(lerEiCadencia);
   const sessao = useRef(null);
   const estadoRef = useRef("fechada");
   const micRef = useRef(false);
@@ -523,11 +674,14 @@ function AssistenteDeVoz({ nuvem, notify, data, today, ver, setData, subjects, p
 
   useEffect(() => () => { if (sessao.current) sessao.current.fechar(); }, []);
 
-  const ligar = async (qual) => {
+  /* opcoes.chamada: veio de "Ei, Cadência" (abre na barrinha do topo, sem
+     apresentação); opcoes.pedido: o que a pessoa disse na mesma frase. */
+  const ligar = async (qual, opcoes = {}) => {
     if (sessao.current) { levarParaAMentoria(); sessao.current.fechar(); sessao.current = null; }
     const m = qual === "mentoria" ? "mentoria" : "conversa";
     modoRef.current = m; setModo(m);
     setAviso(""); setFalas([]);
+    setCompacta(!!opcoes.chamada);
     setAberta(true);
     mudar("conectando");
     const s = new SessaoAoVivo({
@@ -596,6 +750,18 @@ function AssistenteDeVoz({ nuvem, notify, data, today, ver, setData, subjects, p
     micRef.current = comMic; setMicLigado(comMic);
     if (!comMic) s.desligarMicrofone();
     emRepouso();
+    if (opcoes.chamada) {
+      /* Chamada por voz: o pedido da mesma frase já é a primeira fala. */
+      const pedido = String(opcoes.pedido || "").trim();
+      if (pedido) {
+        setFalas([{ de: "eu", texto: pedido, fechada: true }]);
+        s.enviarTexto(pedido);
+      } else {
+        s.enviar(mensagemDeTexto("Eu chamei você dizendo \"Ei, Cadência\" e ainda não pedi nada. Responda só: \"Pode falar.\""));
+      }
+      mudar("pensando");
+      return;
+    }
     /* Ela se apresenta primeiro. Esta vez não aparece na conversa. */
     s.enviar(mensagemDeTexto(m === "mentoria"
       ? "Oi! Estamos na mentoria de estudo, por voz. Em uma frase, diga o que você já vê no meu painel e no meu perfil. Depois faça a primeira pergunta da entrevista que ainda falta, ou, se o perfil já estiver completo, pergunte o que eu quero ajustar no plano."
@@ -638,7 +804,7 @@ function AssistenteDeVoz({ nuvem, notify, data, today, ver, setData, subjects, p
     mudar("pensando");
   };
 
-  const fechar = () => { encerrar("encerrada"); setAberta(false); mudar("fechada"); };
+  const fechar = () => { encerrar("encerrada"); setAberta(false); setCompacta(false); mudar("fechada"); };
 
   /* A Chamada de voz da Mentoria abre esta conversa (evento no próprio toque,
      para o iPhone liberar áudio e microfone). */
@@ -652,14 +818,73 @@ function AssistenteDeVoz({ nuvem, notify, data, today, ver, setData, subjects, p
     return () => { window.__cadenciaVozAoVivo = false; window.removeEventListener("cadencia:ligar-voz", abrir); };
   }, [podeMostrar]);
 
+  /* "Ei, Cadência": ouve só com a opção ligada e a conversa fechada. */
+  const trocarEi = (sim) => {
+    setEiLigado(sim);
+    try { if (sim) window.localStorage.setItem(CHAVE_EI_CADENCIA, "1"); else window.localStorage.removeItem(CHAVE_EI_CADENCIA); } catch (e) { /* segue */ }
+  };
+  const esperandoChamado = useEiCadencia({
+    ligado: podeMostrar && eiLigado && podeEiCadencia(),
+    pausado: aberta,
+    aoChamar: (pedido) => ligarRef.current("conversa", { chamada: true, pedido }),
+    aoFalhar: () => { trocarEi(false); if (notify) notify("Não consegui ouvir \"Ei, Cadência\": o microfone não está liberado para este site."); },
+  });
+
+  /* Na barrinha, a conversa fecha sozinha: 20 s em silêncio depois que ela
+     respondeu, ou logo depois de encerrar. É o que devolve o site ao estado
+     de "esperando o chamado" sem a pessoa tocar em nada. */
+  const fecharRef = useRef(null);
+  useEffect(() => {
+    if (!aberta || !compacta) return undefined;
+    const espera = estado === "ouvindo" ? 20000 : (estado === "encerrada" || estado === "erro") ? 5000 : 0;
+    if (!espera) return undefined;
+    const t = window.setTimeout(() => { if (fecharRef.current) fecharRef.current(); }, espera);
+    return () => window.clearTimeout(t);
+  }, [aberta, compacta, estado, falas]);
+
   if (!podeMostrar) return null;
 
   const ativa = ["conectando", "ouvindo", "falando", "pensando", "mudo"].includes(estado);
   const cor = estado === "ouvindo" ? "var(--ok)" : estado === "falando" ? "var(--neon2)" : estado === "pensando" || estado === "conectando" ? "var(--neon)" : T.faint;
   const estreita = typeof window !== "undefined" && window.innerWidth < 640;
+  fecharRef.current = fechar;
+  const ultimaFala = falas.length ? falas[falas.length - 1] : null;
 
   return (
     <>
+      {/* ── a barrinha do topo (conversa aberta pela voz) ─────────────── */}
+      {aberta && compacta ? (
+        <div role="status" aria-live="polite" aria-label="Mentora por voz" data-teste="ilha-voz"
+          className="flex items-center gap-2.5"
+          style={{
+            position: "fixed", zIndex: 63, top: "max(10px, env(safe-area-inset-top))", left: "50%", transform: "translateX(-50%)",
+            width: "min(560px, calc(100vw - 20px))", minHeight: 44, padding: "6px 8px 6px 12px", borderRadius: 99,
+            background: "color-mix(in srgb, var(--bg) 92%, var(--card3))", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)",
+            border: `1px solid ${soft(cor, 55)}`, boxShadow: T.shadow,
+          }}>
+          <span aria-hidden="true" className={estado === "ouvindo" || estado === "falando" ? "pulsar-voz" : ""}
+            style={{ width: 26, height: 26, borderRadius: 99, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: soft(cor, 20), color: cor }}>
+            {estado === "ouvindo" ? <Mic size={14} /> : <AudioLines size={14} />}
+          </span>
+          <button type="button" onClick={() => setCompacta(false)} title="Abrir a conversa"
+            className="flex-1 min-w-0 text-left"
+            style={{ background: "none", border: "none", cursor: "pointer", color: T.ink, fontFamily: F_UI, padding: 0 }}>
+            <span style={{ display: "block", fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "rtl", textAlign: "left" }}>
+              <bdi>{aviso || (ultimaFala && ultimaFala.texto ? `${ultimaFala.de === "eu" ? "Você: " : ""}${ultimaFala.texto}` : ROTULO_VOZ_AO_VIVO[estado])}</bdi>
+            </span>
+          </button>
+          <span style={{ fontSize: 11.5, color: cor, fontWeight: 700, flexShrink: 0 }} data-teste="estado-ilha-voz">{ROTULO_VOZ_AO_VIVO[estado]}</span>
+          <button type="button" aria-label="Abrir a conversa inteira" title="Abrir a conversa inteira" onClick={() => setCompacta(false)} className="toque flex items-center justify-center"
+            style={{ width: 30, height: 30, borderRadius: 99, background: "none", border: "none", color: T.dim, cursor: "pointer", flexShrink: 0 }}>
+            <Maximize2 size={14} />
+          </button>
+          <button type="button" aria-label="Encerrar a conversa" title="Encerrar" onClick={fechar} className="toque flex items-center justify-center"
+            style={{ width: 30, height: 30, borderRadius: 99, background: "none", border: "none", color: T.dim, cursor: "pointer", flexShrink: 0 }}>
+            <X size={15} />
+          </button>
+        </div>
+      ) : null}
+
       {!aberta ? (
         <button type="button" onClick={() => ligar("conversa")} aria-label="Falar com a assistente virtual" data-teste="abrir-assistente-voz"
           className="toque brilhar"
@@ -671,10 +896,14 @@ function AssistenteDeVoz({ nuvem, notify, data, today, ver, setData, subjects, p
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>
           <AudioLines size={24} />
+          {esperandoChamado ? (
+            <span aria-hidden="true" data-teste="ei-cadencia-ouvindo" title="Ouvindo o chamado: diga Ei, Cadência"
+              style={{ position: "absolute", top: -2, right: -2, width: 16, height: 16, borderRadius: 99, background: "var(--ok)", border: "2px solid var(--bg)" }} />
+          ) : null}
         </button>
       ) : null}
 
-      {aberta ? (
+      {aberta && !compacta ? (
         <div role="dialog" aria-label="Assistente virtual por voz" data-teste="assistente-voz"
           style={{
             position: "fixed", zIndex: 62, display: "flex", flexDirection: "column",
@@ -753,6 +982,25 @@ function AssistenteDeVoz({ nuvem, notify, data, today, ver, setData, subjects, p
                 </button>
               </div>
             ) : null}
+            {/* Chamar sem tocar: a opção fica aqui, onde a pessoa já está falando com ela. */}
+            <div className="flex items-center gap-2.5 rounded-xl px-3 py-2" style={{ background: T.card2, border: `1px solid ${T.line}` }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: T.ink }}>Chamar dizendo "Ei, Cadência"</div>
+                <Mini style={{ marginTop: 1, lineHeight: 1.45 }}>
+                  {podeEiCadencia()
+                    ? (eiLigado ? "Ligado neste aparelho. Com o site aberto, diga \"Ei, Cadência\" e o pedido." : "Com o site aberto, ela atende sem você tocar em nada.")
+                    : (ehIphone() ? "No iPhone o navegador não deixa ouvir o tempo todo. Use o botão." : "Este navegador não tem reconhecimento de fala. Funciona no Chrome e no Edge.")}
+                </Mini>
+              </div>
+              <button type="button" role="switch" aria-checked={eiLigado && podeEiCadencia()} aria-label="Chamar dizendo Ei, Cadência"
+                data-teste="ei-cadencia" disabled={!podeEiCadencia()} onClick={() => trocarEi(!eiLigado)}
+                style={{
+                  width: 46, height: 28, borderRadius: 99, flexShrink: 0, cursor: podeEiCadencia() ? "pointer" : "not-allowed", position: "relative",
+                  background: eiLigado && podeEiCadencia() ? "var(--ok)" : T.card3, border: `1px solid ${T.line}`, opacity: podeEiCadencia() ? 1 : 0.5, transition: "background .2s",
+                }}>
+                <span style={{ position: "absolute", top: 3, left: eiLigado && podeEiCadencia() ? 21 : 3, width: 20, height: 20, borderRadius: 99, background: "#fff", transition: "left .2s" }} />
+              </button>
+            </div>
             <Mini style={{ lineHeight: 1.5 }}>Ela pode errar. Dúvidas que ela não resolver: suporte@cadenciamed.com</Mini>
           </div>
         </div>

@@ -91,6 +91,7 @@ if [ "${1:-}" != "--sem-teste" ]; then
   node testar-conversas-tela.mjs teste.html
   node testar-revisao-tela.mjs teste.html
   node testar-pedidos-tela.mjs teste.html
+  node testar-ei-cadencia-tela.mjs
   node testar-banco-tela.mjs index.html
   node testar-meu-plano-tela.mjs teste.html
   node testar-sincronia-tela.mjs teste.html

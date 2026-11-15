@@ -928,6 +928,32 @@ export default function Cadencia() {
   ];
   const acc = (TABS.find((t) => t.id === tab) || TABS[0]).acc;
 
+  /* O que a mentora por voz pode fazer na tela: abrir uma aba e ligar ou
+     pausar o Foco. Ela só pede (ferramentas da voz, parte39); quem confere
+     se a aba existe para esta conta e faz é a raiz. */
+  const comandoRef = useRef(null);
+  comandoRef.current = (c) => {
+    if (c && c.tipo === "aba") {
+      const a = TABS.find((t) => t.id === c.aba);
+      if (!a) return { ok: false, texto: "essa aba não está disponível para esta conta" };
+      setTab(a.id);
+      return { ok: true, texto: `aba ${a.label} aberta` };
+    }
+    if (c && c.tipo === "foco") {
+      if (c.acao === "pausar") { P.setRunning(false); return { ok: true, texto: "cronômetro de foco pausado" }; }
+      const m = c.materia ? acharMateriaPorNome(c.materia, subjects) : null;
+      if (m) setPomoSubject(m.id);
+      setTab("foco");
+      P.setRunning(true);
+      return { ok: true, texto: `cronômetro de foco ligado${m ? `, em ${m.title}` : ""}` };
+    }
+    return { ok: false, texto: "comando desconhecido" };
+  };
+  useEffect(() => {
+    window.__cadenciaComando = (c) => comandoRef.current(c);
+    return () => { window.__cadenciaComando = null; };
+  }, []);
+
   /* Sair da conta, ou a assinatura vencer, com o Assistente aberto deixaria uma
      aba escolhida que não existe mais na barra, e a tela ficaria em branco.
      Mas enquanto o plano está sendo conferido ninguém é pro ainda: mandar

@@ -125,6 +125,48 @@ export const FERRAMENTAS_DA_MENTORA = [{
       },
     },
     {
+      name: "abrir_aba",
+      description: "Abre uma aba do site para a pessoa, quando ela pedir (\"abre os cartões\", \"me leva para a agenda\", \"quero ver as revisões\").",
+      parameters: {
+        type: "OBJECT",
+        properties: {
+          aba: {
+            type: "STRING",
+            enum: ["hoje", "foco", "estudo", "materias", "cronograma", "meuplano", "temas", "assistente", "cartoes", "revisoes", "erros", "banco", "provas", "rotina", "amigos", "metas", "desempenho", "simulados", "progresso", "planos", "config"],
+            description: "hoje: o dia; foco: cronômetro; estudo: estudo interativo; materias: aulas; rotina: a Agenda; erros: caderno de erros; banco: banco de questões; config: configurações.",
+          },
+        },
+        required: ["aba"],
+      },
+    },
+    {
+      name: "controlar_foco",
+      description: "Liga ou pausa o cronômetro de Foco, quando a pessoa pedir para começar a estudar agora ou para pausar. Ao ligar, abre a aba Foco.",
+      parameters: {
+        type: "OBJECT",
+        properties: {
+          acao: { type: "STRING", enum: ["comecar", "pausar"] },
+          materia: { type: "STRING", description: "O assunto que ela vai estudar, se disse (o painel acha a aula mais parecida)." },
+        },
+        required: ["acao"],
+      },
+    },
+    {
+      name: "concluir_pendencia",
+      description: "Marca como concluída uma pendência da lista de Hoje, quando a pessoa disser que já fez.",
+      parameters: { type: "OBJECT", properties: { texto: { type: "STRING", description: "A pendência, do jeito que a pessoa falou." } }, required: ["texto"] },
+    },
+    {
+      name: "lembrar",
+      description: "Guarda na memória uma coisa que a pessoa PEDIU para você lembrar, ou um fato duradouro sobre ela que ajuda nas próximas conversas (o hospital do internato, a prova que vai prestar, o que mais a atrapalha). Uma frase curta e fiel. Não guarde o que já está no painel.",
+      parameters: { type: "OBJECT", properties: { texto: { type: "STRING" } }, required: ["texto"] },
+    },
+    {
+      name: "esquecer",
+      description: "Tira da memória uma lembrança, quando a pessoa pedir para esquecer ou disser que não vale mais.",
+      parameters: { type: "OBJECT", properties: { texto: { type: "STRING", description: "A lembrança, do jeito que a pessoa falou." } }, required: ["texto"] },
+    },
+    {
       name: "adicionar_pendencia",
       description: "Põe uma pendência na lista de Hoje, quando a pessoa pedir para lembrar de algo.",
       parameters: { type: "OBJECT", properties: { texto: { type: "STRING" } }, required: ["texto"] },
